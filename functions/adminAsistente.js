@@ -855,7 +855,12 @@ const TOOLS = [
     },
     require('./fodiCatalogo').TOOL,
     require('./fodiSimulador').TOOL,
-    require('./fodiCodigo').TOOL
+    require('./fodiCodigo').TOOL,
+    {
+        name: 'registrar_nombre',
+        description: 'Guarda el nombre de pila con el que le gusta a la persona que inició sesión que la llames (solo cuando ella te lo dijo). Después te diriges a ella por ese nombre.',
+        input_schema: { type: 'object', properties: { nombre: { type: 'string', description: 'Nombre de pila, ej. "Ana".' } }, required: ['nombre'] }
+    }
 ];
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();

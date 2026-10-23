@@ -828,6 +828,7 @@ function _createComboModalShell({ titleHtml, subtitleHtml = '', zIndex = null } 
 }
 
 function showNotice(text, type = 'ok') {
+    if (type === 'error') { try { _fodiRegistrarError('aviso', text); } catch (_) { /* buffer aún no declarado */ } }
     if (notice) {
         notice.textContent = text;
         notice.className = `notice show ${type}`;
@@ -31804,8 +31805,14 @@ const _ASIST_SUGERENCIAS = [
     { ic: '⏰', t: '¿Cuáles son mis horas y días pico del último mes?' },
     { ic: '🧭', t: 'Clasifica mi menú en estrellas, caballos, enigmas y perros este mes' },
     { ic: '📈', t: 'Comparar este mes con el anterior y dime qué hacer' },
-    { ic: '⚖️', t: '¿Cuánto debo vender al mes para el punto de equilibrio?' }
+    { ic: '⚖️', t: '¿Cuánto debo vender al mes para el punto de equilibrio?' },
+    { ic: '🛠️', t: '¿Algo ha fallado hoy en la app? Revísalo y dime cómo corregirlo' },
+    { ic: '➕', t: 'Quiero crear un producto nuevo para el menú' }
 ];
+function _asistHeroSaludo() {
+    const h = document.getElementById('asistHeroTitulo');
+    if (h) h.textContent = _fodiNombreLocal() ? `Hola, ${_fodiNombreLocal()} 💛 soy FODI` : 'Hola, soy FODI';
+}
 // ───────── FODI: mini pantalla con ojos y boca (SVG + rAF, sin librerías) ─────────
 // Cada parámetro se interpola suavemente hacia la expresión objetivo; el parpadeo, el balanceo,
 // la mirada y los visemas de la boca se superponen encima. Con prefers-reduced-motion no hay bucle:
@@ -32202,6 +32209,13 @@ function _asistAcciones(msg, acciones) {
             } catch (err) {
                 b.disabled = false; if (bNo) bNo.disabled = false; b.textContent = orig;
                 estado.style.color = '#ff9c9c'; estado.textContent = '⚠️ No se pudo: ' + (err.message || err);
+                _fodiRegistrarError('accion', `${a.tipo}${a.operacion ? ' ' + a.operacion : ''}${a.entidad ? ' ' + a.entidad : ''} "${a.nombre || ''}": ${err.message || err}`);
+                if (!card.querySelector('[data-acc="revisar"]')) {
+                    const rv = document.createElement('button'); rv.type = 'button'; rv.dataset.acc = 'revisar'; rv.textContent = '🔍 Pedir a FODI que lo revise';
+                    rv.style.cssText = BTN + 'background:rgba(255,255,255,.16);color:inherit';
+                    rv.addEventListener('click', () => { rv.remove(); if (window._fodiPreguntar) window._fodiPreguntar(`Falló esta acción: ${a.tipo}${a.operacion ? ' ' + a.operacion : ''}${a.entidad ? ' ' + a.entidad : ''} "${a.nombre || ''}". Error: ${err.message || err}. ¿Qué pasó y cómo lo corregimos?`); });
+                    card.appendChild(rv);
+                }
                 showNotice('No se pudo: ' + (err.message || err), 'error');
             }
         };
@@ -32268,6 +32282,40 @@ async function _asistEjecutarAccion(a) {
 
 // Última imagen adjunta en un chat de FODI (la que se usa como foto de producto al confirmar).
 let _fodiUltimaImg = null;
+// Quién inició sesión (para saludar por su nombre) y errores recientes de la app (para que FODI los explique)
+let _fodiUsuario = { nombre: null, email: null, listo: false };
+const _fodiErrores = [];
+function _fodiRegistrarError(tipo, msg) {
+    const m = String(msg || '').trim();
+    if (!m || /ResizeObserver loop/i.test(m)) return;
+    if (_fodiErrores.length && _fodiErrores[_fodiErrores.length - 1].m === m) return;
+    _fodiErrores.push({ t: tipo, m: m.slice(0, 300), at: Date.now() });
+    if (_fodiErrores.length > 12) _fodiErrores.shift();
+}
+window.addEventListener('error', (e) => _fodiRegistrarError('js', `${e.message || 'error'}${e.filename ? ' @' + String(e.filename).split('/').pop() + ':' + e.lineno : ''}`));
+window.addEventListener('unhandledrejection', (e) => _fodiRegistrarError('promesa', (e.reason && (e.reason.message || e.reason)) || 'rechazo sin mensaje'));
+function _fodiContexto() {
+    const tab = document.querySelector('.admin-accordion-trigger[aria-expanded="true"]')?.dataset.accordionTarget || '';
+    return { pestana: tab, errores: _fodiErrores.filter((e) => Date.now() - e.at < 6 * 3600e3).slice(-8).map((e) => ({ t: e.t, m: e.m })) };
+}
+function _fodiNombreLocal() {
+    const u = (typeof firebaseAuth !== 'undefined' && firebaseAuth && firebaseAuth.currentUser) || null;
+    return _fodiUsuario.nombre || (u && u.displayName ? String(u.displayName).trim().split(/\s+/)[0] : '') || '';
+}
+async function _fodiCargarUsuario() {
+    if (_fodiUsuario.listo || !firebaseFunctions) return _fodiUsuario;
+    _fodiUsuario.listo = true;
+    try {
+        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 20000 })({ solo_perfil: true });
+        _fodiUsuario.nombre = r.data?.usuario?.nombre || null; _fodiUsuario.email = r.data?.usuario?.email || null;
+    } catch (_) { _fodiUsuario.listo = false; /* se reintenta en la próxima apertura */ }
+    return _fodiUsuario;
+}
+function _fodiSaludo(corto) {
+    const n = _fodiNombreLocal(), h = new Date().getHours();
+    const mom = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
+    return n ? (corto ? `¡Hola, ${n}! 💛` : `${mom}, ${n} 💛`) : (corto ? '¡Hola! 💛' : `${mom} 💛`);
+}
 async function _fodiSubirFotoProducto(nombre) {
     const im = _fodiUltimaImg;
     if (!im || !im.base64) throw new Error('No encuentro la imagen adjunta. Adjúntala de nuevo (📎) y vuelve a pedirlo.');
@@ -32369,8 +32417,9 @@ async function _asistEnviar(texto) {
     _fodiSet(av, 'thinking');
     _asistScroll(true);
     try {
-        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist, ...(imagen ? { imagen } : {}), ...(profundo ? { profundo: true } : {}) });
+        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist, contexto: _fodiContexto(), ...(imagen ? { imagen } : {}), ...(profundo ? { profundo: true } : {}) });
         const resp = String(r.data?.respuesta || '');
+        if (r.data?.usuario?.nombre) { _fodiUsuario.nombre = r.data.usuario.nombre; _asistHeroSaludo(); }
         _asistHist.push({ role: 'assistant', content: resp });
         const reaccion = _fodiReaccion(resp, false);
         _fodiSet(av, reaccion);
@@ -32571,6 +32620,7 @@ function _asistInit() {
         });
     }
     const chips = document.getElementById('asistChips');
+    _asistHeroSaludo(); _fodiCargarUsuario().then(_asistHeroSaludo);
     chips.innerHTML = _ASIST_SUGERENCIAS.map((s) => `<button type="button" class="asist-card-sug" data-q="${_asistEsc(s.t)}"><span class="ic">${s.ic}</span><span>${_asistEsc(s.t)}</span></button>`).join('');
     chips.addEventListener('click', (e) => {
         const c = e.target.closest('.asist-card-sug');
@@ -33009,9 +33059,27 @@ function _fodiFlotInit() {
     if (!SR) mic.style.display = 'none';
     const callar = () => { _fodiParar(); hablar(false); };
     const hayGesto = () => !!(navigator.userActivation ? navigator.userActivation.hasBeenActive : true);
-    const msg = (clase, texto) => {
-        const d = document.createElement('div'); d.className = 'ff-m ' + clase; d.textContent = texto;
+    const msg = (clase, texto, md) => {
+        const d = document.createElement('div'); d.className = 'ff-m ' + clase;
+        if (md) { d.style.whiteSpace = 'normal'; d.innerHTML = _asistRender(texto); } else d.textContent = texto;
         log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
+    };
+    const ffChips = () => {
+        const fila = document.createElement('div'); fila.className = 'ff-chips'; fila.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px';
+        ['Ventas de ayer', 'Top productos del mes', '¿Algo falló hoy? Revísalo', 'Crear un producto'].forEach((t) => {
+            const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+            b.style.cssText = 'cursor:pointer;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:inherit;border-radius:999px;padding:7px 12px;font:600 .8rem system-ui,sans-serif;touch-action:manipulation';
+            b.addEventListener('click', () => { fila.remove(); enviar(t === 'Crear un producto' ? 'Quiero crear un producto nuevo para el menú' : t); });
+            fila.appendChild(b);
+        });
+        log.appendChild(fila);
+    };
+    const bienvenida = async () => {
+        await _fodiCargarUsuario();
+        const n = _fodiNombreLocal();
+        const t = n ? `${_fodiSaludo(false)}. Soy FODI. ¿En qué te ayudo? Puedes escribirme, hablarme o adjuntar una captura.` : `${_fodiSaludo(false)}. Soy FODI. ¿Cómo te llamo? Dímelo y luego me cuentas en qué te ayudo.`;
+        msg('bot', t); ffChips();
+        _fodiDecir(_asistTextoHablado(t), { onstart: () => hablar(true), onend: () => hablar(false) });
     };
     // Corazoncitos al tocarla
     const corazones = (n) => {
@@ -33073,10 +33141,11 @@ function _fodiFlotInit() {
         set('thinking');
         _ffHist.push({ role: 'user', content: pregunta });
         try {
-            const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _ffHist.slice(-10), modo: 'voz', ...(imagen ? { imagen } : {}) });
+            const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _ffHist.slice(-10), modo: 'voz', contexto: _fodiContexto(), ...(imagen ? { imagen } : {}) });
             const resp = String(r.data?.respuesta || 'No te escuché bien, ¿me lo repites?');
+            if (r.data?.usuario?.nombre) _fodiUsuario.nombre = r.data.usuario.nombre;
             _ffHist.push({ role: 'assistant', content: resp });
-            pens.remove(); const botMsg = msg('bot', resp);
+            pens.remove(); const botMsg = msg('bot', resp, true);
             if (Array.isArray(r.data?.acciones) && r.data.acciones.length) { _asistAcciones(botMsg, r.data.acciones); log.scrollTop = log.scrollHeight; }
             set(_fodiReaccion(resp, false));
             _fodiDecir(_asistTextoHablado(resp), { onstart: () => hablar(true), onend: () => hablar(false) });
@@ -33163,10 +33232,7 @@ function _fodiFlotInit() {
         if (movido) { movido = false; return; }
         corazones(3); set('love', 1500, 'happy');
         raiz.classList.add('abierto'); hola.classList.remove('on');
-        if (!log.childElementCount) {
-            msg('bot', '¡Hola! Soy FODI 💛 ¿En qué te ayudo hoy? Puedes escribirme o tocar el micrófono.');
-            _fodiDecir('¡Hola! Soy Fodi. ¿En qué te ayudo hoy?', { onstart: () => hablar(true), onend: () => hablar(false) });
-        }
+        if (!log.childElementCount) bienvenida();
         if (window.matchMedia && window.matchMedia('(hover:hover)').matches) txt.focus();
     });
     $('fodiFlotCerrar').addEventListener('click', () => { raiz.classList.remove('abierto'); callar(); if (_ffRec) _ffRec.stop(); set('wink', 1200, 'neutral'); });
@@ -33179,6 +33245,9 @@ function _fodiFlotInit() {
     };
     txt.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.keyCode === 13) && !(e.isComposing && e.keyCode === 229)) { e.preventDefault(); enviarTxt(); } });
     $('fodiFlotEnviar')?.addEventListener('click', enviarTxt);
+    $('fodiFlotNuevo')?.addEventListener('click', () => { if (_ffBusy) return; _ffHist = []; log.innerHTML = ''; _fodiParar(); bienvenida(); });
+    // Otras partes del panel (p. ej. una acción fallida) le hacen una pregunta a FODI abriendo este chat
+    window._fodiPreguntar = (t) => { raiz.classList.add('abierto'); hola.classList.remove('on'); if (!log.childElementCount) { log.innerHTML = ''; } enviar(t); };
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();
 setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_meseroSession) { _fodiAlertasCargar(); _fodiInformeCargar(false); } }, 9000);

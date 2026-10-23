@@ -15374,8 +15374,8 @@
                         <div class="asist-stage" id="asistStage">
                             <div class="asist-hero" id="asistHero">
                                 <div class="fodi fodi-hero-av" id="asistHeroFodi" title="Toca a FODI"></div>
-                                <h3>Hola, soy FODI</h3>
-                                <p>Tu analista de ventas, gastos y estrategia. Solo lectura: no modifico nada.</p>
+                                <h3 id="asistHeroTitulo">Hola, soy FODI</h3>
+                                <p>Tu analista y asistente del negocio: analizo ventas y costos, creo y ajusto productos, insumos y recetas, armo pedidos y te ayudo a entender y corregir errores. Todo cambio te lo muestro primero con un botón para que lo confirmes.</p>
                                 <div class="asist-cards" id="asistChips"></div>
                             </div>
                             <div class="asist-log" id="asistLog"></div>
@@ -15383,7 +15383,7 @@
                         <div class="asist-bar">
                             <div id="asistAdjPrev" style="display:none;align-items:center;gap:8px;margin:0 0 6px"><img alt="Captura adjunta" style="max-height:70px;border-radius:8px"><button type="button" class="section-action-btn" id="asistAdjQuitar">Quitar</button><small>FODI leerá la captura. Escribe qué quieres o envía directo.</small></div>
                             <form class="asist-form" id="asistForm">
-                                <textarea id="asistInput" rows="1" maxlength="1000" placeholder="Pregúntale a FODI…"></textarea>
+                                <textarea id="asistInput" rows="1" maxlength="4000" placeholder="Pregúntale a FODI, o pídele que cree o cambie algo…"></textarea>
                                 <button type="button" class="asist-voz" id="asistAdjBtn" aria-label="Adjuntar captura de un chat" title="Adjuntar captura (o pégala con Ctrl+V) para armar un pedido">📎</button><input type="file" id="asistAdjFile" accept="image/*" hidden>
                                 <button type="button" class="asist-voz" id="asistProfBtn" aria-pressed="false" aria-label="Análisis profundo con Opus" title="Análisis profundo (Opus): más lento y más caro; máx. 8 al día. Aplica a la siguiente pregunta.">🧠</button>
                                 <button type="button" class="asist-voz" id="asistMicBtn" aria-label="Dictar con la voz" title="Dictar con la voz" hidden>🎤</button>
@@ -16848,7 +16848,7 @@
     <div id="fodiFlot" aria-live="polite">
         <div id="fodiFlotHola" aria-hidden="true">¡Hola! 💛</div>
         <div id="fodiFlotPanel" role="dialog" aria-label="Chat con FODI">
-            <div class="ff-head"><div id="fodiFlotCara"></div><div class="ff-nombre">FODI<small>tu asistente 💛</small></div><button type="button" class="ff-x" id="fodiFlotCerrar" aria-label="Cerrar">✕</button></div>
+            <div class="ff-head"><div id="fodiFlotCara"></div><div class="ff-nombre">FODI<small>tu asistente 💛</small></div><button type="button" class="ff-x" id="fodiFlotNuevo" aria-label="Nueva conversación" title="Nueva conversación">🧹</button><button type="button" class="ff-x" id="fodiFlotCerrar" aria-label="Cerrar">✕</button></div>
             <div id="fodiFlotLog"></div>
             <div id="fodiFlotPrev" style="display:none;align-items:center;gap:8px;padding:0 12px 4px"><img alt="Captura" style="max-height:56px;border-radius:8px"><button type="button" class="ff-b" id="fodiFlotQuitar" style="width:30px;height:30px;font-size:.8rem">✕</button></div>
             <div class="ff-pie">

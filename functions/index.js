@@ -3377,7 +3377,7 @@ REGLAS DE DATOS (inquebrantables):
 - Las cifras salen SIEMPRE de las herramientas; nunca inventes ni estimes números. Si no hay herramienta para algo, dilo.
 - Declara el rango real consultado (desde–hasta) y avisa si el resultado vino truncado.
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
-- Eres de solo lectura sobre el negocio: no puedes modificar pedidos, caja ni puntos. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. También con gestionar_catalogo: crear insumos, recetas, platos de costos, productos del menú y combos, y pausar/reanudar/desactivar/activar productos, combos y platos; igual, solo propones y el administrador confirma con el botón. Si falta un dato obligatorio (precio, categoría, cantidades), pídelo; no inventes. Para agregar algo al menú usa entidad "producto". Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
+- No puedes modificar pedidos, caja ni puntos por tu cuenta. Lo único que puedes hacer es PROPONER (herramienta proponer_accion): ir a una pestaña o cambiar el precio de compra de un insumo. Nunca se ejecuta sola: el administrador ve un botón y confirma. Tras proponer, dile qué propusiste y que la confirme con el botón; jamás afirmes que ya está hecho. También con gestionar_catalogo: crear insumos, recetas, platos de costos, productos del menú y combos, y pausar/reanudar/desactivar/activar productos, combos y platos; igual, solo propones y el administrador confirma con el botón. Si falta un dato obligatorio (precio, categoría, cantidades), pídelo; no inventes. Para agregar algo al menú usa entidad "producto". Única excepción: tu propia memoria (herramienta recordar), que sí guardas directamente.
 - MEMORIA: abajo verás lo que ya sabes del negocio y del dueño; úsalo para personalizar (metas, prioridades, tono). Cuando el administrador te cuente una meta, preferencia o dato duradero, guárdalo con recordar sin que lo pida y dilo en una línea. Nunca guardes cifras de herramientas ni datos sensibles (claves, PINs). Si te dice que olvides algo, usa recordar con olvidar.
 - PEDIDOS: si el administrador pega texto de un chat, adjunta una captura o dicta/describe un pedido, llama a armar_pedido (con el texto tal cual; si solo hay captura, texto vacío). Resume en 1-3 líneas lo entendido (productos y cantidades, entrega, pago) y dile que lo confirme con el botón "Crear pedido" o diciendo "sí, créalo". Si falta algo, pídeselo de forma breve y vuelve a llamar la herramienta con TODO el texto junto. Jamás digas que el pedido ya está creado: solo se crea cuando él confirma.
 - BASE DE CONOCIMIENTO: antes de aconsejar sobre gerencia, marketing, finanzas, operación, personal, impuestos/legal Colombia o atención a clientes, y antes de responder sobre políticas o reglas del negocio, llama a buscar_conocimiento. Cita la fuente ("según tu base: …"). Lo de "Tu base" son reglas del dueño y mandan sobre la teoría. Si no hay nada, dilo y sugiere documentarlo.
@@ -3418,6 +3418,11 @@ exports.adminAsistenteIA = onCall(
     async (request) => {
         const db = getFirestore();
         await cuponPana.ensureAdmin(db, request);
+        const adminRef = db.collection('admins').doc(request.auth.uid);
+        const nombreUsuario = String(((await adminRef.get()).data() || {}).nombre || '').trim().slice(0, 40) || null;
+        const emailUsuario = String(request.auth.token?.email || '').slice(0, 80);
+        // Solo el perfil (para saludar por el nombre al abrir el chat): no gasta consulta del modelo
+        if (request.data?.solo_perfil === true) return { usuario: { nombre: nombreUsuario, email: emailUsuario || null } };
 
         const entrada = Array.isArray(request.data?.mensajes) ? request.data.mensajes : [];
         const mensajes = entrada
@@ -3456,9 +3461,19 @@ exports.adminAsistenteIA = onCall(
         const resultadosSug = await fodiInteligencia.evaluarVencidas(db, 2).catch((e) => { console.error('evaluarVencidas:', e && e.message); return []; });
         const bloqueSug = resultadosSug.length ? `RESULTADOS DE TUS SUGERENCIAS (recién evaluadas):
 ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días): ${r.veredicto}; ${r.metrica} ${r.antes} → ${r.despues}${r.cambio_pct != null ? ` (${r.cambio_pct}%)` : ''}`).join('\n')}` : '';
+        // Contexto que manda el panel: pestaña abierta y errores recientes de la app (para diagnosticar)
+        const ctxIn = request.data?.contexto && typeof request.data.contexto === 'object' ? request.data.contexto : {};
+        const erroresApp = (Array.isArray(ctxIn.errores) ? ctxIn.errores : []).slice(-8).map((e) => `- [${String(e && e.t || '').slice(0, 20)}] ${String(e && e.m || '').slice(0, 300)}`).join('\n');
+        const bloqueUsuario = `QUIÉN TE ESCRIBE: ${nombreUsuario
+            ? `la persona que inició sesión se llama ${nombreUsuario}. Dirígete a ella por su nombre de pila con naturalidad (en el saludo y de vez en cuando, sin repetirlo en cada frase).`
+            : `aún no sabes cómo se llama quien inició sesión (correo ${emailUsuario || 'desconocido'}). En tu primera respuesta de esta conversación salúdala y pregúntale cómo prefiere que le llames; cuando te lo diga, guárdalo con registrar_nombre.`}
+Usa lenguaje neutro respecto al género: no uses "bienvenido/a", ni adjetivos que dependan del género de la persona; basta con el nombre.
+${ctxIn.pestana ? `Pestaña del panel abierta ahora: ${String(ctxIn.pestana).slice(0, 40)}.\n` : ''}${erroresApp ? `ERRORES RECIENTES DE LA APP (capturados en el navegador, del más viejo al más nuevo):\n${erroresApp}\n` : ''}
+DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador dice que algo falló o no funciona: (1) explica en lenguaje simple qué significa, (2) da la causa más probable y en qué evidencia te basas (usa codigo_fuente buscar/leer cuando esté configurado, y las demás herramientas), separando HECHO de HIPÓTESIS, (3) propón una corrección concreta: un ajuste de datos con gestionar_catalogo o proponer_accion; un bug de código con codigo_fuente proponer_cambio (abre un Pull Request que el dueño aprueba); y si GitHub no está configurado, describe el cambio exacto para que se lo pase a su programador. No inventes causas ni afirmes que algo quedó arreglado hasta que el administrador confirme el botón o apruebe el PR.`;
         const system = [
             { type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } },
             { type: 'text', text: bloqueMemoria, cache_control: { type: 'ephemeral' } },
+            { type: 'text', text: bloqueUsuario },
             ...(bloqueConocimiento ? [{ type: 'text', text: bloqueConocimiento }] : []),
             ...(bloqueSug ? [{ type: 'text', text: bloqueSug }] : []),
             ...(request.data?.modo === 'voz' ? [{ type: 'text', text: MODO_VOZ_PROMPT }] : [])
@@ -3502,6 +3517,10 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
                         r = await proponer(db, u.input || {}, { tieneImagen: !!imagenActual }).catch((e) => ({ error: `Falló: ${e.message || e}` }));
                         if (r.ok && acciones.length < 5) acciones.push(r.accion);
                         if (r.ok) r = { ok: true, nota: 'Propuesta mostrada al administrador como botón; aún NO se ejecutó. No digas que ya se hizo: dile que la confirme con el botón.', accion: r.accion };
+                    } else if (u.name === 'registrar_nombre') {
+                        const nom = String((u.input || {}).nombre || '').replace(/[^\p{L}\p{N} .'-]/gu, '').trim().slice(0, 40);
+                        if (nom.length < 2) r = { error: 'Nombre no válido.' };
+                        else { await adminRef.set({ nombre: nom }, { merge: true }); r = { ok: true, nombre: nom, nota: 'Guardado. Úsalo para dirigirte a esa persona.' }; }
                     } else if (u.name === 'armar_pedido') {
                         const ap = await adminAsistente.armarPedido(db, apiKey, u.input || {}, imagenActual);
                         if (ap.accion && acciones.length < 5) acciones.push(ap.accion);
@@ -3536,7 +3555,7 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
             tokensOut: FieldValue.increment(tokensOut), costoUsd: FieldValue.increment(costo),
             cacheReadTokens: FieldValue.increment(tokensCacheR), cacheWriteTokens: FieldValue.increment(tokensCacheW), llamadasApi: FieldValue.increment(llamadas), consultasSimples: FieldValue.increment(esSimple ? 1 : 0)
         }, { merge: true }).catch((e) => console.error('adminAsistenteIA uso:', e));
-        return { respuesta: texto || 'No obtuve una respuesta. Reformula la pregunta.', acciones };
+        return { respuesta: texto || 'No obtuve una respuesta. Reformula la pregunta.', acciones, usuario: { nombre: nombreUsuario } };
     }
 );
 
@@ -3642,7 +3661,7 @@ async function fodiGenerarInforme(db, apiKey) {
     const hoy = Date.now();
     const f = (ms) => adminAsistente.bogotaDateKey(ms);
     const desde = f(hoy - 7 * DIA), hasta = f(hoy - DIA), antDesde = f(hoy - 14 * DIA), antHasta = f(hoy - 8 * DIA);
-    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'armar_pedido', 'recordar'].includes(t.name));
+    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'registrar_nombre', 'armar_pedido', 'recordar'].includes(t.name));
     const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
     const system = `${asistenteSystemPrompt()}\n\nTAREA: redacta el INFORME SEMANAL para el dueño. Semana analizada: ${desde} a ${hasta}; semana anterior: ${antDesde} a ${antHasta}. Usa las herramientas para traer ventas, ticket, productos, canales, clientes, gastos/rentabilidad y redes. Estructura: 1) Titular de la semana (2 líneas), 2) Cifras clave vs semana anterior (tabla), 3) Qué funcionó, 4) Qué preocupa, 5) Tres acciones concretas para esta semana. Sé breve (máx. 450 palabras), sin inventar cifras.${memoria.length ? `\n\nMEMORIA:\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : ''}`;
     const mensajes = [{ role: 'user', content: `Genera el informe semanal de ${desde} a ${hasta}.` }];
