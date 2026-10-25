@@ -11408,7 +11408,7 @@ let _mesaSumaOrders = [];
 function _mesaSumaActualizar(mesaOrders) {
     const barra = document.getElementById('mesaSumaBar');
     const btn = document.getElementById('mesaSumarBtn');
-    if (btn) { btn.setAttribute('aria-pressed', _mesaSumaActiva ? 'true' : 'false'); btn.classList.toggle('is-on', _mesaSumaActiva); btn.textContent = _mesaSumaActiva ? '✕ Salir de sumar' : 'Σ Sumar mesas'; }
+    if (btn) { btn.setAttribute('aria-pressed', _mesaSumaActiva ? 'true' : 'false'); btn.classList.toggle('is-on', _mesaSumaActiva); btn.textContent = _mesaSumaActiva ? '✕ Salir de sumar' : '$ Sumar mesas'; }
     if (!barra) return;
     barra.hidden = !_mesaSumaActiva;
     if (!_mesaSumaActiva) return;

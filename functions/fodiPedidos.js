@@ -53,6 +53,19 @@ async function pedidosActivos(db, args = {}) {
     return { total: lista.length, pedidos: lista.slice(0, max), nota: lista.length > max ? `Se muestran ${max} de ${lista.length}; afina con buscar o estado.` : undefined };
 }
 
+// Suma de mesas: total de varias mesas ocupadas (solo lectura; espejo de "$ Sumar mesas" del panel).
+async function sumarMesas(db, args = {}) {
+    const pedir = [...new Set((Array.isArray(args.mesas) ? args.mesas : []).map((m) => parseInt(m, 10)).filter((m) => m >= 1 && m <= 99))];
+    if (pedir.length < 1) return { error: 'Indica las mesas a sumar (ej. [7, 8]).' };
+    const snap = await db.collection('pedidos').orderBy('createdAt', 'desc').limit(120).get();
+    const activos = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((o) => o.mesaNumber && !cerrado(o));
+    const mesas = pedir.sort((a, b) => a - b).map((n) => {
+        const ps = activos.filter((o) => Number(o.mesaNumber) === n);
+        return { mesa: n, ocupada: ps.length > 0, pedidos: ps.map((o) => ({ codigo: o.code || o.id, estado: o.status || '', total: Number(o.total) || 0 })), total: ps.reduce((s, o) => s + (Number(o.total) || 0), 0) };
+    });
+    return { mesas, total_combinado: mesas.reduce((s, m) => s + m.total, 0), mesas_sin_pedido_activo: mesas.filter((m) => !m.ocupada).map((m) => m.mesa), nota: 'Solo suma lo que está activo (sin entregar ni cancelar); no modifica nada.' };
+}
+
 // ---- Edición ----
 async function buscarPedido(db, ref) {
     const q = norm(ref);
@@ -209,6 +222,11 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { buscar: { type: 'string' }, estado: { type: 'string', description: 'Ej. pendiente, preparando, listo.' }, incluir_cerrados: { type: 'boolean' }, max: { type: 'integer', description: '1-25, por defecto 12.' } } }
     },
     {
+        name: 'sumar_mesas',
+        description: 'SUMA el total de dos o más mesas (ej. "total de la mesa 7 más la mesa 8"): devuelve el total de cada mesa (todos sus pedidos activos) y el total combinado. Solo lectura. Es lo mismo que el botón "$ Sumar mesas" de Recepción.',
+        input_schema: { type: 'object', properties: { mesas: { type: 'array', items: { type: 'integer' }, description: 'Números de mesa, ej. [7, 8].' } }, required: ['mesas'] }
+    },
+    {
         name: 'ver_imagenes_productos',
         description: 'MIRA las fotos de productos del menú público (hasta 3 por llamada) para describir cómo se ve un producto, comparar o revisar si la foto sirve. buscar = parte del nombre o categoría (ej. "trifásica", "bebidas"). Úsala cuando pregunten cómo se ve algo, o para saber qué lleva visualmente un producto que vino en un pedido.',
         input_schema: { type: 'object', properties: { buscar: { type: 'string' } }, required: ['buscar'] }
@@ -229,4 +247,4 @@ const TOOLS = [
     }
 ];
 
-module.exports = { pedidosActivos, proponerEdicionPedido, imagenesProductos, resumenPedido, cobrado, cerrado, TOOLS };
+module.exports = { sumarMesas, pedidosActivos, proponerEdicionPedido, imagenesProductos, resumenPedido, cobrado, cerrado, TOOLS };

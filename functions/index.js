@@ -3663,7 +3663,7 @@ async function fodiGenerarInforme(db, apiKey) {
     const hoy = Date.now();
     const f = (ms) => adminAsistente.bogotaDateKey(ms);
     const desde = f(hoy - 7 * DIA), hasta = f(hoy - DIA), antDesde = f(hoy - 14 * DIA), antHasta = f(hoy - 8 * DIA);
-    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'ver_imagenes_productos', 'armar_pedido', 'recordar'].includes(t.name));
+    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'sumar_mesas', 'ver_imagenes_productos', 'armar_pedido', 'recordar'].includes(t.name));
     const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
     const system = `${asistenteSystemPrompt()}\n\nTAREA: redacta el INFORME SEMANAL para el dueño. Semana analizada: ${desde} a ${hasta}; semana anterior: ${antDesde} a ${antHasta}. Usa las herramientas para traer ventas, ticket, productos, canales, clientes, gastos/rentabilidad y redes. Estructura: 1) Titular de la semana (2 líneas), 2) Cifras clave vs semana anterior (tabla), 3) Qué funcionó, 4) Qué preocupa, 5) Tres acciones concretas para esta semana. Sé breve (máx. 450 palabras), sin inventar cifras.${memoria.length ? `\n\nMEMORIA:\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : ''}`;
     const mensajes = [{ role: 'user', content: `Genera el informe semanal de ${desde} a ${hasta}.` }];

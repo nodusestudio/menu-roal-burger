@@ -64,3 +64,13 @@ test('imágenes de productos: devuelve bloques de imagen y tolera fallos', async
     assert.strictEqual(r.__contenido.filter((b) => b.type === 'image').length, 1); assert.strictEqual(r.__contenido.find((b) => b.type === 'image').source.media_type, 'image/webp');
     assert.ok((await imagenesProductos(db, { buscar: 'rota' }, fetchFn)).error);
 });
+
+test('sumar_mesas suma todos los pedidos activos de cada mesa', async () => {
+    const { sumarMesas } = require('../functions/fodiPedidos');
+    const db = mk([pedido({ id: 'm7', code: 'A', mesaNumber: 7, total: 42000 }), pedido({ id: 'm8a', code: 'B', mesaNumber: 8, total: 31500 }), pedido({ id: 'm8b', code: 'C', mesaNumber: 8, total: 5000 }), pedido({ id: 'm9', code: 'D', mesaNumber: 9, total: 9000, status: 'entregado' })]);
+    const r = await sumarMesas(db, { mesas: [8, 7, 9] });
+    assert.strictEqual(r.total_combinado, 78500);
+    assert.deepStrictEqual(r.mesas.map((m) => [m.mesa, m.total]), [[7, 42000], [8, 36500], [9, 0]]);
+    assert.deepStrictEqual(r.mesas_sin_pedido_activo, [9]);
+    assert.ok((await sumarMesas(db, { mesas: [] })).error);
+});

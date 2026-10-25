@@ -1079,6 +1079,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             return { items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), margen_minimo_pct: Number(d.margenMinimo) || null };
         }
         if (nombre === 'calcular') return calcular(args.expresion);
+        if (nombre === 'sumar_mesas') return await require('./fodiPedidos').sumarMesas(db, args);
         if (nombre === 'pedidos_activos') return await require('./fodiPedidos').pedidosActivos(db, args);
         if (nombre === 'ver_imagenes_productos') return await require('./fodiPedidos').imagenesProductos(db, args);
         if (nombre === 'simular_costos') return await require('./fodiSimulador').simularCostos(db, args);
