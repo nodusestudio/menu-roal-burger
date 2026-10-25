@@ -11400,8 +11400,33 @@ const RECEPTION_MESA_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 // Pinta el mapa de mesas de Recepción (libre/ocupada) en vez de una lista de tarjetas.
 // mesaOrders ya viene filtrado a pedidos de mesa activos (status !== 'entregado').
+// Modo "Sumar mesas": se marcan varias mesas ocupadas y se ve el total combinado (no modifica ningún pedido).
+let _mesaSumaActiva = false;
+const _mesaSumaSel = new Set();
+let _mesaSumaOrders = [];
+
+function _mesaSumaActualizar(mesaOrders) {
+    const barra = document.getElementById('mesaSumaBar');
+    const btn = document.getElementById('mesaSumarBtn');
+    if (btn) { btn.setAttribute('aria-pressed', _mesaSumaActiva ? 'true' : 'false'); btn.classList.toggle('is-on', _mesaSumaActiva); btn.textContent = _mesaSumaActiva ? '✕ Salir de sumar' : 'Σ Sumar mesas'; }
+    if (!barra) return;
+    barra.hidden = !_mesaSumaActiva;
+    if (!_mesaSumaActiva) return;
+    const porMesa = new Map();
+    mesaOrders.forEach((o) => { if (o.mesaNumber) { const k = Number(o.mesaNumber); (porMesa.get(k) || porMesa.set(k, []).get(k)).push(o); } });
+    [..._mesaSumaSel].forEach((n) => { if (!porMesa.has(n)) _mesaSumaSel.delete(n); }); // una mesa que se liberó sale de la suma
+    const elegidas = [..._mesaSumaSel].sort((a, b) => a - b);
+    if (!elegidas.length) { barra.innerHTML = '<span class="mesa-suma-hint">Toca las mesas ocupadas que quieras sumar.</span>'; return; }
+    const partes = elegidas.map((n) => ({ n, total: porMesa.get(n).reduce((s, o) => s + (Number(getOrderDisplayTotal(o)) || 0), 0), pedidos: porMesa.get(n).length }));
+    const total = partes.reduce((s, p) => s + p.total, 0);
+    barra.innerHTML = `<div class="mesa-suma-lineas">${partes.map((p) => `<span>Mesa ${p.n}${p.pedidos > 1 ? ` <small>(${p.pedidos} pedidos)</small>` : ''}: <b>${escapeHtml(formatMoney(p.total))}</b></span>`).join('<span class="mesa-suma-mas">+</span>')}</div>`
+        + `<div class="mesa-suma-total">Total ${elegidas.length > 1 ? 'mesas ' + elegidas.join(' + ') : 'mesa ' + elegidas[0]}: <b>${escapeHtml(formatMoney(total))}</b></div>`
+        + `<button type="button" class="mesa-suma-limpiar" id="mesaSumaLimpiar">Limpiar</button>`;
+}
+
 function renderMesaMap(container, mesaOrders) {
     if (!container) return;
+    _mesaSumaOrders = mesaOrders;
     const byMesa = new Map();
     mesaOrders.forEach((order) => {
         if (order.mesaNumber) byMesa.set(Number(order.mesaNumber), order);
@@ -11409,6 +11434,15 @@ function renderMesaMap(container, mesaOrders) {
 
     container.innerHTML = RECEPTION_MESA_NUMBERS.map((num) => {
         const order = byMesa.get(num);
+        if (_mesaSumaActiva) {
+            if (!order) return `<button type="button" class="mesa-map-tile is-libre is-sin-suma" disabled aria-label="Mesa ${num} libre"><span class="mesa-map-num">${num}</span><span class="mesa-map-label">Libre</span></button>`;
+            const on = _mesaSumaSel.has(num);
+            return `<button type="button" class="mesa-map-tile is-ocupada is-sumable${on ? ' is-suma-on' : ''}" data-mesa-sum="${num}" aria-pressed="${on ? 'true' : 'false'}">
+                <span class="mesa-map-num">${on ? '✓ ' : ''}${num}</span>
+                <span class="mesa-map-label">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
+                <span class="mesa-map-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+            </button>`;
+        }
         if (!order) {
             return `<button type="button" class="mesa-map-tile is-libre" data-mesa-number="${num}" title="Nuevo pedido en Mesa ${num}">
                 <span class="mesa-map-num">${num}</span>
@@ -11422,7 +11456,17 @@ function renderMesaMap(container, mesaOrders) {
             <span class="mesa-map-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
         </button>`;
     }).join('');
+    _mesaSumaActualizar(mesaOrders);
 }
+
+// Sumar mesas: activar/desactivar, marcar mesas y limpiar
+document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
+    const re = () => renderMesaMap(document.getElementById('ordersColumnMesa'), _mesaSumaOrders);
+    if (e.target.closest('#mesaSumarBtn')) { _mesaSumaActiva = !_mesaSumaActiva; _mesaSumaSel.clear(); re(); return; }
+    if (e.target.closest('#mesaSumaLimpiar')) { _mesaSumaSel.clear(); re(); return; }
+    const t = e.target.closest('[data-mesa-sum]');
+    if (t) { const n = Number(t.dataset.mesaSum); if (_mesaSumaSel.has(n)) _mesaSumaSel.delete(n); else _mesaSumaSel.add(n); re(); }
+});
 
 function appendProcessedAccordion(container, columnKey, processedOrders) {
     if (!processedOrders.length) return;

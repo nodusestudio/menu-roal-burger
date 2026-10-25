@@ -753,6 +753,18 @@
         .mesa-map-tile:hover { filter: brightness(1.15); }
         .mesa-map-tile:active { transform: scale(0.95); }
         .mesa-map-tile.is-selected { outline: 2px solid #fff; outline-offset: 2px; }
+        .mesa-sumar-btn { margin-left: auto; cursor: pointer; border: 1.5px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.12); color: #fff; border-radius: 999px; padding: 6px 12px; font: 700 0.8rem 'Space Grotesk', sans-serif; touch-action: manipulation; }
+        .mesa-sumar-btn.is-on { background: #ff6a00; border-color: #ff6a00; }
+        .mesa-map-tile.is-sin-suma { opacity: 0.35; cursor: not-allowed; }
+        .mesa-map-tile.is-sumable { cursor: pointer; }
+        .mesa-map-tile.is-suma-on { outline: 3px solid #ff6a00; outline-offset: 2px; background: linear-gradient(160deg, rgba(255, 106, 0, 0.45), rgba(255, 106, 0, 0.18)); border-color: #ff6a00; }
+        .mesa-suma-bar { margin-top: 10px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.18); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1.5px solid rgba(255, 255, 255, 0.28); color: #fff; display: flex; flex-direction: column; gap: 6px; }
+        .mesa-suma-bar[hidden] { display: none; }
+        .mesa-suma-lineas { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; font-size: 0.9rem; }
+        .mesa-suma-mas { opacity: 0.7; font-weight: 700; }
+        .mesa-suma-total { font: 800 1.15rem 'Space Grotesk', sans-serif; }
+        .mesa-suma-hint { font-size: 0.85rem; opacity: 0.85; }
+        .mesa-suma-limpiar { align-self: flex-start; cursor: pointer; border: 0; border-radius: 999px; padding: 6px 14px; background: rgba(255, 255, 255, 0.16); color: #fff; font: 700 0.8rem system-ui, sans-serif; }
         .mesa-map-num {
             font-size: 1.5rem;
             font-weight: 700;
@@ -14065,8 +14077,10 @@
                                     <div class="orders-lane-header">
                                         <button type="button" class="orders-lane-title orders-lane-quick-btn" data-quick-type="mesa" title="Nuevo pedido de mesa">Mesas</button>
                                         <span class="kanban-count" id="ordersCountMesa">0</span>
+                                        <button type="button" class="mesa-sumar-btn" id="mesaSumarBtn" aria-pressed="false" title="Sumar el total de dos o más mesas">Σ Sumar mesas</button>
                                     </div>
                                     <div class="mesa-map" id="ordersColumnMesa"></div>
+                                    <div class="mesa-suma-bar" id="mesaSumaBar" hidden role="status" aria-live="polite"></div>
                                 </section>
                             </div>
                             <aside class="ticket-panel" id="orderTicketPanel" aria-live="polite">
