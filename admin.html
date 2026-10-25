@@ -3118,6 +3118,20 @@
             border-color: rgba(220, 70, 70, 0.35);
         }
 
+        /* Avisos del panel: ventana flotante en el centro (reemplaza al aviso de la columna izquierda) */
+        #adminNotice { display: none !important; }
+        #adminPopupHost { position: fixed; inset: 0; z-index: 2147483100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; pointer-events: none; }
+        .admin-popup { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 12px; max-width: min(460px, calc(100vw - 32px)); min-width: min(260px, calc(100vw - 32px)); padding: 14px 16px; border-radius: 16px; color: #fff; font: 600 0.98rem/1.35 system-ui, sans-serif; background: rgba(20, 24, 38, 0.82); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1.5px solid rgba(255, 255, 255, 0.28); box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55); opacity: 0; transform: scale(0.94) translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease; }
+        .admin-popup.is-in { opacity: 1; transform: none; }
+        .admin-popup--ok { border-color: rgba(24, 198, 122, 0.75); background: rgba(10, 48, 34, 0.86); }
+        .admin-popup--error { border-color: rgba(239, 68, 68, 0.85); background: rgba(70, 14, 14, 0.9); }
+        .admin-popup--warn { border-color: rgba(255, 170, 40, 0.85); background: rgba(66, 44, 8, 0.88); }
+        .admin-popup--info { border-color: rgba(96, 165, 250, 0.8); }
+        .admin-popup-ico { font-size: 1.4rem; line-height: 1; flex: none; }
+        .admin-popup-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+        .admin-popup-x { flex: none; border: 0; background: rgba(255, 255, 255, 0.16); color: #fff; width: 28px; height: 28px; border-radius: 50%; font-size: 0.8rem; cursor: pointer; }
+        @media (prefers-reduced-motion: reduce) { .admin-popup { transition: none; transform: none; } }
+
         .clipboard-toast {
             position: fixed;
             right: 20px;

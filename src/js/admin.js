@@ -827,63 +827,54 @@ function _createComboModalShell({ titleHtml, subtitleHtml = '', zIndex = null } 
     return { overlay, card, header };
 }
 
+// Avisos del panel (guardado, copiado, errores...): ventana flotante en el CENTRO de la pantalla.
+// Antes salían en la columna izquierda, que ahora está llena de secciones y no se veían.
+const _POPUP_ICONOS = { ok: '✅', error: '⛔', warn: '⚠️', info: 'ℹ️' };
+const _POPUP_MS = { ok: 3200, info: 4000, warn: 5500, error: 9000 };
+function _adminPopup(text, type = 'ok', ms) {
+    const msg = String(text == null ? '' : text).trim();
+    if (!msg) return;
+    const t = _POPUP_ICONOS[type] ? type : 'info';
+    let host = document.getElementById('adminPopupHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'adminPopupHost';
+        document.body.appendChild(host);
+    }
+    const cerrar = (card) => {
+        clearTimeout(card._t);
+        card.classList.remove('is-in');
+        setTimeout(() => card.remove(), 220);
+    };
+    // El mismo aviso repetido no se apila: se renueva su tiempo en pantalla
+    const repetido = [...host.children].find((c) => c.dataset.msg === msg && c.dataset.type === t);
+    if (repetido) { clearTimeout(repetido._t); repetido._t = setTimeout(() => cerrar(repetido), ms || _POPUP_MS[t]); return; }
+    const card = document.createElement('div');
+    card.className = `admin-popup admin-popup--${t}`;
+    card.dataset.msg = msg; card.dataset.type = t;
+    card.setAttribute('role', t === 'error' ? 'alert' : 'status');
+    card.innerHTML = `<span class="admin-popup-ico" aria-hidden="true">${_POPUP_ICONOS[t]}</span><span class="admin-popup-txt"></span><button type="button" class="admin-popup-x" aria-label="Cerrar aviso">✕</button>`;
+    card.querySelector('.admin-popup-txt').textContent = msg;
+    card.addEventListener('click', () => cerrar(card));
+    host.appendChild(card);
+    while (host.children.length > 4) host.firstElementChild.remove();
+    requestAnimationFrame(() => card.classList.add('is-in'));
+    card._t = setTimeout(() => cerrar(card), ms || _POPUP_MS[t]);
+}
+
 function showNotice(text, type = 'ok') {
     if (type === 'error') { try { _fodiRegistrarError('aviso', text); } catch (_) { /* buffer aún no declarado */ } }
-    if (notice) {
-        notice.textContent = text;
-        notice.className = `notice show ${type}`;
-        // Antes el aviso del escritorio quedaba pegado para siempre (solo lo tapaba el
-        // siguiente showNotice). Ahora se oculta solo: los errores duran un poco más.
-        if (_noticeTimer) clearTimeout(_noticeTimer);
-        _noticeTimer = setTimeout(hideNotice, type === 'error' ? 8000 : 5000);
-    }
-
-    if (isMobileAdminViewport()) {
-        let toast = document.getElementById('adminMobileToast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'adminMobileToast';
-            document.body.appendChild(toast);
-        }
-        toast.textContent = text;
-        toast.className = `mob-toast--${type} mob-toast--visible`;
-        if (_mobToastTimer) clearTimeout(_mobToastTimer);
-        _mobToastTimer = setTimeout(() => {
-            toast.classList.remove('mob-toast--visible');
-        }, 3000);
-    }
+    _adminPopup(text, type);
 }
 
 function hideNotice() {
-    if (_noticeTimer) { clearTimeout(_noticeTimer); _noticeTimer = null; }
-    if (!notice) {
-        return;
-    }
-    notice.className = 'notice';
-    notice.textContent = '';
+    const host = document.getElementById('adminPopupHost');
+    if (host) host.innerHTML = '';
 }
-// Clic en el aviso = cerrarlo al instante.
-if (notice) notice.addEventListener('click', hideNotice);
+// (El antiguo #adminNotice de la columna izquierda queda sin uso y oculto.)
 
 function showClipboardToast(message = 'Copiado') {
-    let toast = document.getElementById('clipboardToast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'clipboardToast';
-        toast.className = 'clipboard-toast';
-        document.body.appendChild(toast);
-    }
-
-    toast.textContent = message;
-    toast.classList.add('show');
-
-    if (clipboardToastTimer) {
-        window.clearTimeout(clipboardToastTimer);
-    }
-
-    clipboardToastTimer = window.setTimeout(() => {
-        toast.classList.remove('show');
-    }, 1400);
+    _adminPopup(message, 'ok', 1700);
 }
 
 function getSharedFirebaseConfig() {
