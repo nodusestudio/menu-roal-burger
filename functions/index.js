@@ -3357,6 +3357,27 @@ const ASISTENTE_MAX_ITER = 6;
 const ASISTENTE_MAX_ITER_CODIGO = 18; // programar necesita buscar, leer varios tramos, proponer y revisar
 // Pedidos de programación (cambiar/agregar/quitar funciones, ventanas, botones, pestañas...): usan el modelo más capaz y más pasos
 const ASISTENTE_RE_CODIGO = /(program[ae]|c[oó]digo|funci[oó]n nueva|nueva funci[oó]n|(agrega|a[ñn]ade|crea|haz|pon|inserta)\w*\s+(una?|la|el|otra|otro)?\s*(nueva?\s+)?(ventana|pesta[ñn]a|bot[oó]n|pantalla|secci[oó]n|funci[oó]n|opci[oó]n|men[uú])|(quita|elimina|borra|oculta|remueve)\w*\s+(la|el|una?)?\s*(ventana|pesta[ñn]a|bot[oó]n|pantalla|secci[oó]n|funci[oó]n|opci[oó]n)|modifica\w*\s+(la\s+)?app|cambia\w*\s+(el|la)\s+(dise[ñn]o|c[oó]digo|funcionamiento)|\bbug\b|pull request|\bPR\b|arregla\w*\s+(el|la|este|esta))/i;
+// Cada consulta paga las definiciones de herramientas (~8 mil tokens). Se envía solo el grupo que el mensaje necesita;
+// si el mensaje no se parece a nada, se envía lo de análisis de datos. El orden se conserva para que la caché funcione.
+const FODI_HERR_BASE = ['calcular', 'recordar', 'buscar_conocimiento', 'proponer_accion', 'registrar_nombre', 'lecciones', 'gasto_fodi'];
+const FODI_HERR_OPS = ['armar_pedido', 'pedidos_activos', 'editar_pedido', 'sumar_mesas', 'gestionar_catalogo', 'ver_imagenes_productos', 'simular_costos'];
+const FODI_HERR_COMPARTIDAS = ['tarifa_domicilio', 'catalogo_productos', 'costo_por_plato']; // sirven tanto para operar como para analizar
+const FODI_RE_OPS = /(pedido|orden|mesa|domicilio|direcci[oó]n|producto|insumo|receta|combo|men[uú]|precio|pausa|reanuda|activa|desactiva|foto|imagen|descripci[oó]n|crea|crear|agrega|a[ñn]ade|quita|elimina|cambia|edita|suma|simula|cu[aá]nto cuesta|cu[aá]nto vale|tarifa|plato)/i;
+const FODI_RE_ANALISIS = /(venta|vend|gast|cierre|caja|top|margen|costo|rentab|cliente|punto|cup[oó]n|c[oó]digo del d[ií]a|redes|instagram|facebook|seguidor|publicaci|hora|pico|compar|equilibrio|utilidad|alerta|sugerencia|resumen|informe|semana|mes\b|ayer|hoy)/i;
+const FODI_RE_ERROR = /(fall[oó]|fallo|error|bug|no funciona|no sirve|corrig|arregl|c[oó]digo)/i;
+function fodiSeleccionarHerramientas(todas, texto, modoCodigo) {
+    const t = String(texto || '');
+    let nombres;
+    if (modoCodigo) nombres = new Set([...FODI_HERR_BASE, 'codigo_fuente', 'catalogo_productos']);
+    else {
+        const ops = FODI_RE_OPS.test(t), an = FODI_RE_ANALISIS.test(t) || !ops;
+        nombres = new Set(FODI_HERR_BASE);
+        if (ops) [...FODI_HERR_OPS, ...FODI_HERR_COMPARTIDAS].forEach((n) => nombres.add(n));
+        if (an) todas.forEach((x) => { if (!FODI_HERR_OPS.includes(x.name) && x.name !== 'codigo_fuente') nombres.add(x.name); });
+        if (FODI_RE_ERROR.test(t)) nombres.add('codigo_fuente');
+    }
+    return todas.filter((x) => nombres.has(x.name));
+}
 const ASISTENTE_TOPE_DIARIO = 60;
 const ASISTENTE_TOPE_PROFUNDO = 8; // análisis profundos (Opus) por día: tope de costo
 // USD por millón de tokens. El modelo se elige en configuracion/asistente_ia { modelo: 'sonnet' | 'haiku' }
@@ -3516,9 +3537,10 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
         const acciones = [];
         try {
             const maxIter = modoCodigo ? ASISTENTE_MAX_ITER_CODIGO : ASISTENTE_MAX_ITER;
+            const herramientasSel = fodiSeleccionarHerramientas(adminAsistente.TOOLS, ultimaPregunta, modoCodigo);
             for (let i = 0; i < maxIter; i++) {
                 const resp = await client.messages.create({
-                    model: M.id, max_tokens: modoCodigo ? 12000 : 6000, system, tools: adminAsistente.TOOLS, messages: mensajes,
+                    model: M.id, max_tokens: modoCodigo ? 12000 : 6000, system, tools: herramientasSel, messages: mensajes,
                     ...(effort ? { output_config: { effort } } : {})
                 });
                 llamadas++;
@@ -3679,10 +3701,10 @@ exports.fodiAlertasDiarias = onSchedule(
     }
 );
 
-// Informe semanal de FODI (Opus): cada lunes 8:00 a. m. (Bogotá) analiza la semana pasada contra la anterior con
+// Informe semanal de FODI (Sonnet; antes Opus, ~60 % más caro): cada lunes 8:00 a. m. (Bogotá) analiza la semana pasada contra la anterior con
 // las mismas herramientas de datos (solo lectura) y lo guarda en fodi_informes para leerlo en la pestaña Asistente.
 async function fodiGenerarInforme(db, apiKey) {
-    const M = ASISTENTE_MODELOS.opus;
+    const M = ASISTENTE_MODELOS.sonnet;
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey });
     const DIA = 86400000;
