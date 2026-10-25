@@ -3344,9 +3344,19 @@ exports.adminFacebook = onCall(
 // calcula functions/adminAsistente.js. Sin persistir hilos; el cliente reenvía el historial.
 // ─────────────────────────────────────────────────────────────
 const adminAsistente = require('./adminAsistente');
+const PROMPT_PROGRAMAR = `MODO PROGRAMADOR (el administrador te pide cambiar, agregar, quitar o corregir algo de la app: funciones, ventanas, botones, pestañas, textos, diseño). Eres un ingeniero cuidadoso; trabaja así:
+1) ENTIENDE: si el pedido es ambiguo en algo que cambia el resultado, haz UNA pregunta corta; si no, avanza. Revisa tus LECCIONES y, si hace falta, mis_cambios para no repetir PR rechazados.
+2) EXPLORA: codigo_fuente buscar/listar/leer. Lee el código relacionado COMPLETO (el tramo entero de la función, sus llamadores y su HTML/CSS) antes de tocar nada. Imita el estilo y los nombres del código vecino. Reglas del proyecto: panel admin = tarjetas dentro de <article class="admin-card">; menú cliente = vidrio rgba(255,255,255,0.18)+blur(14px)+borde 1.5px (clase liquid-glass); fondos crema #f3e9d8 o modo oscuro, nunca blanco puro; los tickets nunca recortan datos; toda función nueva del panel debe tener también su herramienta para FODI.
+3) PLANEA en 2-4 líneas qué archivos tocas y por qué, y cambia lo MÍNIMO necesario (cambios pequeños y enfocados; si es grande, divídelo en varios PR).
+4) PROPÓN con codigo_fuente proponer_cambio: reemplazos con fragmentos EXACTOS y únicos (copiados de leer), crear:true para archivos nuevos, eliminar:true para quitar; incluye tests si tocas lógica de functions/; llena "pruebas" con pasos concretos. Si la herramienta rechaza algo (texto no encontrado, sintaxis), corrígelo y reintenta.
+5) EXPLICA al terminar, sencillo: qué cambia, el enlace del PR, cómo probarlo, y si toca functions/ que hay que desplegar (tú no puedes). Nunca digas que algo "ya quedó" hasta que el dueño apruebe el PR. Separa HECHO de SUPUESTO; no inventes que probaste lo que no probaste (no puedes ejecutar código).
+6) APRENDE: si el dueño te corrige o el PR fue rechazado/comentado, registra una lección concreta con la herramienta lecciones; también cuando descubras algo útil del código.`;
 const fodiConocimiento = require('./fodiConocimiento');
 const fodiInteligencia = require('./fodiInteligencia');
 const ASISTENTE_MAX_ITER = 6;
+const ASISTENTE_MAX_ITER_CODIGO = 18; // programar necesita buscar, leer varios tramos, proponer y revisar
+// Pedidos de programación (cambiar/agregar/quitar funciones, ventanas, botones, pestañas...): usan el modelo más capaz y más pasos
+const ASISTENTE_RE_CODIGO = /(program[ae]|c[oó]digo|funci[oó]n nueva|nueva funci[oó]n|(agrega|a[ñn]ade|crea|haz|pon|inserta)\w*\s+(una?|la|el|otra|otro)?\s*(nueva?\s+)?(ventana|pesta[ñn]a|bot[oó]n|pantalla|secci[oó]n|funci[oó]n|opci[oó]n|men[uú])|(quita|elimina|borra|oculta|remueve)\w*\s+(la|el|una?)?\s*(ventana|pesta[ñn]a|bot[oó]n|pantalla|secci[oó]n|funci[oó]n|opci[oó]n)|modifica\w*\s+(la\s+)?app|cambia\w*\s+(el|la)\s+(dise[ñn]o|c[oó]digo|funcionamiento)|\bbug\b|pull request|\bPR\b|arregla\w*\s+(el|la|este|esta))/i;
 const ASISTENTE_TOPE_DIARIO = 60;
 const ASISTENTE_TOPE_PROFUNDO = 8; // análisis profundos (Opus) por día: tope de costo
 // USD por millón de tokens. El modelo se elige en configuracion/asistente_ia { modelo: 'sonnet' | 'haiku' }
@@ -3415,7 +3425,7 @@ CÓMO PIENSAS (gerencia y marketing para restaurantes):
 }
 
 exports.adminAsistenteIA = onCall(
-    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY, GITHUB_TOKEN], cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB' },
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY, GITHUB_TOKEN], cors: ALLOWED_ORIGINS, timeoutSeconds: 300, memory: '512MiB' },
     async (request) => {
         const db = getFirestore();
         await cuponPana.ensureAdmin(db, request);
@@ -3441,10 +3451,13 @@ exports.adminAsistenteIA = onCall(
         const imagenActual = imgIn && typeof imgIn.base64 === 'string' && imgIn.base64.length < 6 * 1024 * 1024 && ['image/jpeg', 'image/png', 'image/webp'].includes(imgIn.mediaType) ? { base64: imgIn.base64, mediaType: imgIn.mediaType } : null;
 
         const profundo = request.data?.profundo === true;
-        const modeloClave = profundo ? 'opus' : (await asistenteModeloActivo(db)).clave;
-        const M = ASISTENTE_MODELOS[modeloClave];
         const usoRef = db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now()));
         const uso = (await usoRef.get()).data() || {};
+        // Programación: Opus automático mientras no se agote el tope diario de análisis profundos (si se agota, sigue con el modelo normal)
+        const modoCodigo = ASISTENTE_RE_CODIGO.test(String((mensajes[mensajes.length - 1] || {}).content || ''));
+        const opusCodigo = modoCodigo && !profundo && (uso.consultas_opus || 0) < ASISTENTE_TOPE_PROFUNDO;
+        const modeloClave = (profundo || opusCodigo) ? 'opus' : (await asistenteModeloActivo(db)).clave;
+        const M = ASISTENTE_MODELOS[modeloClave];
         if (profundo && (uso.consultas_opus || 0) >= ASISTENTE_TOPE_PROFUNDO) {
             throw new HttpsError('resource-exhausted', `Llegaste al tope de ${ASISTENTE_TOPE_PROFUNDO} análisis profundos de hoy. Sigue con el modo normal; se reinicia mañana.`);
         }
@@ -3465,6 +3478,7 @@ ${resultadosSug.map((r) => `- "${r.titulo}" (${r.fecha}, ${r.plazo_dias} días):
         // Contexto que manda el panel: pestaña abierta y errores recientes de la app (para diagnosticar)
         const ctxIn = request.data?.contexto && typeof request.data.contexto === 'object' ? request.data.contexto : {};
         const erroresApp = (Array.isArray(ctxIn.errores) ? ctxIn.errores : []).slice(-8).map((e) => `- [${String(e && e.t || '').slice(0, 20)}] ${String(e && e.m || '').slice(0, 300)}`).join('\n');
+        const bloqueLecciones = await require('./fodiLecciones').bloqueLecciones(db).catch(() => '');
         const bloqueUsuario = `QUIÉN TE ESCRIBE: ${nombreUsuario
             ? `la persona que inició sesión se llama ${nombreUsuario}. Dirígete a ella por su nombre de pila con naturalidad (en el saludo y de vez en cuando, sin repetirlo en cada frase).`
             : `aún no sabes cómo se llama quien inició sesión (correo ${emailUsuario || 'desconocido'}). En tu primera respuesta de esta conversación salúdala y pregúntale cómo prefiere que le llames; cuando te lo diga, guárdalo con registrar_nombre.`}
@@ -3475,6 +3489,8 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
             { type: 'text', text: asistenteSystemPrompt(), cache_control: { type: 'ephemeral', ttl: '1h' } },
             { type: 'text', text: bloqueMemoria, cache_control: { type: 'ephemeral' } },
             { type: 'text', text: bloqueUsuario },
+            ...(bloqueLecciones ? [{ type: 'text', text: bloqueLecciones }] : []),
+            ...(modoCodigo ? [{ type: 'text', text: PROMPT_PROGRAMAR }] : []),
             ...(bloqueConocimiento ? [{ type: 'text', text: bloqueConocimiento }] : []),
             ...(bloqueSug ? [{ type: 'text', text: bloqueSug }] : []),
             ...(request.data?.modo === 'voz' ? [{ type: 'text', text: MODO_VOZ_PROMPT }] : [])
@@ -3493,9 +3509,10 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
         let texto = '';
         const acciones = [];
         try {
-            for (let i = 0; i < ASISTENTE_MAX_ITER; i++) {
+            const maxIter = modoCodigo ? ASISTENTE_MAX_ITER_CODIGO : ASISTENTE_MAX_ITER;
+            for (let i = 0; i < maxIter; i++) {
                 const resp = await client.messages.create({
-                    model: M.id, max_tokens: 8000, system, tools: adminAsistente.TOOLS, messages: mensajes,
+                    model: M.id, max_tokens: modoCodigo ? 16000 : 8000, system, tools: adminAsistente.TOOLS, messages: mensajes,
                     ...(effort ? { output_config: { effort } } : {})
                 });
                 llamadas++;
@@ -3537,6 +3554,7 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
                 if (resultados.length) resultados[resultados.length - 1].cache_control = { type: 'ephemeral' };
                 mensajes.push({ role: 'user', content: resultados });
             }
+            if (!texto) texto = 'Llegué al límite de pasos de esta consulta antes de terminar. Escríbeme "continúa" y sigo desde donde quedé.';
         } catch (err) {
             console.error('adminAsistenteIA error:', err);
             throw new HttpsError('internal', 'No se pudo completar la consulta. Intenta de nuevo.');
@@ -3663,7 +3681,7 @@ async function fodiGenerarInforme(db, apiKey) {
     const hoy = Date.now();
     const f = (ms) => adminAsistente.bogotaDateKey(ms);
     const desde = f(hoy - 7 * DIA), hasta = f(hoy - DIA), antDesde = f(hoy - 14 * DIA), antHasta = f(hoy - 8 * DIA);
-    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'sumar_mesas', 'ver_imagenes_productos', 'armar_pedido', 'recordar'].includes(t.name));
+    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'lecciones', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'sumar_mesas', 'ver_imagenes_productos', 'armar_pedido', 'recordar'].includes(t.name));
     const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
     const system = `${asistenteSystemPrompt()}\n\nTAREA: redacta el INFORME SEMANAL para el dueño. Semana analizada: ${desde} a ${hasta}; semana anterior: ${antDesde} a ${antHasta}. Usa las herramientas para traer ventas, ticket, productos, canales, clientes, gastos/rentabilidad y redes. Estructura: 1) Titular de la semana (2 líneas), 2) Cifras clave vs semana anterior (tabla), 3) Qué funcionó, 4) Qué preocupa, 5) Tres acciones concretas para esta semana. Sé breve (máx. 450 palabras), sin inventar cifras.${memoria.length ? `\n\nMEMORIA:\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : ''}`;
     const mensajes = [{ role: 'user', content: `Genera el informe semanal de ${desde} a ${hasta}.` }];

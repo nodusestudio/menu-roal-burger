@@ -32485,7 +32485,7 @@ async function _asistEnviar(texto) {
     _fodiSet(av, 'thinking');
     _asistScroll(true);
     try {
-        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _asistHist, contexto: _fodiContexto(), ...(imagen ? { imagen } : {}), ...(profundo ? { profundo: true } : {}) });
+        const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 300000 })({ mensajes: _asistHist, contexto: _fodiContexto(), ...(imagen ? { imagen } : {}), ...(profundo ? { profundo: true } : {}) });
         const resp = String(r.data?.respuesta || '');
         if (r.data?.usuario?.nombre) { _fodiUsuario.nombre = r.data.usuario.nombre; _asistHeroSaludo(); }
         _asistHist.push({ role: 'assistant', content: resp });
@@ -33209,7 +33209,7 @@ function _fodiFlotInit() {
         set('thinking');
         _ffHist.push({ role: 'user', content: pregunta });
         try {
-            const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 120000 })({ mensajes: _ffHist.slice(-10), modo: 'voz', contexto: _fodiContexto(), ...(imagen ? { imagen } : {}) });
+            const r = await firebaseFunctions.httpsCallable('adminAsistenteIA', { timeout: 300000 })({ mensajes: _ffHist.slice(-10), modo: 'voz', contexto: _fodiContexto(), ...(imagen ? { imagen } : {}) });
             const resp = String(r.data?.respuesta || 'No te escuché bien, ¿me lo repites?');
             if (r.data?.usuario?.nombre) _fodiUsuario.nombre = r.data.usuario.nombre;
             _ffHist.push({ role: 'assistant', content: resp });
