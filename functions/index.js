@@ -3385,6 +3385,7 @@ function asistenteSystemPrompt() {
 Hoy es ${hoy} (hora de Bogotá). Todas las fechas y días son hora de Bogotá.
 
 REGLAS DE DATOS (inquebrantables):
+- Sé conciso: ve al grano (≈150-250 palabras salvo que pidan un informe o análisis largo), sin repetir la pregunta ni narrar cada herramienta que usas. Si necesitas varias herramientas independientes, llámalas TODAS en el mismo paso (ahorra pasos y costo).
 - Las cifras salen SIEMPRE de las herramientas; nunca inventes ni estimes números. Si no hay herramienta para algo, dilo.
 - Declara el rango real consultado (desde–hasta) y avisa si el resultado vino truncado.
 - Montos en pesos colombianos con separador de miles (ej. $8.286.200).
@@ -3453,10 +3454,9 @@ exports.adminAsistenteIA = onCall(
         const profundo = request.data?.profundo === true;
         const usoRef = db.collection('admin_ai_usage_daily').doc(adminAsistente.bogotaDateKey(Date.now()));
         const uso = (await usoRef.get()).data() || {};
-        // Programación: Opus automático mientras no se agote el tope diario de análisis profundos (si se agota, sigue con el modelo normal)
+        // Programación: más pasos y reglas propias, con el modelo normal (Sonnet). Opus (3x más caro) solo si el dueño activa el botón 🧠.
         const modoCodigo = ASISTENTE_RE_CODIGO.test(String((mensajes[mensajes.length - 1] || {}).content || ''));
-        const opusCodigo = modoCodigo && !profundo && (uso.consultas_opus || 0) < ASISTENTE_TOPE_PROFUNDO;
-        const modeloClave = (profundo || opusCodigo) ? 'opus' : (await asistenteModeloActivo(db)).clave;
+        const modeloClave = profundo ? 'opus' : (await asistenteModeloActivo(db)).clave;
         const M = ASISTENTE_MODELOS[modeloClave];
         if (profundo && (uso.consultas_opus || 0) >= ASISTENTE_TOPE_PROFUNDO) {
             throw new HttpsError('resource-exhausted', `Llegaste al tope de ${ASISTENTE_TOPE_PROFUNDO} análisis profundos de hoy. Sigue con el modo normal; se reinicia mañana.`);
@@ -3503,6 +3503,12 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
             const ult = mensajes[mensajes.length - 1];
             ult.content = [{ type: 'image', source: { type: 'base64', media_type: imagenActual.mediaType, data: imagenActual.base64 } }, { type: 'text', text: String(ult.content) }];
         }
+        // Ahorro de tokens: las respuestas viejas se recortan (lo reciente queda íntegro) y la conversación previa se
+        // marca en caché (se paga ~10 % al volver a leerla en el siguiente turno). Máx. 4 marcas por petición.
+        mensajes.forEach((m, k) => { if (m.role === 'assistant' && k < mensajes.length - 3 && typeof m.content === 'string' && m.content.length > 1200) m.content = m.content.slice(0, 1200) + '…'; });
+        for (let k = mensajes.length - 2; k >= 0; k--) {
+            if (mensajes[k].role === 'assistant' && typeof mensajes[k].content === 'string' && mensajes[k].content.trim()) { mensajes[k].content = [{ type: 'text', text: mensajes[k].content, cache_control: { type: 'ephemeral' } }]; break; }
+        }
         let tokensIn = 0, tokensCacheR = 0, tokensCacheW = 0, llamadas = 0;
         let tokensOut = 0;
         let costo = 0;
@@ -3512,7 +3518,7 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
             const maxIter = modoCodigo ? ASISTENTE_MAX_ITER_CODIGO : ASISTENTE_MAX_ITER;
             for (let i = 0; i < maxIter; i++) {
                 const resp = await client.messages.create({
-                    model: M.id, max_tokens: modoCodigo ? 16000 : 8000, system, tools: adminAsistente.TOOLS, messages: mensajes,
+                    model: M.id, max_tokens: modoCodigo ? 12000 : 6000, system, tools: adminAsistente.TOOLS, messages: mensajes,
                     ...(effort ? { output_config: { effort } } : {})
                 });
                 llamadas++;
@@ -3547,7 +3553,7 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
                         r = await adminAsistente.ejecutarHerramienta(db, u.name, u.input || {});
                     }
                     if (r && Array.isArray(r.__contenido)) return { type: 'tool_result', tool_use_id: u.id, content: r.__contenido }; // fotos que FODI "ve"
-                    return { type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r, u.name === 'costo_por_plato' ? 14000 : undefined) };
+                    return { type: 'tool_result', tool_use_id: u.id, content: adminAsistente.recortarResultado(r, u.name === 'codigo_fuente' ? 16000 : u.name === 'costo_por_plato' ? 14000 : undefined) };
                 }));
                 // Caché del historial: solo el último resultado lleva marca (máx. 4 marcas por petición)
                 for (const m of mensajes) if (Array.isArray(m.content)) for (const b of m.content) if (b && b.type === 'tool_result') delete b.cache_control;
@@ -3562,7 +3568,9 @@ DIAGNÓSTICO DE ERRORES: si hay errores recientes relevantes o el administrador 
         // Aprendizaje automático (Haiku, barato): fusiona en la memoria lo duradero de este intercambio
         let costoAprender = 0;
         try {
-            if (texto && request.data?.aprender !== false) {
+            const qApr = String(ultimaPregunta || '');
+            const hayQueAprender = acciones.length > 0 || qApr.length >= 80 || /(\bno[, ]|no es|mejor|prefiero|siempre|nunca|recuerda|record[aá]|corrige|equivoc|as[ií] no|me gusta|quiero que|de ahora en adelante|a partir de)/i.test(qApr);
+            if (texto && hayQueAprender && request.data?.aprender !== false) {
                 const H = ASISTENTE_MODELOS.haiku;
                 const a = await adminAsistente.aprender(db, client, { modelo: H.id, memoria, pregunta: mensajes.filter((m) => m.role === 'user' && typeof m.content === 'string').slice(-1)[0]?.content, respuesta: texto, acciones, extra: bloqueSug });
                 const u = a.usage || {};
@@ -3681,7 +3689,7 @@ async function fodiGenerarInforme(db, apiKey) {
     const hoy = Date.now();
     const f = (ms) => adminAsistente.bogotaDateKey(ms);
     const desde = f(hoy - 7 * DIA), hasta = f(hoy - DIA), antDesde = f(hoy - 14 * DIA), antHasta = f(hoy - 8 * DIA);
-    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'lecciones', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'sumar_mesas', 'ver_imagenes_productos', 'armar_pedido', 'recordar'].includes(t.name));
+    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'lecciones', 'gasto_fodi', 'simular_costos', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'sumar_mesas', 'ver_imagenes_productos', 'armar_pedido', 'recordar'].includes(t.name));
     const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
     const system = `${asistenteSystemPrompt()}\n\nTAREA: redacta el INFORME SEMANAL para el dueño. Semana analizada: ${desde} a ${hasta}; semana anterior: ${antDesde} a ${antHasta}. Usa las herramientas para traer ventas, ticket, productos, canales, clientes, gastos/rentabilidad y redes. Estructura: 1) Titular de la semana (2 líneas), 2) Cifras clave vs semana anterior (tabla), 3) Qué funcionó, 4) Qué preocupa, 5) Tres acciones concretas para esta semana. Sé breve (máx. 450 palabras), sin inventar cifras.${memoria.length ? `\n\nMEMORIA:\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : ''}`;
     const mensajes = [{ role: 'user', content: `Genera el informe semanal de ${desde} a ${hasta}.` }];

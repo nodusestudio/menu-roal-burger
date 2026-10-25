@@ -857,6 +857,7 @@ const TOOLS = [
     require('./fodiSimulador').TOOL,
     require('./fodiCodigo').TOOL,
     require('./fodiLecciones').TOOL,
+    require('./fodiUso').TOOL,
     ...require('./fodiPedidos').TOOLS,
     {
         name: 'registrar_nombre',
@@ -1080,6 +1081,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
             return { items, total_mensual: items.reduce((a, i) => a + i.monto_mensual, 0), margen_minimo_pct: Number(d.margenMinimo) || null };
         }
         if (nombre === 'calcular') return calcular(args.expresion);
+        if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);
         if (nombre === 'lecciones') return await require('./fodiLecciones').lecciones(db, args);
         if (nombre === 'sumar_mesas') return await require('./fodiPedidos').sumarMesas(db, args);
         if (nombre === 'pedidos_activos') return await require('./fodiPedidos').pedidosActivos(db, args);
