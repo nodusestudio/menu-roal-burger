@@ -852,6 +852,20 @@ function _adminDecirAviso(hablado, face) {
         _fodiDecir(hablado, { onstart: () => _fodiHablar(face, true), onend: () => _fodiHablar(face, false) });
     } catch (_) { /* la voz es un extra: nunca debe romper un aviso */ }
 }
+// Red de seguridad: mide dónde quedó realmente el contenedor y lo empuja para que quepa en la ventana visible.
+function _avisoEnPantalla(el) {
+    if (!el) return;
+    el.style.transform = '';
+    const b = el.getBoundingClientRect();
+    if (!b.width && !b.height) return;
+    const vw = document.documentElement.clientWidth || window.innerWidth, vh = document.documentElement.clientHeight || window.innerHeight, M = 8;
+    let dx = 0, dy = 0;
+    if (b.right > vw - M) dx = (vw - M) - b.right;
+    if (b.left + dx < M) dx = M - b.left;
+    if (b.bottom > vh - M) dy = (vh - M) - b.bottom;
+    if (b.top + dy < M) dy = M - b.top;
+    if (dx || dy) el.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px)`;
+}
 function _adminPopup(text, type = 'ok', ms) {
     const msg = _avisoTexto(String(text == null ? '' : text).trim());
     if (!msg) return;
@@ -895,6 +909,7 @@ function _adminPopup(text, type = 'ok', ms) {
     lista.appendChild(card);
     while (lista.children.length > 4) lista.firstElementChild.remove();
     requestAnimationFrame(() => card.classList.add('is-in'));
+    _avisoEnPantalla(wrap); _avisoEnPantalla(lista); setTimeout(() => { _avisoEnPantalla(wrap); _avisoEnPantalla(lista); }, 300);
     card._t = setTimeout(() => cerrar(card), ms || _POPUP_MS[t]);
     _adminDecirAviso(msg, cara._fodi);
 }
@@ -33381,11 +33396,15 @@ function _fodiFlotInit() {
             el.style.left = (L - r.left) + 'px'; el.style.right = 'auto';
             const puntos = el.querySelector('.ff-puntos');
             if (puntos) { puntos.style.alignSelf = 'flex-start'; puntos.style.marginRight = '0'; puntos.style.marginLeft = Math.max(10, Math.min(r.left + 34 - L - 5, Math.max(10, w - 24))) + 'px'; }
+            _avisoEnPantalla(el);
         });
     };
+    let _reubicarT = 0;
+    const reubicarDiferido = () => { clearTimeout(_reubicarT); _reubicarT = setTimeout(reubicar, 280); }; // la animación de entrada cambia el tamaño
     window._fodiFlotReubicar = reubicar;
-    if (pensamientos) new MutationObserver(reubicar).observe(pensamientos, { childList: true });
-    if (hola) new MutationObserver(reubicar).observe(hola, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', reubicar);
+    if (pensamientos) new MutationObserver(() => { reubicar(); reubicarDiferido(); }).observe(pensamientos, { childList: true });
+    if (hola) new MutationObserver(() => { reubicar(); reubicarDiferido(); }).observe(hola, { attributes: true, attributeFilter: ['class'] });
     window._fodiFlotAviso = (texto, t, ms) => {
         if (!pensamientos || !raiz.classList.contains('on') || raiz.classList.contains('abierto')) return false;
         hola.classList.remove('on');
