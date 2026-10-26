@@ -835,14 +835,17 @@ const _POPUP_CARA = { ok: 'happy', error: 'sad', warn: 'surprised', info: 'wink'
 let _avisoVozUltimo = { txt: '', at: 0 };
 function _avisosVozActiva() { try { return localStorage.getItem('fodiAvisosVoz') !== '0'; } catch (_) { return true; } }
 // Dice el aviso con la voz de FODI sin pisar una respuesta suya que esté sonando
-function _adminDecirAviso(text, face) {
+// Texto del aviso: el MISMO que se lee en la burbuja y que dice la voz (sin emojis ni formato; corto, por frases completas)
+function _avisoTexto(msg) {
+    let t = _asistTextoHablado(msg);
+    if (t.length > 190) t = (_fodiFrases(t).reduce((acc, fr) => (acc.length + fr.length <= 190 ? (acc ? acc + ' ' : '') + fr : acc), '') || (t.slice(0, 187) + '…'));
+    return t;
+}
+function _adminDecirAviso(hablado, face) {
     try {
-        if (!_avisosVozActiva() || _meseroSession || document.hidden) return;
+        if (!_avisosVozActiva() || _meseroSession || document.hidden || !hablado) return;
         if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; // el navegador exige un gesto previo
         if (window.speechSynthesis?.speaking || _piper.audio) return;
-        let hablado = _asistTextoHablado(text);
-        if (!hablado) return;
-        if (hablado.length > 150) hablado = (_fodiFrases(hablado).reduce((acc, fr) => (acc.length + fr.length <= 150 ? (acc ? acc + ' ' : '') + fr : acc), '') || hablado.slice(0, 150));
         const ahora = Date.now();
         if (_avisoVozUltimo.txt === hablado && ahora - _avisoVozUltimo.at < 4000) return;
         _avisoVozUltimo = { txt: hablado, at: ahora };
@@ -850,9 +853,11 @@ function _adminDecirAviso(text, face) {
     } catch (_) { /* la voz es un extra: nunca debe romper un aviso */ }
 }
 function _adminPopup(text, type = 'ok', ms) {
-    const msg = String(text == null ? '' : text).trim();
+    const msg = _avisoTexto(String(text == null ? '' : text).trim());
     if (!msg) return;
     const t = _POPUP_ICONOS[type] ? type : 'info';
+    // Con FODI flotante a la vista, el aviso sale como pensamiento encima de ÉL (como "Pedido nuevo"); si no, en el centro
+    if (typeof window._fodiFlotAviso === 'function' && window._fodiFlotAviso(msg, t, ms)) return;
     let host = document.getElementById('adminPopupHost');
     if (!host) {
         host = document.createElement('div');
@@ -32758,7 +32763,7 @@ function _asistInit() {
         if (!b) return;
         try {
             await navigator.clipboard.writeText(b.parentElement.querySelector('pre').textContent);
-            b.textContent = '¡Copiado!';
+            b.textContent = '¡Copiado!'; showClipboardToast('Copiado');
         } catch (_) { b.textContent = 'No se pudo'; }
         setTimeout(() => { b.textContent = 'Copiar'; }, 1500);
     });
@@ -33348,6 +33353,31 @@ function _fodiFlotInit() {
     $('fodiFlotEnviar')?.addEventListener('click', enviarTxt);
     $('fodiFlotNuevo')?.addEventListener('click', () => { if (_ffBusy) return; _ffHist = []; log.innerHTML = ''; _fodiParar(); bienvenida(); });
     // Otras partes del panel (p. ej. una acción fallida) le hacen una pregunta a FODI abriendo este chat
+    // Avisos del panel (guardado, copiado, errores...): pensamientos encima de FODI, y los dice en voz
+    const pensamientos = $('fodiFlotPensamientos');
+    window._fodiFlotAviso = (texto, t, ms) => {
+        if (!pensamientos || !raiz.classList.contains('on') || raiz.classList.contains('abierto')) return false;
+        hola.classList.remove('on');
+        const dur = ms || _POPUP_MS[t] || 4000;
+        const cerrar = (c) => { clearTimeout(c._t); c.classList.remove('is-in'); setTimeout(() => { c.remove(); if (!pensamientos.querySelector('.admin-popup')) pensamientos.innerHTML = ''; }, 240); };
+        const rep = [...pensamientos.querySelectorAll('.admin-popup')].find((c) => c.dataset.msg === texto && c.dataset.type === t);
+        if (rep) { clearTimeout(rep._t); rep._t = setTimeout(() => cerrar(rep), dur); return true; }
+        if (!pensamientos.querySelector('.ff-puntos')) pensamientos.insertAdjacentHTML('beforeend', '<div class="ff-puntos" aria-hidden="true"><i></i><i></i></div>');
+        const card = document.createElement('div');
+        card.className = `admin-popup ff-pensamiento admin-popup--${t}`;
+        card.dataset.msg = texto; card.dataset.type = t;
+        card.setAttribute('role', t === 'error' ? 'alert' : 'status');
+        card.innerHTML = `<span class="admin-popup-ico" aria-hidden="true">${_POPUP_ICONOS[t]}</span><span class="admin-popup-txt"></span>`;
+        card.querySelector('.admin-popup-txt').textContent = texto;
+        card.addEventListener('click', () => cerrar(card));
+        pensamientos.insertBefore(card, pensamientos.querySelector('.ff-puntos'));
+        while (pensamientos.querySelectorAll('.admin-popup').length > 3) pensamientos.querySelector('.admin-popup').remove();
+        requestAnimationFrame(() => card.classList.add('is-in'));
+        card._t = setTimeout(() => cerrar(card), dur);
+        set(_POPUP_CARA[t] || 'happy', 2500, 'neutral');
+        _adminDecirAviso(texto, burbuja._fodi);
+        return true;
+    };
     // Pedido nuevo: burbuja sobre FODI y, al abrir el chat, botón para que lo revise y diga qué pidió el cliente
     window._fodiAvisoPedido = (n) => {
         if (!raiz.classList.contains('on')) return;
@@ -33400,7 +33430,7 @@ setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_m
         if (it) { e.preventDefault(); const f = it.getAsFile(); if (f) cargar(f); }
     });
     const copiar = async (texto, b) => {
-        try { await navigator.clipboard.writeText(texto); b.textContent = '✅ Copiado'; } catch (_) { b.textContent = 'Selecciona y copia'; }
+        try { await navigator.clipboard.writeText(texto); b.textContent = '✅ Copiado'; showClipboardToast('Copiado'); } catch (_) { b.textContent = 'Selecciona y copia'; }
         setTimeout(() => { b.textContent = '📋 Copiar'; }, 1800);
     };
     const nodo = (cls, html) => { const d = document.createElement('div'); d.className = cls; d.innerHTML = html; return d; };
