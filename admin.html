@@ -3118,18 +3118,26 @@
             border-color: rgba(220, 70, 70, 0.35);
         }
 
-        /* Avisos del panel: ventana flotante en el centro (reemplaza al aviso de la columna izquierda) */
+        /* Avisos del panel: FODI los "piensa" en el centro (carita + burbujas de pensamiento) y los dice en voz */
         #adminNotice { display: none !important; }
-        #adminPopupHost { position: fixed; inset: 0; z-index: 2147483100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; pointer-events: none; }
-        .admin-popup { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 12px; max-width: min(460px, calc(100vw - 32px)); min-width: min(260px, calc(100vw - 32px)); padding: 14px 16px; border-radius: 16px; color: #fff; font: 600 0.98rem/1.35 system-ui, sans-serif; background: rgba(20, 24, 38, 0.82); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1.5px solid rgba(255, 255, 255, 0.28); box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55); opacity: 0; transform: scale(0.94) translateY(8px); transition: opacity 0.2s ease, transform 0.2s ease; }
+        #adminPopupHost { position: fixed; inset: 0; z-index: 2147483100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 16px; pointer-events: none; }
+        .admin-fodi-wrap { display: flex; flex-direction: column; align-items: center; }
+        .admin-fodi-wrap[hidden] { display: none; }
+        .admin-fodi-cara { width: 74px; height: 74px; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45)); }
+        .admin-fodi-puntos { display: flex; flex-direction: column; align-items: center; gap: 3px; margin: 2px 0 2px; }
+        .admin-fodi-puntos i { display: block; border-radius: 50%; background: rgba(255, 255, 255, 0.55); border: 1.5px solid rgba(255, 255, 255, 0.7); }
+        .admin-fodi-puntos i:first-child { width: 7px; height: 7px; }
+        .admin-fodi-puntos i:last-child { width: 11px; height: 11px; }
+        .admin-pensamientos { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .admin-popup { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 10px; max-width: min(470px, calc(100vw - 32px)); min-width: min(240px, calc(100vw - 32px)); padding: 14px 20px; border-radius: 30px; color: #fff; font: 600 0.98rem/1.4 system-ui, sans-serif; background: rgba(255, 255, 255, 0.18); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1.5px solid rgba(255, 255, 255, 0.28); box-shadow: 0 14px 44px rgba(0, 0, 0, 0.5), inset 0 0 0 999px rgba(16, 20, 34, 0.55); opacity: 0; transform: scale(0.9) translateY(10px); transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.3, 1.5, 0.5, 1); }
         .admin-popup.is-in { opacity: 1; transform: none; }
-        .admin-popup--ok { border-color: rgba(24, 198, 122, 0.75); background: rgba(10, 48, 34, 0.86); }
-        .admin-popup--error { border-color: rgba(239, 68, 68, 0.85); background: rgba(70, 14, 14, 0.9); }
-        .admin-popup--warn { border-color: rgba(255, 170, 40, 0.85); background: rgba(66, 44, 8, 0.88); }
-        .admin-popup--info { border-color: rgba(96, 165, 250, 0.8); }
-        .admin-popup-ico { font-size: 1.4rem; line-height: 1; flex: none; }
-        .admin-popup-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-        .admin-popup-x { flex: none; border: 0; background: rgba(255, 255, 255, 0.16); color: #fff; width: 28px; height: 28px; border-radius: 50%; font-size: 0.8rem; cursor: pointer; }
+        .admin-popup--ok { border-color: rgba(24, 198, 122, 0.75); }
+        .admin-popup--error { border-color: rgba(239, 68, 68, 0.9); box-shadow: 0 14px 44px rgba(0, 0, 0, 0.5), inset 0 0 0 999px rgba(70, 14, 14, 0.6); }
+        .admin-popup--warn { border-color: rgba(255, 170, 40, 0.9); box-shadow: 0 14px 44px rgba(0, 0, 0, 0.5), inset 0 0 0 999px rgba(66, 44, 8, 0.6); }
+        .admin-popup--info { border-color: rgba(96, 165, 250, 0.85); }
+        .admin-popup-ico { font-size: 1.2rem; line-height: 1; flex: none; }
+        .admin-popup-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; font-style: italic; }
+        .admin-popup-x { flex: none; border: 0; background: rgba(255, 255, 255, 0.16); color: #fff; width: 26px; height: 26px; border-radius: 50%; font-size: 0.75rem; cursor: pointer; }
         @media (prefers-reduced-motion: reduce) { .admin-popup { transition: none; transform: none; } }
 
         .clipboard-toast {
@@ -15398,6 +15406,7 @@
                             <div class="asist-hint" id="asistUsoTxt" style="white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;text-align:left;opacity:1"></div>
                             <p class="asist-hint" style="text-align:left;opacity:1"><label style="cursor:pointer"><input type="checkbox" id="fodiPiperToggle"> Voz natural de FODI (se descarga una vez, ~100 MB)</label> <span id="fodiPiperEstado"></span></p>
                             <p class="asist-hint" style="text-align:left;opacity:1"><label style="cursor:pointer"><input type="checkbox" id="fodiFlotToggle" checked> Mostrar a FODI flotante (hablarle desde cualquier pestaña)</label></p>
+                            <p class="asist-hint" style="text-align:left;opacity:1"><label style="cursor:pointer"><input type="checkbox" id="fodiAvisosVozToggle" checked> FODI dice en voz los avisos (guardado, copiado, errores…)</label></p>
                         </details>
                         <div class="asist-stage" id="asistStage">
                             <div class="asist-hero" id="asistHero">

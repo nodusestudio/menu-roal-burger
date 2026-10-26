@@ -827,10 +827,28 @@ function _createComboModalShell({ titleHtml, subtitleHtml = '', zIndex = null } 
     return { overlay, card, header };
 }
 
-// Avisos del panel (guardado, copiado, errores...): ventana flotante en el CENTRO de la pantalla.
-// Antes salían en la columna izquierda, que ahora está llena de secciones y no se veían.
+// Avisos del panel (guardado, copiado, errores...): FODI los PIENSA en el centro de la pantalla — su carita con una
+// burbuja de pensamiento — y los dice en voz alta. (Antes salían en la columna izquierda, que ya no se ve.)
 const _POPUP_ICONOS = { ok: '✅', error: '⛔', warn: '⚠️', info: 'ℹ️' };
-const _POPUP_MS = { ok: 3200, info: 4000, warn: 5500, error: 9000 };
+const _POPUP_MS = { ok: 3600, info: 4500, warn: 6000, error: 9500 };
+const _POPUP_CARA = { ok: 'happy', error: 'sad', warn: 'surprised', info: 'wink' };
+let _avisoVozUltimo = { txt: '', at: 0 };
+function _avisosVozActiva() { try { return localStorage.getItem('fodiAvisosVoz') !== '0'; } catch (_) { return true; } }
+// Dice el aviso con la voz de FODI sin pisar una respuesta suya que esté sonando
+function _adminDecirAviso(text, face) {
+    try {
+        if (!_avisosVozActiva() || _meseroSession || document.hidden) return;
+        if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; // el navegador exige un gesto previo
+        if (window.speechSynthesis?.speaking || _piper.audio) return;
+        let hablado = _asistTextoHablado(text);
+        if (!hablado) return;
+        if (hablado.length > 150) hablado = (_fodiFrases(hablado).reduce((acc, fr) => (acc.length + fr.length <= 150 ? (acc ? acc + ' ' : '') + fr : acc), '') || hablado.slice(0, 150));
+        const ahora = Date.now();
+        if (_avisoVozUltimo.txt === hablado && ahora - _avisoVozUltimo.at < 4000) return;
+        _avisoVozUltimo = { txt: hablado, at: ahora };
+        _fodiDecir(hablado, { onstart: () => _fodiHablar(face, true), onend: () => _fodiHablar(face, false) });
+    } catch (_) { /* la voz es un extra: nunca debe romper un aviso */ }
+}
 function _adminPopup(text, type = 'ok', ms) {
     const msg = String(text == null ? '' : text).trim();
     if (!msg) return;
@@ -839,16 +857,29 @@ function _adminPopup(text, type = 'ok', ms) {
     if (!host) {
         host = document.createElement('div');
         host.id = 'adminPopupHost';
+        host.innerHTML = '<div class="admin-fodi-wrap" hidden><div class="fodi admin-fodi-cara"></div><div class="admin-fodi-puntos" aria-hidden="true"><i></i><i></i></div></div><div class="admin-pensamientos"></div>';
         document.body.appendChild(host);
     }
+    const wrap = host.querySelector('.admin-fodi-wrap'), cara = host.querySelector('.admin-fodi-cara'), lista = host.querySelector('.admin-pensamientos');
+    const ocultarCara = () => {
+        if (lista.children.length) return;
+        wrap.hidden = true;
+        if (cara._fodi) { _fodiHablar(cara._fodi, false); _fodiCongelar(cara._fodi, 'neutral'); }
+        cara.innerHTML = ''; cara._fodi = null;
+    };
     const cerrar = (card) => {
         clearTimeout(card._t);
         card.classList.remove('is-in');
-        setTimeout(() => card.remove(), 220);
+        setTimeout(() => { card.remove(); ocultarCara(); }, 240);
+    };
+    const mostrarCara = () => {
+        if (wrap.hidden) { wrap.hidden = false; try { _fodiMontar(cara, {}); } catch (_) { /* sin cara: queda solo el texto */ } }
+        if (cara._fodi) _fodiSet(cara._fodi, _POPUP_CARA[t], 2500, 'neutral');
     };
     // El mismo aviso repetido no se apila: se renueva su tiempo en pantalla
-    const repetido = [...host.children].find((c) => c.dataset.msg === msg && c.dataset.type === t);
+    const repetido = [...lista.children].find((c) => c.dataset.msg === msg && c.dataset.type === t);
     if (repetido) { clearTimeout(repetido._t); repetido._t = setTimeout(() => cerrar(repetido), ms || _POPUP_MS[t]); return; }
+    mostrarCara();
     const card = document.createElement('div');
     card.className = `admin-popup admin-popup--${t}`;
     card.dataset.msg = msg; card.dataset.type = t;
@@ -856,10 +887,11 @@ function _adminPopup(text, type = 'ok', ms) {
     card.innerHTML = `<span class="admin-popup-ico" aria-hidden="true">${_POPUP_ICONOS[t]}</span><span class="admin-popup-txt"></span><button type="button" class="admin-popup-x" aria-label="Cerrar aviso">✕</button>`;
     card.querySelector('.admin-popup-txt').textContent = msg;
     card.addEventListener('click', () => cerrar(card));
-    host.appendChild(card);
-    while (host.children.length > 4) host.firstElementChild.remove();
+    lista.appendChild(card);
+    while (lista.children.length > 4) lista.firstElementChild.remove();
     requestAnimationFrame(() => card.classList.add('is-in'));
     card._t = setTimeout(() => cerrar(card), ms || _POPUP_MS[t]);
+    _adminDecirAviso(msg, cara._fodi);
 }
 
 function showNotice(text, type = 'ok') {
@@ -869,7 +901,7 @@ function showNotice(text, type = 'ok') {
 
 function hideNotice() {
     const host = document.getElementById('adminPopupHost');
-    if (host) host.innerHTML = '';
+    if (host) { host.querySelectorAll('.admin-popup').forEach((c) => c.remove()); const w = host.querySelector('.admin-fodi-wrap'); if (w) w.hidden = true; }
 }
 // (El antiguo #adminNotice de la columna izquierda queda sin uso y oculto.)
 
@@ -32612,6 +32644,16 @@ function _fodiDecirNavegador(texto, cb, miGen) {
     };
     sig();
 }
+// Interruptor "FODI dice en voz los avisos"
+(function _avisosVozToggleInit() {
+    const init = () => {
+        const t = document.getElementById('fodiAvisosVozToggle');
+        if (!t) return;
+        t.checked = _avisosVozActiva();
+        t.addEventListener('change', () => { try { localStorage.setItem('fodiAvisosVoz', t.checked ? '1' : '0'); } catch (_) { /* sin storage */ } if (t.checked) _adminPopup('Listo, te diré los avisos en voz alta.', 'info'); });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
 // Interruptor "Voz natural"
 (function _piperToggleInit() {
     const init = () => {
