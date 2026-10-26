@@ -33312,6 +33312,7 @@ function _fodiFlotInit() {
     const ponerPos = (x, y) => {
         x = Math.max(4, Math.min(window.innerWidth - W - 4, x)); y = Math.max(4, Math.min(window.innerHeight - W - 4, y));
         raiz.style.left = x + 'px'; raiz.style.top = y + 'px'; raiz.style.right = 'auto'; raiz.style.bottom = 'auto';
+        if (window._fodiFlotReubicar) window._fodiFlotReubicar();
         return { x, y };
     };
     try { const g = JSON.parse(localStorage.getItem('fodiFlotPos') || 'null'); if (g && isFinite(g.x) && isFinite(g.y)) ponerPos(g.x, g.y); } catch (_) { /* sin posición guardada */ }
@@ -33355,6 +33356,36 @@ function _fodiFlotInit() {
     // Otras partes del panel (p. ej. una acción fallida) le hacen una pregunta a FODI abriendo este chat
     // Avisos del panel (guardado, copiado, errores...): pensamientos encima de FODI, y los dice en voz
     const pensamientos = $('fodiFlotPensamientos');
+    // Mantiene las burbujas (avisos y "Pedido nuevo") DENTRO de la pantalla: arriba de FODI si cabe, si no debajo;
+    // y corrida a un lado si FODI está cerca de un borde. Se recalcula al mover a FODI, al redimensionar y al cambiar el contenido.
+    const reubicar = () => {
+        const M = 8;
+        [pensamientos, hola].forEach((el) => {
+            if (!el) return;
+            const visible = el === hola ? hola.classList.contains('on') : !!pensamientos.querySelector('.admin-popup');
+            if (!visible) return;
+            el.style.left = 'auto'; el.style.right = '0'; el.style.top = 'auto'; el.style.bottom = '78px'; el.style.maxHeight = '';
+            let abajo = false;
+            const r = raiz.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+            const w = el.offsetWidth, h = el.offsetHeight;
+            // Si el 'Pedido nuevo' de FODI está a la vista, los avisos se apilan a su lado en vez de taparlo
+            const extra = (el === pensamientos && hola.classList.contains('on')) ? hola.offsetHeight + 8 : 0;
+            const espacioArriba = r.top - 10 - M - extra, espacioAbajo = vh - r.bottom - 10 - M - extra;
+            if (extra && !(h > espacioArriba)) el.style.bottom = (78 + extra) + 'px';
+            if (h > espacioArriba) {
+                if (espacioAbajo >= espacioArriba) { el.style.top = (78 + extra) + 'px'; el.style.bottom = 'auto'; abajo = true; }
+                el.style.maxHeight = Math.max(60, Math.max(espacioArriba, espacioAbajo)) + 'px';
+            }
+            if (el === pensamientos) el.classList.toggle('abajo', abajo);
+            const L = Math.max(M, Math.min(r.right - w, vw - w - M));
+            el.style.left = (L - r.left) + 'px'; el.style.right = 'auto';
+            const puntos = el.querySelector('.ff-puntos');
+            if (puntos) { puntos.style.alignSelf = 'flex-start'; puntos.style.marginRight = '0'; puntos.style.marginLeft = Math.max(10, Math.min(r.left + 34 - L - 5, Math.max(10, w - 24))) + 'px'; }
+        });
+    };
+    window._fodiFlotReubicar = reubicar;
+    if (pensamientos) new MutationObserver(reubicar).observe(pensamientos, { childList: true });
+    if (hola) new MutationObserver(reubicar).observe(hola, { attributes: true, attributeFilter: ['class'] });
     window._fodiFlotAviso = (texto, t, ms) => {
         if (!pensamientos || !raiz.classList.contains('on') || raiz.classList.contains('abierto')) return false;
         hola.classList.remove('on');
