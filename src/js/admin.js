@@ -33444,6 +33444,36 @@ function _fodiFlotInit() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();
 setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_meseroSession) { _fodiAlertasCargar(); _fodiInformeCargar(false); } }, 9000);
 
+// Auto-actualización: la ventana/app instalada puede quedar días abierta con un admin.js viejo.
+// Cada 5 min (y al volver a la ventana) compara la versión publicada con la cargada y se recarga sola.
+(function _admAutoActualizar() {
+    const cargada = (document.querySelector('script[src*="admin.js"]')?.getAttribute('src') || '').match(/[?&]v=([\w-]+)/)?.[1];
+    if (!cargada) return;
+    window.__admVersion = cargada;
+    let pendiente = false, ultimo = 0;
+    const revisar = async () => {
+        if (pendiente || Date.now() - ultimo < 60000) return;
+        ultimo = Date.now();
+        try {
+            const html = await (await fetch('admin.html', { cache: 'no-store' })).text();
+            const nueva = html.match(/admin\.js\?v=([\w-]+)/)?.[1];
+            if (!nueva || nueva === cargada) return;
+            pendiente = true;
+            try { showNotice('Hay una versión nueva del panel. Se recarga en unos segundos…', 'info'); } catch (_) { /* sin aviso */ }
+            const intentar = () => {
+                const a = document.activeElement;
+                if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value) return setTimeout(intentar, 15000); // no pisar lo que se escribe
+                location.reload();
+            };
+            setTimeout(intentar, 6000);
+        } catch (_) { /* sin red: se reintenta luego */ }
+    };
+    setInterval(revisar, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) revisar(); });
+    window.addEventListener('focus', revisar);
+    setTimeout(revisar, 20000);
+})();
+
 
 // ── Responder a un cliente: pega chat/captura y FODI sugiere respuestas ─────────────────
 (function _respClienteInit() {
