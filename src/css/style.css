@@ -9384,3 +9384,4 @@ html.low-fx .support-feedback--error:not(:empty) {
 }
 .feedback-pending-phone { display: inline; padding: 2px 8px; border: 1px dashed rgba(255, 176, 114, 0.7); border-radius: 8px; background: rgba(255, 255, 255, 0.06); color: #ffd2b0; font: inherit; font-weight: 700; cursor: pointer; }
 .feedback-pending-phone:active { background: rgba(255, 122, 26, 0.35); }
+button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }

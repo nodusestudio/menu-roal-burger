@@ -11353,8 +11353,59 @@ function buildTicketEditFieldButton(order, field, displayValue, printMode, optio
         return `<span class="ticket-address-text${options.className ? ` ${escapeHtml(options.className)}` : ''}">${safeDisplay}</span>`;
     }
     const className = options.className ? ` ${escapeHtml(options.className)}` : '';
-    return `<button type="button" class="ticket-copy-btn${className}" data-order-ticket-action="edit-field" data-edit-field="${escapeHtml(field)}" data-order-id="${escapeHtml(order.id)}" title="Tocar para editar">${safeDisplay}</button>`;
+    return `<button type="button" class="ticket-copy-btn${className}" data-order-ticket-action="edit-field" data-edit-field="${escapeHtml(field)}" data-order-id="${escapeHtml(order.id)}" title="Toque: copiar · mantener presionado: editar">${safeDisplay}</button>`;
 }
+
+// Datos del cliente en el ticket (nombre, teléfono, dirección): un toque COPIA el dato y mantener
+// presionado (~0,55 s) abre la edición. Va en captura sobre `document` para decidir antes de que
+// los manejadores del ticket (tablero y vista previa) abran el editor; la pulsación larga dispara
+// un clic sintético que sí llega a ellos, y el clic real que sigue al soltar se descarta.
+(function initTicketFieldCopyGesture() {
+    const SEL = 'button[data-order-ticket-action="edit-field"]';
+    const HOLD_MS = 550;
+    let timer = null;
+    let startX = 0;
+    let startY = 0;
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+
+    document.addEventListener('pointerdown', (e) => {
+        const btn = e.target.closest && e.target.closest(SEL);
+        if (!btn) return;
+        startX = e.clientX; startY = e.clientY;
+        cancel();
+        timer = setTimeout(() => {
+            timer = null;
+            btn.dataset.lpFired = '1';
+            if (navigator.vibrate) { try { navigator.vibrate(30); } catch (_) { /* sin vibración */ } }
+            btn.dataset.lpSynthetic = '1';
+            btn.click();
+        }, HOLD_MS);
+    }, true);
+    document.addEventListener('pointermove', (e) => {
+        if (timer && Math.hypot(e.clientX - startX, e.clientY - startY) > 10) cancel();
+    }, true);
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => document.addEventListener(t, cancel, true));
+    document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest(SEL)) e.preventDefault(); }, true);
+
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest && e.target.closest(SEL);
+        if (!btn) return;
+        if (btn.dataset.lpSynthetic === '1') { delete btn.dataset.lpSynthetic; return; } // pulsación larga: deja pasar → editar
+        if (btn.dataset.lpFired === '1') { // clic real tras soltar la pulsación larga: ya se abrió el editor
+            delete btn.dataset.lpFired;
+            e.stopPropagation(); e.preventDefault();
+            return;
+        }
+        e.stopPropagation(); e.preventDefault();
+        let value = String(btn.textContent || '').trim();
+        if (btn.dataset.editField === 'customerPhone') value = normalizePhoneDigits(value) || value;
+        if (!value || /^(No registrado|Sin direccion registrada)$/i.test(value)) {
+            showNotice('No hay dato para copiar. Mantén presionado para editarlo.', 'info');
+            return;
+        }
+        copyTextToClipboard(value);
+    }, true);
+}());
 
 function escapeVCardValue(value) {
     return String(value || '')
