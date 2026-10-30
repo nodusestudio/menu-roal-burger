@@ -10419,6 +10419,7 @@ async function renderPublicFeaturedFromAdmin() {
             .filter((p) => p.activo !== false)
             .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
         render2x1Cards();
+        renderFestivalHome();
     });
 
     openingAdUnsubscribe = _liveOrOnceSnapshot(firebaseDb.collection('configuracion').doc('anuncio_apertura'), (doc) => {
@@ -10871,21 +10872,30 @@ function renderFestivalHome() {
 
     const nombre = String(raw.nombre || raw.name || 'Burger Trifásica').trim();
     const categoria = String(raw.categoria || raw.category || '').trim();
+    // ¿La burger está en 2x1? (ficha del producto o promo de la colección). Si sí, la tarjeta
+    // suma el 2x1 directo al carrito: sin cupón, sin código y sin canal "usar en local".
+    const promoColeccion = (Array.isArray(_promos2x1Data) ? _promos2x1Data : []).find((p) => p.producto_id === raw.id && p.activo !== false);
+    const es2x1 = raw.promo2x1?.activo === true || Boolean(promoColeccion);
+    const incremento = raw.promo2x1?.incremento === true || promoColeccion?.incremento === true;
+    const unitPrice = resolveProductDisplayPrice(raw);
+    const imgSrc = normalizeImageAssetPath((es2x1 && raw.promo2x1?.image_url) || resolveProductImage(raw) || _IMG_FINAL_FALLBACK);
+    const precios = es2x1
+        ? `<s class="codigo-dia-orig">${formatCurrency(unitPrice * 2)}</s>
+           <span class="codigo-dia-price">${formatCurrency(unitPrice)}</span>`
+        : `<span class="codigo-dia-price">${formatCurrency(unitPrice)}</span>`;
     const card = document.createElement('article');
     card.className = 'codigo-dia-card liquid-glass';
     card.innerHTML = `
         <div class="codigo-dia-top">
             <span class="codigo-dia-kicker">🏆 Festival Sabe a Quindío</span>
-            <span class="codigo-dia-badge">Hasta el 8 de nov.</span>
+            <span class="codigo-dia-badge">${es2x1 ? '2×1 · hasta el 8 de nov.' : 'Hasta el 8 de nov.'}</span>
         </div>
         <div class="codigo-dia-main">
             <div class="codigo-dia-img-wrap"><img class="codigo-dia-img" alt="" loading="lazy"></div>
             <div class="codigo-dia-info">
                 <strong class="codigo-dia-name"></strong>
-                <div class="codigo-dia-prices">
-                    <span class="codigo-dia-price">${formatCurrency(resolveProductDisplayPrice(raw))}</span>
-                </div>
-                <span class="codigo-dia-cupos">Res, cerdo y pollo en un solo pan</span>
+                <div class="codigo-dia-prices">${precios}</div>
+                <span class="codigo-dia-cupos">${es2x1 ? 'Llévate 2 por el precio de 1' : 'Res, cerdo y pollo en un solo pan'}</span>
             </div>
         </div>
         <div class="codigo-dia-actions">
@@ -10893,13 +10903,23 @@ function renderFestivalHome() {
             <button type="button" class="codigo-dia-normal festival-pedir">Pedir ahora</button>
         </div>`;
     const img = card.querySelector('.codigo-dia-img');
-    img.src = normalizeImageAssetPath(resolveProductImage(raw) || _IMG_FINAL_FALLBACK);
+    img.src = imgSrc;
     img.alt = nombre;
     img.addEventListener('error', () => { img.src = _IMG_FINAL_FALLBACK; }, { once: true });
     card.querySelector('.codigo-dia-name').textContent = nombre;
     card.querySelector('.festival-pedir').addEventListener('click', () => {
         _hapticTap();
-        startProductOrderFlow(nombre, categoria, 'festival-trifasica');
+        if (es2x1) {
+            addItemToCart(nombre, categoria, {
+                type: 'solo',
+                imagePath: imgSrc,
+                promoLabel: `PROMOCIÓN 2×1 — ${nombre} (incluye 2)`,
+                promo2x1: true,
+                promo2x1Incremento: incremento
+            }, 'festival-trifasica-2x1', 1);
+        } else {
+            startProductOrderFlow(nombre, categoria, 'festival-trifasica');
+        }
     });
     card.querySelector('.festival-info').addEventListener('click', () => {
         if (typeof window.abrirFestivalInfo === 'function') window.abrirFestivalInfo();
