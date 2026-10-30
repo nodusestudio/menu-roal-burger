@@ -7476,6 +7476,61 @@ async function saveOrderEnEspera() {
     }
 }
 
+// Tarjeta de registro del cliente cuando el ticket lleva la Trifásica (Sabe a Quindío): sin
+// nombre y teléfono no se guarda el pedido, para que la métrica de clientes nuevos/habituales sea completa.
+async function _sqPedirRegistroCliente(nombreInicial = '') {
+    try { await fetchClients(); } catch (_) { /* sigue con lo que haya en caché */ }
+    return new Promise((resolve) => {
+        document.getElementById('_sqRegistroOverlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = '_sqRegistroOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:1rem;';
+        const inputCss = "width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.18);border-radius:10px;color:#fff;padding:11px 12px;font-size:1rem;margin-bottom:0.8rem;outline:none;font-family:'Space Grotesk',sans-serif;";
+        overlay.innerHTML = `
+            <div style="background:#1e1e2e;border:1.5px solid rgba(255,140,40,0.55);border-radius:18px;padding:1.6rem 1.5rem;max-width:380px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.55);">
+                <div style="font-size:1.8rem;text-align:center;">🏆</div>
+                <h3 style="margin:0.3rem 0 0.2rem;color:#fff;font-size:1.1rem;text-align:center;">Cliente de la Burger Trifásica</h3>
+                <p style="margin:0 0 1rem;color:rgba(255,255,255,0.6);font-size:0.85rem;text-align:center;">Sabe a Quindío · registra al cliente para medir cuántos son nuevos.</p>
+                <input type="tel" id="_sqTel" inputmode="numeric" placeholder="Celular (10 dígitos)" autocomplete="off" style="${inputCss}">
+                <input type="text" id="_sqNom" placeholder="Nombre" autocomplete="off" value="${escapeHtml(nombreInicial && !/^Mesa \d+$/.test(nombreInicial) ? nombreInicial : '')}" style="${inputCss}">
+                <p id="_sqTipo" style="margin:-0.2rem 0 0.9rem;min-height:1.2em;font-size:0.82rem;color:#fbbf24;text-align:center;"></p>
+                <div style="display:flex;gap:0.75rem;">
+                    <button type="button" id="_sqCancel" style="flex:1;padding:0.75rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">Cancelar</button>
+                    <button type="button" id="_sqOk" style="flex:1.4;padding:0.75rem;border-radius:10px;border:none;background:linear-gradient(135deg,#ff7a1a,#e8420a);color:#fff;font-size:0.95rem;font-weight:700;cursor:pointer;">Guardar y seguir</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        const tel = overlay.querySelector('#_sqTel');
+        const nom = overlay.querySelector('#_sqNom');
+        const tipo = overlay.querySelector('#_sqTipo');
+        const finish = (v) => { overlay.remove(); resolve(v); };
+        const soloDiez = (v) => { let d = normalizePhoneDigits(v); if (d.length === 12 && d.startsWith('57')) d = d.slice(2); return d; };
+        tel.addEventListener('input', () => {
+            tel.value = tel.value.replace(/[^\d+\s]/g, '');
+            tipo.style.color = '#fbbf24';
+            tipo.textContent = '';
+            const k = soloDiez(tel.value);
+            if (k.length < 10) return;
+            const c = (clientsState || []).find((x) => soloDiez(x.customerPhoneDigits || x.customerPhone) === k);
+            if (c && Number(c.totalOrders || 0) > 0) {
+                if (!nom.value.trim()) nom.value = c.customerName || '';
+                tipo.textContent = `Cliente habitual · ${c.totalOrders} pedido${c.totalOrders === 1 ? '' : 's'} antes`;
+            } else {
+                tipo.textContent = '✨ Cliente nuevo';
+            }
+        });
+        overlay.querySelector('#_sqCancel').addEventListener('click', () => finish(null));
+        overlay.querySelector('#_sqOk').addEventListener('click', () => {
+            const d = soloDiez(tel.value);
+            const name = nom.value.trim().replace(/\s+/g, ' ');
+            if (d.length !== 10) { tipo.style.color = '#fca5a5'; tipo.textContent = 'El celular debe tener 10 dígitos.'; tel.focus(); return; }
+            if (name.length < 2) { tipo.style.color = '#fca5a5'; tipo.textContent = 'Escribe el nombre del cliente.'; nom.focus(); return; }
+            finish({ name, phone: d });
+        });
+        setTimeout(() => tel.focus(), 50);
+    });
+}
+
 async function saveAdminOrderQuick(config = {}, opts = {}) {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
@@ -7492,6 +7547,19 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         if (fee === undefined || fee === null || fee === '' || String(fee).trim() === '') {
             showNotice('Debes asignar un valor de domicilio antes de enviar.', 'error');
             return;
+        }
+    }
+
+    // Burger Trifásica (Sabe a Quindío): todo ticket que la lleve exige cliente registrado.
+    if (internalOrderItems.some((it) => normalizeCategoryKey(it.productName).includes('trifasica'))) {
+        const telYa = normalizePhoneDigits(config.customerPhone || _editingOrderData?.customerPhone || '');
+        if (telYa.length < 7) {
+            const reg = await _sqPedirRegistroCliente(config.customerName || _editingOrderData?.customerName || '');
+            if (!reg) {
+                showNotice('Para vender la Trifásica hay que registrar al cliente (celular y nombre).', 'warn');
+                return;
+            }
+            config = { ...config, customerName: reg.name, customerPhone: reg.phone };
         }
     }
 
@@ -9601,6 +9669,219 @@ function renderMetricasTrafico() {
             snap => _traficoProcess(snap.docs.map(d => d.data())),
             e => console.warn('trafico snapshot error:', e)
         );
+}
+
+// ── Métricas: Sabe a Quindío (Burger Trifásica) — 100% en vivo ──────────────────
+// Se mide desde los pedidos reales (activos + archivados) con onSnapshot, mientras la pestaña está
+// abierta. Un pedido cuenta si lleva la Trifásica. Cliente "habitual" = ya tenía algún pedido
+// ANTES de que empezara el festival; "nuevo" = su primer pedido fue durante el festival.
+const SQ_INICIO_MS = Date.parse('2026-10-30T00:00:00-05:00');
+let _sqUnsubs = [];
+let _sqActive = [];
+let _sqArchived = [];
+
+function _sqDetach() {
+    _sqUnsubs.forEach((u) => { try { u(); } catch (_) {} });
+    _sqUnsubs = [];
+}
+
+function _sqAttach() {
+    _sqDetach();
+    if (!firebaseDb) return;
+    const start = firebase.firestore.Timestamp.fromMillis(SQ_INICIO_MS);
+    const listen = (col, setter) => firebaseDb.collection(col)
+        .where('createdAt', '>=', start)
+        .orderBy('createdAt', 'desc')
+        .onSnapshot(
+            (snap) => { setter(snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() }))); renderMetricasSabe(); },
+            (err) => console.error(`[Sabe a Quindío] ${col}:`, (err && (err.code || err.message)) || err)
+        );
+    _sqUnsubs = [
+        listen(ORDERS_COLLECTION, (v) => { _sqActive = v; }),
+        listen(ORDERS_ARCHIVE_COLLECTION, (v) => { _sqArchived = v; })
+    ];
+    // Historial (400 días) para saber quién ya era cliente antes del festival
+    _loadMetricsOrders().then(renderMetricasSabe).catch(() => {});
+    fetchClients().then(renderMetricasSabe).catch(() => {});
+    renderMetricasSabe();
+}
+
+function _sqPhoneKey(value) {
+    let d = normalizePhoneDigits(value);
+    if (d.length === 12 && d.startsWith('57')) d = d.slice(2);
+    return d.length >= 7 ? d : '';
+}
+function _sqItemEsTrifasica(item) { return normalizeCategoryKey(item?.productName).includes('trifasica'); }
+function _sqItemEs2x1(item) {
+    const o = item?.orderOptions || {};
+    return o.promo2x1 === true || /2\s*[x×]\s*1/i.test(String(o.promoLabel || item?.optionLabel || ''));
+}
+function _sqDayKey(ts) { return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); }
+function _sqHour(ts) { return Number(new Date(ts).toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' })); }
+
+function _sqCompute() {
+    const byId = new Map();
+    [..._sqArchived, ..._sqActive].forEach((o) => byId.set(o.id, o));
+    const festival = [...byId.values()].filter((o) => !(o.voided || o.anulado) && (_orderTs(o) || 0) >= SQ_INICIO_MS);
+
+    const prev = new Set();
+    for (const o of _metricsOrdersState) {
+        const ts = _orderTs(o);
+        if (!ts || ts >= SQ_INICIO_MS || o.voided || o.anulado) continue;
+        const k = _sqPhoneKey(o.customerPhoneDigits || o.customerPhone);
+        if (k) prev.add(k);
+    }
+    for (const c of (clientsState || [])) {
+        const first = c.firstOrderAt ? (c.firstOrderAt.seconds ? c.firstOrderAt.seconds * 1000 : Number(c.firstOrderAt)) : 0;
+        const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
+        if (k && Number(c.totalOrders || 0) > 0 && first && first < SQ_INICIO_MS) prev.add(k);
+    }
+
+    const rows = [];
+    for (const o of festival) {
+        let units = 0, burgers = 0, revenue = 0, promo = 0;
+        for (const it of o.items) {
+            if (!_sqItemEsTrifasica(it)) continue;
+            const q = Number(it.quantity || 0);
+            if (q <= 0) continue;
+            const dos = _sqItemEs2x1(it);
+            units += q; burgers += dos ? q * 2 : q; revenue += Number(it.subtotal || 0); if (dos) promo += q;
+        }
+        if (units > 0) rows.push({ o, ts: _orderTs(o), units, burgers, revenue, promo, key: _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) });
+    }
+    rows.sort((a, b) => a.ts - b.ts);
+
+    const customers = new Map();
+    const sinRegistro = { orders: 0, units: 0 };
+    for (const r of rows) {
+        if (!r.key) { sinRegistro.orders += 1; sinRegistro.units += r.units; continue; }
+        if (!customers.has(r.key)) customers.set(r.key, { key: r.key, name: '', phone: '', orders: 0, units: 0, revenue: 0, firstTs: r.ts, lastTs: r.ts, habitual: prev.has(r.key) });
+        const c = customers.get(r.key);
+        c.orders += 1; c.units += r.units; c.revenue += r.revenue; c.lastTs = r.ts;
+        if (!isPlaceholderCustomerName(r.o.customerName) && !/^Mesa \d+$/.test(r.o.customerName)) c.name = r.o.customerName;
+        c.phone = r.o.customerPhone || r.key;
+    }
+    return { festival, rows, customers: [...customers.values()], sinRegistro, historyReady: _metricsOrdersLoadedAt > 0 };
+}
+
+function renderMetricasSabe() {
+    const body = document.getElementById('sqBody');
+    if (!body) return;
+    const { festival, rows, customers, sinRegistro, historyReady } = _sqCompute();
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+
+    const orders = rows.length;
+    const units = sum(rows, (r) => r.units);
+    const burgers = sum(rows, (r) => r.burgers);
+    const revenue = sum(rows, (r) => r.revenue);
+    const promoUnits = sum(rows, (r) => r.promo);
+    const nuevos = customers.filter((c) => !c.habitual);
+    const habituales = customers.filter((c) => c.habitual);
+    const repitieron = customers.filter((c) => c.orders >= 2);
+    const registrados = orders - sinRegistro.orders;
+    const pctReg = orders ? Math.round((registrados / orders) * 100) : 100;
+    const pctNuevos = customers.length ? Math.round((nuevos.length / customers.length) * 100) : 0;
+    const pctShare = festival.length ? Math.round((orders / festival.length) * 100) : 0;
+
+    const hoyKey = _sqDayKey(Date.now());
+    const hoyRows = rows.filter((r) => _sqDayKey(r.ts) === hoyKey);
+    const dayMap = new Map();
+    for (let i = 0; i < 10; i++) {
+        const k = _sqDayKey(SQ_INICIO_MS + i * 86400000 + 3600000);
+        if (k <= hoyKey) dayMap.set(k, 0);
+    }
+    rows.forEach((r) => { const k = _sqDayKey(r.ts); dayMap.set(k, (dayMap.get(k) || 0) + r.units); });
+    const dayData = [...dayMap.entries()].sort().map(([k, v]) => ({ label: k.slice(5), val: v }));
+    const diasTranscurridos = Math.max(1, dayData.length);
+    const promedioDia = (units / diasTranscurridos).toFixed(1);
+    const mejorDia = dayData.reduce((m, d) => (d.val > m.val ? d : m), { label: '—', val: 0 });
+
+    const hourMap = new Map();
+    rows.forEach((r) => { const h = _sqHour(r.ts); hourMap.set(h, (hourMap.get(h) || 0) + r.units); });
+    const hourData = [...hourMap.entries()].sort((a, b) => a[0] - b[0]).map(([h, v]) => ({ label: `${h}:00`, val: v }));
+
+    const canalDe = (o) => {
+        if (o.isAdminOrder || o.source === 'admin_pos') return 'Caja (POS)';
+        if (/agent|whatsapp/i.test(o.source)) return 'WhatsApp / agente';
+        return 'Menú web';
+    };
+    const countBy = (f) => { const m = new Map(); rows.forEach((r) => { const k = f(r.o); m.set(k, (m.get(k) || 0) + r.units); }); return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([label, val]) => ({ label, val })); };
+    const canalData = countBy(canalDe);
+    const tipoData = countBy((o) => ({ mesa: 'En el local (mesa)', retiro: 'Para llevar', domicilio: 'Domicilio' }[o.orderType] || o.orderType));
+    const promoData = [{ label: 'Con 2×1', val: promoUnits }, { label: 'Precio normal', val: units - promoUnits }].filter((d) => d.val > 0);
+
+    const fmtHora = (ts) => new Date(ts).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const badge = (c) => `${c.habitual ? '<span class="met-badge met-badge--rec">Habitual</span>' : '<span class="met-badge met-badge--nuevo">Nuevo</span>'}${c.orders >= 2 ? ' <span class="met-badge met-badge--vip">Repitió</span>' : ''}`;
+    const custRows = [...customers].sort((a, b) => b.orders - a.orders || b.lastTs - a.lastTs).slice(0, 60).map((c) => `
+        <div class="met-user-row-v2">
+            <div class="met-avatar">${escapeHtml((c.name || '#').trim().charAt(0).toUpperCase())}</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(c.name || 'Sin nombre')} ${badge(c)}</div>
+                <div class="met-user-meta-v2">${escapeHtml(c.phone)} · último pedido ${escapeHtml(fmtHora(c.lastTs))}</div>
+            </div>
+            <div class="met-user-stat"><div class="met-user-stat-val">${nf(c.units)}</div><div class="met-user-stat-sub">${c.orders} pedido${c.orders === 1 ? '' : 's'}</div></div>
+        </div>`).join('');
+    const feedRows = [...rows].reverse().slice(0, 12).map((r) => {
+        const c = r.key ? customers.find((x) => x.key === r.key) : null;
+        return `<div class="met-user-row-v2">
+            <div class="met-avatar">🍔</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(r.o.code)} · ${escapeHtml(c?.name || r.o.customerName || 'Sin registrar')} ${c ? badge(c) : '<span class="met-badge met-badge--sin">Sin registrar</span>'}</div>
+                <div class="met-user-meta-v2">${escapeHtml(fmtHora(r.ts))} · ${escapeHtml(canalDe(r.o))}${r.promo ? ' · 2×1' : ''}</div>
+            </div>
+            <div class="met-user-stat"><div class="met-user-stat-val">${nf(r.units)}</div><div class="met-user-stat-sub">${escapeHtml(formatMoney(r.revenue))}</div></div>
+        </div>`;
+    }).join('');
+
+    const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
+    body.innerHTML = `
+        <article class="admin-card">
+            <div class="met-section-title">🏆 Sabe a Quindío — Burger Trifásica <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en vivo desde el 30 de octubre</small></div>
+            <div class="met-kpi-row">
+                ${kpi('met-kpi-card--hi', nf(units), 'Trifásicas vendidas')}
+                ${kpi('', nf(hoyRows.reduce((s, r) => s + r.units, 0)), 'Hoy')}
+                ${kpi('', promedioDia, 'Promedio por día')}
+                ${kpi('met-kpi-card--green', escapeHtml(formatMoney(revenue)), 'Ingresos Trifásica')}
+                ${kpi('', nf(orders), 'Pedidos con Trifásica')}
+                ${kpi('met-kpi-card--purple', nf(burgers), 'Hamburguesas entregadas (2×1 = 2)')}
+            </div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">Clientes de la Trifásica ${historyReady ? '' : '<small style="font-size:0.72rem;opacity:0.55;font-weight:400">· calculando historial…</small>'}</div>
+            <div class="met-kpi-row">
+                ${kpi('met-kpi-card--hi', nf(customers.length), 'Clientes distintos')}
+                ${kpi('', nf(nuevos.length), `Clientes NUEVOS (${pctNuevos}%)`)}
+                ${kpi('met-kpi-card--green', nf(habituales.length), 'Clientes HABITUALES')}
+                ${kpi('met-kpi-card--purple', nf(repitieron.length), 'Repitieron (2 o más pedidos)')}
+                ${kpi('', `${pctReg}%`, `Pedidos con cliente registrado (${nf(registrados)} de ${nf(orders)})`)}
+                ${kpi('', `${pctShare}%`, 'De todos los pedidos del festival')}
+            </div>
+            ${sinRegistro.orders ? `<p class="met-empty-note" style="margin-top:10px">⚠️ ${nf(sinRegistro.orders)} pedido(s) con Trifásica sin teléfono (${nf(sinRegistro.units)} unidades): no se pueden clasificar como nuevos o habituales. En caja el sistema ya pide el registro; estos vienen de antes o de un pedido editado.</p>` : ''}
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">Análisis</div>
+            <div class="met-analytics-grid">
+                <div class="met-analytics-card"><div class="met-analytics-title">Trifásicas por día${mejorDia.val ? ` · mejor día ${escapeHtml(mejorDia.label)} (${mejorDia.val})` : ''}</div><div id="sqDayChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Hora pico</div><div id="sqHourChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Canal de venta</div><div id="sqCanalChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Tipo de pedido</div><div id="sqTipoChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">2×1 vs precio normal</div><div id="sqPromoChart"></div></div>
+            </div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">Últimos pedidos con Trifásica</div>
+            <div class="metrics-users-list">${feedRows || '<p class="met-empty-note">Aún no hay pedidos con la Trifásica.</p>'}</div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">Clientes que pidieron la Trifásica <small style="font-size:0.72rem;opacity:0.55;font-weight:400">· ${nf(customers.length)}</small></div>
+            <div class="metrics-users-list">${custRows || '<p class="met-empty-note">Aún no hay clientes registrados.</p>'}</div>
+        </article>`;
+    _renderBarChart('sqDayChart', dayData, '#ff7a1a');
+    _renderBarChart('sqHourChart', hourData, '#60a5fa');
+    _renderBarChart('sqCanalChart', canalData, '#a78bfa');
+    _renderBarChart('sqTipoChart', tipoData, '#4ade80');
+    _renderBarChart('sqPromoChart', promoData, '#fbbf24');
 }
 
 function renderMetricasProductos(period) {
@@ -19658,10 +19939,12 @@ document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
         const tab = btn.dataset.metricsTab;
         document.querySelectorAll('.metrics-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+        _sqDetach();
         document.querySelectorAll('.metrics-panel').forEach((p) => p.classList.toggle('active', p.id === `metricsPanel${tab.charAt(0).toUpperCase()}${tab.slice(1)}`));
         if (tab === 'pos')       { _traficoDetach(); renderMetricsPos(); }
         if (tab === 'app')       { renderMetricsUsers(); renderMetricasTrafico(); }
         if (tab === 'productos') { _traficoDetach(); renderMetricasProductos(); }
+        if (tab === 'sabe')      { _traficoDetach(); _sqAttach(); return; }
         _ensureMetricsOrdersLoaded();
         if (tab === 'app' || tab === 'pos') _ensureMetricsClientsLoaded();
     });
