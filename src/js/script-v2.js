@@ -10895,7 +10895,8 @@ function renderFestivalHome() {
             <div class="codigo-dia-info">
                 <strong class="codigo-dia-name"></strong>
                 <div class="codigo-dia-prices">${precios}</div>
-                <span class="codigo-dia-cupos">${es2x1 ? 'Llévate 2 por el precio de 1' : 'Tres proteínas, un solo antojo'}</span>
+                <span class="codigo-dia-cupos">Tres proteínas, un solo antojo</span>
+                ${es2x1 ? '<span class="codigo-dia-cupos">Llévate 2 por el precio de 1</span>' : ''}
             </div>
         </div>
         <div class="codigo-dia-actions">
