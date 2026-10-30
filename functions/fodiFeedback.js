@@ -64,7 +64,6 @@ async function feedbackClientes(db, args = {}) {
     return {
         respuestas: filas.length, solicitudes_enviadas: solicitudes, tasa_respuesta_pct: pct(filas.length, solicitudes),
         satisfaccion_pct: pct(positivas, filas.length), sugerencias_escritas: filas.filter((f) => f.q4).length,
-        puntos_regalados: filas.reduce((s, f) => s + f.puntos, 0),
         sabor_calidad: distribucion(filas, 'q1', ETIQ_Q1), como_se_enteraron: distribucion(filas, 'q2', ETIQ_Q2), app_instalada: distribucion(filas, 'q3', ETIQ_Q3),
         satisfaccion_por_canal: porCanal,
         nota: 'Satisfacción = Brutal 10/10 + Muy buena. Con pocas respuestas los porcentajes no son concluyentes: dilo.'

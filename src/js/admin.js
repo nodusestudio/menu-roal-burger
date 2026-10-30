@@ -2740,7 +2740,7 @@ let _feedbackPendingSig = '';
 const _feedbackSending = new Set();
 
 function buildFeedbackMessage(order) {
-    return `¡Hola! ¿Qué tal? Esperamos que hayas disfrutado mucho tu pedido. 🍔 Para ROAL Burger tu opinión vale oro. ¿Nos regalas 30 segundos en este link para contarnos tu experiencia y sumar puntos en tu perfil? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}`;
+    return `¡Hola! ¿Qué tal? 🍔 Esperamos que hayas disfrutado tu Burger Trifásica. Es un producto nuevo y tu opinión nos ayuda a mejorarla. ¿Nos regalas 30 segundos para contarnos qué tal te pareció? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}`;
 }
 
 function getPendingFeedbackOrders() {
@@ -10140,10 +10140,10 @@ function _fbBuildReport(rows, solicitudes) {
 
 function _fbCsv(rows) {
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const head = ['fecha', 'pedido', 'cliente', 'telefono', 'sabor_calidad', 'como_se_entero', 'app_instalada', 'sugerencia', 'puntos'];
+    const head = ['fecha', 'pedido', 'cliente', 'telefono', 'sabor_calidad', 'como_se_entero', 'app_instalada', 'sugerencia'];
     const body = rows.map((r) => [
         r.ts ? new Date(r.ts).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '', r.orderCode, r.name, r.phone,
-        FB_Q1[r.q1]?.[1] || r.q1, FB_Q2[r.q2]?.[1] || r.q2, FB_Q3[r.q3]?.[1] || r.q3, r.q4, r.points
+        FB_Q1[r.q1]?.[1] || r.q1, FB_Q2[r.q2]?.[1] || r.q2, FB_Q3[r.q3]?.[1] || r.q3, r.q4
     ].map(cell).join(','));
     return `﻿${[head.map(cell).join(','), ...body].join('\r\n')}`;
 }
@@ -10155,7 +10155,6 @@ function renderMetricasFeedback() {
     const total = rows.length;
     const solicitudes = new Set([..._fbReqActive, ..._fbReqArchived]).size;
     const positivas = rows.filter(_fbPositiva).length;
-    const puntos = rows.reduce((s, r) => s + r.points, 0);
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
     const fmt = (ts) => new Date(ts).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -10195,7 +10194,6 @@ function renderMetricasFeedback() {
                 <div class="met-user-name-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(FB_Q1[r.q1]?.[1] || r.q1)}</div>
                 <div class="met-user-meta-v2">${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · Se enteró por ${escapeHtml(FB_Q2[r.q2]?.[1] || r.q2)} · App: ${escapeHtml(FB_Q3[r.q3]?.[1] || r.q3)} · ${escapeHtml(fmt(r.ts))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}</div>
             </div>
-            <div class="met-user-stat"><div class="met-user-stat-val">+${nf(r.points)}</div><div class="met-user-stat-sub">puntos</div></div>
         </div>`).join('');
 
     body.innerHTML = `
@@ -10207,7 +10205,6 @@ function renderMetricasFeedback() {
                 ${kpi('met-kpi-card--purple', `${_fbPct(total, solicitudes)}%`, 'Tasa de respuesta')}
                 ${kpi('met-kpi-card--green', `${_fbPct(positivas, total)}%`, 'Satisfacción (Brutal + Muy buena)')}
                 ${kpi('', nf(sugs.length), 'Sugerencias escritas')}
-                ${kpi('', nf(puntos), 'Puntos regalados')}
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
                 <button type="button" class="section-action-btn" data-fb-action="copiar">📋 Copiar informe de mejoras</button>

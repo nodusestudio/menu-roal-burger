@@ -16,7 +16,7 @@ const app = document.getElementById('encuestaApp');
 
 const PREGUNTAS = [
     {
-        key: 'q1', titulo: '¿Qué tal estuvo el sabor y la calidad?',
+        key: 'q1', titulo: '¿Qué tal estuvo el sabor y la calidad de tu Burger Trifásica?',
         opciones: [['brutal', '🔥', 'Brutal 10/10'], ['muy_buena', '😋', 'Muy buena'], ['normalita', '😐', 'Normalita'], ['no_convencio', '😕', 'No me convenció']]
     },
     {
@@ -100,11 +100,11 @@ function pintarPaso() {
     pintar(`<div class="en-paso">
         ${progreso()}
         <p class="en-kicker">Pregunta ${TOTAL_PASOS} de ${TOTAL_PASOS} · opcional</p>
-        <h1 class="en-h">¿Qué otro producto te gustaría en promo?</h1>
-        <p class="en-sub">Sugerencias, ideas, lo que quieras contarnos.</p>
+        <h1 class="en-h">¿Qué le mejorarías a la Trifásica?</h1>
+        <p class="en-sub">Y si quieres, cuéntanos qué otro producto te gustaría ver en promo.</p>
         <textarea class="en-texto" id="enSugerencia" maxlength="500" placeholder="Escribe aquí (puedes dejarlo vacío)" aria-label="Sugerencias"></textarea>
         <div id="enError"></div>
-        <button type="button" class="en-btn" id="enEnviar">Enviar y sumar puntos 🎁</button>
+        <button type="button" class="en-btn" id="enEnviar">Enviar mi opinión 🍔</button>
         <button type="button" class="en-atras" id="enAtras">← Volver</button>
     </div>`);
     const area = document.getElementById('enSugerencia');
@@ -122,21 +122,20 @@ async function enviar(sugerencia) {
     err.innerHTML = '';
     try {
         const res = await callFunction('submitOrderFeedback', { orderId, ...respuestas });
-        celebrar(res?.points || 0);
+        celebrar();
     } catch (e) {
         if (e.status === 'ALREADY_EXISTS') return estadoMensaje('🙌', '¡Ya nos contaste!', 'Esta encuesta ya fue respondida. ¡Gracias!');
         btn.disabled = false;
-        btn.textContent = 'Enviar y sumar puntos 🎁';
+        btn.textContent = 'Enviar mi opinión 🍔';
         err.innerHTML = `<p class="en-error" role="alert">${esc(e.message || 'No pudimos enviar tus respuestas. Intenta de nuevo.')}</p>`;
     }
 }
 
-function celebrar(puntos) {
+function celebrar() {
     pintar(`<div class="en-centro en-celebra">
         <div class="en-emoji pop" aria-hidden="true">🎉</div>
         <h1 class="en-h">¡Gracias!</h1>
-        <p class="en-sub">Has sumado puntos para tu Credencial ROAL.</p>
-        ${puntos > 0 ? `<p class="en-puntos pop">+${puntos}</p><p class="en-sub">puntos en tu perfil</p>` : ''}
+        <p class="en-sub">Tu opinión nos ayuda a mejorar la Trifásica. ¡Nos vemos pronto!</p>
         <a class="en-btn" href="https://roalburger.com/">Volver al menú</a>
     </div>`);
     const colores = ['#FF6B00', '#F5EBDD', '#FF9A3C', '#34d399', '#ffffff'];

@@ -2031,7 +2031,9 @@ exports._adjustLoyaltyPointsTransaction = adjustLoyaltyPointsTransaction;
 // Los puntos se suman con Admin SDK (puntosDisponibles/puntosAcumuladosTotal no son escribibles
 // desde el navegador). Mismo interruptor LOYALTY_ACCRUAL_ENABLED NO aplica: es un premio puntual.
 // ─────────────────────────────────────────────────────────────
-const FEEDBACK_REWARD_POINTS = 50; // 50 puntos = $500 COP al canjear (100 puntos = $1.000)
+// Programa de puntos SUSPENDIDO (no visible ni activo): la encuesta NO regala puntos. Para reactivar el premio,
+// poner aquí la cantidad (y volver a mostrar el aviso en src/js/encuesta.js).
+const FEEDBACK_REWARD_POINTS = 0;
 const FEEDBACK_Q1 = ['brutal', 'muy_buena', 'normalita', 'no_convencio'];
 const FEEDBACK_Q2 = ['instagram', 'whatsapp', 'amigo', 'web'];
 const FEEDBACK_Q3 = ['si', 'no', 'no_sabia'];
@@ -2065,7 +2067,7 @@ exports.getOrderFeedbackStatus = onCall(
         if (!order || !closed || !order.feedbackRequestedAt) return { state: 'unavailable' };
         if (order.feedbackAnsweredAt) return { state: 'answered' };
         const firstName = String(order.customerName || '').trim().split(/\s+/)[0] || '';
-        return { state: 'ok', firstName, points: FEEDBACK_REWARD_POINTS };
+        return { state: 'ok', firstName };
     }
 );
 
