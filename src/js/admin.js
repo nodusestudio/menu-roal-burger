@@ -520,6 +520,25 @@ const PosCart = {
         return item;
     },
 
+    // Cortesía: el plato se entrega sin costo. Guarda el precio normal para mostrarlo tachado y poder deshacerlo.
+    toggleCortesia(itemKey) {
+        const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+        if (!item) return null;
+        if (item.cortesia) {
+            item.unitPrice = Number(item.cortesiaPrecio || 0);
+            item.originalUnitPrice = null;
+            item.cortesia = false;
+            item.cortesiaPrecio = null;
+        } else {
+            item.cortesiaPrecio = Number(item.unitPrice || 0);
+            item.originalUnitPrice = item.cortesiaPrecio;
+            item.unitPrice = 0;
+            item.cortesia = true;
+        }
+        item.subtotal = Number(item.quantity || 0) * item.unitPrice;
+        return item;
+    },
+
     setNote(itemKey, note) {
         const item = internalOrderItems.find((i) => i.itemKey === itemKey);
         if (item) item.note = String(note || '').trim();
@@ -575,6 +594,7 @@ const PosCart = {
             quantity: Number(item.quantity || 0),
             unitPrice: Number(item.unitPrice || 0),
             subtotal: Number(item.subtotal || 0),
+            ...(item.cortesia ? { cortesia: true, cortesiaPrecio: Number(item.cortesiaPrecio || 0), originalUnitPrice: Number(item.cortesiaPrecio || 0) } : {}),
             ...(item.aplicadoPor ? { aplicadoPor: item.aplicadoPor } : {}),
             ...(orderOptionsOf(item) ? { orderOptions: orderOptionsOf(item) } : {})
         }));
@@ -6915,7 +6935,8 @@ function renderPosOrderItems() {
                 </div>
             </div>`;
         }
-        const noteHTML = (item.promoLabel
+        const noteHTML = (item.cortesia ? '<span class="pos-item-promo-badge">🎁 CORTESÍA</span>' : '')
+            + (item.promoLabel
             ? `<span class="pos-item-promo-badge">🏷 ${escapeHtml(item.promoLabel)}</span>`
             : (item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''))
             + (item.optionLabelOrig ? `<span class="pos-item-note">${escapeHtml(item.optionLabelOrig)}</span>` : '');
@@ -6925,6 +6946,7 @@ function renderPosOrderItems() {
                 ${noteHTML}
             </div>
             <div class="pos-item-qty-price">
+                <button type="button" class="pos-item-cortesia-btn${item.cortesia ? ' on' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="${item.cortesia ? 'Quitar cortesía' : 'Marcar como cortesía'}">🎁</button>
                 <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
                 <div class="pos-item-qty">
                     <button type="button" class="pos-qty-minus" data-item-key="${escapeHtml(item.itemKey)}">−</button>
@@ -7002,6 +7024,21 @@ function renderPosOrderItems() {
                             _openPosNoteModal(item, key, itemsContainer);
                         }
                     }
+                }
+                return;
+            }
+
+            const cortesiaBtn = event.target.closest('.pos-item-cortesia-btn');
+            if (cortesiaBtn) {
+                const ci = internalOrderItems.find((i) => i.itemKey === cortesiaBtn.dataset.itemKey);
+                if (ci && (ci.codigoDiaCanjeId || ci.promo2x1 || ci.isComboEspecial)) {
+                    showNotice('Esta línea ya trae su promoción; no se puede marcar como cortesía.', 'warn');
+                    return;
+                }
+                if (ci && PosCart.toggleCortesia(ci.itemKey)) {
+                    renderPosOrderItems();
+                    renderPosTotals();
+                    renderPosBottomBar();
                 }
                 return;
             }
@@ -7663,7 +7700,7 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
     }
-    if (PosCart.getTotals().subtotal <= 0) {
+    if (PosCart.getTotals().subtotal <= 0 && !internalOrderItems.some((i) => i.cortesia)) {
         showNotice('El total del pedido no puede ser $0. Revisa los precios de los productos.', 'error');
         return;
     }
@@ -7908,7 +7945,9 @@ function _orderItemToPosCartItem(item) {
         // domicilio ↔ para llevar) se perdía el +$2.000 de empaque de los 2x1: quedaba
         // undefined y PosCart.getPromo2x1IncrementoFee() lo trataba como "sin incremento".
         promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true,
-        aplicadoPor: item.aplicadoPor || null
+        aplicadoPor: item.aplicadoPor || null,
+        cortesia: item.cortesia === true,
+        cortesiaPrecio: item.cortesia === true ? Number(item.cortesiaPrecio ?? item.originalUnitPrice ?? 0) : null
     };
 }
 
@@ -8022,7 +8061,7 @@ async function saveOrderItemsEdit() {
         return;
     }
     const subtotal = PosCart.getTotals().subtotal;
-    if (subtotal <= 0) {
+    if (subtotal <= 0 && !internalOrderItems.some((i) => i.cortesia)) {
         showNotice('El total del pedido no puede ser $0. Revisa los precios de los productos.', 'error');
         return;
     }
