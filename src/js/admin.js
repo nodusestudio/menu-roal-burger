@@ -3134,6 +3134,12 @@ async function fetchOrders() {
             const bTs = b.createdAt && typeof b.createdAt.toMillis === 'function' ? b.createdAt.toMillis() : 0;
             return bTs - aTs;
         });
+    // Mesero: solo los pedidos de la jornada actual (desde que se abrió la caja). Nada de información
+    // vieja; esos pedidos sí los puede ver, agregar, editar y modificar como siempre.
+    if (_meseroModeActive) {
+        const desde = _meseroCajaKnown ? cajaAperturaAt : 0;
+        ordersState = desde ? ordersState.filter((o) => _tsMs(o.createdAt) >= desde) : [];
+    }
 }
 
 async function fetchSalesDayState() {
@@ -22518,7 +22524,6 @@ async function _meseroEnterWorkspace(sessionId) {
     announceNewOrders(ordersState);
     renderOrders();
     _subscribeMeseroOrders();
-    _meseroSubscribeCaja();
 
     const actionsRow = document.querySelector('.sales-day-banner-actions');
     if (actionsRow && !document.getElementById('meseroCloseSessionBtn')) {
@@ -22543,6 +22548,9 @@ async function initMeseroMode(token) {
         firebaseStorage = services.storage;
         firebaseAuth = services.auth;
         firebaseFunctions = services.functions;
+
+        _meseroModeActive = true;
+        _meseroSubscribeCaja(); // la compuerta de caja cerrada se levanta/pone sola, desde el primer momento
 
         // Validar el token EN PARALELO con el catálogo — se ahorra una vuelta de red. El
         // mint del custom token + signInWithCustomToken YA NO van acá: el 2º factor (PIN) se
@@ -24683,6 +24691,7 @@ const CAJA_APERTURA_STORAGE_KEY = 'roalburger-caja-apertura';
 let cajaAperturaAt = Number(localStorage.getItem(CAJA_APERTURA_STORAGE_KEY) || 0);
 let _cajaAperturaBy = '';
 let _cajaFondoInicial = 0;
+let _meseroModeActive = false; // la página se abrió con el link de un mesero
 let _meseroCajaKnown = false; // modo mesero: ya llegó el estado real de la caja desde Firestore
 
 async function saveCajaAperturaToFirestore(ts, extra = {}) {
@@ -24715,13 +24724,36 @@ async function loadCajaAperturaFromFirestore() {
 // antes su caja se quedaba en 0 y el banner decía "Caja cerrada" aunque estuviera abierta. Esto solo LEE
 // configuracion/estado_caja (lectura pública) y repinta; nunca escribe.
 let _meseroCajaUnsub = null;
+
+// Compuerta de caja del mesero: con la caja cerrada NO puede ingresar (ni ver pedidos ni crear). Cubre toda
+// la pantalla —incluida la bienvenida con el PIN— y se levanta sola cuando el administrador abre la caja.
+function _meseroSetCajaGate(cerrada) {
+    let gate = document.getElementById('meseroCajaGate');
+    if (!cerrada) { if (gate) gate.remove(); return; }
+    if (gate) return;
+    gate = document.createElement('div');
+    gate.id = 'meseroCajaGate';
+    gate.setAttribute('role', 'alert');
+    gate.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;background:#0c0e18;color:#fff;';
+    gate.innerHTML = `
+        <div style="font-size:3.4rem;line-height:1;">🔒</div>
+        <h2 style="margin:0;font-size:1.6rem;">Caja cerrada</h2>
+        <p style="margin:0;max-width:320px;line-height:1.5;color:rgba(255,255,255,0.7);">Todavía no se ha abierto la caja. Pídele al administrador que la abra para poder ingresar y tomar pedidos.</p>
+        <p style="margin:6px 0 0;font-size:0.85rem;color:rgba(255,255,255,0.45);">Esta pantalla se actualiza sola cuando la caja esté abierta.</p>`;
+    document.body.appendChild(gate);
+}
+
 function _meseroSubscribeCaja() {
     if (!firebaseDb || _meseroCajaUnsub) return;
-    _meseroCajaUnsub = firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).onSnapshot((snap) => {
+    _meseroCajaUnsub = firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).onSnapshot(async (snap) => {
         const d = snap.exists ? snap.data() : null;
         const abierta = !!(d && d.aperturaAt && d.cerrada !== true);
-        cajaAperturaAt = abierta ? Number(d.aperturaAt) : 0;
+        const nuevaApertura = abierta ? Number(d.aperturaAt) : 0;
+        const cambio = nuevaApertura !== cajaAperturaAt || !_meseroCajaKnown;
+        cajaAperturaAt = nuevaApertura;
         _meseroCajaKnown = true;
+        _meseroSetCajaGate(!abierta);
+        if (cambio) { try { await fetchOrders(); } catch (_) { /* se reintenta con el listener de pedidos */ } }
         _updateCajaEstadoUI();
         renderOrders();
     }, (err) => console.warn('[Mesero] estado de caja:', err.code || err.message));
