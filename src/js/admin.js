@@ -12421,7 +12421,20 @@ function renderSalesDayBanner() {
         salesDayStatusLabel.textContent = cajaAbierta ? 'Jornada activa' : 'Caja cerrada';
     }
 
-    if (salesDayStatusMeta) {
+    // Modo mesero: se mantiene el saludo y el estado sale de la caja REAL (se sincroniza aparte en
+    // _meseroSubscribeCaja); mientras no llegue, no se afirma que esté cerrada.
+    if (document.body.classList.contains('mesero-mode') && _meseroSession) {
+        if (salesDayStatusLabel) salesDayStatusLabel.textContent = `${_getGreeting()}, ${_meseroSession.nombre}`;
+        if (salesDayStatusMeta) {
+            salesDayStatusMeta.style.color = '';
+            if (!_meseroCajaKnown) salesDayStatusMeta.textContent = 'Revisando el estado de la caja…';
+            else if (cajaAbierta) salesDayStatusMeta.textContent = `✅ Caja abierta${aperturaHoy ? ` desde ${formatDateTime(cajaAperturaAt)}` : ''} — ya puedes tomar pedidos.`;
+            else { salesDayStatusMeta.textContent = '🔒 Caja cerrada — pídele al cajero que la abra para tomar pedidos.'; salesDayStatusMeta.style.color = '#fbbf24'; }
+        }
+        // El resto del bloque pinta el texto de administración: no aplica al mesero.
+    }
+
+    if (salesDayStatusMeta && !document.body.classList.contains('mesero-mode')) {
         if (aperturaHoy) {
             // Caja abierta hoy → mostrar hora exacta de apertura física
             salesDayStatusMeta.textContent = `Apertura: ${formatDateTime(cajaAperturaAt)}`;
@@ -22505,6 +22518,7 @@ async function _meseroEnterWorkspace(sessionId) {
     announceNewOrders(ordersState);
     renderOrders();
     _subscribeMeseroOrders();
+    _meseroSubscribeCaja();
 
     const actionsRow = document.querySelector('.sales-day-banner-actions');
     if (actionsRow && !document.getElementById('meseroCloseSessionBtn')) {
@@ -24669,6 +24683,7 @@ const CAJA_APERTURA_STORAGE_KEY = 'roalburger-caja-apertura';
 let cajaAperturaAt = Number(localStorage.getItem(CAJA_APERTURA_STORAGE_KEY) || 0);
 let _cajaAperturaBy = '';
 let _cajaFondoInicial = 0;
+let _meseroCajaKnown = false; // modo mesero: ya llegó el estado real de la caja desde Firestore
 
 async function saveCajaAperturaToFirestore(ts, extra = {}) {
     try {
@@ -24694,6 +24709,22 @@ async function loadCajaAperturaFromFirestore() {
         renderCajaDiaria();
         _updateCajaEstadoUI();
     } catch (_) {}
+}
+
+// Modo mesero: el mesero no corre initCajaAperturaSync (arrastra pantallas de administración), así que
+// antes su caja se quedaba en 0 y el banner decía "Caja cerrada" aunque estuviera abierta. Esto solo LEE
+// configuracion/estado_caja (lectura pública) y repinta; nunca escribe.
+let _meseroCajaUnsub = null;
+function _meseroSubscribeCaja() {
+    if (!firebaseDb || _meseroCajaUnsub) return;
+    _meseroCajaUnsub = firebaseDb.collection(CONFIG_COLLECTION).doc(CAJA_ESTADO_DOC_ID).onSnapshot((snap) => {
+        const d = snap.exists ? snap.data() : null;
+        const abierta = !!(d && d.aperturaAt && d.cerrada !== true);
+        cajaAperturaAt = abierta ? Number(d.aperturaAt) : 0;
+        _meseroCajaKnown = true;
+        _updateCajaEstadoUI();
+        renderOrders();
+    }, (err) => console.warn('[Mesero] estado de caja:', err.code || err.message));
 }
 
 function initCajaAperturaSync() {
@@ -25587,7 +25618,9 @@ async function _showAbrirCajaModal() {
 
 // ── Estado visual de la caja (abierta / cerrada) ─────────────────────────────
 function _updateCajaEstadoUI() {
-    const abierta = cajaAperturaAt > 0;
+    const esMesero = document.body.classList.contains('mesero-mode');
+    // Mesero: hasta que llegue el estado real no se bloquea nada (si falla la red, no se le corta el trabajo).
+    const abierta = cajaAperturaAt > 0 || (esMesero && !_meseroCajaKnown);
     const newTickBtn = document.getElementById('openCreateInternalOrderBtn');
     const posCard    = document.getElementById('posOrdersCard');
 
@@ -25609,8 +25642,8 @@ function _updateCajaEstadoUI() {
             blocker.innerHTML = `
                 <div style="font-size:2.8rem;line-height:1;">🔒</div>
                 <p style="color:#fff;font-size:1.05rem;font-weight:700;margin:0;">Caja cerrada</p>
-                <p style="color:rgba(255,255,255,0.45);font-size:0.82rem;margin:0;text-align:center;max-width:260px;">Abre la caja para comenzar la jornada</p>
-                <button type="button" id="_posCajaBlockerAbrirBtn" style="margin-top:4px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 18px;font-size:0.85rem;">📂 Abrir Caja</button>`;
+                <p style="color:rgba(255,255,255,0.45);font-size:0.82rem;margin:0;text-align:center;max-width:260px;">${esMesero ? 'Pídele al cajero que abra la caja para tomar pedidos' : 'Abre la caja para comenzar la jornada'}</p>
+                ${esMesero ? '' : '<button type="button" id="_posCajaBlockerAbrirBtn" style="margin-top:4px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 18px;font-size:0.85rem;">📂 Abrir Caja</button>'}`;
             posCard.appendChild(blocker);
             blocker.querySelector('#_posCajaBlockerAbrirBtn')?.addEventListener('click', () => _showAbrirCajaModal());
         }
