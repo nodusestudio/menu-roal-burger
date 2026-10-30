@@ -2729,9 +2729,8 @@ function _checkDeliveryAlerts() {
     });
 }
 
-// ── Feedback pendiente: 2 h después de entregado el pedido, aviso con botón "Copiar y abrir WhatsApp".
-// Al pulsarlo se copia el mensaje con el link de la encuesta (/encuesta?orderId=…), se abre el chat
-// del cliente y el pedido queda marcado con feedbackRequestedAt (eso oculta la alerta y habilita la
+// ── Feedback pendiente: 2 h después de entregado el pedido, aviso con botón "Copiar mensaje" (el número del cliente también se copia con un toque).
+// Al pulsarlo se copia el mensaje con el link de la encuesta (/encuesta?orderId=…) y el pedido queda marcado con feedbackRequestedAt (eso oculta la alerta y habilita la
 // encuesta en el servidor, ver submitOrderFeedback en functions/index.js).
 const FEEDBACK_DELAY_MS = 2 * 60 * 60 * 1000;
 const FEEDBACK_MAX_AGE_MS = 24 * 60 * 60 * 1000; // más viejo que esto ya no se pide (evita alertas rezagadas)
@@ -2769,6 +2768,8 @@ function renderFeedbackPending() {
         host.className = 'feedback-pending-host';
         workspace.parentNode.insertBefore(host, workspace);
         host.addEventListener('click', (event) => {
+            const phoneBtn = event.target.closest('[data-feedback-phone]');
+            if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.feedbackPhone); return; }
             const btn = event.target.closest('[data-feedback-send]');
             if (btn) sendFeedbackRequest(btn.dataset.feedbackSend, btn);
         });
@@ -2780,9 +2781,9 @@ function renderFeedbackPending() {
             <span class="feedback-pending-ico" aria-hidden="true">⭐</span>
             <div class="feedback-pending-info">
                 <strong>Feedback pendiente</strong>
-                <span>${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)} · ${escapeHtml(phone)}</span>
+                <span>${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)} · <button type="button" class="feedback-pending-phone" data-feedback-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button></span>
             </div>
-            <button type="button" class="feedback-pending-btn" data-feedback-send="${escapeHtml(order.id)}">Copiar y abrir WhatsApp</button>
+            <button type="button" class="feedback-pending-btn" data-feedback-send="${escapeHtml(order.id)}">Copiar mensaje</button>
         </div>`;
     }).join('');
 }
@@ -2794,8 +2795,6 @@ async function sendFeedbackRequest(orderId, btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
 
     const message = buildFeedbackMessage(order);
-    // window.open va primero y sin await: si no, el navegador lo bloquea como ventana emergente.
-    window.open(buildWhatsAppUrl(order.customerPhoneDigits || order.customerPhone, message), '_blank', 'noopener');
     try {
         await copyTextToClipboard(message);
         await updateOrder(orderId, { feedbackRequestedAt: firestoreNow() });
