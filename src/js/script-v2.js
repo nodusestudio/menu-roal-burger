@@ -10853,8 +10853,63 @@ function renderCodigoDiaHome() {
     if (hoy) slot.appendChild(buildCodigoDiaCard(hoy, 'inicio'));
 }
 
+// ===== BURGER TRIFÁSICA (Festival Sabe a Quindío) =====
+// Tarjeta al inicio del menú hasta el 08/11/2026 23:59 (hora Colombia). Se pide como cualquier
+// producto del catálogo: NO usa código, cupón ni canal "usar en local".
+const FESTIVAL_TRIFASICA_HASTA = Date.parse('2026-11-08T23:59:59-05:00');
+
+function renderFestivalHome() {
+    const slot = document.getElementById('festivalHome');
+    if (!slot) return;
+    const raw = Date.now() <= FESTIVAL_TRIFASICA_HASTA
+        ? latestProducts.find((p) => normalizeCategoryKey(p.nombre || p.name || '').includes('trifasica')
+            && String(p.estado || (p.paused ? 'paused' : 'active')).toLowerCase() !== 'paused')
+        : null;
+    slot.innerHTML = '';
+    slot.hidden = !raw;
+    if (!raw) return;
+
+    const nombre = String(raw.nombre || raw.name || 'Burger Trifásica').trim();
+    const categoria = String(raw.categoria || raw.category || '').trim();
+    const card = document.createElement('article');
+    card.className = 'codigo-dia-card liquid-glass';
+    card.innerHTML = `
+        <div class="codigo-dia-top">
+            <span class="codigo-dia-kicker">🏆 Festival Sabe a Quindío</span>
+            <span class="codigo-dia-badge">Hasta el 8 de nov.</span>
+        </div>
+        <div class="codigo-dia-main">
+            <div class="codigo-dia-img-wrap"><img class="codigo-dia-img" alt="" loading="lazy"></div>
+            <div class="codigo-dia-info">
+                <strong class="codigo-dia-name"></strong>
+                <div class="codigo-dia-prices">
+                    <span class="codigo-dia-price">${formatCurrency(resolveProductDisplayPrice(raw))}</span>
+                </div>
+                <span class="codigo-dia-cupos">Res, cerdo y pollo en un solo pan</span>
+            </div>
+        </div>
+        <div class="codigo-dia-actions">
+            <button type="button" class="codigo-dia-ig festival-info">Información</button>
+            <button type="button" class="codigo-dia-normal festival-pedir">Pedir ahora</button>
+        </div>`;
+    const img = card.querySelector('.codigo-dia-img');
+    img.src = normalizeImageAssetPath(resolveProductImage(raw) || _IMG_FINAL_FALLBACK);
+    img.alt = nombre;
+    img.addEventListener('error', () => { img.src = _IMG_FINAL_FALLBACK; }, { once: true });
+    card.querySelector('.codigo-dia-name').textContent = nombre;
+    card.querySelector('.festival-pedir').addEventListener('click', () => {
+        _hapticTap();
+        startProductOrderFlow(nombre, categoria, 'festival-trifasica');
+    });
+    card.querySelector('.festival-info').addEventListener('click', () => {
+        if (typeof window.abrirFestivalInfo === 'function') window.abrirFestivalInfo();
+    });
+    slot.appendChild(card);
+}
+
 function updatePromoModalContent() {
     renderCodigoDiaHome();
+    renderFestivalHome();
     const body = document.getElementById('promoCarouselBody');
     const screen = document.getElementById('promoCarouselScreen');
     if (body && screen && !screen.hidden && !body.contains(document.activeElement)) renderPromoCarousels();
@@ -12504,6 +12559,8 @@ function _updateCatalogSearchUI(total) {
     // Mientras se busca, la tarjeta del código del día se esconde (vuelve al limpiar la búsqueda).
     const codigoSlot = document.getElementById('codigoDiaHome');
     if (codigoSlot) codigoSlot.classList.toggle('is-searching', active);
+    const festivalSlot = document.getElementById('festivalHome');
+    if (festivalSlot) festivalSlot.classList.toggle('is-searching', active);
     if (!statusEl) return;
     if (!active) { statusEl.hidden = true; statusEl.innerHTML = ''; return; }
     const q = _catalogSearchQuery.trim();

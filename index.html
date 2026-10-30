@@ -218,7 +218,9 @@
                 var cerrar = function () { el.hidden = true; };
                 document.getElementById('festivalPromoBtn').addEventListener('click', cerrar);
                 document.getElementById('festivalInfoContinuar').addEventListener('click', cerrar);
-                document.getElementById('festivalInfoBtn').addEventListener('click', function () { info.hidden = false; info.scrollTop = 0; document.getElementById('festivalInfoBack').focus(); });
+                var abrirInfo = function () { info.hidden = false; info.scrollTop = 0; document.getElementById('festivalInfoBack').focus(); };
+                document.getElementById('festivalInfoBtn').addEventListener('click', abrirInfo);
+                window.abrirFestivalInfo = function () { el.hidden = false; abrirInfo(); };
                 document.getElementById('festivalInfoBack').addEventListener('click', function () { info.hidden = true; document.getElementById('festivalInfoBtn').focus(); });
             } catch (e) {}
         })();
@@ -430,6 +432,9 @@
              lo pinta renderCodigoDiaHome() desde codigo_dia_publico/hoy. Fuera de
              menuCarouselBody por la misma razón que el banner de puntos de abajo. -->
         <section class="codigo-dia-home" id="codigoDiaHome" hidden aria-label="Recomendado del día"></section>
+        <!-- Burger Trifásica (Festival Sabe a Quindío), hasta el 08/11/2026 23:59 hora Colombia:
+             la pinta renderFestivalHome() en script-v2.js. Se pide como cualquier producto: sin código ni cupón. -->
+        <section class="codigo-dia-home festival-home" id="festivalHome" hidden aria-label="Burger Trifásica"></section>
         <section class="loyalty-points-banner liquid-glass" id="loyaltyPointsBanner" hidden aria-label="Acumula puntos de lealtad">
             <span class="loyalty-points-banner-icon" aria-hidden="true">⭐</span>
             <div class="loyalty-points-banner-copy">
