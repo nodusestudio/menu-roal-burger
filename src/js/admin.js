@@ -7618,13 +7618,13 @@ async function _sqPedirRegistroCliente(nombreInicial = '') {
             <div style="background:#1e1e2e;border:1.5px solid rgba(255,140,40,0.55);border-radius:18px;padding:1.6rem 1.5rem;max-width:380px;width:100%;box-shadow:0 8px 40px rgba(0,0,0,0.55);">
                 <div style="font-size:1.8rem;text-align:center;">🏆</div>
                 <h3 style="margin:0.3rem 0 0.2rem;color:#fff;font-size:1.1rem;text-align:center;">Cliente de la Burger Trifásica</h3>
-                <p style="margin:0 0 1rem;color:rgba(255,255,255,0.6);font-size:0.85rem;text-align:center;">Sabe a Quindío · registra al cliente para medir cuántos son nuevos.</p>
-                <input type="tel" id="_sqTel" inputmode="numeric" placeholder="Celular (10 dígitos)" autocomplete="off" style="${inputCss}">
-                <input type="text" id="_sqNom" placeholder="Nombre" autocomplete="off" value="${escapeHtml(nombreInicial && !/^Mesa \d+$/.test(nombreInicial) ? nombreInicial : '')}" style="${inputCss}">
+                <p style="margin:0 0 1rem;color:rgba(255,255,255,0.6);font-size:0.85rem;text-align:center;">Sabe a Quindío · registrar al cliente es opcional (sirve para medir cuántos son nuevos).</p>
+                <input type="tel" id="_sqTel" inputmode="numeric" placeholder="Celular (opcional)" autocomplete="off" style="${inputCss}">
+                <input type="text" id="_sqNom" placeholder="Nombre (opcional)" autocomplete="off" value="${escapeHtml(nombreInicial && !/^Mesa \d+$/.test(nombreInicial) ? nombreInicial : '')}" style="${inputCss}">
                 <p id="_sqTipo" style="margin:-0.2rem 0 0.9rem;min-height:1.2em;font-size:0.82rem;color:#fbbf24;text-align:center;"></p>
                 <div style="display:flex;gap:0.75rem;">
                     <button type="button" id="_sqCancel" style="flex:1;padding:0.75rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">Cancelar</button>
-                    <button type="button" id="_sqOk" style="flex:1.4;padding:0.75rem;border-radius:10px;border:none;background:linear-gradient(135deg,#ff7a1a,#e8420a);color:#fff;font-size:0.95rem;font-weight:700;cursor:pointer;">Guardar y seguir</button>
+                    <button type="button" id="_sqOk" style="flex:1.4;padding:0.75rem;border-radius:10px;border:none;background:linear-gradient(135deg,#ff7a1a,#e8420a);color:#fff;font-size:0.95rem;font-weight:700;cursor:pointer;">Seguir</button>
                 </div>
             </div>`;
         document.body.appendChild(overlay);
@@ -7651,8 +7651,7 @@ async function _sqPedirRegistroCliente(nombreInicial = '') {
         overlay.querySelector('#_sqOk').addEventListener('click', () => {
             const d = soloDiez(tel.value);
             const name = nom.value.trim().replace(/\s+/g, ' ');
-            if (d.length !== 10) { tipo.style.color = '#fca5a5'; tipo.textContent = 'El celular debe tener 10 dígitos.'; tel.focus(); return; }
-            if (name.length < 2) { tipo.style.color = '#fca5a5'; tipo.textContent = 'Escribe el nombre del cliente.'; nom.focus(); return; }
+            if (d && d.length !== 10) { tipo.style.color = '#fca5a5'; tipo.textContent = 'Si pones celular, debe tener 10 dígitos (o déjalo vacío).'; tel.focus(); return; }
             finish({ name, phone: d });
         });
         setTimeout(() => tel.focus(), 50);
@@ -7684,11 +7683,8 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         const telYa = normalizePhoneDigits(config.customerPhone || _editingOrderData?.customerPhone || '');
         if (telYa.length < 7) {
             const reg = await _sqPedirRegistroCliente(config.customerName || _editingOrderData?.customerName || '');
-            if (!reg) {
-                showNotice('Para vender la Trifásica hay que registrar al cliente (celular y nombre).', 'warn');
-                return;
-            }
-            config = { ...config, customerName: reg.name, customerPhone: reg.phone };
+            if (!reg) return; // Cancelar = no guardar el pedido todavía
+            if (reg.name || reg.phone) config = { ...config, customerName: reg.name || config.customerName, customerPhone: reg.phone || config.customerPhone };
         }
     }
 
@@ -20253,6 +20249,7 @@ document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
 // que resultó ser código muerto: su botón disparador nunca existió en el HTML, así
 // que ese formulario quedaba permanentemente oculto e inalcanzable.
 async function _ptsCreateAndSelectClient({ name, phone, addr }) {
+    name = name || 'Cliente';
     const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
     const clientId = buildAdminClientDocumentId
         ? buildAdminClientDocumentId({ customerName: name, customerPhone: phone, address: addr })
@@ -20294,8 +20291,14 @@ async function _ptsCreateAndSelectClient({ name, phone, addr }) {
         const phone = String(phoneInput?.value || '').trim();
         const addr  = String(addrInput?.value || '').trim();
 
-        if (!name || !phone) {
-            showNotice('Nombre y teléfono son requeridos.', 'error');
+        if (!phone) {
+            // Sin teléfono no hay ficha de cliente que guardar: queda como cliente rápido (nombre opcional)
+            if (nameInput) nameInput.value = '';
+            if (addrInput) addrInput.value = '';
+            document.querySelector('[data-pts-tab="quick"]')?.click();
+            const qn = document.getElementById('ptsQuickName');
+            if (qn) qn.value = name;
+            if (!name) showNotice('Sin datos del cliente: el pedido sigue sin nombre.', 'ok');
             return;
         }
 
