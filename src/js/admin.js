@@ -7550,8 +7550,9 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         }
     }
 
-    // Burger Trifásica (Sabe a Quindío): todo ticket que la lleve exige cliente registrado.
-    if (internalOrderItems.some((it) => normalizeCategoryKey(it.productName).includes('trifasica'))) {
+    // Burger Trifásica (Sabe a Quindío): los tickets de domicilio y para llevar que la lleven exigen
+    // cliente registrado. Los de mesa NO: se miden como categoría "mesa" (con su hora).
+    if (orderType !== 'mesa' && internalOrderItems.some((it) => normalizeCategoryKey(it.productName).includes('trifasica'))) {
         const telYa = normalizePhoneDigits(config.customerPhone || _editingOrderData?.customerPhone || '');
         if (telYa.length < 7) {
             const reg = await _sqPedirRegistroCliente(config.customerName || _editingOrderData?.customerName || '');
@@ -7673,6 +7674,12 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
 
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
         _editingOrderData = null;
+
+        // Domicilio: el mensaje de confirmación para el cliente queda en el portapapeles de una vez
+        // (si se pierde, se vuelve a copiar desde el menú ☰ del ticket → ✅ Confirmación).
+        if (orderType === 'domicilio') {
+            try { await copyTextToClipboard(buildOrderConfirmationMessage(normalizeOrder(orderDoc))); } catch (_) { /* sin portapapeles */ }
+        }
 
         // Solo al crear (no en cada edición, igual que el checkout público) para no
         // inflar el contador de visitas cada vez que se corrige un pedido ya guardado.
@@ -9753,21 +9760,26 @@ function _sqCompute() {
 
     const customers = new Map();
     const sinRegistro = { orders: 0, units: 0 };
+    const mesaSinCliente = { orders: 0, units: 0 }; // mesa: no exige cliente
     for (const r of rows) {
-        if (!r.key) { sinRegistro.orders += 1; sinRegistro.units += r.units; continue; }
+        if (!r.key) {
+            if (r.o.orderType === 'mesa') { mesaSinCliente.orders += 1; mesaSinCliente.units += r.units; }
+            else { sinRegistro.orders += 1; sinRegistro.units += r.units; }
+            continue;
+        }
         if (!customers.has(r.key)) customers.set(r.key, { key: r.key, name: '', phone: '', orders: 0, units: 0, revenue: 0, firstTs: r.ts, lastTs: r.ts, habitual: prev.has(r.key) });
         const c = customers.get(r.key);
         c.orders += 1; c.units += r.units; c.revenue += r.revenue; c.lastTs = r.ts;
         if (!isPlaceholderCustomerName(r.o.customerName) && !/^Mesa \d+$/.test(r.o.customerName)) c.name = r.o.customerName;
         c.phone = r.o.customerPhone || r.key;
     }
-    return { festival, rows, customers: [...customers.values()], sinRegistro, historyReady: _metricsOrdersLoadedAt > 0 };
+    return { festival, rows, customers: [...customers.values()], sinRegistro, mesaSinCliente, historyReady: _metricsOrdersLoadedAt > 0 };
 }
 
 function renderMetricasSabe() {
     const body = document.getElementById('sqBody');
     if (!body) return;
-    const { festival, rows, customers, sinRegistro, historyReady } = _sqCompute();
+    const { festival, rows, customers, sinRegistro, mesaSinCliente, historyReady } = _sqCompute();
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
 
@@ -9779,8 +9791,10 @@ function renderMetricasSabe() {
     const nuevos = customers.filter((c) => !c.habitual);
     const habituales = customers.filter((c) => c.habitual);
     const repitieron = customers.filter((c) => c.orders >= 2);
-    const registrados = orders - sinRegistro.orders;
-    const pctReg = orders ? Math.round((registrados / orders) * 100) : 100;
+    // Domicilio y para llevar deben tener cliente; mesa no cuenta para este porcentaje.
+    const exigenCliente = orders - mesaSinCliente.orders;
+    const registrados = exigenCliente - sinRegistro.orders;
+    const pctReg = exigenCliente ? Math.round((registrados / exigenCliente) * 100) : 100;
     const pctNuevos = customers.length ? Math.round((nuevos.length / customers.length) * 100) : 0;
     const pctShare = festival.length ? Math.round((orders / festival.length) * 100) : 0;
 
@@ -9801,6 +9815,20 @@ function renderMetricasSabe() {
     rows.forEach((r) => { const h = _sqHour(r.ts); hourMap.set(h, (hourMap.get(h) || 0) + r.units); });
     const hourData = [...hourMap.entries()].sort((a, b) => a[0] - b[0]).map(([h, v]) => ({ label: `${h}:00`, val: v }));
 
+    const horasDe = (tipo) => {
+        const m = new Map();
+        rows.filter((r) => r.o.orderType === tipo).forEach((r) => { const h = _sqHour(r.ts); m.set(h, (m.get(h) || 0) + r.units); });
+        return [...m.entries()].sort((a, b) => a[0] - b[0]).map(([h, v]) => ({ label: `${h}:00`, val: v }));
+    };
+    const DIAS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    const semMap = new Array(7).fill(0);
+    rows.forEach((r) => {
+        const w = new Date(r.ts).toLocaleDateString('en-US', { timeZone: 'America/Bogota', weekday: 'short' });
+        const i = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(w);
+        if (i >= 0) semMap[i] += r.units;
+    });
+    const semData = DIAS.map((label, i) => ({ label, val: semMap[i] }));
+    const mejorSem = semData.reduce((m, d) => (d.val > m.val ? d : m), { label: '—', val: 0 });
     const canalDe = (o) => {
         if (o.isAdminOrder || o.source === 'admin_pos') return 'Caja (POS)';
         if (/agent|whatsapp/i.test(o.source)) return 'WhatsApp / agente';
@@ -9854,16 +9882,21 @@ function renderMetricasSabe() {
                 ${kpi('', nf(nuevos.length), `Clientes NUEVOS (${pctNuevos}%)`)}
                 ${kpi('met-kpi-card--green', nf(habituales.length), 'Clientes HABITUALES')}
                 ${kpi('met-kpi-card--purple', nf(repitieron.length), 'Repitieron (2 o más pedidos)')}
-                ${kpi('', `${pctReg}%`, `Pedidos con cliente registrado (${nf(registrados)} de ${nf(orders)})`)}
+                ${kpi('', `${pctReg}%`, `Domicilios y para llevar con cliente registrado (${nf(registrados)} de ${nf(exigenCliente)})`)}
                 ${kpi('', `${pctShare}%`, 'De todos los pedidos del festival')}
+                ${kpi('', nf(rows.filter((r) => r.o.orderType === 'mesa').length), 'Pedidos en mesa (sin cliente)')}
             </div>
-            ${sinRegistro.orders ? `<p class="met-empty-note" style="margin-top:10px">⚠️ ${nf(sinRegistro.orders)} pedido(s) con Trifásica sin teléfono (${nf(sinRegistro.units)} unidades): no se pueden clasificar como nuevos o habituales. En caja el sistema ya pide el registro; estos vienen de antes o de un pedido editado.</p>` : ''}
+            ${sinRegistro.orders ? `<p class="met-empty-note" style="margin-top:10px">⚠️ ${nf(sinRegistro.orders)} pedido(s) con Trifásica de domicilio o para llevar sin teléfono (${nf(sinRegistro.units)} unidades): no se pueden clasificar como nuevos o habituales. En caja el sistema ya pide el registro; estos vienen de antes o de un pedido editado.</p>` : ''}
         </article>
         <article class="admin-card">
             <div class="met-section-title">Análisis</div>
             <div class="met-analytics-grid">
                 <div class="met-analytics-card"><div class="met-analytics-title">Trifásicas por día${mejorDia.val ? ` · mejor día ${escapeHtml(mejorDia.label)} (${mejorDia.val})` : ''}</div><div id="sqDayChart"></div></div>
-                <div class="met-analytics-card"><div class="met-analytics-title">Hora pico</div><div id="sqHourChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Hora pico (todos)</div><div id="sqHourChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Hora pico · MESA</div><div id="sqHourMesaChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Hora pico · DOMICILIO</div><div id="sqHourDomChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Hora pico · PARA LLEVAR</div><div id="sqHourLlevarChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Día de la semana que más se vende${mejorSem.val ? ` · ${escapeHtml(mejorSem.label)} (${mejorSem.val})` : ''}</div><div id="sqSemChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">Canal de venta</div><div id="sqCanalChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">Tipo de pedido</div><div id="sqTipoChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">2×1 vs precio normal</div><div id="sqPromoChart"></div></div>
@@ -9879,6 +9912,10 @@ function renderMetricasSabe() {
         </article>`;
     _renderBarChart('sqDayChart', dayData, '#ff7a1a');
     _renderBarChart('sqHourChart', hourData, '#60a5fa');
+    _renderBarChart('sqHourMesaChart', horasDe('mesa'), '#f472b6');
+    _renderBarChart('sqHourDomChart', horasDe('domicilio'), '#34d399');
+    _renderBarChart('sqHourLlevarChart', horasDe('retiro'), '#fbbf24');
+    _renderBarChart('sqSemChart', semData, '#ff7a1a');
     _renderBarChart('sqCanalChart', canalData, '#a78bfa');
     _renderBarChart('sqTipoChart', tipoData, '#4ade80');
     _renderBarChart('sqPromoChart', promoData, '#fbbf24');
@@ -11068,6 +11105,9 @@ function buildThermalTicketMarkup(order, options = {}) {
         { key: 'confirmacion', icon: '✅', label: 'Confirmación', text: buildOrderConfirmationMessage(order) },
         { key: 'preparacion', icon: '👨‍🍳', label: 'En preparación', text: buildOrderWhatsAppMessage(order, { includeItems: false }) },
         { key: 'entregado', icon: '🛵', label: 'Entregado', text: buildDeliveredOrderMessage(order) },
+        // Mensaje para pedir el domiciliario: se puede volver a copiar cuantas veces haga falta
+        // (no va por WhatsApp del cliente: es para el chat del domiciliario).
+        ...(order.orderType === 'domicilio' ? [{ key: 'domiciliario', icon: '📞', label: 'Mensaje al domiciliario', text: buildCourierRequestMessage(order), noWa: true }] : []),
     ];
     const _locked = isOrderLockedForEdit(order);
     const _paidHasType = !!order.orderType && !!order.paymentMethod && order.paymentMethod !== 'pendiente';
@@ -11111,7 +11151,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                             <span class="ticket-msg-menu-label">${m.icon} ${escapeHtml(m.label)}</span>
                             <span class="ticket-msg-menu-actions">
                                 <button type="button" class="ticket-msg-menu-btn" data-wa-copy="${escapeHtml(m.text)}" title="Copiar ${escapeHtml(m.label)}">📋</button>
-                                ${_waDigits ? `<a class="ticket-msg-menu-btn ticket-msg-menu-btn-wa" href="${buildWhatsAppUrl(_waDigits, m.text)}" target="_blank" rel="noopener noreferrer" title="Enviar ${escapeHtml(m.label)} por WhatsApp">💬</a>` : ''}
+                                ${_waDigits && !m.noWa ? `<a class="ticket-msg-menu-btn ticket-msg-menu-btn-wa" href="${buildWhatsAppUrl(_waDigits, m.text)}" target="_blank" rel="noopener noreferrer" title="Enviar ${escapeHtml(m.label)} por WhatsApp">💬</a>` : ''}
                             </span>
                         </div>`).join('')}
                         <div class="ticket-msg-menu-head">Edición</div>
@@ -22377,6 +22417,11 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             _patchLocalOrder();
             if (!wasAlreadyPaid) {
                 await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState });
+                // Domicilio cobrado: deja copiado el mensaje de confirmación (con el pago ya definido),
+                // después de la impresión para que no lo pise el mensaje del recibo.
+                if (order.orderType === 'domicilio') {
+                    try { await copyTextToClipboard(buildOrderConfirmationMessage(normalizeOrder({ ...order, ...paymentFieldsForLocalState }))); } catch (_) { /* sin portapapeles */ }
+                }
             }
             await reloadDataAndRender();
             closeMobileTicketPanel({ clearSelection: true });
