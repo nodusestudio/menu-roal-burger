@@ -11625,11 +11625,15 @@ function buildThermalTicketMarkup(order, options = {}) {
     // El texto largo del 2x1 ("PROMOCIÓN 2×1 — <producto> (incluye 2) | … | +$ 2.000 si es para llevar o
     // domicilio") es para el cliente en el menú; en el ticket basta "Promoción 2×1" — el empaque ya sale
     // como su propia línea ("Empaque 2×1").
-    const _limpiarOpcionTicket = (label) => String(label || '')
-        .split(' | ')
-        .filter((p) => !/si es para (llevar|domicilio)/i.test(p))
-        .map((p) => p.replace(/^(\W*PROMOCI[OÓ]N\s*2\s*[x×]\s*1)\s*[—–-]\s*.*?(\(incluye\s*\d+\))?\s*$/i, (m, a, b) => `${a}${b ? ' ' + b : ''}`))
-        .join(' | ');
+    const _limpiarOpcionTicket = (label) => {
+        const partes = String(label || '').split(' | ').filter((p) => !/si es para (llevar|domicilio)/i.test(p));
+        const esPromo2x1 = partes.some((p) => /PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p));
+        return partes
+            // En un 2x1 "Solo la burger" confunde (parece que lleva 1): se explica qué incluye la promo.
+            .filter((p) => !(esPromo2x1 && /^\s*solo la burger\s*$/i.test(p)))
+            .map((p) => (/PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p) ? '🏷 PROMOCIÓN 2×1: incluye 2 burgers por el precio de 1' : p))
+            .join(' | ');
+    };
 
     const rows = _groupOrderItemsForDisplay(order.items).map((item) => {
         const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
