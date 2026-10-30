@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261030-1825">
+    <link rel="stylesheet" href="style.css?v=20261030-1826">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -7264,6 +7264,13 @@
         }
         .pos-item-comment-btn:hover { color: rgba(200,220,255,0.85); }
         .pos-item-comment-btn.has-note { color: #ff9a50; }
+        .pos-item-cortesia-btn {
+            border: none; background: transparent; width: 24px; height: 22px; padding: 0;
+            cursor: pointer; font-size: 0.9rem; line-height: 1; border-radius: 4px; flex-shrink: 0;
+            opacity: 0.4; filter: grayscale(1); transition: opacity 0.2s ease, filter 0.2s ease;
+        }
+        .pos-item-cortesia-btn:hover { opacity: 0.85; filter: none; }
+        .pos-item-cortesia-btn.on { opacity: 1; filter: none; background: rgba(52,211,153,0.18); }
         .pos-item-comment-area { margin-top: 5px; }
         .pos-item-comment-input {
             width: 100%; padding: 4px 6px;
@@ -16759,17 +16766,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261030-1825"></script>
+    <script defer src="firebase-config.js?v=20261030-1826"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261030-1825"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261030-1826"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261030-1825"></script>
-    <script defer src="admin.js?v=20261030-1825"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261030-1826"></script>
+    <script defer src="admin.js?v=20261030-1826"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
