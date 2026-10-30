@@ -9309,6 +9309,24 @@ html.low-fx .support-feedback--error:not(:empty) {
     .codigo-dia-card .codigo-dia-img-wrap { width: 76px; height: 76px; }
 }
 
+/* POS: botón rápido fijo de la Burger Trifásica 2×1 */
+.pos-trifasica-quick { margin: 0 0 10px; }
+.pos-trifasica-quick[hidden] { display: none !important; }
+.pos-trifasica-btn {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    width: 100%; padding: 14px 18px; border: 0; border-radius: 14px; cursor: pointer;
+    background: linear-gradient(135deg, #ff7a1a, #e8420a); color: #fff; text-align: left;
+    box-shadow: 0 6px 18px rgba(255, 106, 0, 0.45);
+    animation: posTrifasicaPulso 1.3s ease-in-out infinite;
+}
+.pos-trifasica-btn .pos-trifasica-txt { display: grid; gap: 2px; }
+.pos-trifasica-btn strong { font-size: 1.15rem; letter-spacing: 0.03em; text-transform: uppercase; }
+.pos-trifasica-btn small { font-size: 0.85rem; opacity: 0.95; }
+.pos-trifasica-btn .pos-trifasica-mano { font-size: 1.6rem; animation: posTrifasicaMano 0.7s ease-in-out infinite; }
+@keyframes posTrifasicaPulso { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.18); box-shadow: 0 0 0 5px rgba(255, 106, 0, 0.25), 0 8px 24px rgba(255, 106, 0, 0.7); } }
+@keyframes posTrifasicaMano { 0%, 100% { transform: translateX(-4px); } 50% { transform: translateX(4px); } }
+@media (prefers-reduced-motion: reduce) { .pos-trifasica-btn, .pos-trifasica-btn .pos-trifasica-mano { animation: none; } }
+
 /* ── Costos y recetas (admin) ── */
 .cs-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
 .cs-bar label{display:flex;gap:6px;align-items:center;font-size:.85rem;color:var(--admin-muted)}

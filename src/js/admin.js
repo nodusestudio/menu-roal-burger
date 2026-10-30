@@ -3615,9 +3615,41 @@ function _renderPosProductCards(grid, products) {
     });
 }
 
+// Botón rápido fijo de la Burger Trifásica en 2×1 (Festival Sabe a Quindío), siempre visible arriba
+// del POS hasta el 08/11/2026 23:59 (hora Colombia). Suma el 2×1 directo, sin cupón ni código.
+const POS_TRIFASICA_HASTA = Date.parse('2026-11-08T23:59:59-05:00');
+
+function renderPosTrifasicaQuick() {
+    const slot = document.getElementById('posTrifasicaQuick');
+    if (!slot) return;
+    const prod = Date.now() <= POS_TRIFASICA_HASTA
+        ? productsState.find((p) => _normalizeSearchText(p.nombre).includes('trifasica') && p.estado !== 'paused')
+        : null;
+    if (!prod) { slot.hidden = true; slot.innerHTML = ''; return; }
+    const promoColeccion = promos2x1State.find((p) => p.activo !== false && p.producto_id === prod.id);
+    const es2x1 = prod.promo2x1?.activo === true || Boolean(promoColeccion);
+    const price = Number(prod.precio || 0);
+    slot.hidden = false;
+    slot.innerHTML = `<button type="button" class="pos-trifasica-btn">
+        <span class="pos-trifasica-mano" aria-hidden="true">👉</span>
+        <span class="pos-trifasica-txt"><strong>${escapeHtml(prod.nombre)}${es2x1 ? ' · 2×1' : ''}</strong>
+        <small>${es2x1 ? `Llevan 2 por ${escapeHtml(formatMoney(price))} (completo ${escapeHtml(formatMoney(price * 2))})` : escapeHtml(formatMoney(price))}</small></span>
+    </button>`;
+    slot.querySelector('button').addEventListener('click', () => {
+        if (!es2x1) { handlePosProductAdd(String(prod.id), String(prod.nombre), price); return; }
+        addProductToPosOrder(prod.id, prod.nombre, price, '2×1', null, {
+            promoLabel: `PROMOCIÓN 2×1 — ${prod.nombre} (incluye 2)`,
+            promo2x1: true,
+            promo2x1Incremento: promoColeccion?.incremento === true || prod.promo2x1?.incremento === true,
+            initialQuantity: 1
+        });
+    });
+}
+
 function renderPosProductsPanel() {
     const grid = document.getElementById('posProductGridV2');
     if (!grid) return;
+    renderPosTrifasicaQuick();
 
     grid.style.display = ''; // reset override aplicado por renderPosPromocionesPanel
     grid.classList.remove('is-grouped'); // reset override aplicado por renderPosGroupedProductsPanel
