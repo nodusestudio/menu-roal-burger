@@ -10044,6 +10044,225 @@ function renderMetricasSabe() {
     _renderBarChart('sqPromoChart', promoData, '#fbbf24');
 }
 
+// ── Métricas: Feedback (encuesta recompensada de /encuesta) — en vivo ─────────────
+// Respuestas: encuestas_pedido (las escribe submitOrderFeedback). Solicitudes enviadas: pedidos con
+// feedbackRequestedAt (activos + archivados). Tasa de respuesta = respuestas / solicitudes.
+const FB_INICIO_MS = Date.parse('2026-10-01T00:00:00-05:00');
+const FB_Q1 = { brutal: ['🔥', 'Brutal 10/10'], muy_buena: ['😋', 'Muy buena'], normalita: ['😐', 'Normalita'], no_convencio: ['😕', 'No me convenció'] };
+const FB_Q2 = { instagram: ['📸', 'Instagram'], whatsapp: ['💬', 'WhatsApp'], amigo: ['🤝', 'Amigo'], web: ['🌐', 'Web'] };
+const FB_Q3 = { si: ['✅', 'Sí instaló la app'], no: ['❌', 'No la instaló'], no_sabia: ['🤔', 'No sabía'] };
+let _fbUnsubs = [];
+let _fbResponses = [];
+let _fbReqActive = [];
+let _fbReqArchived = [];
+let _fbFilter = 'todos';
+
+function _fbDetach() {
+    _fbUnsubs.forEach((u) => { try { u(); } catch (_) {} });
+    _fbUnsubs = [];
+}
+
+function _fbAttach() {
+    _fbDetach();
+    if (!firebaseDb) return;
+    const start = firebase.firestore.Timestamp.fromMillis(FB_INICIO_MS);
+    const err = (name) => (e) => console.error(`[Feedback] ${name}:`, (e && (e.code || e.message)) || e);
+    _fbUnsubs = [
+        firebaseDb.collection('encuestas_pedido').orderBy('createdAt', 'desc').limit(2000).onSnapshot((snap) => {
+            _fbResponses = snap.docs.map((d) => {
+                const x = d.data();
+                return {
+                    id: d.id, orderCode: String(x.orderCode || ''), name: String(x.customerName || ''), phone: String(x.customerPhone || ''),
+                    q1: x.q1, q2: x.q2, q3: x.q3, q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
+                };
+            });
+            renderMetricasFeedback();
+        }, err('encuestas')),
+        firebaseDb.collection(ORDERS_COLLECTION).where('feedbackRequestedAt', '>=', start).onSnapshot((snap) => {
+            _fbReqActive = snap.docs.map((d) => d.id); renderMetricasFeedback();
+        }, err('solicitudes')),
+        firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).where('feedbackRequestedAt', '>=', start).onSnapshot((snap) => {
+            _fbReqArchived = snap.docs.map((d) => d.id); renderMetricasFeedback();
+        }, err('solicitudes archivadas'))
+    ];
+    renderMetricasFeedback();
+}
+
+const _fbPct = (n, total) => (total ? Math.round((n / total) * 100) : 0);
+const _fbPositiva = (r) => r.q1 === 'brutal' || r.q1 === 'muy_buena';
+
+// Cuenta respuestas por valor de una pregunta, en el orden del mapa de etiquetas.
+function _fbCount(rows, key, labels) {
+    return Object.keys(labels).map((val) => ({ val, n: rows.filter((r) => r[key] === val).length }));
+}
+
+// Texto del informe de mejoras (Markdown): cifras reales + lectura automática de las señales más claras.
+function _fbBuildReport(rows, solicitudes) {
+    const total = rows.length;
+    const fecha = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric' });
+    const lines = [`# Informe de feedback · ROAL BURGER`, `Generado el ${fecha}`, ''];
+    if (!total) return `${lines.join('\n')}\nAún no hay respuestas.\n`;
+    const positivas = rows.filter(_fbPositiva).length;
+    lines.push('## Resumen',
+        `- Solicitudes enviadas: ${solicitudes}`,
+        `- Respuestas: ${total} (tasa de respuesta ${_fbPct(total, solicitudes)}%)`,
+        `- Satisfacción (Brutal + Muy buena): ${_fbPct(positivas, total)}%`, '');
+    const bloque = (titulo, key, labels) => {
+        lines.push(`## ${titulo}`);
+        _fbCount(rows, key, labels).forEach((c) => lines.push(`- ${labels[c.val][1]}: ${c.n} (${_fbPct(c.n, total)}%)`));
+        lines.push('');
+    };
+    bloque('Sabor y calidad', 'q1', FB_Q1);
+    bloque('Cómo se enteraron de la promo', 'q2', FB_Q2);
+    bloque('Instalación de la app', 'q3', FB_Q3);
+
+    lines.push('## Satisfacción por canal de origen');
+    Object.keys(FB_Q2).forEach((k) => {
+        const g = rows.filter((r) => r.q2 === k);
+        if (g.length) lines.push(`- ${FB_Q2[k][1]}: ${g.length} respuestas, ${_fbPct(g.filter(_fbPositiva).length, g.length)}% satisfechos`);
+    });
+    lines.push('');
+
+    const obs = [];
+    const noApp = rows.filter((r) => r.q3 !== 'si').length;
+    if (_fbPct(noApp, total) >= 50) obs.push(`El ${_fbPct(noApp, total)}% no tiene la app instalada (${_fbPct(rows.filter((r) => r.q3 === 'no_sabia').length, total)}% ni sabía que existía): conviene invitar a instalarla en el ticket y en el mensaje de WhatsApp.`);
+    const negativas = rows.filter((r) => r.q1 === 'normalita' || r.q1 === 'no_convencio').length;
+    if (_fbPct(negativas, total) >= 20) obs.push(`El ${_fbPct(negativas, total)}% calificó el sabor/calidad como normal o malo: revisar receta, punto de cocción y tiempos de entrega de esos pedidos.`);
+    const top2 = _fbCount(rows, 'q2', FB_Q2).sort((a, b) => b.n - a.n)[0];
+    if (top2 && top2.n) obs.push(`El canal que más trae clientes es ${FB_Q2[top2.val][1]} (${_fbPct(top2.n, total)}%): reforzar ahí la inversión.`);
+    if (_fbPct(positivas, total) >= 80) obs.push(`La satisfacción es alta (${_fbPct(positivas, total)}%): usar testimonios reales en redes.`);
+    lines.push('## Lectura automática', ...(obs.length ? obs.map((o) => `- ${o}`) : ['- Aún no hay una señal clara; se necesitan más respuestas.']), '');
+
+    const sugs = rows.filter((r) => r.q4);
+    lines.push(`## Sugerencias de los clientes (${sugs.length})`, ...(sugs.length ? sugs.map((r) => `- "${r.q4.replace(/\s+/g, ' ')}" — ${r.name || 'Cliente'}`) : ['- Sin sugerencias.']), '');
+    return lines.join('\n');
+}
+
+function _fbCsv(rows) {
+    const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['fecha', 'pedido', 'cliente', 'telefono', 'sabor_calidad', 'como_se_entero', 'app_instalada', 'sugerencia', 'puntos'];
+    const body = rows.map((r) => [
+        r.ts ? new Date(r.ts).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '', r.orderCode, r.name, r.phone,
+        FB_Q1[r.q1]?.[1] || r.q1, FB_Q2[r.q2]?.[1] || r.q2, FB_Q3[r.q3]?.[1] || r.q3, r.q4, r.points
+    ].map(cell).join(','));
+    return `﻿${[head.map(cell).join(','), ...body].join('\r\n')}`;
+}
+
+function renderMetricasFeedback() {
+    const body = document.getElementById('fbBody');
+    if (!body) return;
+    const rows = _fbResponses;
+    const total = rows.length;
+    const solicitudes = new Set([..._fbReqActive, ..._fbReqArchived]).size;
+    const positivas = rows.filter(_fbPositiva).length;
+    const puntos = rows.reduce((s, r) => s + r.points, 0);
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
+    const fmt = (ts) => new Date(ts).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const chartData = (key, labels) => _fbCount(rows, key, labels).map((c) => ({ label: `${labels[c.val][0]} ${labels[c.val][1]} · ${_fbPct(c.n, total)}%`, val: c.n }));
+
+    // Respuestas por día
+    const dayMap = new Map();
+    rows.forEach((r) => { if (r.ts) { const k = _sqDayKey(r.ts); dayMap.set(k, (dayMap.get(k) || 0) + 1); } });
+    const dayData = [...dayMap.entries()].sort().map(([k, v]) => ({ label: k.slice(5), val: v }));
+
+    // Cruce: satisfacción según cómo se enteraron
+    const cruce = Object.keys(FB_Q2).map((k) => {
+        const g = rows.filter((r) => r.q2 === k);
+        return { label: `${FB_Q2[k][0]} ${FB_Q2[k][1]} (${g.length})`, val: _fbPct(g.filter(_fbPositiva).length, g.length) };
+    });
+    // Cruce: satisfacción según tenga o no la app
+    const cruceApp = Object.keys(FB_Q3).map((k) => {
+        const g = rows.filter((r) => r.q3 === k);
+        return { label: `${FB_Q3[k][0]} ${FB_Q3[k][1]} (${g.length})`, val: _fbPct(g.filter(_fbPositiva).length, g.length) };
+    });
+
+    const sugs = rows.filter((r) => r.q4);
+    const sugRows = sugs.slice(0, 40).map((r) => `
+        <div class="met-user-row-v2">
+            <div class="met-avatar">💡</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2" style="white-space:normal">${escapeHtml(r.q4)}</div>
+                <div class="met-user-meta-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${escapeHtml(fmt(r.ts))}</div>
+            </div>
+        </div>`).join('');
+
+    const filtered = _fbFilter === 'todos' ? rows : rows.filter((r) => r.q1 === _fbFilter);
+    const listRows = filtered.slice(0, 80).map((r) => `
+        <div class="met-user-row-v2">
+            <div class="met-avatar">${FB_Q1[r.q1]?.[0] || '❔'}</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(FB_Q1[r.q1]?.[1] || r.q1)}</div>
+                <div class="met-user-meta-v2">${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · Se enteró por ${escapeHtml(FB_Q2[r.q2]?.[1] || r.q2)} · App: ${escapeHtml(FB_Q3[r.q3]?.[1] || r.q3)} · ${escapeHtml(fmt(r.ts))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}</div>
+            </div>
+            <div class="met-user-stat"><div class="met-user-stat-val">+${nf(r.points)}</div><div class="met-user-stat-sub">puntos</div></div>
+        </div>`).join('');
+
+    body.innerHTML = `
+        <article class="admin-card">
+            <div class="met-section-title">⭐ Feedback de clientes <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en vivo</small></div>
+            <div class="met-kpi-row">
+                ${kpi('met-kpi-card--hi', nf(total), 'Respuestas')}
+                ${kpi('', nf(solicitudes), 'Solicitudes enviadas')}
+                ${kpi('met-kpi-card--purple', `${_fbPct(total, solicitudes)}%`, 'Tasa de respuesta')}
+                ${kpi('met-kpi-card--green', `${_fbPct(positivas, total)}%`, 'Satisfacción (Brutal + Muy buena)')}
+                ${kpi('', nf(sugs.length), 'Sugerencias escritas')}
+                ${kpi('', nf(puntos), 'Puntos regalados')}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                <button type="button" class="section-action-btn" data-fb-action="copiar">📋 Copiar informe de mejoras</button>
+                <button type="button" class="section-action-btn" data-fb-action="informe">⬇️ Descargar informe (.md)</button>
+                <button type="button" class="section-action-btn" data-fb-action="csv">⬇️ Descargar respuestas (.csv)</button>
+            </div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">Análisis de respuestas</div>
+            <div class="met-analytics-grid">
+                <div class="met-analytics-card"><div class="met-analytics-title">¿Qué tal el sabor y la calidad?</div><div id="fbQ1Chart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">¿Por dónde se enteraron de la promo?</div><div id="fbQ2Chart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">¿Instalaron la app?</div><div id="fbQ3Chart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Respuestas por día</div><div id="fbDayChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">% satisfechos según cómo se enteraron</div><div id="fbCruceChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">% satisfechos según tengan la app</div><div id="fbCruceAppChart"></div></div>
+            </div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">💡 Sugerencias de productos y mejoras <small style="font-size:0.72rem;opacity:0.55;font-weight:400">· ${nf(sugs.length)}</small></div>
+            <div class="metrics-users-list">${sugRows || '<p class="met-empty-note">Aún no hay sugerencias.</p>'}</div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">Respuestas de cada cliente <small style="font-size:0.72rem;opacity:0.55;font-weight:400">· ${nf(filtered.length)}</small></div>
+            <select id="fbFilter" class="admin-input" style="margin:6px 0 10px;max-width:260px" aria-label="Filtrar por sabor y calidad">
+                <option value="todos"${_fbFilter === 'todos' ? ' selected' : ''}>Todas</option>
+                ${Object.keys(FB_Q1).map((k) => `<option value="${k}"${_fbFilter === k ? ' selected' : ''}>${FB_Q1[k][0]} ${FB_Q1[k][1]}</option>`).join('')}
+            </select>
+            <div class="metrics-users-list">${listRows || '<p class="met-empty-note">Aún no hay respuestas.</p>'}</div>
+        </article>`;
+    _renderBarChart('fbQ1Chart', chartData('q1', FB_Q1), '#ff7a1a');
+    _renderBarChart('fbQ2Chart', chartData('q2', FB_Q2), '#a78bfa');
+    _renderBarChart('fbQ3Chart', chartData('q3', FB_Q3), '#60a5fa');
+    _renderBarChart('fbDayChart', dayData, '#34d399');
+    _renderBarChart('fbCruceChart', cruce, '#4ade80');
+    _renderBarChart('fbCruceAppChart', cruceApp, '#fbbf24');
+
+    if (!body.dataset.fbBound) {
+        body.dataset.fbBound = '1';
+        body.addEventListener('change', (e) => {
+            if (e.target && e.target.id === 'fbFilter') { _fbFilter = e.target.value; renderMetricasFeedback(); }
+        });
+        body.addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-fb-action]');
+            if (!btn) return;
+            const nowRows = _fbResponses;
+            const reqs = new Set([..._fbReqActive, ..._fbReqArchived]).size;
+            const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+            if (btn.dataset.fbAction === 'csv') downloadExportFile(`feedback-roal-${stamp}.csv`, _fbCsv(nowRows), 'text/csv;charset=utf-8');
+            else if (btn.dataset.fbAction === 'informe') downloadExportFile(`informe-feedback-roal-${stamp}.md`, _fbBuildReport(nowRows, reqs), 'text/markdown;charset=utf-8');
+            else await copyTextToClipboard(_fbBuildReport(nowRows, reqs));
+        });
+    }
+}
+
 function renderMetricasProductos(period) {
     if (period !== undefined) _prodMetricsPeriod = period;
     const ranking = document.getElementById('prodMetricsRanking');
@@ -20103,11 +20322,13 @@ document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
         const tab = btn.dataset.metricsTab;
         document.querySelectorAll('.metrics-tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
         _sqDetach();
+        _fbDetach();
         document.querySelectorAll('.metrics-panel').forEach((p) => p.classList.toggle('active', p.id === `metricsPanel${tab.charAt(0).toUpperCase()}${tab.slice(1)}`));
         if (tab === 'pos')       { _traficoDetach(); renderMetricsPos(); }
         if (tab === 'app')       { renderMetricsUsers(); renderMetricasTrafico(); }
         if (tab === 'productos') { _traficoDetach(); renderMetricasProductos(); }
         if (tab === 'sabe')      { _traficoDetach(); _sqAttach(); return; }
+        if (tab === 'feedback')  { _traficoDetach(); _fbAttach(); return; }
         _ensureMetricsOrdersLoaded();
         if (tab === 'app' || tab === 'pos') _ensureMetricsClientsLoaded();
     });
