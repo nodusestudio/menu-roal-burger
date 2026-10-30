@@ -10901,7 +10901,7 @@ function renderFestivalHome() {
         </div>
         <div class="codigo-dia-actions">
             <button type="button" class="codigo-dia-ig festival-info">Información</button>
-            <button type="button" class="codigo-dia-normal festival-pedir">Pedir ahora</button>
+            <button type="button" class="codigo-dia-normal festival-pedir"><span class="festival-mano" aria-hidden="true">👉</span> Pedir ahora</button>
         </div>`;
     const img = card.querySelector('.codigo-dia-img');
     img.src = imgSrc;
