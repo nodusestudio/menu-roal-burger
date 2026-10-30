@@ -2689,12 +2689,49 @@ function normalizeSalesDayState(raw) {
     };
 }
 
+// Avisos de domicilios: a los 5 min de creado sin domiciliario pedido, y a los 20 min (desde que se
+// pidió el domiciliario, o desde la creación si nunca se pidió) sin marcar entregado. Cada aviso
+// sale una sola vez por pedido; se ignoran pedidos de hace más de 3 h para no avisar de rezagados viejos.
+const DELIVERY_PENDING_COURIER_MS = 5 * 60 * 1000;
+const DELIVERY_LATE_MS = 20 * 60 * 1000;
+const DELIVERY_ALERT_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+const _deliveryAlertsShown = new Set();
+
+function _checkDeliveryAlerts() {
+    const now = Date.now();
+    ordersState.forEach((order) => {
+        if (order.orderType !== 'domicilio' || isOrderClosed(order)) return;
+        if (order.anulado === true || order.voided === true || order.status === 'cancelado') return;
+        const createdMs = _tsMs(order.createdAt);
+        if (!createdMs || now - createdMs > DELIVERY_ALERT_MAX_AGE_MS) return;
+        const who = getOrderDisplayCustomerName(order);
+        const courierMs = _tsMs(order.courierRequestedAt);
+
+        if (!courierMs && now - createdMs >= DELIVERY_PENDING_COURIER_MS) {
+            const key = `${order.id}:pendiente`;
+            if (!_deliveryAlertsShown.has(key)) {
+                _deliveryAlertsShown.add(key);
+                showNotice(`📞 ${who}: pendiente de domiciliario (más de 5 min sin pedirlo).`, 'warn');
+            }
+        }
+
+        if (now - (courierMs || createdMs) >= DELIVERY_LATE_MS) {
+            const key = `${order.id}:atrasado`;
+            if (!_deliveryAlertsShown.has(key)) {
+                _deliveryAlertsShown.add(key);
+                showNotice(`⏰ Domicilio de ${who} atrasado (más de 20 min sin entregar).`, 'error');
+            }
+        }
+    });
+}
+
 function ensureOrdersRealtimeTicker() {
     if (ordersRealtimeTimer || !ordersBoard) {
         return;
     }
 
     ordersRealtimeTimer = window.setInterval(() => {
+        _checkDeliveryAlerts();
         const els = document.querySelectorAll('.order-wait-timer[data-order-id], .koc-courier-time[data-order-id]');
         if (!els.length) return;
         // Map O(1) lookup en vez de .find() O(n) por cada elemento
