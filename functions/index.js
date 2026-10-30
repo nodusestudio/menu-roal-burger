@@ -2023,6 +2023,108 @@ exports.adminAdjustLoyaltyPoints = onCall(
 exports._adjustLoyaltyPointsTransaction = adjustLoyaltyPointsTransaction;
 
 // ─────────────────────────────────────────────────────────────
+// Encuesta de feedback recompensada (roalburger.com/encuesta?orderId=…).
+// El admin, 2 h después de entregado el pedido, copia/envía el link por WhatsApp y con ese clic
+// deja `feedbackRequestedAt` en el pedido. Esa marca es la que habilita la encuesta: sin ella (o con
+// el pedido anulado / aún sin entregar) el link no sirve ni da puntos. Una respuesta por pedido:
+// el doc encuestas_pedido/{orderId} se crea dentro de la transacción, así que un doble envío falla.
+// Los puntos se suman con Admin SDK (puntosDisponibles/puntosAcumuladosTotal no son escribibles
+// desde el navegador). Mismo interruptor LOYALTY_ACCRUAL_ENABLED NO aplica: es un premio puntual.
+// ─────────────────────────────────────────────────────────────
+const FEEDBACK_REWARD_POINTS = 50; // 50 puntos = $500 COP al canjear (100 puntos = $1.000)
+const FEEDBACK_Q1 = ['brutal', 'muy_buena', 'normalita', 'no_convencio'];
+const FEEDBACK_Q2 = ['instagram', 'whatsapp', 'amigo', 'web'];
+const FEEDBACK_Q3 = ['si', 'no', 'no_sabia'];
+
+async function findOrderForFeedback(db, orderId) {
+    for (const col of ['pedidos', 'pedidos_archivados']) {
+        const ref = db.collection(col).doc(orderId);
+        const snap = await ref.get();
+        if (snap.exists) return { ref, data: snap.data() };
+    }
+    return null;
+}
+
+function cleanFeedbackOrderId(value) {
+    const id = String(value || '').trim();
+    if (!id || id.length > 80 || id.includes('/') || id.startsWith('_meta')) {
+        throw new HttpsError('invalid-argument', 'Link de encuesta inválido.');
+    }
+    return id;
+}
+
+// Estado de la encuesta para pintar la pantalla: 'ok' (se puede responder), 'answered' o 'unavailable'.
+exports.getOrderFeedbackStatus = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const orderId = cleanFeedbackOrderId(request.data?.orderId);
+        const db = getFirestore();
+        const found = await findOrderForFeedback(db, orderId);
+        const order = found?.data;
+        const closed = order && ['enviado', 'entregado'].includes(order.status) && order.anulado !== true;
+        if (!order || !closed || !order.feedbackRequestedAt) return { state: 'unavailable' };
+        if (order.feedbackAnsweredAt) return { state: 'answered' };
+        const firstName = String(order.customerName || '').trim().split(/\s+/)[0] || '';
+        return { state: 'ok', firstName, points: FEEDBACK_REWARD_POINTS };
+    }
+);
+
+exports.submitOrderFeedback = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const orderId = cleanFeedbackOrderId(request.data?.orderId);
+        const q1 = String(request.data?.q1 || '');
+        const q2 = String(request.data?.q2 || '');
+        const q3 = String(request.data?.q3 || '');
+        const q4 = String(request.data?.q4 || '').trim().slice(0, 500);
+        if (!FEEDBACK_Q1.includes(q1) || !FEEDBACK_Q2.includes(q2) || !FEEDBACK_Q3.includes(q3)) {
+            throw new HttpsError('invalid-argument', 'Responde las 3 primeras preguntas.');
+        }
+
+        const db = getFirestore();
+        const found = await findOrderForFeedback(db, orderId);
+        if (!found) throw new HttpsError('not-found', 'No encontramos ese pedido.');
+
+        const result = await db.runTransaction(async (tx) => {
+            const orderSnap = await tx.get(found.ref);
+            const order = orderSnap.data() || {};
+            const closed = ['enviado', 'entregado'].includes(order.status) && order.anulado !== true;
+            if (!closed || !order.feedbackRequestedAt) {
+                throw new HttpsError('failed-precondition', 'Esta encuesta no está disponible.');
+            }
+            const feedbackRef = db.collection('encuestas_pedido').doc(orderId);
+            if (order.feedbackAnsweredAt || (await tx.get(feedbackRef)).exists) {
+                throw new HttpsError('already-exists', 'Ya respondiste esta encuesta. ¡Gracias!');
+            }
+
+            const phoneDigits = String(order.customerPhoneDigits || '').replace(/\D/g, '');
+            const clientId = phoneDigits.length >= 10 ? buildClientId(phoneDigits) : '';
+            const points = clientId ? FEEDBACK_REWARD_POINTS : 0;
+
+            tx.set(feedbackRef, {
+                orderId,
+                orderCode: String(order.code || ''),
+                clientId,
+                customerName: String(order.customerName || ''),
+                customerPhone: phoneDigits,
+                q1, q2, q3, q4,
+                pointsAwarded: points,
+                createdAt: FieldValue.serverTimestamp()
+            });
+            if (points > 0) {
+                tx.set(db.collection(CLIENTS_COLLECTION).doc(clientId), {
+                    puntosDisponibles: FieldValue.increment(points),
+                    puntosAcumuladosTotal: FieldValue.increment(points)
+                }, { merge: true });
+            }
+            tx.update(found.ref, { feedbackAnsweredAt: FieldValue.serverTimestamp(), feedbackPoints: points });
+            return { points };
+        });
+        return result;
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
 // FODEXA POS — "Pegar pedido de WhatsApp"
 // Dos callables, ambos SOLO para admins (doc en `admins/{uid}`, mismo criterio que
 // agentChatAdminReply):

@@ -2614,6 +2614,10 @@ function normalizeOrder(raw) {
         courierRequestedAt: raw.courierRequestedAt || raw.courier_requested_at || null,
         readyForPickupAt: raw.readyForPickupAt || raw.ready_for_pickup_at || null,
         deliveredAt: raw.deliveredAt || raw.delivered_at || null,
+        enviadoAt: raw.enviadoAt || null,
+        entregadoAt: raw.entregadoAt || null,
+        feedbackRequestedAt: raw.feedbackRequestedAt || null,
+        feedbackAnsweredAt: raw.feedbackAnsweredAt || null,
         createdAt: raw.createdAt || raw.created_at || null,
         updatedAt: raw.updatedAt || raw.updated_at || null,
         paidAt: raw.paidAt || raw.receivedAt || null,
@@ -2725,6 +2729,87 @@ function _checkDeliveryAlerts() {
     });
 }
 
+// ── Feedback pendiente: 2 h después de entregado el pedido, aviso con botón "Copiar y abrir WhatsApp".
+// Al pulsarlo se copia el mensaje con el link de la encuesta (/encuesta?orderId=…), se abre el chat
+// del cliente y el pedido queda marcado con feedbackRequestedAt (eso oculta la alerta y habilita la
+// encuesta en el servidor, ver submitOrderFeedback en functions/index.js).
+const FEEDBACK_DELAY_MS = 2 * 60 * 60 * 1000;
+const FEEDBACK_MAX_AGE_MS = 24 * 60 * 60 * 1000; // más viejo que esto ya no se pide (evita alertas rezagadas)
+const FEEDBACK_SURVEY_URL = 'https://roalburger.com/encuesta';
+let _feedbackPendingSig = '';
+const _feedbackSending = new Set();
+
+function buildFeedbackMessage(order) {
+    return `¡Hola! ¿Qué tal? Esperamos que hayas disfrutado mucho tu pedido. 🍔 Para ROAL Burger tu opinión vale oro. ¿Nos regalas 30 segundos en este link para contarnos tu experiencia y sumar puntos en tu perfil? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}`;
+}
+
+function getPendingFeedbackOrders() {
+    const now = Date.now();
+    return ordersState.filter((order) => {
+        if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
+        if (order.feedbackRequestedAt || order.feedbackAnsweredAt) return false;
+        if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
+        const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
+        return sentMs > 0 && now - sentMs >= FEEDBACK_DELAY_MS && now - sentMs <= FEEDBACK_MAX_AGE_MS;
+    }).sort((a, b) => (_tsMs(a.enviadoAt || a.deliveredAt) - _tsMs(b.enviadoAt || b.deliveredAt)));
+}
+
+function renderFeedbackPending() {
+    const pending = getPendingFeedbackOrders();
+    const sig = pending.map((o) => o.id).join('|');
+    if (sig === _feedbackPendingSig) return;
+    _feedbackPendingSig = sig;
+
+    let host = document.getElementById('feedbackPendingHost');
+    if (!host) {
+        const workspace = document.querySelector('#card-orders .orders-workspace');
+        if (!workspace) return;
+        host = document.createElement('div');
+        host.id = 'feedbackPendingHost';
+        host.className = 'feedback-pending-host';
+        workspace.parentNode.insertBefore(host, workspace);
+        host.addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-feedback-send]');
+            if (btn) sendFeedbackRequest(btn.dataset.feedbackSend, btn);
+        });
+    }
+    host.hidden = pending.length === 0;
+    host.innerHTML = pending.map((order) => {
+        const phone = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '');
+        return `<div class="feedback-pending-row">
+            <span class="feedback-pending-ico" aria-hidden="true">⭐</span>
+            <div class="feedback-pending-info">
+                <strong>Feedback pendiente</strong>
+                <span>${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)} · ${escapeHtml(phone)}</span>
+            </div>
+            <button type="button" class="feedback-pending-btn" data-feedback-send="${escapeHtml(order.id)}">Copiar y abrir WhatsApp</button>
+        </div>`;
+    }).join('');
+}
+
+async function sendFeedbackRequest(orderId, btn) {
+    const order = ordersState.find((o) => o.id === orderId);
+    if (!order || _feedbackSending.has(orderId)) return;
+    _feedbackSending.add(orderId);
+    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+    const message = buildFeedbackMessage(order);
+    // window.open va primero y sin await: si no, el navegador lo bloquea como ventana emergente.
+    window.open(buildWhatsAppUrl(order.customerPhoneDigits || order.customerPhone, message), '_blank', 'noopener');
+    try {
+        await copyTextToClipboard(message);
+        await updateOrder(orderId, { feedbackRequestedAt: firestoreNow() });
+        order.feedbackRequestedAt = new Date();
+        showNotice(`Mensaje de feedback listo para ${getOrderDisplayCustomerName(order)}.`, 'ok');
+    } catch (error) {
+        showNotice(`No se pudo marcar el feedback como enviado: ${error.message || 'error inesperado.'}`, 'error');
+    } finally {
+        _feedbackSending.delete(orderId);
+        _feedbackPendingSig = '';
+        renderFeedbackPending();
+    }
+}
+
 function ensureOrdersRealtimeTicker() {
     if (ordersRealtimeTimer || !ordersBoard) {
         return;
@@ -2732,6 +2817,7 @@ function ensureOrdersRealtimeTicker() {
 
     ordersRealtimeTimer = window.setInterval(() => {
         _checkDeliveryAlerts();
+        renderFeedbackPending();
         const els = document.querySelectorAll('.order-wait-timer[data-order-id], .koc-courier-time[data-order-id]');
         if (!els.length) return;
         // Map O(1) lookup en vez de .find() O(n) por cada elemento

@@ -9361,3 +9361,24 @@ html.low-fx .support-feedback--error:not(:empty) {
 .cs-prep{display:flex;flex-direction:column;gap:6px;margin:10px 0;font-size:.85rem}
 .cs-prep textarea{width:100%;resize:vertical;min-height:90px}
 
+
+/* ── Feedback pendiente (admin → Recepción de Pedidos): aviso 2 h después de entregar ── */
+.feedback-pending-host { display: grid; gap: 8px; margin: 0 0 12px; }
+.feedback-pending-host[hidden] { display: none; }
+.feedback-pending-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px;
+    background: rgba(255, 122, 26, 0.12); border: 1.5px solid rgba(255, 122, 26, 0.55);
+}
+.feedback-pending-ico { font-size: 1.4rem; flex: 0 0 auto; }
+.feedback-pending-info { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.feedback-pending-info strong { color: #ffb072; font-size: 0.95rem; }
+.feedback-pending-info span { color: rgba(255, 255, 255, 0.78); font-size: 0.85rem; overflow-wrap: anywhere; }
+.feedback-pending-btn {
+    flex: 0 0 auto; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 10px; cursor: pointer;
+    font-weight: 700; font-size: 0.85rem; color: #141414; background: linear-gradient(135deg, #ff9a3c, #ff7a1a);
+}
+.feedback-pending-btn:disabled { opacity: 0.6; cursor: progress; }
+@media (max-width: 560px) {
+    .feedback-pending-row { flex-wrap: wrap; }
+    .feedback-pending-btn { width: 100%; }
+}

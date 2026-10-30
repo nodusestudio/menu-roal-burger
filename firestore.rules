@@ -159,6 +159,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Respuestas de la encuesta de feedback (ver submitOrderFeedback): las escribe solo la Cloud
+    // Function (Admin SDK); el admin las puede leer.
+    match /encuestas_pedido/{orderId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /clientes/{clientId} {
       function isOwner() {
         return request.auth != null && request.auth.uid == clientId;

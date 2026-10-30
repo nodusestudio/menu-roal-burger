@@ -113,3 +113,11 @@ cuponHtml = cuponHtml.replace(
 );
 fs.writeFileSync(cuponHtmlPath, cuponHtml, 'utf8');
 console.log(`[bump] cupon.html   → cupon.js?v=${stamp}  firebase-config.js?v=${stamp}`);
+
+// ── 5. encuesta.html — ?v= en encuesta.js y firebase-config.js (encuesta de feedback) ─────────
+const encuestaHtmlPath = path.join(ROOT, 'encuesta.html');
+let encuestaHtml = fs.readFileSync(encuestaHtmlPath, 'utf8');
+encuestaHtml = encuestaHtml.replace(/encuesta\.js(\?v=[\w-]+)?(?=")/g, `encuesta.js?v=${stamp}`);
+encuestaHtml = encuestaHtml.replace(/firebase-config\.js(\?v=[\w-]+)?(?=")/g, `firebase-config.js?v=${stamp}`);
+fs.writeFileSync(encuestaHtmlPath, encuestaHtml, 'utf8');
+console.log(`[bump] encuesta.html → encuesta.js?v=${stamp}  firebase-config.js?v=${stamp}`);
