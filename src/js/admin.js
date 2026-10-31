@@ -10233,6 +10233,125 @@ function renderMetricasSabe() {
     _renderBarChart('sqTipoChart', tipoData, '#4ade80');
     _renderBarChart('sqPromoChart', promoData, '#fbbf24');
     if (cortPorProducto.length) _renderBarChart('sqCortProdChart', cortPorProducto, '#34d399');
+    renderMetricasSqFin();
+}
+
+// ── Métricas: Finanzas de Sabe a Quindío (ventas, costo, utilidad y reparto de la utilidad) ──────────
+// Ventas y unidades salen de los mismos pedidos que la pestaña Sabe a Quindío. El costo sale de Costos y
+// recetas: el plato "Burger TRIFASICA" vinculado al producto del menú (costo con colchón, como las alertas;
+// el costo real se muestra aparte). Un 2×1 son 2 hamburguesas, así que cuesta el doble.
+// El reparto (sueldos / reserva) es un % editable que se guarda en configuracion/finanzas_festival.
+let _sqFinCfg = { sueldosPct: 30, reservaPct: 20 };
+let _sqFinCfgLoaded = false;
+let _sqFinUtil = 0;
+
+async function _sqFinCargar() {
+    try {
+        if (!_costosLoaded) await _costosCargar();
+        if (!_sqFinCfgLoaded) {
+            const d = await firebaseDb.collection(CONFIG_COLLECTION).doc('finanzas_festival').get();
+            if (d.exists) {
+                const x = d.data() || {};
+                _sqFinCfg = { sueldosPct: Number.isFinite(Number(x.sueldosPct)) ? Number(x.sueldosPct) : 30, reservaPct: Number.isFinite(Number(x.reservaPct)) ? Number(x.reservaPct) : 20 };
+            }
+            _sqFinCfgLoaded = true;
+        }
+    } catch (e) { console.warn('[Finanzas festival] carga:', e.code || e.message); }
+    renderMetricasSqFin();
+}
+
+function _sqFinCostoBurger() {
+    const prod = _cProdMenu().find((p) => { const n = _cNorm(p.nombre); return n.includes('trifasica') && !n.includes('mini'); });
+    const plato = prod ? _costos.platos.find((pl) => pl.productoMenuId === prod.id) : null;
+    if (!plato) return null;
+    const c = _cCalcPlato(plato, _cCtx());
+    return { nombre: plato.nombre, real: c.real, colch: c.colch, faltantes: c.faltantes };
+}
+
+function _sqFinRepartoHtml(util) {
+    const s = Math.max(0, Number(_sqFinCfg.sueldosPct) || 0), r = Math.max(0, Number(_sqFinCfg.reservaPct) || 0);
+    const resto = Math.max(0, 100 - s - r);
+    const base = Math.max(0, util);
+    return { s, r, resto, vs: Math.round(base * s / 100), vr: Math.round(base * r / 100), vd: Math.round(base * resto / 100) };
+}
+
+function renderMetricasSqFin() {
+    const body = document.getElementById('sqFinBody');
+    if (!body) return;
+    const { festival } = _sqCompute();
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    let units = 0, burgers = 0, ventas = 0, cortBurgers = 0;
+    for (const o of festival) {
+        for (const it of (o.items || [])) {
+            if (!_sqItemEsTrifasica(it)) continue;
+            const q = Number(it.quantity || 0);
+            if (q <= 0) continue;
+            const b = _sqItemEs2x1(it) ? q * 2 : q;
+            units += q; burgers += b; ventas += Number(it.subtotal || 0);
+            if (it.cortesia === true) cortBurgers += b;
+        }
+    }
+    const costo = _sqFinCostoBurger();
+    const costoTotal = costo ? costo.colch * burgers : 0;
+    const costoReal = costo ? costo.real * burgers : 0;
+    const costoCort = costo ? costo.colch * cortBurgers : 0;
+    const util = costo ? ventas - costoTotal : 0;
+    const utilReal = costo ? ventas - costoReal : 0;
+    _sqFinUtil = util;
+    const margen = ventas > 0 && costo ? Math.round((util / ventas) * 1000) / 10 : 0;
+    const rp = _sqFinRepartoHtml(util);
+    const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
+    const aviso = !costo
+        ? '<p class="met-empty-note" style="margin-top:10px">⚠️ No hay costo de la Burger Trifásica: en 🧮 Costos y recetas vincula el plato "Burger TRIFASICA" con su producto del menú (pestaña Conexión). Mientras tanto no se puede calcular el costo ni la utilidad.</p>'
+        : (costo.faltantes.length ? `<p class="met-empty-note" style="margin-top:10px">⚠️ A la receta le faltan ${costo.faltantes.length} insumo(s) con precio: el costo puede estar subestimado.</p>` : '');
+    body.innerHTML = `
+        <article class="admin-card">
+            <div class="met-section-title">💰 Finanzas — Burger Trifásica <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· desde el 30 de octubre</small></div>
+            <div class="met-kpi-row">
+                ${kpi('met-kpi-card--hi', nf(units), 'Trifásicas vendidas')}
+                ${kpi('met-kpi-card--purple', nf(burgers), 'Hamburguesas entregadas (2×1 = 2)')}
+                ${kpi('met-kpi-card--green', escapeHtml(formatMoney(ventas)), 'Ventas de la Trifásica')}
+                ${kpi('', costo ? escapeHtml(formatMoney(costoTotal)) : '—', 'Costo de producción (con colchón)')}
+                ${kpi('met-kpi-card--green', costo ? escapeHtml(formatMoney(util)) : '—', 'Utilidad')}
+                ${kpi('', costo ? `${margen}%` : '—', 'Margen de utilidad')}
+            </div>
+            ${aviso}
+            ${costo ? `<p class="met-empty-note" style="margin-top:10px">Costo por hamburguesa: <strong>${escapeHtml(formatMoney(costo.colch))}</strong> con colchón (${escapeHtml(formatMoney(costo.real))} real) · plato "${escapeHtml(costo.nombre)}". Con el costo real la utilidad sería ${escapeHtml(formatMoney(utilReal))}. ${cortBurgers ? `Incluye ${nf(cortBurgers)} hamburguesa(s) regaladas en cortesía (${escapeHtml(formatMoney(costoCort))} de costo, sin ingreso).` : ''}</p>` : ''}
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">¿Cómo se reparte la utilidad?</div>
+            <div class="sqfin-pcts" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px;">
+                <label style="display:flex;flex-direction:column;gap:4px;font-size:0.8rem;">Sueldos del equipo (%)<input type="number" min="0" max="100" step="1" id="sqFinSueldos" value="${rp.s}" style="width:110px;padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.06);color:inherit;"></label>
+                <label style="display:flex;flex-direction:column;gap:4px;font-size:0.8rem;">Reserva (%)<input type="number" min="0" max="100" step="1" id="sqFinReserva" value="${rp.r}" style="width:110px;padding:7px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.06);color:inherit;"></label>
+                <button type="button" class="section-action-btn" id="sqFinGuardar">Guardar porcentajes</button>
+            </div>
+            <div class="met-kpi-row" id="sqFinReparto">
+                ${kpi('met-kpi-card--hi', escapeHtml(formatMoney(rp.vs)), `Para sueldos (${rp.s}%)`)}
+                ${kpi('met-kpi-card--purple', escapeHtml(formatMoney(rp.vr)), `Para la reserva (${rp.r}%)`)}
+                ${kpi('met-kpi-card--green', escapeHtml(formatMoney(rp.vd)), `Libre / reinversión (${rp.resto}%)`)}
+            </div>
+            <p class="met-empty-note" style="margin-top:10px;font-size:0.76rem;opacity:0.75">${rp.s + rp.r > 100 ? '⚠️ Los porcentajes suman más de 100.' : 'Los porcentajes son un punto de partida: ajústalos a lo que de verdad necesitan guardar. '}Solo la Trifásica: no incluye combos, bebidas ni el empaque del 2×1 (esos se venden aparte y no se restan costos fijos como arriendo o servicios).</p>
+        </article>`;
+
+    const sInp = body.querySelector('#sqFinSueldos'), rInp = body.querySelector('#sqFinReserva');
+    const actualizar = () => {
+        _sqFinCfg = { sueldosPct: Number(sInp.value) || 0, reservaPct: Number(rInp.value) || 0 };
+        const x = _sqFinRepartoHtml(_sqFinUtil);
+        const cards = body.querySelectorAll('#sqFinReparto .met-kpi-card');
+        const set = (i, val, lbl) => { if (cards[i]) { cards[i].querySelector('.met-kpi-val').textContent = formatMoney(val); cards[i].querySelector('.met-kpi-lbl').textContent = lbl; } };
+        set(0, x.vs, `Para sueldos (${x.s}%)`); set(1, x.vr, `Para la reserva (${x.r}%)`); set(2, x.vd, `Libre / reinversión (${x.resto}%)`);
+    };
+    sInp?.addEventListener('input', actualizar);
+    rInp?.addEventListener('input', actualizar);
+    body.querySelector('#sqFinGuardar')?.addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget;
+        btn.disabled = true;
+        try {
+            await firebaseDb.collection(CONFIG_COLLECTION).doc('finanzas_festival').set({ sueldosPct: _sqFinCfg.sueldosPct, reservaPct: _sqFinCfg.reservaPct, actualizadoAt: firestoreNow() }, { merge: true });
+            showNotice('Porcentajes guardados.', 'ok');
+        } catch (e) { showNotice(`No se pudieron guardar: ${e.message || 'error'}`, 'error'); }
+        btn.disabled = false;
+    });
 }
 
 // ── Métricas: Feedback (encuesta recompensada de /encuesta) — en vivo ─────────────
@@ -20617,6 +20736,7 @@ document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
         if (tab === 'app')       { renderMetricsUsers(); renderMetricasTrafico(); }
         if (tab === 'productos') { _traficoDetach(); renderMetricasProductos(); }
         if (tab === 'sabe')      { _traficoDetach(); _sqAttach(); return; }
+        if (tab === 'sqfin')     { _traficoDetach(); _sqAttach(); _sqFinCargar(); return; }
         if (tab === 'feedback')  { _traficoDetach(); _fbAttach(); return; }
         _ensureMetricsOrdersLoaded();
         if (tab === 'app' || tab === 'pos') _ensureMetricsClientsLoaded();
