@@ -10244,6 +10244,7 @@ function renderMetricasSabe() {
 let _sqFinCfg = { sueldosPct: 30, reservaPct: 20 };
 let _sqFinCfgLoaded = false;
 let _sqFinUtil = 0;
+const SQ_BURGERS_POR_RECETA = 2;
 let _sqFinError = '';
 
 async function _sqFinCargar() {
@@ -10271,7 +10272,8 @@ function _sqFinCostoBurger() {
     if (!plato) plato = _costos.platos.find((pl) => _cNorm(pl.nombre) === 'burger trifasica');
     if (!plato) return null;
     const c = _cCalcPlato(plato, _cCtx());
-    return { nombre: plato.nombre, real: c.real, colch: c.colch, faltantes: c.faltantes };
+    // La receta "Burger TRIFASICA" lleva 2 panes y 300 g de carne (150 g c/u): rinde 2 hamburguesas (un 2×1).
+    return { nombre: plato.nombre, recetaReal: c.real, recetaColch: c.colch, real: c.real / SQ_BURGERS_POR_RECETA, colch: c.colch / SQ_BURGERS_POR_RECETA, faltantes: c.faltantes };
 }
 
 function _sqFinRepartoHtml(util) {
@@ -10298,9 +10300,9 @@ function renderMetricasSqFin() {
         }
     }
     const costo = _sqFinCostoBurger();
-    const costoTotal = costo ? costo.colch * burgers : 0;
-    const costoReal = costo ? costo.real * burgers : 0;
-    const costoCort = costo ? costo.colch * cortBurgers : 0;
+    const costoTotal = costo ? Math.round(costo.colch * burgers) : 0;
+    const costoReal = costo ? Math.round(costo.real * burgers) : 0;
+    const costoCort = costo ? Math.round(costo.colch * cortBurgers) : 0;
     const util = costo ? ventas - costoTotal : 0;
     const utilReal = costo ? ventas - costoReal : 0;
     _sqFinUtil = util;
@@ -10322,7 +10324,7 @@ function renderMetricasSqFin() {
                 ${kpi('', costo ? `${margen}%` : '—', 'Margen de utilidad')}
             </div>
             ${aviso}
-            ${costo ? `<p class="met-empty-note" style="margin-top:10px">Costo por hamburguesa: <strong>${escapeHtml(formatMoney(costo.colch))}</strong> con colchón (${escapeHtml(formatMoney(costo.real))} real) · plato "${escapeHtml(costo.nombre)}". Con el costo real la utilidad sería ${escapeHtml(formatMoney(utilReal))}. ${cortBurgers ? `Incluye ${nf(cortBurgers)} hamburguesa(s) regaladas en cortesía (${escapeHtml(formatMoney(costoCort))} de costo, sin ingreso).` : ''}</p>` : ''}
+            ${costo ? `<p class="met-empty-note" style="margin-top:10px">Costo por hamburguesa: <strong>${escapeHtml(formatMoney(Math.round(costo.colch)))}</strong> con colchón (${escapeHtml(formatMoney(Math.round(costo.real)))} real). La receta "${escapeHtml(costo.nombre)}" (${escapeHtml(formatMoney(costo.recetaColch))} con colchón, ${escapeHtml(formatMoney(costo.recetaReal))} real) rinde ${SQ_BURGERS_POR_RECETA} hamburguesas: 2 panes y 300 g de carne. Con el costo real la utilidad sería ${escapeHtml(formatMoney(utilReal))}. ${cortBurgers ? `Incluye ${nf(cortBurgers)} hamburguesa(s) regaladas en cortesía (${escapeHtml(formatMoney(costoCort))} de costo, sin ingreso).` : ''}</p>` : ''}
         </article>
         <article class="admin-card">
             <div class="met-section-title">¿Cómo se reparte la utilidad?</div>

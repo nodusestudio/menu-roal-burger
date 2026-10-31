@@ -4,6 +4,7 @@
 
 const { costoPlato } = require('./costos');
 
+const BURGERS_POR_RECETA = 2; // la receta "Burger TRIFASICA" lleva 2 panes y 300 g de carne (150 g c/u): rinde 2 hamburguesas
 const INICIO_MS = Date.parse('2026-10-30T00:00:00-05:00');
 const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const aMapa = (arr) => Object.fromEntries(arr.map((x) => [x.id, x]));
@@ -44,12 +45,13 @@ async function finanzasFestival(db) {
     if (!plato) return { ...base, aviso: 'No hay costo: en Costos y recetas falta vincular el plato "Burger TRIFASICA" con su producto del menú, así que no se puede calcular costo ni utilidad.' };
 
     const c = costoPlato(plato, { insumos: aMapa(insumos), recetas: aMapa(recetas) }, colchonPct);
-    const costo = c.costo * hamburguesas, costoReal = c.costo_real * hamburguesas;
+    const costoBurger = c.costo / BURGERS_POR_RECETA, costoBurgerReal = c.costo_real / BURGERS_POR_RECETA;
+    const costo = Math.round(costoBurger * hamburguesas), costoReal = Math.round(costoBurgerReal * hamburguesas);
     const utilidad = ventas - costo;
     const reparto = (pct) => Math.round(Math.max(0, utilidad) * pct / 100);
     return {
         ...base,
-        costo_por_hamburguesa_con_colchon: c.costo, costo_por_hamburguesa_real: c.costo_real,
+        costo_por_hamburguesa_con_colchon: Math.round(costoBurger), costo_por_hamburguesa_real: Math.round(costoBurgerReal), costo_receta_completa_con_colchon: c.costo, costo_receta_completa_real: c.costo_real, hamburguesas_por_receta: BURGERS_POR_RECETA,
         costo_total_con_colchon: costo, costo_total_real: costoReal,
         utilidad, utilidad_con_costo_real: ventas - costoReal,
         margen_pct: ventas > 0 ? Math.round((utilidad / ventas) * 1000) / 10 : 0,
