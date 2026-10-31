@@ -19,7 +19,8 @@
       "functions/**",
       "scripts/**",
       "src/**",
-      "tests/**"
+      "tests/**",
+      "**/serviceAccountKey*"
     ],
     "headers": [
       {
