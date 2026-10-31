@@ -7273,7 +7273,8 @@ function renderPosUpgradeStep1() {
 
     body.querySelector('#pusGoCombo')?.addEventListener('click', () => {
         if (yaHayCombo) _posUpgradePending.extras = _posUpgradePending.extras.filter((e) => !e.id.startsWith('combo-pack-'));
-        _renderPosUpgradeCombosPack(combosDisponibles);
+        if (_posUpgradePending.promoOpts?.promo2x1) _renderPosUpgradeCombo2x1Scope(combosDisponibles);
+        else _renderPosUpgradeCombosPack(combosDisponibles);
     });
     body.querySelector('#pusGoAdicional')?.addEventListener('click', () => _renderPosUpgradeAdicionales());
     body.querySelector('#pusGoBebida')?.addEventListener('click', () => {
@@ -7337,7 +7338,7 @@ function _renderPosUpgradeCombosPack(combos) {
         return parts.join(' + ');
     };
     _renderPosUpgradeOptionGrid({
-        title: 'Agregar Combo',
+        title: (_posUpgradePending?.comboTotal || 1) > 1 ? `Elige el combo ${_posUpgradePending.comboTotal - _posUpgradePending.comboRestantes + 1} de ${_posUpgradePending.comboTotal}` : 'Agregar Combo',
         emptyMessage: 'Sin combos activos configurados',
         items: combos.map((c) => ({
             key: c.id,
@@ -7349,9 +7350,7 @@ function _renderPosUpgradeCombosPack(combos) {
             const c = combos.find((x) => x.id === packId);
             if (!c) return;
             const sabores = Array.isArray(c.bebida_sabores) ? c.bebida_sabores.filter(Boolean) : [];
-            if (_posUpgradePending?.promoOpts?.promo2x1) {
-                _renderPosUpgradeCombo2x1Scope(c, sabores, combos);
-            } else if (sabores.length > 1) {
+            if (sabores.length > 1) {
                 _renderPosUpgradePackSabor(c, sabores);
             } else {
                 const precio = Number(c.valor || 0);
@@ -7360,44 +7359,53 @@ function _renderPosUpgradeCombosPack(combos) {
                     ? `${String(c.nombre || 'Combo')} (${sabores[0]})`
                     : String(c.nombre || 'Combo');
                 _posUpgradePending.extras.push({ id: `combo-pack-${c.id}${saborSuffix}`, name: nombre, price: precio });
-                renderPosUpgradeStep1();
+                _posComboPicked();
             }
         },
         onBack: renderPosUpgradeStep1,
     });
 }
 
-// 2×1 = 2 hamburguesas: el combo puede ir en las dos o solo en una.
-function _renderPosUpgradeCombo2x1Scope(combo, sabores, combos) {
-    const v = Number(combo.valor || 0);
+// 2×1 = 2 hamburguesas: primero se pregunta si el combo va en las dos o solo en una; luego se elige
+// el combo (tamaño y sabor) tantas veces como corresponda, y recién ahí se suma.
+function _renderPosUpgradeCombo2x1Scope(combos) {
     _renderPosUpgradeOptionGrid({
         title: '2×1 trae 2 hamburguesas: ¿combo en…?',
         items: [
-            { key: '2', name: 'Combo en las dos', detail: `${escapeHtml(String(combo.nombre || 'Combo'))} ×2`, price: '+' + formatMoney(v * 2) },
-            { key: '1', name: 'Combo solo en una', detail: 'La otra va sola', price: '+' + formatMoney(v) },
+            { key: '2', name: 'Combo en las dos', detail: 'Eliges el combo dos veces' },
+            { key: '1', name: 'Combo solo en una', detail: 'La otra hamburguesa va sola' },
         ],
         onSelect: (n) => {
             const veces = n === '2' ? 2 : 1;
-            if (sabores.length > 1) { _renderPosUpgradePackSabor(combo, sabores, veces, veces); return; }
-            const saborSuffix = sabores.length === 1 ? `-${sabores[0]}` : '';
-            const nombre = sabores.length === 1 ? `${String(combo.nombre || 'Combo')} (${sabores[0]})` : String(combo.nombre || 'Combo');
-            for (let i = 0; i < veces; i += 1) _posUpgradePending.extras.push({ id: `combo-pack-${combo.id}${saborSuffix}`, name: nombre, price: v });
-            renderPosUpgradeStep1();
+            _posUpgradePending.comboTotal = veces;
+            _posUpgradePending.comboRestantes = veces;
+            _renderPosUpgradeCombosPack(combos);
         },
-        onBack: () => _renderPosUpgradeCombosPack(combos),
+        onBack: renderPosUpgradeStep1,
     });
 }
 
-function _renderPosUpgradePackSabor(combo, sabores, restantes = 1, total = 1) {
+// Tras elegir un combo: si faltan (2×1 en las dos) vuelve a la lista; si no, regresa al resumen.
+function _posComboPicked() {
+    const p = _posUpgradePending;
+    if (p && (p.comboRestantes || 0) > 1) {
+        p.comboRestantes -= 1;
+        _renderPosUpgradeCombosPack(combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false));
+        return;
+    }
+    if (p) { delete p.comboRestantes; delete p.comboTotal; }
+    renderPosUpgradeStep1();
+}
+
+function _renderPosUpgradePackSabor(combo, sabores) {
     _renderPosUpgradeOptionGrid({
-        title: total > 1 ? `Sabor de bebida · combo ${total - restantes + 1} de ${total}` : 'Elige sabor de bebida',
+        title: 'Elige sabor de bebida',
         items: sabores.map((s) => ({ key: s, name: s })),
         onSelect: (sabor) => {
             const nombre = `${combo.nombre} (${sabor})`;
             const precio = Number(combo.valor || 0);
             _posUpgradePending.extras.push({ id: `combo-pack-${combo.id}-${sabor}`, name: nombre, price: precio });
-            if (restantes > 1) _renderPosUpgradePackSabor(combo, sabores, restantes - 1, total);
-            else renderPosUpgradeStep1();
+            _posComboPicked();
         },
         onBack: () => {
             const activos = combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false);
