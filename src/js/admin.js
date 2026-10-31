@@ -25623,7 +25623,90 @@ function _showCerrarCajaConfirm(onAccept) {
     });
 }
 
+// Al cerrar caja los pedidos se archivan y la alerta de Feedback pendiente ya no los ve: antes de cerrar se
+// muestran todos los que aún no se han enviado (sin esperar las 2 h) para copiarles el mensaje de una vez.
+function _getFeedbackPendingForClose() {
+    const now = Date.now();
+    return ordersState.filter((order) => {
+        if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
+        if (order.feedbackRequestedAt || order.feedbackAnsweredAt) return false;
+        if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
+        const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
+        return sentMs > 0 && now - sentMs <= FEEDBACK_MAX_AGE_MS;
+    }).sort((a, b) => (_tsMs(a.enviadoAt || a.deliveredAt) - _tsMs(b.enviadoAt || b.deliveredAt)));
+}
+
+function _showFeedbackCierreGate(orders, onDone) {
+    document.getElementById('_feedbackCierreOverlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = '_feedbackCierreOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    const rows = orders.map((order) => {
+        const phone = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '');
+        return `<div class="fbc-row" data-fbc-order="${escapeHtml(order.id)}" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,0.1);">
+            <div style="flex:1;min-width:0;text-align:left;">
+                <div style="color:#fff;font-weight:700;font-size:0.9rem;">${escapeHtml(getOrderDisplayCustomerName(order))} <span style="opacity:0.5;font-weight:400;">· ${escapeHtml(order.code)}</span></div>
+                <button type="button" data-fbc-phone="${escapeHtml(phone)}" title="Tocar para copiar el número" style="margin-top:3px;padding:3px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.06);color:#fbbf24;font-size:0.82rem;cursor:pointer;">📋 ${escapeHtml(phone)}</button>
+            </div>
+            <button type="button" data-fbc-send="${escapeHtml(order.id)}" style="padding:9px 12px;border-radius:10px;border:none;background:linear-gradient(135deg,#ff7a1a,#e8420a);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer;white-space:nowrap;">Copiar mensaje</button>
+        </div>`;
+    }).join('');
+    overlay.innerHTML = `
+        <div style="background:#1e1e2e;border:1.5px solid rgba(255,140,40,0.55);border-radius:18px;padding:1.5rem 1.4rem;max-width:460px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.55);text-align:center;">
+            <div style="font-size:1.8rem;">⭐</div>
+            <h3 style="margin:0.3rem 0 0.3rem;color:#fff;font-size:1.1rem;">Mensajes de feedback pendientes</h3>
+            <p style="margin:0 0 0.8rem;color:rgba(255,255,255,0.65);font-size:0.85rem;line-height:1.45;">Envíalos de una vez antes de cerrar la caja: copia el mensaje de cada cliente y mándaselo por WhatsApp.</p>
+            <div>${rows}</div>
+            <p id="_fbcEstado" style="margin:0.9rem 0 0.6rem;color:#fbbf24;font-size:0.82rem;"></p>
+            <div style="display:flex;gap:0.75rem;">
+                <button type="button" id="_fbcCancel" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);cursor:pointer;">Volver</button>
+                <button type="button" id="_fbcContinuar" disabled style="flex:1.4;padding:0.7rem;border-radius:10px;border:none;background:#e53935;color:#fff;font-weight:700;cursor:pointer;opacity:0.45;">Continuar a cerrar caja</button>
+            </div>
+            <button type="button" id="_fbcOmitir" style="margin-top:0.7rem;background:none;border:none;color:rgba(255,255,255,0.35);font-size:0.74rem;text-decoration:underline;cursor:pointer;">Omitir y cerrar sin enviar</button>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const estado = overlay.querySelector('#_fbcEstado');
+    const continuar = overlay.querySelector('#_fbcContinuar');
+    const refrescar = () => {
+        const faltan = orders.filter((o) => !o.feedbackRequestedAt).length;
+        estado.textContent = faltan ? `Faltan ${faltan} por enviar.` : '✅ Todos enviados. Ya puedes cerrar la caja.';
+        continuar.disabled = faltan > 0;
+        continuar.style.opacity = faltan > 0 ? '0.45' : '1';
+    };
+    refrescar();
+
+    overlay.addEventListener('click', async (event) => {
+        const phoneBtn = event.target.closest('[data-fbc-phone]');
+        if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.fbcPhone); return; }
+        const sendBtn = event.target.closest('[data-fbc-send]');
+        if (!sendBtn || sendBtn.disabled) return;
+        const order = orders.find((o) => o.id === sendBtn.dataset.fbcSend);
+        if (!order) return;
+        await sendFeedbackRequest(order.id, sendBtn);
+        if (!sendBtn.isConnected) return;
+        if (order.feedbackRequestedAt) {
+            sendBtn.textContent = '✅ Enviado';
+            sendBtn.disabled = true;
+            sendBtn.style.background = '#16a34a';
+        } else {
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Copiar mensaje';
+        }
+        refrescar();
+    });
+    const cerrar = () => overlay.remove();
+    overlay.querySelector('#_fbcCancel').addEventListener('click', cerrar);
+    continuar.addEventListener('click', () => { cerrar(); onDone(); });
+    overlay.querySelector('#_fbcOmitir').addEventListener('click', () => { cerrar(); onDone(); });
+}
+
 document.getElementById('cerrarCajaBtn')?.addEventListener('click', () => {
+    const pendientes = _getFeedbackPendingForClose();
+    if (pendientes.length) {
+        _showFeedbackCierreGate(pendientes, () => _showCerrarCajaConfirm(() => cerrarCaja()));
+        return;
+    }
     _showCerrarCajaConfirm(() => cerrarCaja());
 });
 
