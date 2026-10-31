@@ -7803,16 +7803,8 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
         }
     }
 
-    // Burger Trifásica (Sabe a Quindío): los tickets de domicilio y para llevar que la lleven exigen
-    // cliente registrado. Los de mesa NO: se miden como categoría "mesa" (con su hora).
-    if (orderType !== 'mesa' && internalOrderItems.some((it) => normalizeCategoryKey(it.productName).includes('trifasica'))) {
-        const telYa = normalizePhoneDigits(config.customerPhone || _editingOrderData?.customerPhone || '');
-        if (telYa.length < 7) {
-            const reg = await _sqPedirRegistroCliente(config.customerName || _editingOrderData?.customerName || '');
-            if (!reg) return; // Cancelar = no guardar el pedido todavía
-            if (reg.name || reg.phone) config = { ...config, customerName: reg.name || config.customerName, customerPhone: reg.phone || config.customerPhone };
-        }
-    }
+    // Burger Trifásica (Sabe a Quindío): el cliente es OPCIONAL, ya no se abre la tarjeta de registro al guardar.
+    // Quien quiera medir clientes nuevos/habituales puede poner el celular en "Info" del ticket.
 
     const isEditing = _editingOrderData !== null;
     const editData = _editingOrderData;
