@@ -7004,6 +7004,14 @@ function renderPosOrderItems() {
                         const _hayC = _catD && _catD.combos_pos !== false && combosPackState.some((c) => c.estado !== 'paused' && c.activo_pos !== false);
                         if (_hayA || _hayB || _hayC) {
                             const _prevNote = item.note || '';
+                            // Un 2×1 (o cualquier línea con promo) debe conservar su marca al agregarle combo/bebida:
+                            // antes se reinsertaba como producto normal con nota "2×1" y se perdía el empaque de $2.000.
+                            const _promoOpts = (item.promo2x1 || item.promoLabel || item.aplicadoPor) ? {
+                                promoLabel: item.promoLabel || '',
+                                promo2x1: item.promo2x1 === true,
+                                promo2x1Incremento: item.promo2x1Incremento === true,
+                                aplicadoPor: item.aplicadoPor || ''
+                            } : null;
                             const _prevExtras = internalOrderItems
                                 .filter((i) => i.parentKey === key)
                                 .map((i) => ({ id: i.productId, name: i.productName, price: i.unitPrice }));
@@ -7017,6 +7025,7 @@ function renderPosOrderItems() {
                             renderPosTotals();
                             posSelectedCategory = _editCat;
                             openPosUpgradeSheet(item.productId, item.productName, item.unitPrice);
+                            if (_posUpgradePending && _promoOpts) _posUpgradePending.promoOpts = _promoOpts;
                             if (_prevExtras.length && _posUpgradePending) {
                                 _posUpgradePending.extras = _prevExtras;
                                 renderPosUpgradeStep1();
@@ -7138,14 +7147,14 @@ function openPosUpgradeSheet(productId, productName, productPrice) {
     const addBtn = document.getElementById('posUpgradeAddBtn');
     if (addBtn) {
         addBtn.onclick = () => {
-            const { productId: pid, productName: pname, productPrice: pprice, extras, qty = 1 } = _posUpgradePending;
+            const { productId: pid, productName: pname, productPrice: pprice, extras, qty = 1, promoOpts = {} } = _posUpgradePending;
             const comment = String(document.getElementById('posUpgradeComment')?.value || '').trim();
             const ts = Date.now();
             if (extras.length > 0) {
                 // Cada unidad necesita su propio item padre con clave única (para vincular extras independientes)
                 for (let i = 0; i < qty; i++) {
                     const mainKey = comment ? `${pid}::u${ts}_${i}::${comment}` : `${pid}::u${ts}_${i}`;
-                    addProductToPosOrder(pid, pname, pprice, comment || '', null, { forcedKey: mainKey });
+                    addProductToPosOrder(pid, pname, pprice, comment || '', null, { ...promoOpts, forcedKey: mainKey });
                     // Cada extra necesita su propia clave con el padre incluido: sin esto, el mismo
                     // extra (ej. "Combo mediano") elegido para dos productos distintos colisionaba
                     // en una sola clave y el segundo se fusionaba en el primero, quedando sin su
@@ -7155,7 +7164,7 @@ function openPosUpgradeSheet(productId, productName, productPrice) {
             } else {
                 // Sin extras: fusión normal (se suman al item existente del mismo producto/nota)
                 for (let i = 0; i < qty; i++) {
-                    addProductToPosOrder(pid, pname, pprice, comment || '');
+                    addProductToPosOrder(pid, pname, pprice, comment || '', null, promoOpts);
                 }
             }
             closePosUpgradeSheet();
