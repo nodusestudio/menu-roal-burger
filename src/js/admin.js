@@ -7052,9 +7052,14 @@ function renderPosOrderItems() {
                                 promo2x1Incremento: item.promo2x1Incremento === true,
                                 aplicadoPor: item.aplicadoPor || ''
                             } : null;
+                            // Un extra puede llevar cantidad > 1 por unidad del producto (2×1 con combo en las dos): se repite
+                            // esa cantidad para no perder combos al editar la línea.
                             const _prevExtras = internalOrderItems
                                 .filter((i) => i.parentKey === key)
-                                .map((i) => ({ id: i.productId, name: i.productName, price: i.unitPrice }));
+                                .flatMap((i) => Array.from(
+                                    { length: Math.max(1, Math.round(Number(i.quantity || 1) / Math.max(1, Number(item.quantity || 1)))) },
+                                    () => ({ id: i.productId, name: i.productName, price: i.unitPrice })
+                                ));
                             // Si tiene más de 1 unidad SIN extras propios, solo quitar 1 (el resto queda en carrito)
                             if (item.quantity > 1 && !_prevExtras.length) {
                                 PosCart.incrementQuantity(key, -1);
@@ -7784,7 +7789,24 @@ async function _sqPedirRegistroCliente(nombreInicial = '') {
 }
 
 const _cortOf = (items) => items.filter((i) => i.cortesia).reduce((a, i) => ({ total: a.total + Number(i.cortesiaPrecio || 0) * Number(i.quantity || 0), count: a.count + Number(i.quantity || 0) }), { total: 0, count: 0 });
+// Los botones GUARDAR/COBRAR vacían posTicketConfig apenas llaman a esta función (sin esperar el resultado). Si el
+// guardado NO termina (validación, error, cancelar un aviso), el tipo de pedido / cliente / dirección ya marcados se
+// perdían y el POS volvía a preguntar "tipo de pedido". Por eso, si el carrito sigue con productos al terminar
+// (no se guardó), se restaura la configuración tal como estaba.
 async function saveAdminOrderQuick(config = {}, opts = {}) {
+    try {
+        await _saveAdminOrderQuickImpl(config, opts);
+    } finally {
+        setTimeout(() => {
+            if (internalOrderItems.length && !posTicketConfig && config && config.orderType) {
+                posTicketConfig = config;
+                renderPosCartTicketInfo();
+            }
+        }, 0);
+    }
+}
+
+async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
         return;
