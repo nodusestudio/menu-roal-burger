@@ -6806,7 +6806,29 @@ function addComboEspecialToPosOrder(combo) {
     renderPosBottomBar();
 }
 
+// ¿La categoría del producto ofrece combos, adicionales o bebidas en el POS? (misma regla que la hoja de acompañantes)
+function _posCategoriaOfreceExtras(productId) {
+    const prod = productsState.find((p) => p.id === String(productId).split('::')[0]);
+    const cat = String(prod?.categoria || '').trim().toUpperCase();
+    const catData = categoriesState.find((c) => c.name.trim().toUpperCase() === cat);
+    if (!catData) return false;
+    return (catData.acompanantes_pos !== false && acompanantesState.some((a) => a.estado === 'active' && a.activo_pos))
+        || (catData.bebidas_pos !== false && bebidasState.some((b) => b.estado === 'active' && b.mostrar_acompanante))
+        || (catData.combos_pos !== false && combosPackState.some((c) => c.estado !== 'paused' && c.activo_pos !== false));
+}
+
 function addProductToPosOrder(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
+    // Un 2×1 son 2 hamburguesas en una línea: antes de agregarlo se pregunta si lleva combo/bebida (y en cuántas).
+    // Para saltarse la pregunta (ya respondida) se pasa upgradeHandled.
+    if (opts.promo2x1 === true && opts.upgradeHandled !== true && !opts.parentKey && _posCategoriaOfreceExtras(productId)) {
+        openPosUpgradeSheet(productId, productName, productPrice, {
+            promoLabel: opts.promoLabel || '',
+            promo2x1: true,
+            promo2x1Incremento: opts.promo2x1Incremento === true,
+            aplicadoPor: opts.aplicadoPor || ''
+        });
+        return;
+    }
     if (!PosCart.addItem(productId, productName, productPrice, note, originalUnitPrice, opts)) return;
 
     renderPosOrderItems();
@@ -7042,8 +7064,7 @@ function renderPosOrderItems() {
                             renderPosOrderItems();
                             renderPosTotals();
                             posSelectedCategory = _editCat;
-                            openPosUpgradeSheet(item.productId, item.productName, item.unitPrice);
-                            if (_posUpgradePending && _promoOpts) _posUpgradePending.promoOpts = _promoOpts;
+                            openPosUpgradeSheet(item.productId, item.productName, item.unitPrice, _promoOpts);
                             if (_prevExtras.length && _posUpgradePending) {
                                 _posUpgradePending.extras = _prevExtras;
                                 renderPosUpgradeStep1();
@@ -7150,8 +7171,8 @@ function _setPosUpgradeAddBtnState(enabled) {
     btn.style.cursor = enabled ? '' : 'not-allowed';
 }
 
-function openPosUpgradeSheet(productId, productName, productPrice) {
-    _posUpgradePending = { productId, productName, productPrice, extras: [], qty: 1 };
+function openPosUpgradeSheet(productId, productName, productPrice, promoOpts) {
+    _posUpgradePending = { productId, productName, productPrice, extras: [], qty: 1, ...(promoOpts ? { promoOpts } : {}) };
     const overlay = document.getElementById('posUpgradeOverlay');
     if (!overlay) return;
     const commentInput = document.getElementById('posUpgradeComment');
@@ -7166,13 +7187,14 @@ function openPosUpgradeSheet(productId, productName, productPrice) {
     if (addBtn) {
         addBtn.onclick = () => {
             const { productId: pid, productName: pname, productPrice: pprice, extras, qty = 1, promoOpts = {} } = _posUpgradePending;
-            const comment = String(document.getElementById('posUpgradeComment')?.value || '').trim();
+            let comment = String(document.getElementById('posUpgradeComment')?.value || '').trim();
+            if (promoOpts.promo2x1 && !/2\s*[x×]\s*1/i.test(comment)) comment = comment ? `2×1 | ${comment}` : '2×1';
             const ts = Date.now();
             if (extras.length > 0) {
                 // Cada unidad necesita su propio item padre con clave única (para vincular extras independientes)
                 for (let i = 0; i < qty; i++) {
                     const mainKey = comment ? `${pid}::u${ts}_${i}::${comment}` : `${pid}::u${ts}_${i}`;
-                    addProductToPosOrder(pid, pname, pprice, comment || '', null, { ...promoOpts, forcedKey: mainKey });
+                    addProductToPosOrder(pid, pname, pprice, comment || '', null, { ...promoOpts, upgradeHandled: true, forcedKey: mainKey });
                     // Cada extra necesita su propia clave con el padre incluido: sin esto, el mismo
                     // extra (ej. "Combo mediano") elegido para dos productos distintos colisionaba
                     // en una sola clave y el segundo se fusionaba en el primero, quedando sin su
@@ -7182,7 +7204,7 @@ function openPosUpgradeSheet(productId, productName, productPrice) {
             } else {
                 // Sin extras: fusión normal (se suman al item existente del mismo producto/nota)
                 for (let i = 0; i < qty; i++) {
-                    addProductToPosOrder(pid, pname, pprice, comment || '', null, promoOpts);
+                    addProductToPosOrder(pid, pname, pprice, comment || '', null, { ...promoOpts, upgradeHandled: true });
                 }
             }
             closePosUpgradeSheet();
@@ -7237,7 +7259,11 @@ function renderPosUpgradeStep1() {
     const hayComboMenu = combosDisponibles.length > 0;
     const mostrarBebida = hayBebida;
 
+    const avisoPromo2x1 = _posUpgradePending.promoOpts?.promo2x1
+        ? '<div style="margin:0 0 10px;padding:9px 12px;border-radius:10px;font-size:0.82rem;line-height:1.4;background:rgba(255,140,30,0.14);border:1.5px solid rgba(255,140,30,0.55);">🏷 <strong>El 2×1 es solo de la hamburguesa.</strong> Papas, bebida y adicionales se pagan completos.</div>'
+        : '';
     body.innerHTML = `
+        ${avisoPromo2x1}
         <div class="pus-home-btns">
             ${hayComboMenu  ? `<button type="button" class="pus-cat-btn combo${yaHayCombo ? ' is-change' : ''}" id="pusGoCombo">${yaHayCombo ? '🔄 Cambiar combo' : '🍔 Agregar combo'}</button>` : ''}
             ${hayAcomp      ? `<button type="button" class="pus-cat-btn adicional" id="pusGoAdicional">🥗 Adicionales</button>` : ''}
@@ -7323,7 +7349,9 @@ function _renderPosUpgradeCombosPack(combos) {
             const c = combos.find((x) => x.id === packId);
             if (!c) return;
             const sabores = Array.isArray(c.bebida_sabores) ? c.bebida_sabores.filter(Boolean) : [];
-            if (sabores.length > 1) {
+            if (_posUpgradePending?.promoOpts?.promo2x1) {
+                _renderPosUpgradeCombo2x1Scope(c, sabores, combos);
+            } else if (sabores.length > 1) {
                 _renderPosUpgradePackSabor(c, sabores);
             } else {
                 const precio = Number(c.valor || 0);
@@ -7339,15 +7367,37 @@ function _renderPosUpgradeCombosPack(combos) {
     });
 }
 
-function _renderPosUpgradePackSabor(combo, sabores) {
+// 2×1 = 2 hamburguesas: el combo puede ir en las dos o solo en una.
+function _renderPosUpgradeCombo2x1Scope(combo, sabores, combos) {
+    const v = Number(combo.valor || 0);
     _renderPosUpgradeOptionGrid({
-        title: 'Elige sabor de bebida',
+        title: '2×1 trae 2 hamburguesas: ¿combo en…?',
+        items: [
+            { key: '2', name: 'Combo en las dos', detail: `${escapeHtml(String(combo.nombre || 'Combo'))} ×2`, price: '+' + formatMoney(v * 2) },
+            { key: '1', name: 'Combo solo en una', detail: 'La otra va sola', price: '+' + formatMoney(v) },
+        ],
+        onSelect: (n) => {
+            const veces = n === '2' ? 2 : 1;
+            if (sabores.length > 1) { _renderPosUpgradePackSabor(combo, sabores, veces, veces); return; }
+            const saborSuffix = sabores.length === 1 ? `-${sabores[0]}` : '';
+            const nombre = sabores.length === 1 ? `${String(combo.nombre || 'Combo')} (${sabores[0]})` : String(combo.nombre || 'Combo');
+            for (let i = 0; i < veces; i += 1) _posUpgradePending.extras.push({ id: `combo-pack-${combo.id}${saborSuffix}`, name: nombre, price: v });
+            renderPosUpgradeStep1();
+        },
+        onBack: () => _renderPosUpgradeCombosPack(combos),
+    });
+}
+
+function _renderPosUpgradePackSabor(combo, sabores, restantes = 1, total = 1) {
+    _renderPosUpgradeOptionGrid({
+        title: total > 1 ? `Sabor de bebida · combo ${total - restantes + 1} de ${total}` : 'Elige sabor de bebida',
         items: sabores.map((s) => ({ key: s, name: s })),
         onSelect: (sabor) => {
             const nombre = `${combo.nombre} (${sabor})`;
             const precio = Number(combo.valor || 0);
             _posUpgradePending.extras.push({ id: `combo-pack-${combo.id}-${sabor}`, name: nombre, price: precio });
-            renderPosUpgradeStep1();
+            if (restantes > 1) _renderPosUpgradePackSabor(combo, sabores, restantes - 1, total);
+            else renderPosUpgradeStep1();
         },
         onBack: () => {
             const activos = combosPackState.filter((c) => c.estado !== 'paused' && c.activo_pos !== false);
