@@ -7004,9 +7004,9 @@ function renderPosOrderItems() {
 
     const renderSubItem = (item) => `
         <div class="pos-extra-chip">
-            <span class="pos-extra-chip-name">${escapeHtml(item.productName)}</span>
+            <span class="pos-extra-chip-name">${Number(item.quantity || 1) > 1 ? `${Number(item.quantity)} × ` : ''}${escapeHtml(item.productName)}</span>
             ${item.unitPrice > 0
-                ? `<span class="pos-extra-chip-price">+${formatMoney(item.unitPrice)}</span>`
+                ? `<span class="pos-extra-chip-price">+${formatMoney(item.unitPrice * Number(item.quantity || 1))}</span>`
                 : `<span class="pos-extra-chip-incl">incl.</span>`}
             <button type="button" class="pos-item-remove pos-extra-chip-del" data-item-key="${escapeHtml(item.itemKey)}" aria-label="Quitar">&times;</button>
         </div>`;
