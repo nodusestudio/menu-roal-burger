@@ -9999,10 +9999,21 @@ function _sqItemEs2x1(item) {
 function _sqDayKey(ts) { return new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); }
 function _sqHour(ts) { return Number(new Date(ts).toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' })); }
 
-function _sqCompute() {
+// Periodo de la pestaña: 'todo' (desde el inicio del festival), 'hoy' (día en curso) o 'ultimo' (el día anterior).
+// Bogotá no tiene horario de verano: un día = 24 h exactas desde sus 00:00 (-05:00).
+let _sqPeriodo = 'todo';
+function _sqRango(periodo) {
+    if (periodo === 'todo') return { key: null, desde: SQ_INICIO_MS, hasta: Infinity };
+    const key = _sqDayKey(periodo === 'hoy' ? Date.now() : Date.now() - 86400000);
+    const desde = Date.parse(`${key}T00:00:00-05:00`);
+    return { key, desde: Math.max(desde, SQ_INICIO_MS), hasta: desde + 86400000 };
+}
+
+function _sqCompute(periodo = 'todo') {
     const byId = new Map();
     [..._sqArchived, ..._sqActive].forEach((o) => byId.set(o.id, o));
-    const festival = [...byId.values()].filter((o) => !(o.voided || o.anulado) && (_orderTs(o) || 0) >= SQ_INICIO_MS);
+    const rango = _sqRango(periodo);
+    const festival = [...byId.values()].filter((o) => { const ts = _orderTs(o) || 0; return !(o.voided || o.anulado) && ts >= rango.desde && ts < rango.hasta; });
 
     const prev = new Set();
     for (const o of _metricsOrdersState) {
@@ -10052,8 +10063,14 @@ function _sqCompute() {
 function renderMetricasSabe() {
     const body = document.getElementById('sqBody');
     if (!body) return;
-    const { festival, rows, customers, sinRegistro, mesaSinCliente, historyReady } = _sqCompute();
+    const periodo = _sqPeriodo;
+    const rango = _sqRango(periodo);
+    const { festival, rows, customers, sinRegistro, mesaSinCliente, historyReady } = _sqCompute(periodo);
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const fechaLarga = (k) => new Date(`${k}T12:00:00-05:00`).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long' });
+    const subtitulo = periodo === 'todo' ? 'en vivo desde el 30 de octubre' : `${periodo === 'hoy' ? 'día en curso' : 'último día'}, ${fechaLarga(rango.key)}`;
+    const ambito = periodo === 'todo' ? 'del festival' : periodo === 'hoy' ? 'de hoy' : 'del último día';
+    const selector = `<article class="admin-card"><div class="prod-period-bar">${[['ultimo', 'Último día'], ['hoy', 'Día en curso'], ['todo', 'Todo completo']].map(([k, l]) => `<button type="button" class="prod-period-btn${k === periodo ? ' active' : ''}" data-sq-periodo="${k}">${l}</button>`).join('')}</div></article>`;
     const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
 
     const orders = rows.length;
@@ -10074,10 +10091,12 @@ function renderMetricasSabe() {
     const hoyKey = _sqDayKey(Date.now());
     const hoyRows = rows.filter((r) => _sqDayKey(r.ts) === hoyKey);
     const dayMap = new Map();
-    for (let i = 0; i < 10; i++) {
-        const k = _sqDayKey(SQ_INICIO_MS + i * 86400000 + 3600000);
-        if (k <= hoyKey) dayMap.set(k, 0);
-    }
+    if (periodo === 'todo') {
+        for (let i = 0; i < 10; i++) {
+            const k = _sqDayKey(SQ_INICIO_MS + i * 86400000 + 3600000);
+            if (k <= hoyKey) dayMap.set(k, 0);
+        }
+    } else dayMap.set(rango.key, 0);
     rows.forEach((r) => { const k = _sqDayKey(r.ts); dayMap.set(k, (dayMap.get(k) || 0) + r.units); });
     const dayData = [...dayMap.entries()].sort().map(([k, v]) => ({ label: k.slice(5), val: v }));
     const diasTranscurridos = Math.max(1, dayData.length);
@@ -10176,13 +10195,12 @@ function renderMetricasSabe() {
             </div>
             <div class="met-user-stat"><div class="met-user-stat-val">${nf(c.q)}</div><div class="met-user-stat-sub">${escapeHtml(formatMoney(c.valor))}</div></div>
         </div>`).join('');
-    body.innerHTML = `
+    body.innerHTML = `${selector}
         <article class="admin-card">
-            <div class="met-section-title">🏆 Sabe a Quindío — Burger Trifásica <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en vivo desde el 30 de octubre</small></div>
+            <div class="met-section-title">🏆 Sabe a Quindío — Burger Trifásica <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· ${escapeHtml(subtitulo)}</small></div>
             <div class="met-kpi-row">
                 ${kpi('met-kpi-card--hi', nf(units), 'Trifásicas vendidas')}
-                ${kpi('', nf(hoyRows.reduce((s, r) => s + r.units, 0)), 'Hoy')}
-                ${kpi('', promedioDia, 'Promedio por día')}
+                ${periodo === 'todo' ? kpi('', nf(hoyRows.reduce((s, r) => s + r.units, 0)), 'Hoy') + kpi('', promedioDia, 'Promedio por día') : ''}
                 ${kpi('met-kpi-card--green', escapeHtml(formatMoney(revenue)), 'Ingresos Trifásica')}
                 ${kpi('', nf(orders), 'Pedidos con Trifásica')}
                 ${kpi('met-kpi-card--purple', nf(burgers), 'Hamburguesas entregadas (2×1 = 2)')}
@@ -10196,7 +10214,7 @@ function renderMetricasSabe() {
                 ${kpi('met-kpi-card--green', nf(habituales.length), 'Clientes HABITUALES')}
                 ${kpi('met-kpi-card--purple', nf(repitieron.length), 'Repitieron (2 o más pedidos)')}
                 ${kpi('', `${pctReg}%`, `Domicilios y para llevar con cliente registrado (${nf(registrados)} de ${nf(exigenCliente)})`)}
-                ${kpi('', `${pctShare}%`, 'De todos los pedidos del festival')}
+                ${kpi('', `${pctShare}%`, `De todos los pedidos ${ambito}`)}
                 ${kpi('', nf(rows.filter((r) => r.o.orderType === 'mesa').length), 'Pedidos en mesa (sin cliente)')}
             </div>
             ${sinRegistro.orders ? `<p class="met-empty-note" style="margin-top:10px">⚠️ ${nf(sinRegistro.orders)} pedido(s) con Trifásica de domicilio o para llevar sin teléfono (${nf(sinRegistro.units)} unidades): no se pueden clasificar como nuevos o habituales. En caja el sistema ya pide el registro; estos vienen de antes o de un pedido editado.</p>` : ''}
@@ -10222,7 +10240,7 @@ function renderMetricasSabe() {
                 ${kpi('', nf(cortUnits), 'Platos de cortesía')}
                 ${kpi('', nf(cortOrders), 'Pedidos con cortesía')}
                 ${kpi('', nf(cortTrif), 'Trifásicas de cortesía')}
-                ${kpi('met-kpi-card--purple', `${cortPct}%`, 'De la venta del festival')}
+                ${kpi('met-kpi-card--purple', `${cortPct}%`, `De la venta ${ambito}`)}
                 ${kpi('met-kpi-card--green', `${nf(cortVolvieron)} de ${nf(cortClientes.size)}`, 'Clientes con cortesía que volvieron a comprar')}
                 ${kpi('met-kpi-card--green', escapeHtml(formatMoney(cortRecuperado)), `Vendido después a esos clientes (${cortRetornoPct}% de lo regalado)`)}
             </div>
@@ -10252,6 +10270,13 @@ function renderMetricasSabe() {
     if (cortPorProducto.length) _renderBarChart('sqCortProdChart', cortPorProducto, '#34d399');
     renderMetricasSqFin();
 }
+
+document.getElementById('sqBody')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-sq-periodo]');
+    if (!b || b.dataset.sqPeriodo === _sqPeriodo) return;
+    _sqPeriodo = b.dataset.sqPeriodo;
+    renderMetricasSabe();
+});
 
 // ── Métricas: Finanzas de Sabe a Quindío (ventas, costo, utilidad y reparto de la utilidad) ──────────
 // Ventas y unidades salen de los mismos pedidos que la pestaña Sabe a Quindío. El costo sale de Costos y
