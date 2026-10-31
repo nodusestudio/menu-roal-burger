@@ -11177,6 +11177,44 @@ async function ensureActiveSalesDay() {
     return true;
 }
 
+// ── Mensajes de WhatsApp al cliente (confirmación y "en preparación") ───────────────────────────────
+// Pensados para leerse en un celular: secciones con título y separador, un producto por bloque, los
+// extras (combo/bebida) anidados debajo de su producto, la nota en su propia línea y los datos de
+// pago/tiempo cada uno en su línea (antes iban dentro de un mismo bloque en negrita y se desarmaban).
+function _waSep() { return '──────────────'; }
+
+// El texto largo del 2×1 del menú ("PROMOCIÓN 2×1 — <producto> (incluye 2) | … | +$ 2.000 si es para llevar o
+// domicilio") se resume: el cliente ya ve el empaque como su propia línea en el resumen.
+function _waLimpiarOpcion(label) {
+    const partes = String(label || '').split(' | ').filter((p) => !/si es para (llevar|domicilio)/i.test(p));
+    const esPromo2x1 = partes.some((p) => /PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p));
+    return partes
+        .filter((p) => !(esPromo2x1 && /^\s*solo la burger\s*$/i.test(p)))
+        .map((p) => (/PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p) ? '🏷 2×1: 2 hamburguesas por el precio de 1' : p))
+        .join(' | ');
+}
+
+// Líneas del pedido para WhatsApp. conPrecio=true agrega el valor de cada línea (mensaje de confirmación).
+function _waLineasPedido(order, conPrecio) {
+    const filas = _groupOrderItemsForDisplay(order.items).map((i) => {
+        const qty = Number(i.quantity || 1);
+        const name = i.productName || i.name || '';
+        const sub = Number(i.subtotal || 0);
+        const precio = conPrecio ? ` — ${sub === 0 ? 'GRATIS' : formatMoney(sub)}` : '';
+        if (i.parentItemKey) return `   ➕ ${qty}x ${name}${precio}`;
+        // Fuera del Menú: el cliente lee los nombres que vio en la landing, no los de cocina.
+        const detalleCupon = String(i.orderOptions?.cuponPanaDetalleCliente || '').trim();
+        const detalles = [detalleCupon || _waLimpiarOpcion(i.optionLabel)];
+        if (i.cortesia) detalles.unshift('🎁 Cortesía');
+        // La nota del cliente va en su propia línea para que no se pierda entre los demás detalles.
+        const notaTexto = (!detalleCupon && i.note && i.note !== i.optionLabel && !/^\s*2\s*[x×]\s*1\s*$/i.test(i.note)) ? String(i.note).trim() : '';
+        const detalleTexto = detalles.filter(Boolean).join(' | ');
+        const linea = `• *${qty}x ${name}*${precio}`;
+        return linea + (detalleTexto ? `\n   ↳ ${detalleTexto}` : '') + (notaTexto ? `\n   📝 Nota: ${notaTexto}` : '');
+    });
+    return filas.join('\n') || '• (sin detalle)';
+}
+
 // options.includeItems === false → omite el bloque "📋 Tu pedido" (se usa en el carrusel del
 // ticket para el botón "En preparación", donde los productos ya se confirmaron con el mensaje
 // de "Confirmación"). Por defecto incluye los productos (comportamiento histórico).
@@ -11184,37 +11222,26 @@ function buildOrderWhatsAppMessage(order, options = {}) {
     const includeItems = options.includeItems !== false;
     const saludo = getOrderGreetingName(order) ? `¡Hola ${getOrderGreetingName(order)}! 👋` : '¡Hola! 👋';
     const codigo = order.code || '';
-    let itemsBlock = '';
-    if (includeItems) {
-        const lineas = _groupOrderItemsForDisplay(order.items).map(i => {
-            const qty = Number(i.quantity || 1);
-            const name = i.productName || i.name || '';
-            const detalles = [String(i.optionLabel || '').trim()];
-            if (i.note && i.note !== i.optionLabel) detalles.push(`Nota: ${String(i.note).trim()}`);
-            const detalleTexto = detalles.filter(Boolean).join(' | ');
-            return detalleTexto ? `• ${qty}x ${name}\n   ↳ ${detalleTexto}` : `• ${qty}x ${name}`;
-        }).join('\n');
-        itemsBlock = `\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}`;
-    }
+    const itemsBlock = includeItems ? `\n\n${_waSep()}\n📋 *TU PEDIDO*\n${_waLineasPedido(order, false)}` : '';
     const total = formatMoney(Number(order.total || order.subtotal || 0));
     const method = String(order.paymentMethod || 'pendiente').toLowerCase();
     const isPaid = method && method !== 'pendiente' && method !== 'efectivo';
     const paymentLabel = getOrderPaymentLabel(order);
-    const paymentLine = isPaid
-        ? `Monto pagado: ${total} (${paymentLabel})`
-        : `Total a cobrar: ${total} ${method === 'efectivo' ? `\nMedio de pago: ${paymentLabel}` : ''}`;
+    const pagoLineas = isPaid
+        ? `💰 *Monto pagado:* ${total}\n💳 *Medio de pago:* ${paymentLabel}`
+        : `💰 *Total a cobrar:* ${total}${method === 'efectivo' ? `\n💵 *Medio de pago:* ${paymentLabel}` : ''}`;
 
     // Para llevar/recoger el cliente no espera un domiciliario — el tiempo y el cierre del
     // mensaje deben hablar de pasar por el pedido, no de que "llega a la puerta".
     const isRetiro = order.orderType === 'retiro';
     const tiempoLine = isRetiro
-        ? '🕐 *Tiempo estimado:* ~25 min (te avisamos apenas esté listo)'
-        : '🕐 *Tiempo estimado:* ~50 min (trabajamos para que sea menos ⚡)';
+        ? '🕐 *Tiempo estimado:* ~25 min\n   (te avisamos apenas esté listo)'
+        : '🕐 *Tiempo estimado:* ~50 min\n   (trabajamos para que sea menos ⚡)';
     const cierre = isRetiro
         ? '¡Gracias por preferirnos! En unos 25 min ya puedes pasar por tu pedido 🥡'
         : '¡Gracias por preferirnos! Pronto estará en tu puerta 🛵';
 
-    return `${saludo}\nTu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥${itemsBlock}\n\n💰 *${paymentLine}*\n${tiempoLine}\n\n${cierre}`;
+    return `${saludo}\n✅ Tu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥${itemsBlock}\n\n${_waSep()}\n${pagoLineas}\n${tiempoLine}\n\n${cierre}`;
 }
 
 // Mensaje #1 del carrusel del ticket: detalle COMPLETO del pedido (productos + notas,
@@ -11223,18 +11250,7 @@ function buildOrderWhatsAppMessage(order, options = {}) {
 function buildOrderConfirmationMessage(order) {
     const saludo = getOrderGreetingName(order) ? `¡Hola ${getOrderGreetingName(order)}! 👋` : '¡Hola! 👋';
     const codigo = order.code || '';
-    const lineas = _groupOrderItemsForDisplay(order.items).map(i => {
-        const qty = Number(i.quantity || 1);
-        const name = i.productName || i.name || '';
-        const precio = formatMoney(Number(i.subtotal || 0));
-        // Fuera del Menú: el cliente lee los nombres que vio en la landing, no los de cocina.
-        const detalleCupon = String(i.orderOptions?.cuponPanaDetalleCliente || '').trim();
-        const detalles = [detalleCupon || String(i.optionLabel || '').trim()];
-        if (!detalleCupon && i.note && i.note !== i.optionLabel) detalles.push(`Nota: ${String(i.note).trim()}`);
-        const detalleTexto = detalles.filter(Boolean).join(' | ');
-        const linea = `• ${qty}x ${name} — ${Number(i.subtotal || 0) === 0 ? 'GRATIS' : precio}`;
-        return detalleTexto ? `${linea}\n   ↳ ${detalleTexto}` : linea;
-    }).join('\n');
+    const lineas = _waLineasPedido(order, true);
 
     const ahorroPromos = (order.items || []).reduce((s, it) => {
         const orig = it.originalUnitPrice != null ? Number(it.originalUnitPrice) : null;
@@ -11245,13 +11261,13 @@ function buildOrderConfirmationMessage(order) {
 
     const resumen = [`Subtotal: ${formatMoney(Number(order.subtotal || 0))}`];
     if (ahorroPromos > 0) resumen.push(`🎉 Ahorro en promos: -${formatMoney(ahorroPromos)}`);
-    if (Number(order.promo2x1IncrementoFee || 0) > 0) resumen.push(`Empaque 2×1: ${formatMoney(Number(order.promo2x1IncrementoFee))}`);
+    if (Number(order.promo2x1IncrementoFee || 0) > 0) resumen.push(`📦 Empaque 2×1: ${formatMoney(Number(order.promo2x1IncrementoFee))}`);
     if (Number(order.pointsRedeemed || 0) > 0) resumen.push(`⭐ Puntos usados (${Number(order.pointsRedeemed).toLocaleString('es-CO')}): -${formatMoney(Number(order.pointsDiscountAmount || 0))}`);
     if (order.orderType === 'domicilio') resumen.push(`🛵 Domicilio: ${formatMoney(Number(order.deliveryFee || 0))}`);
-    resumen.push(`*Total: ${formatMoney(getOrderDisplayTotal(order))}*`);
+    resumen.push(`💰 *TOTAL: ${formatMoney(getOrderDisplayTotal(order))}*`);
 
     const entregaLinea = order.orderType === 'domicilio'
-        ? `📍 *Entrega a domicilio:* ${String(order.deliveryAddress || 'sin dirección registrada').trim()}`
+        ? `📍 *Entrega a domicilio:*\n${String(order.deliveryAddress || 'sin dirección registrada').trim()}`
         : order.orderType === 'mesa'
             ? `🍽️ *En el local${order.mesaNumber ? ` — Mesa ${order.mesaNumber}` : ''}*`
             : '🥡 *Para recoger en el local*';
@@ -11267,14 +11283,14 @@ function buildOrderConfirmationMessage(order) {
     if (_cuponPagoLinea && !(_pm === 'efectivo' && Number(order.cashTenderAmount) > 0)) {
         pagoLinea = _cuponPagoLinea;
     } else if (!_pm || _pm === 'pendiente') {
-        pagoLinea = '💳 *¿Cómo vas a pagar?* Efectivo o transferencia. Si es en efectivo, dinos con cuánto pagas para tenerte el cambio listo.';
+        pagoLinea = '💳 *¿Cómo vas a pagar?*\nEfectivo o transferencia. Si es en efectivo, dinos con cuánto pagas para tenerte el cambio listo.';
     } else if (_pm === 'efectivo' && !(Number(order.cashTenderAmount) > 0)) {
-        pagoLinea = '💵 *Pago en efectivo.* ¿Con cuánto pagas? Así te tenemos el cambio listo.';
+        pagoLinea = '💵 *Pago en efectivo.*\n¿Con cuánto pagas? Así te tenemos el cambio listo.';
     } else {
         pagoLinea = `💳 *Medio de pago:* ${getOrderPaymentLabel(order)}`;
     }
 
-    return `${saludo} Recibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n📋 *Tu pedido:*\n${lineas || '• (sin detalle)'}\n\n🧾 *Resumen:*\n${resumen.join('\n')}\n\n${entregaLinea}\n${pagoLinea}\n\n¿Está todo bien? Respóndenos *SÍ* para enviarlo a cocina ✅`;
+    return `${saludo}\nRecibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n${_waSep()}\n📋 *TU PEDIDO*\n${lineas}\n\n${_waSep()}\n🧾 *RESUMEN*\n${resumen.join('\n')}\n\n${_waSep()}\n${entregaLinea}\n${pagoLinea}\n\n✅ ¿Está todo bien? Respóndenos *SÍ* y lo enviamos a cocina.`;
 }
 
 // Enlace de WhatsApp: SIEMPRE api.whatsapp.com/send, nunca wa.me. La redirección de wa.me a

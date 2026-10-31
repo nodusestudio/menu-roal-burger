@@ -20,12 +20,12 @@ function fn(src, nombre) {
 
 const admin = new Function(`
     ${['_cpanaResumenVigencia', '_cpanaAvisosActivacion', '_cpanaRenglonCliente', '_cpanaDetalleCliente',
-        '_cpanaSelecciones', '_cpanaPagoLineaConfirmacion', '_groupOrderItemsForDisplay', 'buildOrderConfirmationMessage'].map((n) => fn(ADMIN, n)).join('\n')}
+        '_cpanaSelecciones', '_cpanaPagoLineaConfirmacion', '_groupOrderItemsForDisplay', '_waSep', '_waLimpiarOpcion', '_waLineasPedido', 'buildOrderConfirmationMessage', 'buildOrderWhatsAppMessage'].map((n) => fn(ADMIN, n)).join('\n')}
     function getOrderGreetingName(o) { return o.customerName || ''; }
     function formatMoney(n) { return '$' + Number(n || 0).toLocaleString('es-CO'); }
     function getOrderDisplayTotal(o) { return Number(o.total || 0); }
     function getOrderPaymentLabel(o) { return o.paymentMethod; }
-    return { _cpanaResumenVigencia, _cpanaAvisosActivacion, _cpanaDetalleCliente, buildOrderConfirmationMessage };
+    return { _cpanaResumenVigencia, _cpanaAvisosActivacion, _cpanaDetalleCliente, buildOrderConfirmationMessage, buildOrderWhatsAppMessage };
 `)();
 
 // ── Editor: vigencia ────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ test('confirmación: un pedido normal (sin cupón) sigue igual', () => {
         items: [{ itemKey: 'a', productName: 'Burger', quantity: 1, unitPrice: 20000, subtotal: 20000, optionLabel: 'Sin cebolla', note: 'Bien cocida' }]
     });
     assert.match(msg, /¿Cómo vas a pagar\?/);
-    assert.match(msg, /↳ Sin cebolla \| Nota: Bien cocida/);
+    assert.ok(msg.includes('   ↳ Sin cebolla\n   📝 Nota: Bien cocida'), msg);
 });
 
 // ── Landing: tarjeta del cupón sin QR, con foto opcional ───────────────────
@@ -123,4 +123,26 @@ test('cupon.js: sin QR (ni la librería) y la foto de la tarjeta no deja hueco s
     const fotoTicketHtml = new Function(`${fn(CUPON, 'esc')}${fn(CUPON, 'fotoTicketHtml')} return fotoTicketHtml;`)();
     assert.equal(fotoTicketHtml(''), '');
     assert.match(fotoTicketHtml('https://firebasestorage.googleapis.com/x.webp'), /<img class="cp-ticket-foto" src="https:\/\/firebasestorage\.googleapis\.com\/x\.webp"/);
+});
+
+// ── Mensajes de WhatsApp: legibles en el celular ───────────────────────────
+
+test('confirmación: 2×1 con combo → promo resumida, extra anidado con cantidad y empaque aparte', () => {
+    const msg = admin.buildOrderConfirmationMessage({
+        code: 'RB-1', customerName: 'Ana', orderType: 'domicilio', subtotal: 51000, total: 59000, deliveryFee: 6000, promo2x1IncrementoFee: 2000, paymentMethod: 'pendiente',
+        deliveryAddress: 'Calle 1 # 2-3',
+        items: [
+            { itemKey: 'a', productName: 'Burger Trifásica', quantity: 1, unitPrice: 37000, subtotal: 37000, optionLabel: '🏷 PROMOCIÓN 2×1 — Burger Trifásica (incluye 2) | Solo la burger | +$ 2.000 si es para llevar o domicilio', note: '2×1' },
+            { itemKey: 'b', parentItemKey: 'a', productName: 'Combo mediano', quantity: 2, unitPrice: 7000, subtotal: 14000, optionLabel: '' }
+        ]
+    });
+    assert.ok(msg.includes('• *1x Burger Trifásica* — $37.000\n   ↳ 🏷 2×1: 2 hamburguesas por el precio de 1\n   ➕ 2x Combo mediano — $14.000'), msg);
+    assert.doesNotMatch(msg, /Solo la burger|si es para llevar|Nota: 2×1/);
+    assert.ok(msg.includes('📦 Empaque 2×1: $2.000'), msg);
+    assert.ok(msg.includes('📍 *Entrega a domicilio:*\nCalle 1 # 2-3'), msg);
+});
+
+test('en preparación: pago y tiempo cada uno en su línea (sin negrita partida)', () => {
+    const msg = admin.buildOrderWhatsAppMessage({ code: 'RB-2', customerName: 'Luis', orderType: 'domicilio', total: 20000, paymentMethod: 'efectivo', items: [] }, { includeItems: false });
+    assert.ok(msg.includes('💰 *Total a cobrar:* $20.000\n💵 *Medio de pago:* efectivo\n🕐 *Tiempo estimado:* ~50 min'), msg);
 });
