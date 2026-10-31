@@ -2818,9 +2818,27 @@ async function sendFeedbackRequest(orderId, btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
 
     const message = buildFeedbackMessage(order);
+    // Ningún paso puede dejar el botón en "Guardando…" para siempre: el portapapeles (permiso/foco de la
+    // ventana) y el guardado en Firestore (conexión caída: .update() no resuelve hasta que el servidor responde)
+    // se cortan por tiempo y el botón vuelve a quedar usable.
+    const conLimite = (promesa, ms, msg) => Promise.race([promesa, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
     try {
-        await copyTextToClipboard(message);
-        await updateOrder(orderId, { feedbackRequestedAt: firestoreNow() });
+        let copiado = false;
+        try { copiado = await conLimite(copyTextToClipboard(message), 3000, 'portapapeles'); } catch (_) { copiado = false; }
+        if (!copiado) {
+            // La API del portapapeles no respondió: se intenta el método clásico (textarea + execCommand).
+            const ta = document.createElement('textarea');
+            ta.value = message; ta.setAttribute('readonly', 'true');
+            ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
+            document.body.appendChild(ta); ta.focus(); ta.select();
+            try { copiado = document.execCommand('copy'); } catch (_) { copiado = false; }
+            ta.remove();
+        }
+        if (!copiado) {
+            showNotice('No se pudo copiar el mensaje. Toca el botón otra vez.', 'error');
+            return;
+        }
+        await conLimite(updateOrder(orderId, { feedbackRequestedAt: firestoreNow() }), 10000, 'Sin respuesta del servidor (revisa la conexión). Toca el botón otra vez.');
         order.feedbackRequestedAt = new Date();
         showNotice(`Mensaje de feedback listo para ${getOrderDisplayCustomerName(order)}.`, 'ok');
     } catch (error) {
