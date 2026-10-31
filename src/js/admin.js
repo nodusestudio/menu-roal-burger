@@ -2538,7 +2538,10 @@ function normalizeOrderItem(raw, index = 0) {
         // Sin estos dos, el ticket nunca mostraba el ahorro/tachado de un descuento y al editar
         // un pedido se perdía quién autorizó un descuento / cobro extra.
         originalUnitPrice: raw.originalUnitPrice != null && Number.isFinite(Number(raw.originalUnitPrice)) ? Number(raw.originalUnitPrice) : null,
-        aplicadoPor: raw.aplicadoPor ? String(raw.aplicadoPor) : null
+        aplicadoPor: raw.aplicadoPor ? String(raw.aplicadoPor) : null,
+        // Cortesía (botón 🎁 del POS): sin esto se perdía al recargar el pedido y no entraba a las métricas.
+        cortesia: raw.cortesia === true,
+        cortesiaPrecio: raw.cortesia === true ? Number(raw.cortesiaPrecio ?? raw.originalUnitPrice ?? 0) : null
     };
 }
 
@@ -7695,6 +7698,7 @@ async function _sqPedirRegistroCliente(nombreInicial = '') {
     });
 }
 
+const _cortOf = (items) => items.filter((i) => i.cortesia).reduce((a, i) => ({ total: a.total + Number(i.cortesiaPrecio || 0) * Number(i.quantity || 0), count: a.count + Number(i.quantity || 0) }), { total: 0, count: 0 });
 async function saveAdminOrderQuick(config = {}, opts = {}) {
     if (!internalOrderItems.length) {
         showNotice('Agrega al menos un producto al pedido.', 'error');
@@ -7815,6 +7819,8 @@ async function saveAdminOrderQuick(config = {}, opts = {}) {
             discount: 0,
             deliveryFee: orderType === 'domicilio' ? deliveryFeeVal : null,
             promo2x1IncrementoFee,
+            cortesiaTotal: _cortOf(internalOrderItems).total,
+            cortesiaCount: _cortOf(internalOrderItems).count,
             total: (orderType === 'domicilio' ? subtotal + deliveryFeeVal : subtotal) + promo2x1IncrementoFee,
             currency: 'COP',
             summaryMessage: '',
@@ -8100,6 +8106,8 @@ async function saveOrderItemsEdit() {
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
             subtotal,
             promo2x1IncrementoFee,
+            cortesiaTotal: _cortOf(internalOrderItems).total,
+            cortesiaCount: _cortOf(internalOrderItems).count,
             total,
             ...infoFields
         });
@@ -10026,6 +10034,46 @@ function renderMetricasSabe() {
     }).join('');
 
     const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
+    // ── Cortesías (botón 🎁 del POS): lo regalado, a precio de menú, y si dejó ventas después ──
+    const cortItems = [];
+    for (const o of festival) {
+        for (const it of (o.items || [])) {
+            if (it.cortesia !== true) continue;
+            const q = Number(it.quantity || 0);
+            const unit = Number(it.cortesiaPrecio ?? it.originalUnitPrice ?? 0);
+            if (q > 0 && unit > 0) cortItems.push({ o, ts: _orderTs(o), name: it.productName, q, valor: unit * q, key: _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) });
+        }
+    }
+    const cortValor = sum(cortItems, (c) => c.valor);
+    const cortUnits = sum(cortItems, (c) => c.q);
+    const cortOrders = new Set(cortItems.map((c) => c.o.id)).size;
+    const cortTrif = cortItems.filter((c) => normalizeCategoryKey(c.name).includes('trifasica')).reduce((s, c) => s + c.q, 0);
+    const ventasFestival = sum(festival, (o) => Number(o.subtotal ?? o.total ?? 0));
+    const cortPct = (ventasFestival + cortValor) ? Math.round((cortValor / (ventasFestival + cortValor)) * 1000) / 10 : 0;
+    // Retorno: clientes con cortesía que volvieron a comprar (pedido posterior con cobro > 0).
+    const cortClientes = new Map();
+    cortItems.filter((c) => c.key).forEach((c) => { const p = cortClientes.get(c.key); if (!p || c.ts < p) cortClientes.set(c.key, c.ts); });
+    let cortVolvieron = 0, cortRecuperado = 0;
+    cortClientes.forEach((ts0, key) => {
+        const despues = festival.filter((o) => _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) === key && (_orderTs(o) || 0) > ts0 && Number(o.subtotal ?? 0) > 0);
+        if (despues.length) { cortVolvieron += 1; cortRecuperado += sum(despues, (o) => Number(o.subtotal || 0)); }
+    });
+    const cortSinCliente = cortItems.filter((c) => !c.key).length;
+    const cortPorProducto = (() => { const m = new Map(); cortItems.forEach((c) => { const x = m.get(c.name) || { label: c.name, val: 0 }; x.val += c.q; m.set(c.name, x); }); return [...m.values()].sort((a, b) => b.val - a.val); })();
+    const cortRetornoPct = cortValor ? Math.round((cortRecuperado / cortValor) * 100) : 0;
+    const cortVeredicto = !cortItems.length ? ''
+        : !cortClientes.size ? 'Aún no se puede medir el retorno: las cortesías no tienen cliente con teléfono registrado.'
+        : cortRecuperado >= cortValor ? `✅ Rentable hasta ahora: los clientes con cortesía ya dejaron ${formatMoney(cortRecuperado)} en pedidos posteriores, más de lo regalado (${formatMoney(cortValor)}).`
+        : `⏳ Por ahora no se recupera: ${formatMoney(cortRecuperado)} en pedidos posteriores vs ${formatMoney(cortValor)} regalados (${cortRetornoPct}%).`;
+    const cortFilas = [...cortItems].sort((a, b) => b.ts - a.ts).slice(0, 15).map((c) => `
+        <div class="met-user-row-v2">
+            <div class="met-avatar">🎁</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(c.o.code)} · ${escapeHtml(c.name)}</div>
+                <div class="met-user-meta-v2">${escapeHtml(fmtHora(c.ts))} · ${escapeHtml(c.o.customerName || 'Sin nombre')}${c.o.cajero ? ' · ' + escapeHtml(c.o.cajero) : ''}</div>
+            </div>
+            <div class="met-user-stat"><div class="met-user-stat-val">${nf(c.q)}</div><div class="met-user-stat-sub">${escapeHtml(formatMoney(c.valor))}</div></div>
+        </div>`).join('');
     body.innerHTML = `
         <article class="admin-card">
             <div class="met-section-title">🏆 Sabe a Quindío — Burger Trifásica <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en vivo desde el 30 de octubre</small></div>
@@ -10066,6 +10114,23 @@ function renderMetricasSabe() {
             </div>
         </article>
         <article class="admin-card">
+            <div class="met-section-title">🎁 Cortesías <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· valoradas a precio de menú</small></div>
+            <div class="met-kpi-row">
+                ${kpi('met-kpi-card--hi', escapeHtml(formatMoney(cortValor)), 'Regalado en cortesías')}
+                ${kpi('', nf(cortUnits), 'Platos de cortesía')}
+                ${kpi('', nf(cortOrders), 'Pedidos con cortesía')}
+                ${kpi('', nf(cortTrif), 'Trifásicas de cortesía')}
+                ${kpi('met-kpi-card--purple', `${cortPct}%`, 'De la venta del festival')}
+                ${kpi('met-kpi-card--green', `${nf(cortVolvieron)} de ${nf(cortClientes.size)}`, 'Clientes con cortesía que volvieron a comprar')}
+                ${kpi('met-kpi-card--green', escapeHtml(formatMoney(cortRecuperado)), `Vendido después a esos clientes (${cortRetornoPct}% de lo regalado)`)}
+            </div>
+            ${cortVeredicto ? `<p class="met-empty-note" style="margin-top:10px">${cortVeredicto}</p>` : '<p class="met-empty-note">Aún no hay cortesías. Se marcan con el botón 🎁 de cada plato en el POS.</p>'}
+            ${cortSinCliente ? `<p class="met-empty-note" style="margin-top:6px">⚠️ ${nf(cortSinCliente)} cortesía(s) sin cliente con teléfono: no se puede medir si volvieron.</p>` : ''}
+            <p class="met-empty-note" style="margin-top:6px;font-size:0.72rem;opacity:0.7">El valor es el precio de menú, no el costo de producción: lo realmente gastado es menor. Lo "vendido después" cuenta todo pedido posterior del cliente; no prueba que haya sido por la cortesía.</p>
+            <div id="sqCortProdChart" style="margin-top:10px"></div>
+            <div class="metrics-users-list" style="margin-top:10px">${cortFilas}</div>
+        </article>
+        <article class="admin-card">
             <div class="met-section-title">Últimos pedidos con Trifásica</div>
             <div class="metrics-users-list">${feedRows || '<p class="met-empty-note">Aún no hay pedidos con la Trifásica.</p>'}</div>
         </article>
@@ -10082,6 +10147,7 @@ function renderMetricasSabe() {
     _renderBarChart('sqCanalChart', canalData, '#a78bfa');
     _renderBarChart('sqTipoChart', tipoData, '#4ade80');
     _renderBarChart('sqPromoChart', promoData, '#fbbf24');
+    if (cortPorProducto.length) _renderBarChart('sqCortProdChart', cortPorProducto, '#34d399');
 }
 
 // ── Métricas: Feedback (encuesta recompensada de /encuesta) — en vivo ─────────────
@@ -11648,6 +11714,7 @@ function buildThermalTicketMarkup(order, options = {}) {
         const _noteText = String(item.note || '').replace(/^[\s🥤]+/u, '').trim();
         const detailParts = [
             isChild ? '' : item.categoryName,
+            item.cortesia ? '🎁 CORTESÍA' : '',
             _limpiarOpcionTicket(item.optionLabel),
             item.note && item.note !== item.optionLabel ? `${_noteIsBeb ? 'Bebida' : 'Nota'}: ${_noteIsBeb ? _noteText : item.note}` : '',
         ].filter(Boolean);
