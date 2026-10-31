@@ -10244,8 +10244,10 @@ function renderMetricasSabe() {
 let _sqFinCfg = { sueldosPct: 30, reservaPct: 20 };
 let _sqFinCfgLoaded = false;
 let _sqFinUtil = 0;
+let _sqFinError = '';
 
 async function _sqFinCargar() {
+    _sqFinError = '';
     try {
         if (!_costosLoaded) await _costosCargar();
         if (!_sqFinCfgLoaded) {
@@ -10256,13 +10258,17 @@ async function _sqFinCargar() {
             }
             _sqFinCfgLoaded = true;
         }
-    } catch (e) { console.warn('[Finanzas festival] carga:', e.code || e.message); }
+    } catch (e) { console.warn('[Finanzas festival] carga:', e.code || e.message); _sqFinError = e.code || e.message || 'error'; }
     renderMetricasSqFin();
 }
 
 function _sqFinCostoBurger() {
+    // 1) por el producto del menú; 2) si el menú aún no cargó, por el enlace guardado en el plato (el id del
+    // producto trae "trif…"); 3) por el nombre del plato. Así no depende de que Artículos ya esté abierto.
     const prod = _cProdMenu().find((p) => { const n = _cNorm(p.nombre); return n.includes('trifasica') && !n.includes('mini'); });
-    const plato = prod ? _costos.platos.find((pl) => pl.productoMenuId === prod.id) : null;
+    let plato = prod ? _costos.platos.find((pl) => pl.productoMenuId === prod.id) : null;
+    if (!plato) plato = _costos.platos.find((pl) => /trif/i.test(String(pl.productoMenuId || '')) && !/mini/i.test(String(pl.productoMenuId || '')));
+    if (!plato) plato = _costos.platos.find((pl) => _cNorm(pl.nombre) === 'burger trifasica');
     if (!plato) return null;
     const c = _cCalcPlato(plato, _cCtx());
     return { nombre: plato.nombre, real: c.real, colch: c.colch, faltantes: c.faltantes };
@@ -10302,7 +10308,7 @@ function renderMetricasSqFin() {
     const rp = _sqFinRepartoHtml(util);
     const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
     const aviso = !costo
-        ? '<p class="met-empty-note" style="margin-top:10px">⚠️ No hay costo de la Burger Trifásica: en 🧮 Costos y recetas vincula el plato "Burger TRIFASICA" con su producto del menú (pestaña Conexión). Mientras tanto no se puede calcular el costo ni la utilidad.</p>'
+        ? `<p class="met-empty-note" style="margin-top:10px">⚠️ ${_sqFinError ? `No se pudieron leer los costos (${escapeHtml(_sqFinError)}).` : (_costosLoaded ? `No hay costo de la Burger Trifásica: en 🧮 Costos y recetas vincula el plato "Burger TRIFASICA" con su producto del menú (pestaña Conexión). Platos cargados: ${_costos.platos.length}.` : 'Cargando los costos…')}</p>`
         : (costo.faltantes.length ? `<p class="met-empty-note" style="margin-top:10px">⚠️ A la receta le faltan ${costo.faltantes.length} insumo(s) con precio: el costo puede estar subestimado.</p>` : '');
     body.innerHTML = `
         <article class="admin-card">
