@@ -7146,7 +7146,7 @@ function renderCartUI() {
         if (existingComment) {
             commentBadge.textContent = `💬 ${existingComment}`;
         } else {
-            commentBadge.textContent = '✏️ Agregar nota…';
+            commentBadge.textContent = '📝 Agregar observación (ej: sin cebolla, sin salsa…)';
             commentBadge.classList.add('cart-item-comment-empty');
         }
         commentBadge.addEventListener('click', () => openCartItemEditor(item.itemKey));
@@ -13464,7 +13464,9 @@ function _renderPublicUpgradeCombos() {
             const c = items.find((x) => x.id === btn.dataset.comboId);
             if (!c || !_publicUpgradePending) return;
             const sabores = Array.isArray(c.bebida_sabores) ? c.bebida_sabores.filter(Boolean) : [];
-            if (sabores.length > 0) {
+            if (_publicUpgradePending.orderOptions?.promo2x1 === true) {
+                _renderPublicUpgradeCombo2x1Scope(c, sabores);
+            } else if (sabores.length > 0) {
                 _renderPublicUpgradeComboSabor(c, sabores);
             } else {
                 _publicUpgradePending.extras.push({ id: 'combo_' + c.id, name: `Combo: ${c.nombre}`, price: c.valor });
@@ -13475,10 +13477,45 @@ function _renderPublicUpgradeCombos() {
     body.querySelector('#pubUpgradeBack')?.addEventListener('click', renderPublicUpgradeStep1);
 }
 
-function _renderPublicUpgradeComboSabor(combo, sabores) {
+// Promo 2×1 = 2 hamburguesas en una sola línea: si el cliente elige un combo (papas + bebida), hay que
+// saber si lo quiere en las dos o solo en una. Sin esta pregunta el combo se sumaba una sola vez y quedaba ambiguo.
+function _renderPublicUpgradeCombo2x1Scope(combo, sabores) {
     const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
     if (!body || !_publicUpgradePending) return;
-    if (titleEl) titleEl.textContent = 'Elige el sabor de la bebida';
+    if (titleEl) titleEl.textContent = 'Tu 2×1 trae 2 hamburguesas';
+    const v = Number(combo.valor || 0);
+    body.innerHTML = `
+        <p class="pub-upgrade-2x1-q">¿Quieres el combo (papas y bebida) en las <strong>dos hamburguesas</strong> o solo en <strong>una</strong>?</p>
+        <div class="pub-upgrade-opts">
+            <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-veces="2">
+                <span class="pub-upgrade-opt-left"><span class="pub-upgrade-opt-name">Combo en las dos</span><span class="pub-upgrade-opt-meta">${escapeHtml(combo.nombre)} ×2</span></span>
+                <span class="pub-upgrade-opt-price">+$${(v * 2).toLocaleString('es-CO')}</span>
+            </button>
+            <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-veces="1">
+                <span class="pub-upgrade-opt-left"><span class="pub-upgrade-opt-name">Combo solo en una</span><span class="pub-upgrade-opt-meta">La otra va sola</span></span>
+                <span class="pub-upgrade-opt-price">+$${v.toLocaleString('es-CO')}</span>
+            </button>
+        </div>
+        <button type="button" class="pub-upgrade-back" id="pubUpgradeBack">← Volver</button>`;
+    body.querySelectorAll('[data-veces]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            if (!_publicUpgradePending) return;
+            const n = Number(btn.dataset.veces) === 2 ? 2 : 1;
+            if (sabores.length > 0) {
+                _renderPublicUpgradeComboSabor(combo, sabores, n, n);
+            } else {
+                for (let i = 0; i < n; i += 1) _publicUpgradePending.extras.push({ id: 'combo_' + combo.id, name: `Combo: ${combo.nombre}`, price: combo.valor });
+                renderPublicUpgradeStep1();
+            }
+        });
+    });
+    body.querySelector('#pubUpgradeBack')?.addEventListener('click', _renderPublicUpgradeCombos);
+}
+
+function _renderPublicUpgradeComboSabor(combo, sabores, restantes = 1, total = 1) {
+    const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
+    if (!body || !_publicUpgradePending) return;
+    if (titleEl) titleEl.textContent = total > 1 ? `Sabor de la bebida · combo ${total - restantes + 1} de ${total}` : 'Elige el sabor de la bebida';
 
     body.innerHTML = `
         <div class="pub-upgrade-opts">
@@ -13494,7 +13531,8 @@ function _renderPublicUpgradeComboSabor(combo, sabores) {
             if (!_publicUpgradePending) return;
             const nombre = `Combo: ${combo.nombre} (${btn.dataset.sabor})`;
             _publicUpgradePending.extras.push({ id: `combo_${combo.id}_${btn.dataset.sabor}`, name: nombre, price: combo.valor });
-            renderPublicUpgradeStep1();
+            if (restantes > 1) _renderPublicUpgradeComboSabor(combo, sabores, restantes - 1, total);
+            else renderPublicUpgradeStep1();
         });
     });
     body.querySelector('#pubUpgradeBack')?.addEventListener('click', _renderPublicUpgradeCombos);
