@@ -2813,7 +2813,8 @@ function renderFeedbackPending() {
 
 async function sendFeedbackRequest(orderId, btn) {
     const order = ordersState.find((o) => o.id === orderId);
-    if (!order || _feedbackSending.has(orderId)) return;
+    if (!order || _feedbackSending.has(orderId)) return false;
+    let marcado = false;
     _feedbackSending.add(orderId);
     if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
 
@@ -2836,10 +2837,11 @@ async function sendFeedbackRequest(orderId, btn) {
         }
         if (!copiado) {
             showNotice('No se pudo copiar el mensaje. Toca el botón otra vez.', 'error');
-            return;
+            return false;
         }
         await conLimite(updateOrder(orderId, { feedbackRequestedAt: firestoreNow() }), 10000, 'Sin respuesta del servidor (revisa la conexión). Toca el botón otra vez.');
         order.feedbackRequestedAt = new Date();
+        marcado = true;
         showNotice(`Mensaje de feedback listo para ${getOrderDisplayCustomerName(order)}.`, 'ok');
     } catch (error) {
         showNotice(`No se pudo marcar el feedback como enviado: ${error.message || 'error inesperado.'}`, 'error');
@@ -2848,6 +2850,7 @@ async function sendFeedbackRequest(orderId, btn) {
         _feedbackPendingSig = '';
         renderFeedbackPending();
     }
+    return marcado;
 }
 
 function ensureOrdersRealtimeTicker() {
@@ -25826,8 +25829,9 @@ function _showFeedbackCierreGate(orders, onDone) {
 
     const estado = overlay.querySelector('#_fbcEstado');
     const continuar = overlay.querySelector('#_fbcContinuar');
+    const enviados = new Set(); // ids marcados desde esta ventana (los objetos de ordersState se reemplazan en cada snapshot)
     const refrescar = () => {
-        const faltan = orders.filter((o) => !o.feedbackRequestedAt).length;
+        const faltan = orders.filter((o) => !enviados.has(o.id) && !o.feedbackRequestedAt).length;
         estado.textContent = faltan ? `Faltan ${faltan} por enviar.` : '✅ Todos enviados. Ya puedes cerrar la caja.';
         continuar.disabled = faltan > 0;
         continuar.style.opacity = faltan > 0 ? '0.45' : '1';
@@ -25841,9 +25845,10 @@ function _showFeedbackCierreGate(orders, onDone) {
         if (!sendBtn || sendBtn.disabled) return;
         const order = orders.find((o) => o.id === sendBtn.dataset.fbcSend);
         if (!order) return;
-        await sendFeedbackRequest(order.id, sendBtn);
+        const ok = await sendFeedbackRequest(order.id, sendBtn);
+        if (ok) enviados.add(order.id);
         if (!sendBtn.isConnected) return;
-        if (order.feedbackRequestedAt) {
+        if (ok) {
             sendBtn.textContent = '✅ Enviado';
             sendBtn.disabled = true;
             sendBtn.style.background = '#16a34a';
