@@ -7160,6 +7160,12 @@ function renderCartUI() {
             promoBadge.textContent = `🏷 ${promoLabel}`;
             info.appendChild(promoBadge);
         }
+        if (normalizeOrderOptions(item.orderOptions).promo2x1) {
+            const avisoBadge = document.createElement('span');
+            avisoBadge.className = 'cart-item-promo-badge cart-item-increment-badge';
+            avisoBadge.textContent = 'El 2×1 es solo de la hamburguesa: papas y bebida se pagan completas';
+            info.appendChild(avisoBadge);
+        }
         if (normalizeOrderOptions(item.orderOptions).promo2x1Incremento) {
             const incrementoBadge = document.createElement('span');
             incrementoBadge.className = 'cart-item-promo-badge cart-item-increment-badge';
@@ -13411,6 +13417,13 @@ function _pubUpgBindExtrasDel(onUpdate) {
     });
 }
 
+// Aviso del 2×1: el descuento es solo de la hamburguesa; papas, bebida y adicionales se pagan completos.
+function _pubUpg2x1Aviso() {
+    return _publicUpgradePending?.orderOptions?.promo2x1 === true
+        ? '<div class="pub-upgrade-2x1-aviso">🏷 <strong>El 2×1 es solo de la hamburguesa.</strong> Papas, bebida y adicionales se pagan completos.</div>'
+        : '';
+}
+
 function renderPublicUpgradeStep1() {
     const body = _pubUpgBody(); const titleEl = _pubUpgTitle();
     if (!body || !_publicUpgradePending) return;
@@ -13422,6 +13435,7 @@ function renderPublicUpgradeStep1() {
     const hayCombos = (catData ? catData.combos_menu       !== false : false) && _latestCombosPacks.some((c) => c.estado === 'active' && c.activo_menu);
 
     body.innerHTML = `
+        ${_pubUpg2x1Aviso()}
         <div class="pub-home-btns">
             ${hayCombos ? `<button type="button" class="pub-cat-btn" id="pubBtnCombo"><span class="pub-cat-btn-label">🍔 Combo</span><span class="pub-cat-btn-hint">Con papas y bebida</span></button>` : ''}
             ${hayAcomp  ? `<button type="button" class="pub-cat-btn" id="pubBtnAcomp"><span class="pub-cat-btn-label">🥗 Adicional</span><span class="pub-cat-btn-hint">Ej: pollo, tocineta, queso</span></button>` : ''}
@@ -13485,6 +13499,7 @@ function _renderPublicUpgradeCombo2x1Scope(combo, sabores) {
     if (titleEl) titleEl.textContent = 'Tu 2×1 trae 2 hamburguesas';
     const v = Number(combo.valor || 0);
     body.innerHTML = `
+        ${_pubUpg2x1Aviso()}
         <p class="pub-upgrade-2x1-q">¿Quieres el combo (papas y bebida) en las <strong>dos hamburguesas</strong> o solo en <strong>una</strong>?</p>
         <div class="pub-upgrade-opts">
             <button type="button" class="pub-upgrade-opt pub-upgrade-opt--combo" data-veces="2">
