@@ -10327,7 +10327,8 @@ document.getElementById('sqBody')?.addEventListener('click', (e) => {
 // El reparto (sueldos / reserva) es un % editable que se guarda en configuracion/finanzas_festival.
 let _sqFinCfg = { sueldosPct: 30, reservaPct: 20 };
 let _sqFinCfgLoaded = false;
-let _sqFinUtil = 0;
+let _sqFinGuardados = {}; // días ya apartados: { "2026-10-30": true } (configuracion/finanzas_festival.guardados)
+let _sqFinDiasData = [];
 const SQ_BURGERS_POR_RECETA = 2;
 let _sqFinError = '';
 
@@ -10339,7 +10340,7 @@ async function _sqFinCargar() {
             const d = await firebaseDb.collection(CONFIG_COLLECTION).doc('finanzas_festival').get();
             if (d.exists) {
                 const x = d.data() || {};
-                _sqFinCfg = { sueldosPct: Number.isFinite(Number(x.sueldosPct)) ? Number(x.sueldosPct) : 30, reservaPct: Number.isFinite(Number(x.reservaPct)) ? Number(x.reservaPct) : 20 };
+                _sqFinCfg = { sueldosPct: Number.isFinite(Number(x.sueldosPct)) ? Number(x.sueldosPct) : 30, reservaPct: Number.isFinite(Number(x.reservaPct)) ? Number(x.reservaPct) : 20 }; _sqFinGuardados = x.guardados && typeof x.guardados === 'object' ? { ...x.guardados } : {};
             }
             _sqFinCfgLoaded = true;
         }
@@ -10360,11 +10361,60 @@ function _sqFinCostoBurger() {
     return { nombre: plato.nombre, recetaReal: c.real, recetaColch: c.colch, real: c.real / SQ_BURGERS_POR_RECETA, colch: c.colch / SQ_BURGERS_POR_RECETA, faltantes: c.faltantes };
 }
 
-function _sqFinRepartoHtml(util) {
+// Reparto de la utilidad DÍA POR DÍA: cuánto se vendió, cuánto costó y cuánto toca guardar (sueldos + reserva) cada día,
+// con el acumulado. Se redondea por día (es lo que de verdad se aparta) y los totales de las tarjetas son la suma de los
+// días, así que todo cuadra. Las casillas "Guardado" se guardan en configuracion/finanzas_festival.guardados.
+function _sqFinReparto(dias) {
     const s = Math.max(0, Number(_sqFinCfg.sueldosPct) || 0), r = Math.max(0, Number(_sqFinCfg.reservaPct) || 0);
     const resto = Math.max(0, 100 - s - r);
-    const base = Math.max(0, util);
-    return { s, r, resto, vs: Math.round(base * s / 100), vr: Math.round(base * r / 100), vd: Math.round(base * resto / 100) };
+    let acum = 0, vs = 0, vr = 0, vd = 0, guardado = 0, pendiente = 0, diasPend = 0;
+    const filas = dias.map((d) => {
+        const base = Math.max(0, d.util);
+        const fs = Math.round(base * s / 100), fr = Math.round(base * r / 100), fd = Math.round(base * resto / 100);
+        const aGuardar = fs + fr;
+        acum += aGuardar; vs += fs; vr += fr; vd += fd;
+        const ok = _sqFinGuardados[d.key] === true;
+        if (ok) guardado += aGuardar; else if (aGuardar > 0) { pendiente += aGuardar; diasPend += 1; }
+        return { ...d, fs, fr, fd, aGuardar, acum, ok };
+    });
+    return { s, r, resto, filas, vs, vr, vd, total: vs + vr, guardado, pendiente, diasPend };
+}
+
+function _sqFinDiasHtml(rp, hoyKey, ayerKey) {
+    const m = (n) => escapeHtml(formatMoney(n));
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const etiqueta = (k) => {
+        const f = new Date(`${k}T12:00:00-05:00`).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'short', day: 'numeric', month: 'short' });
+        return k === hoyKey ? `${f} <span class="sqfin-parcial">· hoy (en curso)</span>` : k === ayerKey ? `${f} <span class="sqfin-parcial">· ayer</span>` : f;
+    };
+    const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
+    const filas = rp.filas.slice().reverse().map((f) => `
+        <tr class="${f.ok ? 'sqfin-ok' : ''}">
+            <td>${etiqueta(f.key)}</td>
+            <td>${nf(f.burgers)}</td>
+            <td>${m(f.ventas)}</td>
+            <td>${m(f.util)}</td>
+            <td>${m(f.fs)}</td>
+            <td>${m(f.fr)}</td>
+            <td class="guardar">${m(f.aGuardar)}</td>
+            <td>${m(f.acum)}</td>
+            <td class="chk"><input type="checkbox" data-sqfin-dia="${escapeHtml(f.key)}" ${f.ok ? 'checked' : ''} ${f.aGuardar > 0 ? '' : 'disabled'} aria-label="Ya guardé el ${escapeHtml(f.key)}"></td>
+        </tr>`).join('');
+    const tot = rp.filas.reduce((a, f) => ({ b: a.b + f.burgers, v: a.v + f.ventas, u: a.u + f.util }), { b: 0, v: 0, u: 0 });
+    return `
+        <div class="met-kpi-row">
+            ${kpi('met-kpi-card--green', m(rp.guardado), 'Ya guardado')}
+            ${kpi('met-kpi-card--hi', m(rp.pendiente), `Pendiente por guardar${rp.diasPend ? ` (${rp.diasPend} día${rp.diasPend === 1 ? '' : 's'})` : ''}`)}
+            ${kpi('met-kpi-card--purple', m(rp.total), 'Total a guardar (sueldos + reserva)')}
+        </div>
+        <div class="sqfin-wrap">
+            <table class="sqfin-tbl">
+                <thead><tr><th>Día</th><th>Hamb.</th><th>Ventas</th><th>Utilidad</th><th>Sueldos (${rp.s}%)</th><th>Reserva (${rp.r}%)</th><th>A guardar</th><th>Acumulado</th><th>Guardado</th></tr></thead>
+                <tbody>${filas}</tbody>
+                <tfoot><tr><td>Total</td><td>${nf(tot.b)}</td><td>${m(tot.v)}</td><td>${m(tot.u)}</td><td>${m(rp.vs)}</td><td>${m(rp.vr)}</td><td class="guardar">${m(rp.total)}</td><td></td><td></td></tr></tfoot>
+            </table>
+        </div>
+        <p class="met-empty-note" style="margin-top:10px;font-size:0.76rem;opacity:0.75">Marca "Guardado" en cada día que ya apartaste: queda registrado y el "Pendiente" baja. El día de hoy es parcial (sigue sumando mientras se vende). Los días sin utilidad no piden guardar nada.</p>`;
 }
 
 function renderMetricasSqFin() {
@@ -10372,26 +10422,42 @@ function renderMetricasSqFin() {
     if (!body) return;
     const { festival } = _sqCompute();
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
-    let units = 0, burgers = 0, ventas = 0, cortBurgers = 0;
+    const hoyKey = _sqDayKey(Date.now()), ayerKey = _sqDayKey(Date.now() - 86400000);
+    // Un renglón por día desde el 30 de octubre hasta hoy (los días sin ventas salen en cero).
+    const porDia = new Map();
+    for (let t = SQ_INICIO_MS + 3600000; ; t += 86400000) {
+        const k = _sqDayKey(t);
+        if (k > hoyKey) break;
+        porDia.set(k, { key: k, units: 0, burgers: 0, ventas: 0 });
+    }
+    let cortBurgers = 0;
     for (const o of festival) {
+        const k = _sqDayKey(_orderTs(o));
+        if (!porDia.has(k)) porDia.set(k, { key: k, units: 0, burgers: 0, ventas: 0 });
+        const dia = porDia.get(k);
         for (const it of (o.items || [])) {
             if (!_sqItemEsTrifasica(it)) continue;
             const q = Number(it.quantity || 0);
             if (q <= 0) continue;
             const b = _sqItemEs2x1(it) ? q * 2 : q;
-            units += q; burgers += b; ventas += Number(it.subtotal || 0);
+            dia.units += q; dia.burgers += b; dia.ventas += Number(it.subtotal || 0);
             if (it.cortesia === true) cortBurgers += b;
         }
     }
     const costo = _sqFinCostoBurger();
-    const costoTotal = costo ? Math.round(costo.colch * burgers) : 0;
+    const dias = [...porDia.values()].sort((a, b) => (a.key < b.key ? -1 : 1)).map((d) => {
+        const c = costo ? Math.round(costo.colch * d.burgers) : 0;
+        return { ...d, costo: c, util: costo ? d.ventas - c : 0 };
+    });
+    _sqFinDiasData = dias;
+    const units = dias.reduce((a, d) => a + d.units, 0), burgers = dias.reduce((a, d) => a + d.burgers, 0), ventas = dias.reduce((a, d) => a + d.ventas, 0);
+    const costoTotal = dias.reduce((a, d) => a + d.costo, 0);
     const costoReal = costo ? Math.round(costo.real * burgers) : 0;
     const costoCort = costo ? Math.round(costo.colch * cortBurgers) : 0;
     const util = costo ? ventas - costoTotal : 0;
     const utilReal = costo ? ventas - costoReal : 0;
-    _sqFinUtil = util;
     const margen = ventas > 0 && costo ? Math.round((util / ventas) * 1000) / 10 : 0;
-    const rp = _sqFinRepartoHtml(util);
+    const rp = _sqFinReparto(dias);
     const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
     const aviso = !costo
         ? `<p class="met-empty-note" style="margin-top:10px">⚠️ ${_sqFinError ? `No se pudieron leer los costos (${escapeHtml(_sqFinError)}).` : (_costosLoaded ? `No hay costo de la Burger Trifásica: en 🧮 Costos y recetas vincula el plato "Burger TRIFASICA" con su producto del menú (pestaña Conexión). Platos cargados: ${_costos.platos.length}.` : 'Cargando los costos…')}</p>`
@@ -10423,18 +10489,41 @@ function renderMetricasSqFin() {
                 ${kpi('met-kpi-card--green', escapeHtml(formatMoney(rp.vd)), `Libre / reinversión (${rp.resto}%)`)}
             </div>
             <p class="met-empty-note" style="margin-top:10px;font-size:0.76rem;opacity:0.75">${rp.s + rp.r > 100 ? '⚠️ Los porcentajes suman más de 100.' : 'Los porcentajes son un punto de partida: ajústalos a lo que de verdad necesitan guardar. '}Solo la Trifásica: no incluye combos, bebidas ni el empaque del 2×1 (esos se venden aparte y no se restan costos fijos como arriendo o servicios).</p>
-        </article>`;
+        </article>
+        ${costo ? `<article class="admin-card">
+            <div class="met-section-title">📅 Día por día — cuánto guardar <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· lo más reciente arriba</small></div>
+            <div id="sqFinDias">${_sqFinDiasHtml(rp, hoyKey, ayerKey)}</div>
+        </article>` : ''}`;
 
     const sInp = body.querySelector('#sqFinSueldos'), rInp = body.querySelector('#sqFinReserva');
-    const actualizar = () => {
-        _sqFinCfg = { sueldosPct: Number(sInp.value) || 0, reservaPct: Number(rInp.value) || 0 };
-        const x = _sqFinRepartoHtml(_sqFinUtil);
+    const pintarDias = () => {
+        const x = _sqFinReparto(_sqFinDiasData);
         const cards = body.querySelectorAll('#sqFinReparto .met-kpi-card');
         const set = (i, val, lbl) => { if (cards[i]) { cards[i].querySelector('.met-kpi-val').textContent = formatMoney(val); cards[i].querySelector('.met-kpi-lbl').textContent = lbl; } };
         set(0, x.vs, `Para sueldos (${x.s}%)`); set(1, x.vr, `Para la reserva (${x.r}%)`); set(2, x.vd, `Libre / reinversión (${x.resto}%)`);
+        const cont = body.querySelector('#sqFinDias');
+        if (cont) cont.innerHTML = _sqFinDiasHtml(x, hoyKey, ayerKey);
+    };
+    const actualizar = () => {
+        _sqFinCfg = { sueldosPct: Number(sInp.value) || 0, reservaPct: Number(rInp.value) || 0 };
+        pintarDias();
     };
     sInp?.addEventListener('input', actualizar);
     rInp?.addEventListener('input', actualizar);
+    body.querySelector('#sqFinDias')?.addEventListener('change', async (ev) => {
+        const cb = ev.target.closest('[data-sqfin-dia]');
+        if (!cb) return;
+        const dia = cb.dataset.sqfinDia, marcado = cb.checked;
+        _sqFinGuardados = { ..._sqFinGuardados, [dia]: marcado };
+        pintarDias();
+        try {
+            await firebaseDb.collection(CONFIG_COLLECTION).doc('finanzas_festival').set({ guardados: { [dia]: marcado }, actualizadoAt: firestoreNow() }, { merge: true });
+        } catch (e) {
+            _sqFinGuardados = { ..._sqFinGuardados, [dia]: !marcado };
+            pintarDias();
+            showNotice(`No se pudo guardar la marca del ${dia}: ${e.message || 'error'}`, 'error');
+        }
+    });
     body.querySelector('#sqFinGuardar')?.addEventListener('click', async (ev) => {
         const btn = ev.currentTarget;
         btn.disabled = true;

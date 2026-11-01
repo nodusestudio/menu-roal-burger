@@ -3579,6 +3579,20 @@
         .met-bar-fill  { height:100%; border-radius:99px; transition:width 0.4s ease; }
         .met-bar-val   { font-size:0.65rem; color:rgba(255,255,255,0.38); min-width:22px; text-align:right; }
         .met-empty-note{ font-size:0.74rem; color:rgba(255,255,255,0.28); padding:6px 0; }
+        /* Finanzas de Sabe a Quindío: tabla día por día */
+        .sqfin-wrap { overflow-x: auto; margin-top: 12px; }
+        .sqfin-tbl { width: 100%; border-collapse: collapse; font-size: 0.84rem; white-space: nowrap; }
+        .sqfin-tbl th { text-align: right; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--admin-muted); padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.14); }
+        .sqfin-tbl td { text-align: right; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .sqfin-tbl th:first-child, .sqfin-tbl td:first-child { text-align: left; }
+        .sqfin-tbl td.guardar { font-weight: 800; color: #ffb066; }
+        .sqfin-tbl td.chk, .sqfin-tbl th:last-child { text-align: center; }
+        .sqfin-tbl tr.sqfin-ok td { opacity: 0.5; }
+        .sqfin-tbl tr.sqfin-ok td.chk { opacity: 1; }
+        .sqfin-tbl tfoot td { font-weight: 800; border-top: 2px solid rgba(255,255,255,0.22); border-bottom: 0; }
+        .sqfin-tbl input[type="checkbox"] { width: 22px; height: 22px; accent-color: #ff7a1a; cursor: pointer; }
+        .sqfin-parcial { font-size: 0.68rem; opacity: 0.7; font-weight: 600; }
+
         .met-period-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
         .met-period-card {
             background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
