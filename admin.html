@@ -15020,7 +15020,7 @@
                                 <span>Enviar a cliente</span>
                                 <button type="button" class="inbox-compose-close" id="inboxComposeCancelBtn">✕</button>
                             </div>
-                            <input type="text" class="inbox-search" id="inboxClientSearch" placeholder="Buscar por nombre o teléfono…" autocomplete="off">
+                            <input type="text" class="inbox-search" id="inboxClientSearch" placeholder="Buscar por nombre, teléfono o usuario de WhatsApp…" autocomplete="off">
                             <div class="inbox-client-results" id="inboxClientResults">
                                 <p class="inbox-empty">Escribe para buscar clientes registrados</p>
                             </div>
@@ -16436,7 +16436,7 @@
                     <input type="text" class="pts-input" id="ptsQuickPhone" placeholder="Teléfono (opcional)" autocomplete="off" maxlength="20" style="margin-top:6px;">
                 </div>
                 <div class="pts-client-panel" id="ptsPanelSearch" hidden>
-                    <input type="text" class="pts-input" id="ptsSearchInput" placeholder="Buscar por nombre o teléfono..." autocomplete="off">
+                    <input type="text" class="pts-input" id="ptsSearchInput" placeholder="Buscar por nombre, teléfono o usuario de WhatsApp..." autocomplete="off">
                     <div class="pts-search-results" id="ptsSearchResults"></div>
                     <div class="pts-selected-chip" id="ptsSelectedChip" hidden>
                         <span class="pts-selected-chip-label" id="ptsSelectedChipLabel"></span>
@@ -16452,6 +16452,7 @@
                     </div>
                     <input type="text" class="pts-input" id="ptsNewTabName" placeholder="Nombre (opcional)" autocomplete="off" maxlength="120">
                     <input type="tel" class="pts-input" id="ptsNewTabPhone" placeholder="Teléfono (opcional)" autocomplete="off" maxlength="20">
+                    <input type="text" class="pts-input" id="ptsNewTabWa" placeholder="Usuario de WhatsApp (opcional)" autocomplete="off" maxlength="60">
                     <input type="text" class="pts-input" id="ptsNewTabAddr" placeholder="Dirección (opcional)" autocomplete="off" maxlength="400">
                     <button type="button" class="pts-new-client-save" id="ptsNewTabSaveBtn">Guardar y seleccionar</button>
                 </div>
@@ -16661,7 +16662,7 @@
                 <button type="button" id="occCloseBtn" style="background:none;border:none;color:var(--admin-muted);cursor:pointer;font-size:1.3rem;line-height:1;">&times;</button>
             </div>
             <div class="dpm-unified-body">
-                <input type="text" id="occSearchInput" class="admin-domicilio-input" placeholder="Buscar por nombre o teléfono..." style="width:100%;margin-bottom:10px;box-sizing:border-box;">
+                <input type="text" id="occSearchInput" class="admin-domicilio-input" placeholder="Buscar por nombre, teléfono o usuario de WhatsApp..." style="width:100%;margin-bottom:10px;box-sizing:border-box;">
                 <div id="occResultsList" class="occ-results-list"></div>
             </div>
         </article>

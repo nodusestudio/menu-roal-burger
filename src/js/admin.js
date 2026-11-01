@@ -20227,7 +20227,7 @@ function _ptsRenderSearchResults(query) {
     const matches = (clientsState || []).filter((c) => {
         const name = String(c.customerName || '').toLowerCase();
         const phone = String(c.customerPhone || '').replace(/\D/g, '');
-        return name.includes(q) || (qDigits && phone.includes(qDigits));
+        return name.includes(q) || (qDigits && phone.includes(qDigits)) || clientUserMatches(c, normalizeCategoryKey(q));
     }).slice(0, 6);
 
     if (!matches.length) {
@@ -20247,7 +20247,7 @@ function _ptsRenderSearchResults(query) {
         return `
         <div class="pts-result-item" data-pts-client-id="${escapeHtml(c.id || '')}" data-pts-client-name="${escapeHtml(c.customerName || '')}" data-pts-client-phone="${escapeHtml(c.customerPhone || '')}">
             <div class="pts-result-name">${escapeHtml(c.customerName || 'Sin nombre')}</div>
-            <div class="pts-result-phone">${escapeHtml(c.customerPhone || '')}</div>
+            <div class="pts-result-phone">${escapeHtml(c.customerPhone || '')}${c.whatsappUser ? ` · 💬 ${escapeHtml(c.whatsappUser)}` : ''}</div>
             ${addrsHtml}
         </div>`;
     }).join('');
@@ -20535,9 +20535,11 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
             const n = document.getElementById('ptsNewTabName');
             const p = document.getElementById('ptsNewTabPhone');
             const a = document.getElementById('ptsNewTabAddr');
+            const w = document.getElementById('ptsNewTabWa');
             if (n) n.value = '';
             if (p) p.value = '';
             if (a) a.value = '';
+            if (w) w.value = '';
         }
         // Al cambiar de tab se pierde el cliente — limpiar sección de domicilio
         _ptsHideSelectedClientChip();
@@ -20781,7 +20783,7 @@ document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
 // duplicada con un segundo flujo inline (formulario dentro de la pestaña "Buscar")
 // que resultó ser código muerto: su botón disparador nunca existió en el HTML, así
 // que ese formulario quedaba permanentemente oculto e inalcanzable.
-async function _ptsCreateAndSelectClient({ name, phone, addr }) {
+async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' }) {
     name = name || 'Cliente';
     const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
     const clientId = buildAdminClientDocumentId
@@ -20794,14 +20796,16 @@ async function _ptsCreateAndSelectClient({ name, phone, addr }) {
     // Si el cliente ya existe NO se pisan sus contadores (pedidos, gastado, creación): solo se suma la dirección
     const previas = existe ? normalizeClientSavedAddresses(prev.data().savedAddresses || [], prev.data().address || '') : [];
     const savedAddresses = addr && !previas.includes(addr) ? [...previas, addr] : previas;
+    // El usuario de WhatsApp es opcional: si no se escribe no se toca el que ya tuviera el cliente.
+    const wa = String(whatsappUser || '').trim();
     const datos = existe
-        ? { customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, savedAddresses, ...(addr ? { address: addr } : {}) }
-        : { customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, address: addr, savedAddresses, totalOrders: 0, totalSpent: 0, createdAt: firestoreNow(), source: 'admin_pos' };
+        ? { customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, savedAddresses, ...(addr ? { address: addr } : {}), ...(wa ? { whatsappUser: wa } : {}) }
+        : { customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, address: addr, savedAddresses, totalOrders: 0, totalSpent: 0, createdAt: firestoreNow(), source: 'admin_pos', ...(wa ? { whatsappUser: wa } : {}) };
     await ref.set(datos, { merge: true });
 
     // Sin releer toda la colección de clientes (era lo que hacía lenta la acción): se agrega al caché local y se refresca en segundo plano
     if (!clientsState.some((c) => c.id === clientId)) {
-        clientsState.push({ id: clientId, customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, address: addr || 'Sin direccion registrada', savedAddresses, firstOrderAt: null, lastOrderCode: '', lastOrderId: '', lastOrderTotal: 0, totalOrders: 0, totalSpent: 0, puntosDisponibles: 0, puntosAcumuladosTotal: 0, lastOrderAt: null, createdAt: null, updatedAt: null, source: 'admin_pos', passwordHash: '' });
+        clientsState.push({ id: clientId, customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, whatsappUser: wa, address: addr || 'Sin direccion registrada', savedAddresses, firstOrderAt: null, lastOrderCode: '', lastOrderId: '', lastOrderTotal: 0, totalOrders: 0, totalSpent: 0, puntosDisponibles: 0, puntosAcumuladosTotal: 0, lastOrderAt: null, createdAt: null, updatedAt: null, source: 'admin_pos', passwordHash: '' });
     }
     fetchClients({ force: true }).catch(() => {});
 
@@ -20817,13 +20821,21 @@ async function _ptsCreateAndSelectClient({ name, phone, addr }) {
     const nameInput  = document.getElementById('ptsNewTabName');
     const phoneInput = document.getElementById('ptsNewTabPhone');
     const addrInput  = document.getElementById('ptsNewTabAddr');
+    const waInput    = document.getElementById('ptsNewTabWa');
     if (!saveBtn) return;
 
     saveBtn.addEventListener('click', async () => {
         const name  = String(nameInput?.value || '').trim();
         const phone = String(phoneInput?.value || '').trim();
         const addr  = String(addrInput?.value || '').trim();
+        const whatsappUser = String(waInput?.value || '').trim();
 
+        if (!phone && whatsappUser) {
+            // El usuario de WhatsApp es un dato adicional: la ficha del cliente siempre necesita el teléfono.
+            showNotice('Para guardar el cliente hace falta el teléfono; el usuario de WhatsApp es adicional.', 'warn');
+            phoneInput?.focus();
+            return;
+        }
         if (!phone) {
             // Sin teléfono no hay ficha de cliente que guardar: queda como cliente rápido (nombre opcional)
             if (nameInput) nameInput.value = '';
@@ -20839,12 +20851,13 @@ async function _ptsCreateAndSelectClient({ name, phone, addr }) {
         saveBtn.textContent = 'Guardando…';
 
         try {
-            await _ptsCreateAndSelectClient({ name, phone, addr });
+            await _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser });
 
             // Limpiar campos
             if (nameInput) nameInput.value = '';
             if (phoneInput) phoneInput.value = '';
             if (addrInput) addrInput.value = '';
+            if (waInput) waInput.value = '';
 
             // Cambiar tab visualmente a "search" sin disparar el handler que limpiaría el cliente
             _ptsActiveTab = 'search';
