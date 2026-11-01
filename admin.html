@@ -7562,6 +7562,7 @@
             margin-top: 12px;
             border-top: 1px solid rgba(255, 255, 255, 0.07);
         }
+        .admin-nav-extra { display: none; } /* el botón de avisos del menú del celular; en escritorio está en el pie */
         .sidebar-footer .admin-link,
         .sidebar-footer .preview-refresh-btn {
             display: block;
@@ -10183,6 +10184,12 @@
             .sidebar-section-label { display: none; }
             .admin-sidebar #adminNotice { display: none; }
             .sidebar-footer { display: none; }
+            .admin-nav-extra {
+                display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 10px; padding: 13px 14px;
+                border-radius: 10px; border: 1px dashed rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.05);
+                color: #fff; font: inherit; font-size: 0.86rem; letter-spacing: 0.6px; text-align: left; cursor: pointer;
+            }
+            .admin-nav-extra .nav-icon { font-size: 1.1rem; }
 
             /* ── Toast superior para móvil ── */
             #adminMobileToast {
@@ -13870,6 +13877,8 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="cuponpana"><span class="nav-icon">🎟️</span><span>Fuera del Menú</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="redes"><span class="nav-icon">📣</span><span>Redes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
+            <!-- Solo en el menú del celular (☰): el pie de la barra lateral, donde está el mismo botón, se oculta en pantallas chicas -->
+            <button type="button" class="admin-nav-extra" id="adminAvisosNavBtn"><span class="nav-icon">🔔</span><span>Avisos al celular</span></button>
         </nav>
 
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>

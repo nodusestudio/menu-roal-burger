@@ -1062,10 +1062,13 @@ document.getElementById('adminTvBtn')?.addEventListener('click', abrirModoTv);
 
 // Avisos al celular: /avisos activa el push en ESTE dispositivo (se hace en una página aparte porque el panel no puede
 // cargar firebase-messaging junto a firebase-functions; ver el comentario en admin.html).
-document.getElementById('adminAvisosBtn')?.addEventListener('click', () => {
-    let url = '/avisos';
-    try { url = new URL('avisos', new URL(resolvePublicAppUrl(), window.location.href)).href; } catch (_) { /* se usa la ruta relativa */ }
-    window.location.href = url;
+// Dos botones: el del pie de la barra lateral (escritorio) y el del menú ☰ (celular, donde el pie se oculta).
+['adminAvisosBtn', 'adminAvisosNavBtn'].forEach((idBoton) => {
+    document.getElementById(idBoton)?.addEventListener('click', () => {
+        let url = '/avisos';
+        try { url = new URL('avisos', new URL(resolvePublicAppUrl(), window.location.href)).href; } catch (_) { /* se usa la ruta relativa */ }
+        window.location.href = url;
+    });
 });
 
 // ── Contactos del celular: tarjeta .vcf ─────────────────────────────────────────────────────────────
