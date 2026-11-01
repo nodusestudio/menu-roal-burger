@@ -129,3 +129,11 @@ tvHtml = tvHtml.replace(/tv\.js(\?v=[\w-]+)?(?=")/g, `tv.js?v=${stamp}`);
 tvHtml = tvHtml.replace(/firebase-config\.js(\?v=[\w-]+)?(?=")/g, `firebase-config.js?v=${stamp}`);
 fs.writeFileSync(tvHtmlPath, tvHtml, 'utf8');
 console.log(`[bump] tv.html      → tv.js?v=${stamp}  firebase-config.js?v=${stamp}`);
+
+// ── 7. avisos.html — ?v= en avisos.js y firebase-config.js (activar avisos push en el celular) ──────
+const avisosHtmlPath = path.join(ROOT, 'avisos.html');
+let avisosHtml = fs.readFileSync(avisosHtmlPath, 'utf8');
+avisosHtml = avisosHtml.replace(/avisos\.js(\?v=[\w-]+)?(?=")/g, `avisos.js?v=${stamp}`);
+avisosHtml = avisosHtml.replace(/firebase-config\.js(\?v=[\w-]+)?(?=")/g, `firebase-config.js?v=${stamp}`);
+fs.writeFileSync(avisosHtmlPath, avisosHtml, 'utf8');
+console.log(`[bump] avisos.html  → avisos.js?v=${stamp}  firebase-config.js?v=${stamp}`);

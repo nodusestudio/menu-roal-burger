@@ -862,6 +862,7 @@ const TOOLS = [
     require('./fodiCortesias').TOOL,
     require('./fodiFinanzasFestival').TOOL,
     require('./fodiTv').TOOL,
+    require('./fodiAvisos').TOOL,
     ...require('./fodiPedidos').TOOLS,
     {
         name: 'registrar_nombre',
@@ -1090,6 +1091,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'cortesias') return await require('./fodiCortesias').cortesias(db, args);
         if (nombre === 'finanzas_festival') return await require('./fodiFinanzasFestival').finanzasFestival(db);
         if (nombre === 'pantalla_tv') return await require('./fodiTv').pantallaTv(db);
+        if (nombre === 'avisos_celular') return await require('./fodiAvisos').avisosCelular(db);
         if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);
         if (nombre === 'lecciones') return await require('./fodiLecciones').lecciones(db, args);
         if (nombre === 'sumar_mesas') return await require('./fodiPedidos').sumarMesas(db, args);

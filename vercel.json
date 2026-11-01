@@ -5,6 +5,7 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/og-compartir.jpg", "destination": "/api/og" },
+    { "source": "/avisos", "has": [{ "type": "host", "value": "admin-roal.vercel.app" }], "destination": "/avisos.html" },
     { "source": "/", "has": [{ "type": "host", "value": "admin-roal.vercel.app" }], "destination": "/admin.html" },
     { "source": "/(.*)", "has": [{ "type": "host", "value": "admin-roal.vercel.app" }], "destination": "/admin.html" }
   ],

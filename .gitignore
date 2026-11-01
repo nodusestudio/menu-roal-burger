@@ -22,6 +22,7 @@ functions/.secret.local
 /cupon.js
 /encuesta.js
 /tv.js
+/avisos.js
 /style.css
 
 .vercel

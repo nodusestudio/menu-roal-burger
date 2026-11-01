@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Avisos al celular · FODEXA</title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#14172a">
+    <link rel="icon" type="image/png" href="isotipo-fodexa.png">
+    <style>
+        :root { --fondo: #14172a; --tarjeta: #1d2140; --borde: rgba(255,255,255,.14); --texto: #f2f3f8; --suave: rgba(242,243,248,.7); --naranja: #ff7a1a; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; background: var(--fondo); color: var(--texto); font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+        main { max-width: 520px; margin: 0 auto; padding: 28px 18px calc(40px + env(safe-area-inset-bottom)); }
+        h1 { font-size: 1.5rem; margin: 6px 0 4px; }
+        .sub { color: var(--suave); margin: 0 0 18px; line-height: 1.45; }
+        .caja { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
+        .estado { font-size: 1rem; line-height: 1.5; margin: 0; }
+        .estado.bueno { color: #7ee2a8; } .estado.malo { color: #ff9c9c; } .estado.aviso { color: #ffd479; }
+        button, .enlace { display: block; width: 100%; font: 700 1.05rem system-ui, sans-serif; padding: 15px 16px; border-radius: 12px; border: 0; margin-top: 12px; cursor: pointer; text-align: center; text-decoration: none; min-height: 52px; }
+        button[hidden] { display: none; }
+        .primario { background: var(--naranja); color: #fff; }
+        .secundario { background: rgba(255,255,255,.12); color: var(--texto); }
+        .enlace { background: transparent; border: 1px solid var(--borde); color: var(--texto); }
+        button:disabled { opacity: .55; cursor: default; }
+        ul { margin: 8px 0 0; padding-left: 20px; color: var(--suave); line-height: 1.6; }
+        .nota { font-size: .85rem; color: var(--suave); margin: 10px 0 0; line-height: 1.45; }
+        [hidden] { display: none !important; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>🔔 Avisos al celular</h1>
+        <p class="sub">Para que te llegue un aviso aunque la app esté cerrada o el celular bloqueado.</p>
+
+        <div class="caja">
+            <p class="estado" id="estado" role="status" aria-live="polite">Cargando…</p>
+            <p class="nota">Este dispositivo: <strong id="dispositivo">…</strong></p>
+            <button type="button" class="primario" id="btnActivar" hidden>🔔 Activar avisos</button>
+            <button type="button" class="secundario" id="btnProbar" hidden>📨 Enviar prueba</button>
+            <button type="button" class="secundario" id="btnDesactivar" hidden>🔕 Desactivar en este dispositivo</button>
+            <div id="sinSesion" hidden><a class="enlace" href="/admin.html">Ir al panel para iniciar sesión</a></div>
+            <p class="nota" id="ayudaIphone" hidden>iPhone: primero instala la app (Compartir → "Añadir a pantalla de inicio"), ábrela desde el ícono y entra a esta pantalla desde ahí.</p>
+        </div>
+
+        <div class="caja">
+            <strong>¿Qué avisos llegan?</strong>
+            <ul>
+                <li>🔔 Pedido nuevo</li>
+                <li>📲 Chat nuevo o que necesita un asesor</li>
+                <li>📩 Mensajes de Instagram y Facebook</li>
+                <li>🗨️ Comentarios en tus publicaciones</li>
+                <li>👤 Cliente nuevo, con el botón "Agregar a contactos"</li>
+            </ul>
+            <p class="nota">Cada celular o computador se activa por separado. Si cambias de celular, repite esto en el nuevo.</p>
+        </div>
+
+        <a class="enlace" href="/admin.html">← Volver al panel</a>
+    </main>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-messaging-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="avisos.js"></script>
+</body>
+</html>

@@ -1,36 +1,64 @@
 'use strict';
 
-// Push (FCM) a los celulares/PC de los administradores cuando entra algo por redes (DM o comentario).
-// Mismo patrón que notifyNewOrder / notifyNewAgentChat (functions/index.js): tokens en admin_fcm_tokens.
-// Se llama desde el webhook de Instagram/Facebook (sin función nueva) y NUNCA lanza: un fallo del aviso
+// Push (FCM) a los celulares/PC de los administradores: redes (DM o comentario), clientes nuevos y el aviso de
+// bienvenida/prueba al activar un dispositivo. Mismo patrón que notifyNewOrder / notifyNewAgentChat
+// (functions/index.js): tokens en admin_fcm_tokens (un documento por DISPOSITIVO: `${uid}_${hash}`).
+// Se llama desde el webhook de Instagram/Facebook y desde triggers de Firestore y NUNCA lanza: un fallo del aviso
 // no puede romper el guardado del mensaje.
+//
+// Los avisos nuevos se envían como mensajes de SOLO DATOS (sin clave `notification`): así el service worker
+// (firebase-messaging-sw.js) arma la notificación y puede poner botones de acción ("Agregar a contactos").
 
 const { getMessaging } = require('firebase-admin/messaging');
+const { FieldValue } = require('firebase-admin/firestore');
 
 const FCM_TOKENS_COLLECTION = 'admin_fcm_tokens';
 const ESPERA_PUSH_CHAT_MS = 2 * 60 * 1000; // un mismo chat no avisa más de una vez cada 2 min
+const dia = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 
-async function enviarPush(db, { title, body, tag }) {
-    const tokensSnap = await db.collection(FCM_TOKENS_COLLECTION).get();
-    const tokens = tokensSnap.docs.map((d) => d.data().token).filter((t) => typeof t === 'string' && t.length > 10);
-    if (!tokens.length) return { enviados: 0 };
-    const response = await getMessaging().sendEachForMulticast({
-        tokens,
-        notification: { title, body: String(body || '').slice(0, 140) },
-        webpush: {
-            notification: { icon: '/isotipo.webp', badge: '/isotipo.webp', tag, renotify: true, requireInteraction: true, vibrate: [300, 120, 300] },
-            fcmOptions: { link: '/admin.html' },
-            data: { tag, url: '/admin.html' }
-        }
+// Registro de uso (para FODI y para saber si los avisos están llegando): configuracion/push_stats.dias.<día>.<tipo>
+async function anotarEnvio(db, tipo, enviados, fallidos, nowMs) {
+    try {
+        await db.collection('configuracion').doc('push_stats').set({
+            dias: { [dia(nowMs)]: { [tipo]: { enviados: FieldValue.increment(enviados), fallidos: FieldValue.increment(fallidos) } } },
+            actualizadoAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+    } catch (_) { /* las estadísticas nunca bloquean un aviso */ }
+}
+
+/**
+ * Envía un aviso a todos los dispositivos registrados (o solo a `soloDoc`, el id de un documento de admin_fcm_tokens).
+ * opts: { title, body, tag, url, actions: [{action, title}], data: {k: 'v'}, tipo, soloDoc }
+ * deps.messaging / deps.nowMs: solo para pruebas.
+ */
+async function enviarPush(db, opts, deps = {}) {
+    const { title, body, tag, url = '/admin.html', actions, data, tipo = 'otro', soloDoc } = opts;
+    const nowMs = deps.nowMs || Date.now();
+    let docs;
+    if (soloDoc) {
+        const d = await db.collection(FCM_TOKENS_COLLECTION).doc(soloDoc).get();
+        docs = d.exists ? [d] : [];
+    } else docs = (await db.collection(FCM_TOKENS_COLLECTION).get()).docs;
+    const filas = docs.map((d) => ({ id: d.id, token: d.data().token })).filter((f) => typeof f.token === 'string' && f.token.length > 10);
+    if (!filas.length) return { enviados: 0 };
+
+    const strs = {};
+    Object.entries({ title, body: String(body || '').slice(0, 140), tag, url, tipo, ...(actions && actions.length ? { acciones: JSON.stringify(actions) } : {}), ...(data || {}) })
+        .forEach(([k, v]) => { if (v !== undefined && v !== null) strs[k] = String(v); });
+
+    const messaging = deps.messaging || getMessaging();
+    const response = await messaging.sendEachForMulticast({
+        tokens: filas.map((f) => f.token),
+        data: strs,
+        webpush: { headers: { Urgency: 'high', TTL: '86400' } }
     });
     const invalidos = [];
     response.responses.forEach((r, i) => {
-        if (!r.success && ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(r.error?.code)) {
-            invalidos.push(tokensSnap.docs[i].id);
-        }
+        if (!r.success && ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(r.error?.code)) invalidos.push(filas[i].id);
     });
     if (invalidos.length) await Promise.all(invalidos.map((id) => db.collection(FCM_TOKENS_COLLECTION).doc(id).delete()));
-    return { enviados: response.successCount };
+    await anotarEnvio(db, tipo, response.successCount, response.failureCount, nowMs);
+    return { enviados: response.successCount, fallidos: response.failureCount };
 }
 
 const nombreCanal = (canal) => (canal === 'facebook' ? 'Facebook' : 'Instagram');
@@ -45,7 +73,7 @@ async function avisarMensaje(db, msg, { nowMs = Date.now() } = {}) {
         await chatRef.set({ pushAtMs: nowMs }, { merge: true });
         const quien = chat.nombre || (chat.username ? `@${chat.username}` : 'Un cliente');
         const texto = msg.texto || (msg.adjuntos?.length ? `[${msg.adjuntos[0].tipo}]` : 'Nuevo mensaje');
-        return await enviarPush(db, { title: `📩 ${nombreCanal(msg.canal)}: ${quien}`, body: texto, tag: `roal-red-${msg.clienteId}` });
+        return await enviarPush(db, { title: `📩 ${nombreCanal(msg.canal)}: ${quien}`, body: texto, tag: `roal-red-${msg.clienteId}`, tipo: 'mensaje_red' });
     } catch (err) {
         console.error('pushAdmin.avisarMensaje:', err?.message || err);
         return { motivo: 'error' };
@@ -57,11 +85,58 @@ async function avisarComentario(db, c) {
     try {
         if (!c) return { motivo: 'sin-comentario' };
         const quien = c.username ? (c.canal === 'facebook' ? c.username : `@${c.username}`) : 'Alguien';
-        return await enviarPush(db, { title: `🗨️ Comentario en ${nombreCanal(c.canal)}`, body: `${quien}: ${c.texto || ''}`, tag: `roal-com-${c.id}` });
+        return await enviarPush(db, { title: `🗨️ Comentario en ${nombreCanal(c.canal)}`, body: `${quien}: ${c.texto || ''}`, tag: `roal-com-${c.id}`, tipo: 'comentario_red' });
     } catch (err) {
         console.error('pushAdmin.avisarComentario:', err?.message || err);
         return { motivo: 'error' };
     }
 }
 
-module.exports = { enviarPush, avisarMensaje, avisarComentario, ESPERA_PUSH_CHAT_MS };
+// Clientes creados desde el propio panel o por importación no avisan (quien los creó ya lo sabe).
+const ORIGENES_SIN_AVISO = ['admin_panel', 'admin_pos', 'admin_import', 'import', 'fodi'];
+
+/** Arma el aviso de cliente nuevo (puro, para pruebas). Devuelve null si no debe avisarse. */
+function armarAvisoClienteNuevo(id, c) {
+    if (!c || ORIGENES_SIN_AVISO.includes(String(c.source || ''))) return null;
+    const nombre = String(c.customerName || '').trim() || 'Cliente sin nombre';
+    const tel = String(c.customerPhone || '').trim();
+    if (!tel) return null;
+    const wa = String(c.whatsappUser || '').trim();
+    return {
+        title: '👤 Cliente nuevo',
+        body: `${nombre} · ${tel}${wa ? ` · 💬 ${wa}` : ''}`,
+        tag: `roal-cliente-${id}`,
+        url: `/admin.html?agregarContacto=${encodeURIComponent(id)}`,
+        actions: [{ action: 'agregar', title: 'Agregar a contactos' }],
+        data: { clienteId: id },
+        tipo: 'cliente_nuevo'
+    };
+}
+
+/** Cliente nuevo → aviso con el botón "Agregar a contactos". */
+async function avisarClienteNuevo(db, id, c) {
+    try {
+        const aviso = armarAvisoClienteNuevo(id, c);
+        if (!aviso) return { motivo: 'sin-aviso' };
+        return await enviarPush(db, aviso);
+    } catch (err) {
+        console.error('pushAdmin.avisarClienteNuevo:', err?.message || err);
+        return { motivo: 'error' };
+    }
+}
+
+/** Aviso de bienvenida/prueba SOLO al dispositivo que acaba de activarse (o que pidió una prueba). */
+async function avisarActivacion(db, docId) {
+    try {
+        return await enviarPush(db, {
+            title: '✅ Avisos activados',
+            body: 'Te llegarán pedidos, chats, mensajes y comentarios de redes y clientes nuevos, aunque el celular esté bloqueado.',
+            tag: 'roal-prueba', tipo: 'prueba', soloDoc: docId
+        });
+    } catch (err) {
+        console.error('pushAdmin.avisarActivacion:', err?.message || err);
+        return { motivo: 'error' };
+    }
+}
+
+module.exports = { anotarEnvio, enviarPush, avisarMensaje, avisarComentario, avisarClienteNuevo, avisarActivacion, armarAvisoClienteNuevo, ESPERA_PUSH_CHAT_MS, FCM_TOKENS_COLLECTION };

@@ -224,12 +224,12 @@ exports.notifyNewOrder = onDocumentCreated(
                     requireInteraction: true,
                     vibrate:           [400, 150, 400, 150, 400]
                 },
-                fcmOptions: { link: '/admin.html' },
                 data: { tag: `roal-order-${orderId}`, url: '/admin.html' }
             }
         };
 
         const response = await getMessaging().sendEachForMulticast(message);
+        await require('./pushAdmin').anotarEnvio(getFirestore(), 'pedido_nuevo', response.successCount, response.failureCount, Date.now());
 
         const invalid = [];
         response.responses.forEach((r, i) => {
@@ -287,12 +287,12 @@ exports.notifyNewAgentChat = onDocumentWritten(
                     requireInteraction: true,
                     vibrate:           [400, 150, 400]
                 },
-                fcmOptions: { link: '/admin.html' },
                 data: { tag: `roal-chat-${conversationKey}`, url: '/admin.html' }
             }
         };
 
         const response = await getMessaging().sendEachForMulticast(message);
+        await require('./pushAdmin').anotarEnvio(getFirestore(), 'chat_nuevo', response.successCount, response.failureCount, Date.now());
 
         const invalid = [];
         response.responses.forEach((r, i) => {
@@ -323,6 +323,36 @@ exports.notifyNewAgentChat = onDocumentWritten(
 // real a WhatsApp sigue pasando, pero a través del mismo mecanismo del chat, no por separado —
 // evita mandarlo dos veces. Si el pedido NO tiene conversationKey (POS, menú clásico), se manda
 // directo por WhatsApp como antes.
+// ─────────────────────────────────────────────────────────────
+// Cliente nuevo → aviso al celular con el botón "Agregar a contactos" (ver functions/pushAdmin.js).
+// Los creados desde el propio panel/POS o por importación no avisan.
+// ─────────────────────────────────────────────────────────────
+exports.notifyNewClient = onDocumentCreated(
+    { document: 'clientes/{clienteId}', region: 'us-central1' },
+    async (event) => {
+        const c = event.data?.data();
+        if (!c) return;
+        await require('./pushAdmin').avisarClienteNuevo(getFirestore(), event.params.clienteId, c);
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
+// Un dispositivo se activó (admin_fcm_tokens nuevo) o pidió una prueba (probarAt cambió) → aviso de bienvenida
+// SOLO a ese dispositivo. Así el dueño sabe al instante que los avisos le van a llegar.
+// ─────────────────────────────────────────────────────────────
+exports.notifyTokenActivado = onDocumentWritten(
+    { document: 'admin_fcm_tokens/{tokenDoc}', region: 'us-central1' },
+    async (event) => {
+        const before = event.data?.before?.exists ? event.data.before.data() : null;
+        const after = event.data?.after?.exists ? event.data.after.data() : null;
+        if (!after || !after.token) return;
+        const nuevo = !before || before.token !== after.token;
+        const pidioPrueba = after.probarAt && (!before || !before.probarAt || before.probarAt.isEqual?.(after.probarAt) === false);
+        if (!nuevo && !pidioPrueba) return;
+        await require('./pushAdmin').avisarActivacion(getFirestore(), event.params.tokenDoc);
+    }
+);
+
 // ─────────────────────────────────────────────────────────────
 exports.notifyOrderDelivered = onDocumentWritten(
     { document: 'pedidos/{orderId}', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
@@ -3525,6 +3555,7 @@ REGLAS DE DATOS (inquebrantables):
 - Para "este mes" usa desde el día 1 hasta hoy; para "ayer", la fecha de ayer.
 - Costo por plato: usa costo_por_plato (calculadora propia de FODEXA; da costo_real y costo con colchón del 30%, y por defecto solo platos activos); si no hay recetas registradas, dilo y explica cómo registrarlas, y trabaja con ventas, gastos y costos fijos reales.
 - Variantes/tamaños ("¿la normal, pequeña o mediana?"): usa variantes_vendidas. Clientes (recompra, mejores, inactivos, RFM): analisis_clientes. Puntos: puntos_lealtad. Promos y código del día: cupones_y_codigo_del_dia. Opinión de clientes (encuesta de feedback, sugerencias, pendientes por encuestar): feedback_clientes; para el informe de mejoras cruza con ventas y da acciones concretas. Cortesías (platos regalados con el botón 🎁 del POS: cuánto se regaló, % de la venta, si esos clientes volvieron): cortesias. Finanzas de Sabe a Quindío / Burger Trifásica (ventas, costo, utilidad y reparto en sueldos/reserva): finanzas_festival.
+- Avisos al celular (notificaciones push): avisos_celular dice cuántos dispositivos están activados y cuántos avisos se enviaron por tipo en 7 días (pedido nuevo, chat, mensajes y comentarios de redes, cliente nuevo). Si no hay dispositivos, explica que se activan en el panel → "🔔 Avisos al celular" (en iPhone, con la app instalada en la pantalla de inicio).
 - Pantalla de TV del local (/tv): pantalla_tv dice qué productos salen, con qué etiqueta y si muestran precio o 2×1, cuáles quedaron fuera y por qué (pausado, sin foto, categoría inactiva) y cuántas veces se abrió el Modo TV desde el admin. Para abrirla propón proponer_accion tipo abrir_tv (botón; no se abre sola).
 - Redes sociales: redes_sociales trae seguidores, mejores publicaciones (con las ventas de ese día) e historias; correlación no es causalidad, dilo. Cualquier cuenta (margen, % , punto de equilibrio, proyección) hazla con la herramienta calcular, no de cabeza.
 - AUTOVERIFICACIÓN antes de responder: (1) cada cifra citada aparece en un resultado de herramienta; (2) las sumas y porcentajes que muestres cuadran con los totales (si das partes, que sumen el total); (3) el rango consultado coincide con lo que se preguntó; (4) si dos herramientas dan totales distintos, explica por qué o dilo, no escojas en silencio; (5) si el resultado vino truncado o con pocos datos, adviértelo. Si algo no cuadra, vuelve a consultar antes de responder.
@@ -3816,7 +3847,7 @@ async function fodiGenerarInforme(db, apiKey) {
     const hoy = Date.now();
     const f = (ms) => adminAsistente.bogotaDateKey(ms);
     const desde = f(hoy - 7 * DIA), hasta = f(hoy - DIA), antDesde = f(hoy - 14 * DIA), antHasta = f(hoy - 8 * DIA);
-    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'lecciones', 'gasto_fodi', 'simular_costos', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'sumar_mesas', 'ver_imagenes_productos', 'armar_pedido', 'recordar', 'pantalla_tv'].includes(t.name));
+    const herramientas = adminAsistente.TOOLS.filter((t) => !['proponer_accion', 'gestionar_catalogo', 'codigo_fuente', 'lecciones', 'gasto_fodi', 'simular_costos', 'registrar_nombre', 'editar_pedido', 'pedidos_activos', 'sumar_mesas', 'ver_imagenes_productos', 'armar_pedido', 'recordar', 'pantalla_tv', 'avisos_celular'].includes(t.name));
     const memoria = await adminAsistente.leerMemoria(db).catch(() => []);
     const system = `${asistenteSystemPrompt()}\n\nTAREA: redacta el INFORME SEMANAL para el dueño. Semana analizada: ${desde} a ${hasta}; semana anterior: ${antDesde} a ${antHasta}. Usa las herramientas para traer ventas, ticket, productos, canales, clientes, gastos/rentabilidad y redes. Estructura: 1) Titular de la semana (2 líneas), 2) Cifras clave vs semana anterior (tabla), 3) Qué funcionó, 4) Qué preocupa, 5) Tres acciones concretas para esta semana. Sé breve (máx. 450 palabras), sin inventar cifras.${memoria.length ? `\n\nMEMORIA:\n${memoria.map((m) => `- ${m.tema}: ${m.texto}`).join('\n')}` : ''}`;
     const mensajes = [{ role: 'user', content: `Genera el informe semanal de ${desde} a ${hasta}.` }];

@@ -1060,6 +1060,86 @@ function abrirModoTv() {
 }
 document.getElementById('adminTvBtn')?.addEventListener('click', abrirModoTv);
 
+// Avisos al celular: /avisos activa el push en ESTE dispositivo (se hace en una página aparte porque el panel no puede
+// cargar firebase-messaging junto a firebase-functions; ver el comentario en admin.html).
+document.getElementById('adminAvisosBtn')?.addEventListener('click', () => {
+    let url = '/avisos';
+    try { url = new URL('avisos', new URL(resolvePublicAppUrl(), window.location.href)).href; } catch (_) { /* se usa la ruta relativa */ }
+    window.location.href = url;
+});
+
+// ── Contactos del celular: tarjeta .vcf ─────────────────────────────────────────────────────────────
+// Una web NO puede escribir en la agenda del teléfono; lo más cercano es descargar una tarjeta de contacto: al abrirla,
+// el teléfono ofrece "Guardar contacto" con un toque. La usan el aviso de "Cliente nuevo" y el botón 📇 de cada cliente.
+function _vcardEscape(t) { return String(t || '').replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;'); }
+function _vcardTelefono(valor) {
+    let d = String(valor || '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.length === 10 && d.startsWith('3')) d = `57${d}`; // celular colombiano sin indicativo
+    return `+${d}`;
+}
+function construirVCard(c) {
+    const crudo = String(c?.customerName || '').trim();
+    const nombre = crudo && crudo !== 'Cliente sin nombre' ? crudo : (String(c?.whatsappUser || '').trim() || 'Cliente ROAL');
+    const tel = _vcardTelefono(c?.customerPhoneDigits || c?.customerPhone);
+    const dir = String(c?.address || '').trim();
+    const wa = String(c?.whatsappUser || '').trim();
+    return [
+        'BEGIN:VCARD', 'VERSION:3.0',
+        `FN:${_vcardEscape(nombre)}`, `N:;${_vcardEscape(nombre)};;;`, 'ORG:ROAL BURGER',
+        tel ? `TEL;TYPE=CELL:${tel}` : null,
+        dir && dir !== 'Sin direccion registrada' ? `ADR;TYPE=HOME:;;${_vcardEscape(dir)};;;;` : null,
+        wa ? `NOTE:${_vcardEscape(`Usuario de WhatsApp: ${wa}`)}` : null,
+        'END:VCARD'
+    ].filter(Boolean).join('\r\n') + '\r\n';
+}
+function descargarContacto(c) {
+    const blob = new Blob([construirVCard(c)], { type: 'text/vcard;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const base = String(c?.customerName || c?.whatsappUser || 'contacto').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'contacto';
+    const a = document.createElement('a');
+    a.href = url; a.download = `${base}.vcf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+// Viene del aviso "Cliente nuevo" (botón "Agregar a contactos"): lee la ficha y pide un toque para guardar el contacto
+// (el toque en "Guardar contacto" es el gesto que el teléfono exige para descargar la tarjeta).
+async function agregarContactoCliente(id) {
+    try {
+        const snap = await firebaseDb.collection(CLIENTS_COLLECTION).doc(String(id)).get();
+        if (!snap.exists) { showNotice('Ese cliente ya no existe.', 'error'); return; }
+        const c = snap.data();
+        const nombre = String(c.customerName || '').trim() || 'Cliente sin nombre';
+        const ok = await showConfirmModal({ icon: '📇', title: 'Agregar a contactos', message: `${nombre} · ${String(c.customerPhone || '').trim()}${c.whatsappUser ? ` · 💬 ${c.whatsappUser}` : ''}`, confirmText: '📇 Guardar contacto', danger: false });
+        if (ok) descargarContacto(c);
+    } catch (e) { showNotice(`No se pudo preparar el contacto: ${e.message || 'error'}`, 'error'); }
+}
+(function escucharAgregarContacto() {
+    // 1) El aviso abrió el panel con ?agregarContacto=<id>: se espera a que haya sesión y se limpia la dirección.
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const id = params.get('agregarContacto');
+        if (id) {
+            params.delete('agregarContacto');
+            const resto = params.toString();
+            window.history.replaceState(null, '', window.location.pathname + (resto ? `?${resto}` : '') + window.location.hash);
+            let intentos = 0;
+            const t = setInterval(() => {
+                intentos += 1;
+                if (typeof firebaseAuth !== 'undefined' && firebaseAuth?.currentUser) { clearInterval(t); agregarContactoCliente(id); }
+                else if (intentos > 80) clearInterval(t);
+            }, 500);
+        }
+    } catch (_) { /* sin history */ }
+    // 2) El panel ya estaba abierto: el service worker le avisa por mensaje.
+    try {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', (ev) => { if (ev.data && ev.data.tipo === 'agregarContacto' && ev.data.id) agregarContactoCliente(ev.data.id); });
+            if (typeof navigator.serviceWorker.startMessages === 'function') navigator.serviceWorker.startMessages();
+        }
+    } catch (_) { /* sin service worker */ }
+})();
+
 function showModalFeedback(element, text, type = 'ok') {
     if (!element) {
         return;
@@ -13238,6 +13318,7 @@ function renderClients() {
             <td>
                 <div class="client-actions">
                     <button type="button" class="client-action-btn" data-client-action="edit" data-client-id="${escapeHtml(client.id)}">Editar</button>
+                    <button type="button" class="client-action-btn" data-client-action="contacto" data-client-id="${escapeHtml(client.id)}" title="Descarga la tarjeta de contacto para guardarla en el celular">📇 Contacto</button>
                     <button type="button" class="client-action-btn" data-client-action="adjust-points" data-client-id="${escapeHtml(client.id)}">Ajustar puntos</button>
                     <button type="button" class="client-action-btn" data-client-action="points-history" data-client-id="${escapeHtml(client.id)}">Historial de ajustes</button>
                     <button type="button" class="client-action-btn delete" data-client-action="delete" data-client-id="${escapeHtml(client.id)}">Eliminar</button>
@@ -21332,6 +21413,11 @@ if (clientsList) {
 
         if (action === 'edit') {
             openEditClientModal(client);
+            return;
+        }
+
+        if (action === 'contacto') {
+            descargarContacto(client);
             return;
         }
 
