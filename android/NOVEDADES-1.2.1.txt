@@ -1,0 +1,14 @@
+ROAL BURGER — versión 1.2.1 (código 11)
+=======================================
+Archivo para subir a Google Play:
+C:\Users\ASUS\Documents\NODUS ESTUDIO\PROGRAMAS\roal-burger-android\app\ROAL-BURGER-1.2.1-codigo11-firmado.aab
+
+Técnico:
+- minSdkVersion 21 -> 24 (Play exige 24+ para la protección automática)
+- targetSdkVersion 36 (Android 16)
+- versionCode 11 / versionName 1.2.1 (reemplaza al código 10, que tenía minSdk 21)
+- Firmado con la misma llave (android.keystore, alias roalburger).
+  SHA-256 76:E3:D2:6A:...:CB:DD:C9 (coincide con .well-known/assetlinks.json)
+
+Novedades para Google Play: las mismas de NOVEDADES-1.2.0.txt
+(si es después del 8 de noviembre, quitar la viñeta del Festival).
