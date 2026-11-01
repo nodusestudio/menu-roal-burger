@@ -2763,6 +2763,9 @@ const FEEDBACK_INSTAGRAM_URL = 'https://www.instagram.com/roalburger';
 const FEEDBACK_VOTE_URL = 'https://sabeaquindio.com/';
 let _feedbackPendingSig = '';
 const _feedbackSending = new Set();
+// Pedidos ya copiados cuyo guardado el servidor aún no confirma: se ocultan de la lista al instante.
+// (ordersState se rehace con fetchOrders(), así que marcar solo el objeto en memoria no basta.)
+const _feedbackMarcadosLocal = new Set();
 
 function buildFeedbackMessage(order) {
     return `¡Hola! ¿Qué tal? 🍔 Esperamos que hayas disfrutado tu Burger Trifásica. Es un producto nuevo y tu opinión nos ayuda a mejorarla. ¿Nos regalas 30 segundos para contarnos qué tal te pareció? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}\n\n📸 Y si quieres, déjanos tu comentario sobre el producto en nuestro Instagram: ${FEEDBACK_INSTAGRAM_URL}\n\n🏆 La Trifásica compite en Sabe a Quindío: ¡vota por nosotros! 👉 ${FEEDBACK_VOTE_URL}`;
@@ -2772,7 +2775,7 @@ function getPendingFeedbackOrders() {
     const now = Date.now();
     return ordersState.filter((order) => {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
-        if (order.feedbackRequestedAt || order.feedbackAnsweredAt) return false;
+        if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
         return sentMs > 0 && now - sentMs >= FEEDBACK_DELAY_MS && now - sentMs <= FEEDBACK_MAX_AGE_MS;
@@ -2819,14 +2822,15 @@ async function sendFeedbackRequest(orderId, btn) {
     if (!order || _feedbackSending.has(orderId)) return false;
     let marcado = false;
     _feedbackSending.add(orderId);
-    if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Copiando…'; }
 
-    const message = buildFeedbackMessage(order);
-    // Ningún paso puede dejar el botón en "Guardando…" para siempre: el portapapeles (permiso/foco de la
-    // ventana) y el guardado en Firestore (conexión caída: .update() no resuelve hasta que el servidor responde)
-    // se cortan por tiempo y el botón vuelve a quedar usable.
+    // El portapapeles (permiso/foco de la ventana) se corta por tiempo. El guardado en Firestore NO se espera:
+    // en el admin Firestore va por long-polling y el acuse del servidor podía tardar muchos segundos con el
+    // botón trabado en "Guardando…". Lo que importa en caja es copiar; el pedido se marca ya y el guardado
+    // sigue en segundo plano (si falla se avisa y el pedido vuelve a la lista).
     const conLimite = (promesa, ms, msg) => Promise.race([promesa, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
     try {
+        const message = buildFeedbackMessage(order);
         let copiado = false;
         try { copiado = await conLimite(copyTextToClipboard(message), 3000, 'portapapeles'); } catch (_) { copiado = false; }
         if (!copiado) {
@@ -2842,12 +2846,28 @@ async function sendFeedbackRequest(orderId, btn) {
             showNotice('No se pudo copiar el mensaje. Toca el botón otra vez.', 'error');
             return false;
         }
-        await conLimite(updateOrder(orderId, { feedbackRequestedAt: firestoreNow() }), 10000, 'Sin respuesta del servidor (revisa la conexión). Toca el botón otra vez.');
+        const nombre = getOrderDisplayCustomerName(order);
+        _feedbackMarcadosLocal.add(orderId);
         order.feedbackRequestedAt = new Date();
         marcado = true;
-        showNotice(`Mensaje de feedback listo para ${getOrderDisplayCustomerName(order)}.`, 'ok');
+        showNotice(`Mensaje de feedback listo para ${nombre}.`, 'ok');
+        // Marca de hora del cliente (no serverTimestamp): así el valor local es real desde el primer momento y no
+        // "null" hasta que el servidor responda.
+        let confirmado = false;
+        const avisoLento = setTimeout(() => { if (!confirmado) showNotice(`El guardado de ${nombre} tarda más de lo normal. Si recargas la página antes de que termine, este pedido volverá a salir en la lista.`, 'info'); }, 20000);
+        updateOrder(orderId, { feedbackRequestedAt: firebase.firestore.Timestamp.now() })
+            .then(() => { confirmado = true; })
+            .catch((error) => {
+                confirmado = true;
+                _feedbackMarcadosLocal.delete(orderId);
+                order.feedbackRequestedAt = null;
+                _feedbackPendingSig = '';
+                renderFeedbackPending();
+                showNotice(`No se pudo guardar que el feedback de ${nombre} ya se envió: ${error.message || 'error inesperado.'} Volverá a aparecer en la lista.`, 'error');
+            })
+            .finally(() => clearTimeout(avisoLento));
     } catch (error) {
-        showNotice(`No se pudo marcar el feedback como enviado: ${error.message || 'error inesperado.'}`, 'error');
+        showNotice(`No se pudo preparar el mensaje de feedback: ${error.message || 'error inesperado.'}`, 'error');
     } finally {
         _feedbackSending.delete(orderId);
         _feedbackPendingSig = '';
@@ -25836,7 +25856,7 @@ function _getFeedbackPendingForClose() {
     const now = Date.now();
     return ordersState.filter((order) => {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
-        if (order.feedbackRequestedAt || order.feedbackAnsweredAt) return false;
+        if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
         return sentMs > 0 && now - sentMs <= FEEDBACK_MAX_AGE_MS;
