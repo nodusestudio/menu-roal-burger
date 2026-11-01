@@ -2758,11 +2758,13 @@ function _checkDeliveryAlerts() {
 const FEEDBACK_DELAY_MS = 2 * 60 * 60 * 1000;
 const FEEDBACK_MAX_AGE_MS = 24 * 60 * 60 * 1000; // más viejo que esto ya no se pide (evita alertas rezagadas)
 const FEEDBACK_SURVEY_URL = 'https://roalburger.com/encuesta';
+const FEEDBACK_INSTAGRAM_URL = 'https://www.instagram.com/roalburger';
+const FEEDBACK_VOTE_URL = 'https://sabeaquindio.com/';
 let _feedbackPendingSig = '';
 const _feedbackSending = new Set();
 
 function buildFeedbackMessage(order) {
-    return `¡Hola! ¿Qué tal? 🍔 Esperamos que hayas disfrutado tu Burger Trifásica. Es un producto nuevo y tu opinión nos ayuda a mejorarla. ¿Nos regalas 30 segundos para contarnos qué tal te pareció? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}`;
+    return `¡Hola! ¿Qué tal? 🍔 Esperamos que hayas disfrutado tu Burger Trifásica. Es un producto nuevo y tu opinión nos ayuda a mejorarla. ¿Nos regalas 30 segundos para contarnos qué tal te pareció? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}\n\n📸 Y si quieres, déjanos tu comentario sobre el producto en nuestro Instagram: ${FEEDBACK_INSTAGRAM_URL}\n\n🏆 La Trifásica compite en Sabe a Quindío: ¡vota por nosotros! 👉 ${FEEDBACK_VOTE_URL}`;
 }
 
 function getPendingFeedbackOrders() {
