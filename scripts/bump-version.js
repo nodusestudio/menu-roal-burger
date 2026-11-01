@@ -121,3 +121,11 @@ encuestaHtml = encuestaHtml.replace(/encuesta\.js(\?v=[\w-]+)?(?=")/g, `encuesta
 encuestaHtml = encuestaHtml.replace(/firebase-config\.js(\?v=[\w-]+)?(?=")/g, `firebase-config.js?v=${stamp}`);
 fs.writeFileSync(encuestaHtmlPath, encuestaHtml, 'utf8');
 console.log(`[bump] encuesta.html → encuesta.js?v=${stamp}  firebase-config.js?v=${stamp}`);
+
+// ── 6. tv.html — ?v= en tv.js y firebase-config.js (pantalla de TV del local) ─────────────────
+const tvHtmlPath = path.join(ROOT, 'tv.html');
+let tvHtml = fs.readFileSync(tvHtmlPath, 'utf8');
+tvHtml = tvHtml.replace(/tv\.js(\?v=[\w-]+)?(?=")/g, `tv.js?v=${stamp}`);
+tvHtml = tvHtml.replace(/firebase-config\.js(\?v=[\w-]+)?(?=")/g, `firebase-config.js?v=${stamp}`);
+fs.writeFileSync(tvHtmlPath, tvHtml, 'utf8');
+console.log(`[bump] tv.html      → tv.js?v=${stamp}  firebase-config.js?v=${stamp}`);

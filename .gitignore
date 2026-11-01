@@ -21,6 +21,7 @@ functions/.secret.local
 /agent-chat.js
 /cupon.js
 /encuesta.js
+/tv.js
 /style.css
 
 .vercel
