@@ -40,7 +40,7 @@ async function enviarPush(db, opts, deps = {}) {
         docs = d.exists ? [d] : [];
     } else docs = (await db.collection(FCM_TOKENS_COLLECTION).get()).docs;
     const filas = docs.map((d) => ({ id: d.id, token: d.data().token })).filter((f) => typeof f.token === 'string' && f.token.length > 10);
-    if (!filas.length) return { enviados: 0 };
+    if (!filas.length) { console.log('pushAdmin.enviarPush', JSON.stringify({ tipo, dispositivos: 0, motivo: 'no hay dispositivos registrados' })); return { enviados: 0 }; }
 
     const strs = {};
     Object.entries({ title, body: String(body || '').slice(0, 140), tag, url, tipo, ...(actions && actions.length ? { acciones: JSON.stringify(actions) } : {}), ...(data || {}) })
@@ -58,6 +58,8 @@ async function enviarPush(db, opts, deps = {}) {
     });
     if (invalidos.length) await Promise.all(invalidos.map((id) => db.collection(FCM_TOKENS_COLLECTION).doc(id).delete()));
     await anotarEnvio(db, tipo, response.successCount, response.failureCount, nowMs);
+    // Queda en los logs (firebase functions:log) para saber si el aviso salió y por qué falló si no lo hizo.
+    console.log('pushAdmin.enviarPush', JSON.stringify({ tipo, dispositivos: filas.length, enviados: response.successCount, fallidos: response.failureCount, errores: response.responses.filter((r) => !r.success).map((r) => r.error?.code || 'desconocido') }));
     return { enviados: response.successCount, fallidos: response.failureCount };
 }
 

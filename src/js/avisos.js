@@ -98,12 +98,27 @@
         });
     }
 
+    // Con esta pantalla ABIERTA y visible, el sistema de avisos de Google no muestra la notificación: se la entrega a la
+    // página (onMessage). Si la página no hace nada, parece que la prueba "no pasa nada". Aquí se muestra igual (con el
+    // mismo service worker que usa el aviso con la pantalla bloqueada) y también como mensaje en pantalla.
+    function mostrarEnPrimerPlano(payload) {
+        var d = (payload && payload.data) || {}, n = (payload && payload.notification) || {};
+        var titulo = n.title || d.title || 'Aviso';
+        var acciones = []; try { acciones = JSON.parse(d.acciones || '[]'); } catch (_) { acciones = []; }
+        var op = { body: n.body || d.body || '', icon: '/isotipo.png', badge: '/isotipo.png', tag: d.tag || 'roal-aviso', renotify: true, vibrate: [300, 120, 300], actions: (acciones || []).slice(0, 2), data: { url: d.url || '/admin.html', clienteId: d.clienteId || '', tipo: d.tipo || '' } };
+        mostrar('📨 Llegó el aviso: ' + titulo + (op.body ? ' — ' + op.body : ''), 'bueno');
+        return navigator.serviceWorker.getRegistration('/firebase-cloud-messaging-push-scope').then(function (reg) {
+            if (reg && reg.showNotification) return reg.showNotification(titulo, op);
+            return new Notification(titulo, { body: op.body, icon: op.icon, tag: op.tag });
+        }).catch(function () { /* el mensaje en pantalla ya se mostró */ });
+    }
+
     function probar() {
         var id = null; try { id = localStorage.getItem(CLAVE_DOC); } catch (_) { /* sin almacenamiento */ }
         if (!id || ocupado) return;
         ocupado = true; pintar();
         db.collection(COL).doc(id).set({ probarAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
-            .then(function () { mostrar('Prueba enviada: debería llegarte un aviso en unos segundos.', 'bueno'); })
+            .then(function () { mostrar('Prueba enviada. Con esta pantalla abierta lo verás aquí en unos segundos; para ver cómo llega de verdad, bloquea el celular o sal de la app y espera unos segundos.', 'bueno'); })
             .catch(function (e) { mostrar(mensajeError(e), 'malo'); })
             .then(function () { ocupado = false; pintar(); });
     }
@@ -123,11 +138,16 @@
         $('btnActivar').addEventListener('click', activar);
         $('btnProbar').addEventListener('click', probar);
         $('btnDesactivar').addEventListener('click', desactivar);
+        // Salir de esta pantalla: volver a donde estabas (o al panel si se abrió directo)
+        var salir = function (e) { e.preventDefault(); if (window.history.length > 1 && document.referrer && document.referrer.indexOf(location.origin) === 0) window.history.back(); else location.href = '/admin.html'; };
+        $('btnAtras').addEventListener('click', salir);
+        $('btnCerrar').addEventListener('click', salir);
         $('dispositivo').textContent = etiquetaDispositivo();
         pintar();
         if (!soportado()) return;
         try { var s = initFirebaseServices(); db = s.db; auth = s.auth; } catch (e) { mostrar('No se pudo conectar con el servidor: ' + (e.message || e), 'malo'); return; }
         if (!auth) { mostrar('No se pudo comprobar la sesión.', 'malo'); return; }
+        try { firebase.messaging().onMessage(mostrarEnPrimerPlano); } catch (_) { /* sin messaging */ }
         auth.onAuthStateChanged(function (u) {
             user = u || null;
             var id = null; try { id = localStorage.getItem(CLAVE_DOC); } catch (_) { /* sin almacenamiento */ }
