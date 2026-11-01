@@ -1044,11 +1044,21 @@ function applyAdminRuntimeLinks() {
 
 // Modo TV: abre la pantalla del local (/tv) en su propia ventana. ?ctl=1 hace que muestre la ayuda de
 // "clic para pantalla completa" (el navegador solo permite pantalla completa tras un clic en esa página).
-document.getElementById('adminTvBtn')?.addEventListener('click', () => {
+// También lo usa FODI (acción "abrir_tv"). Cada apertura se cuenta en configuracion/tv_modo (total, por día y última vez)
+// para que FODI (herramienta pantalla_tv) pueda decir cuánto se usa; si el registro falla no impide abrir la TV.
+function abrirModoTv() {
     let url = '/tv?ctl=1';
     try { url = new URL('tv?ctl=1', new URL(resolvePublicAppUrl(), window.location.href)).href; } catch (_) { /* se usa la ruta relativa */ }
     window.open(url, 'roalTV');
-});
+    try {
+        const inc = firebase.firestore.FieldValue.increment(1);
+        const dia = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+        firebaseDb.collection('configuracion').doc('tv_modo')
+            .set({ total: inc, aperturas: { [dia]: inc }, ultimaApertura: firestoreNow() }, { merge: true })
+            .catch((e) => console.warn('[Modo TV] no se pudo registrar la apertura:', e && (e.code || e.message)));
+    } catch (_) { /* sin Firebase: solo se abre la TV */ }
+}
+document.getElementById('adminTvBtn')?.addEventListener('click', abrirModoTv);
 
 function showModalFeedback(element, text, type = 'ok') {
     if (!element) {
@@ -33626,11 +33636,15 @@ function _asistAcciones(msg, acciones) {
         } else if (a.tipo === 'editar_pedido') {
             txt = `<b>✏️ Editar pedido ${escapeHtml(a.codigo || '')}</b><br><small>${(a.resumen || []).map(escapeHtml).join('<br>')}</small>`;
             btn = '✅ Aplicar cambio';
+        } else if (a.tipo === 'abrir_tv') {
+            txt = '📺 Abrir el <b>Modo TV</b> (la pantalla del local) en otra ventana';
+            btn = '📺 Abrir Modo TV';
         } else continue;
+        const soloAbre = a.tipo === 'navegar' || a.tipo === 'abrir_tv'; // no guardan nada: sin "Descartar" ni "ya quedó guardado"
         const BTN = 'cursor:pointer;border:0;border-radius:10px;padding:10px 16px;min-height:40px;font:700 .9rem system-ui,sans-serif;touch-action:manipulation;';
         card.innerHTML = `<span style="flex:1 1 100%;min-width:160px">${txt}</span>`
             + `<button type="button" data-acc="ok" style="${BTN}background:#ff6a00;color:#fff">${btn}</button>`
-            + (a.tipo === 'navegar' ? '' : `<button type="button" data-acc="no" style="${BTN}background:rgba(255,255,255,.16);color:inherit">Descartar</button>`)
+            + (soloAbre ? '' : `<button type="button" data-acc="no" style="${BTN}background:rgba(255,255,255,.16);color:inherit">Descartar</button>`)
             + `<span data-acc="estado" role="status" style="flex:1 1 100%;font-weight:600"></span>`;
         const estado = card.querySelector('[data-acc="estado"]'), bNo = card.querySelector('[data-acc="no"]');
         const ejecutar = async (b) => {
@@ -33639,10 +33653,10 @@ function _asistAcciones(msg, acciones) {
             const orig = b.textContent; b.textContent = 'Trabajando…'; estado.textContent = '';
             try {
                 await _asistEjecutarAccion(a);
-                b.textContent = a.tipo === 'navegar' ? 'Listo' : '✓ Hecho';
+                b.textContent = soloAbre ? 'Listo' : '✓ Hecho';
                 if (a.tipo === 'crear_pedido') { if (_fodiPedidoPend && _fodiPedidoPend.a === a) _fodiPedidoPend = null; b.textContent = '✓ Pedido creado'; }
                 if (bNo) bNo.remove();
-                estado.style.color = '#7ee2a8'; estado.textContent = a.tipo === 'navegar' ? '' : '✅ Listo, ya quedó guardado.';
+                estado.style.color = '#7ee2a8'; estado.textContent = soloAbre ? '' : '✅ Listo, ya quedó guardado.';
             } catch (err) {
                 b.disabled = false; if (bNo) bNo.disabled = false; b.textContent = orig;
                 estado.style.color = '#ff9c9c'; estado.textContent = '⚠️ No se pudo: ' + (err.message || err);
@@ -33705,6 +33719,7 @@ async function _asistEjecutarAccion(a) {
         _costosRender();
         return;
     }
+    if (a.tipo === 'abrir_tv') { abrirModoTv(); return; }
     if (a.tipo === 'catalogo') return _fodiCatalogoEjecutar(a);
     if (a.tipo === 'editar_pedido') return _fodiEditarPedidoEjecutar(a);
     if (a.tipo === 'crear_pedido') {

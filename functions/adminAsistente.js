@@ -844,9 +844,9 @@ const TOOLS = [
     },
     {
         name: 'proponer_accion',
-        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
+        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). tipo "abrir_tv" propone abrir el Modo TV (pantalla del local) en otra ventana. Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
         input_schema: { type: 'object', properties: {
-            tipo: { type: 'string', enum: ['navegar', 'precio_insumo'] },
+            tipo: { type: 'string', enum: ['navegar', 'precio_insumo', 'abrir_tv'] },
             tab: { type: 'string', enum: PESTANAS_NAVEGABLES, description: 'Solo con tipo "navegar".' },
             vista: { type: 'string', enum: VISTAS_COSTOS, description: 'Solo con tab "costos".' },
             nombre: { type: 'string', description: 'Solo con tipo "precio_insumo": nombre del insumo (como en la pestaña Insumos).' },
@@ -861,6 +861,7 @@ const TOOLS = [
     require('./fodiFeedback').TOOL,
     require('./fodiCortesias').TOOL,
     require('./fodiFinanzasFestival').TOOL,
+    require('./fodiTv').TOOL,
     ...require('./fodiPedidos').TOOLS,
     {
         name: 'registrar_nombre',
@@ -891,6 +892,7 @@ async function proponerAccion(db, args = {}) {
         const i = hallados[0];
         return { ok: true, accion: { tipo: 'precio_insumo', insumoId: i.id, nombre: String(i.nombre || ''), precioActual: Number(i.precioCompra) || 0, precioNuevo: Math.round(nuevo * 100) / 100 } };
     }
+    if (args.tipo === 'abrir_tv') return { ok: true, accion: { tipo: 'abrir_tv' } };
     return { error: 'tipo desconocido.' };
 }
 
@@ -1087,6 +1089,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'feedback_clientes') return await require('./fodiFeedback').feedbackClientes(db, args);
         if (nombre === 'cortesias') return await require('./fodiCortesias').cortesias(db, args);
         if (nombre === 'finanzas_festival') return await require('./fodiFinanzasFestival').finanzasFestival(db);
+        if (nombre === 'pantalla_tv') return await require('./fodiTv').pantallaTv(db);
         if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);
         if (nombre === 'lecciones') return await require('./fodiLecciones').lecciones(db, args);
         if (nombre === 'sumar_mesas') return await require('./fodiPedidos').sumarMesas(db, args);
