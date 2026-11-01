@@ -95,6 +95,18 @@ test('e) admin autenticado por el SDK cliente tampoco puede escribir puntosAcumu
     await assertSucceeds(adminDb.collection('clientes').doc(clientId).update({ customerName: 'Editado por admin' }));
 });
 
+// whatsappUser: usuario de WhatsApp opcional de un cliente (algunos contactos no muestran número). El admin lo
+// captura al crear el cliente (create con hasOnly) y puede editarlo después. Nunca más de 60 caracteres ni algo
+// que no sea texto.
+test('g) crear cliente con whatsappUser válido funciona; muy largo o no-texto falla', async () => {
+    const db = testEnv.authenticatedContext('admin-wa-uid').firestore();
+    const base = { customerName: 'Ana', customerPhone: '3001112233', customerPhoneDigits: '3001112233' };
+    await assertSucceeds(db.collection('clientes').doc('phone_3001112233').set({ ...base, whatsappUser: '@ana.rivera' }));
+    await assertSucceeds(db.collection('clientes').doc('phone_3001112244').set({ ...base, customerPhone: '3001112244', customerPhoneDigits: '3001112244' }));
+    await assertFails(db.collection('clientes').doc('phone_3001112255').set({ ...base, whatsappUser: 'x'.repeat(61) }));
+    await assertFails(db.collection('clientes').doc('phone_3001112266').set({ ...base, whatsappUser: 12345 }));
+});
+
 // ajustes_puntos_lealtad (auditoria de adminAdjustLoyaltyPoints, ver functions/index.js) --
 // solo lectura para admins (para el historial de ajustes en el panel), escritura EXCLUSIVA
 // del Admin SDK dentro de la Cloud Function -- ni siquiera un admin autenticado por el SDK

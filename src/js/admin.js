@@ -353,6 +353,7 @@ const clientModalTitle = document.getElementById('clientModalTitle');
 const clientEditIdInput = document.getElementById('clientEditId');
 const clientEditNameInput = document.getElementById('clientEditName');
 const clientEditPhoneInput = document.getElementById('clientEditPhone');
+const clientEditWhatsappUserInput = document.getElementById('clientEditWhatsappUser');
 const clientEditAddressInput = document.getElementById('clientEditAddress');
 const clientEditFeedback = document.getElementById('clientEditFeedback');
 const clientEditSaveBtn = document.getElementById('clientEditSaveBtn');
@@ -3226,6 +3227,7 @@ async function fetchClients({ force = false } = {}) {
                 customerName: String(raw.customerName || '').trim() || 'Cliente sin nombre',
                 customerPhone: String(raw.customerPhone || '').trim() || 'No registrado',
                 customerPhoneDigits: String(raw.customerPhoneDigits || '').trim(),
+                whatsappUser: String(raw.whatsappUser || '').trim(),
                 address: savedAddresses[0] || String(raw.address || '').trim() || 'Sin direccion registrada',
                 savedAddresses,
                 firstOrderAt: raw.firstOrderAt || raw.createdAt || null,
@@ -13085,7 +13087,7 @@ function renderClients() {
                     <span>${escapeHtml(client.id)}</span>
                 </div>
             </td>
-            <td>${escapeHtml(client.customerPhone)}</td>
+            <td>${escapeHtml(client.customerPhone)}${client.whatsappUser ? `<div class="client-address-muted">💬 ${escapeHtml(client.whatsappUser)}</div>` : ''}</td>
             <td class="client-address-cell">
                 <strong class="client-address-primary">${escapeHtml(client.address)}</strong>
                 ${extraAddresses.length ? `
@@ -14418,6 +14420,14 @@ document.addEventListener('click', (event) => {
     renderChatRoalDetail();
 });
 
+// Usuario de WhatsApp (algunos contactos no muestran número, solo usuario): se guarda como se escribió y para
+// buscar se ignoran mayúsculas, tildes y el "@" inicial (buscar "@juan" o "juan" da lo mismo).
+function clientUserMatches(client, normTerm) {
+    const term = String(normTerm || '').replace(/^@+/, '');
+    if (!term || !client.whatsappUser) return false;
+    return normalizeCategoryKey(client.whatsappUser).replace(/^@+/, '').includes(term);
+}
+
 function getFilteredClients() {
     return clientsState.filter((client) => {
         if (!clientsSearchTerm) {
@@ -14431,7 +14441,7 @@ function getFilteredClients() {
             client.lastOrderCode
         ].join(' | ');
 
-        return normalizeCategoryKey(haystack).includes(clientsSearchTerm);
+        return normalizeCategoryKey(haystack).includes(clientsSearchTerm) || clientUserMatches(client, clientsSearchTerm);
     });
 }
 
@@ -14472,6 +14482,7 @@ function getClientExportColumns() {
         { key: 'nombre', label: 'Nombre' },
         { key: 'telefono', label: 'Telefono' },
         { key: 'telefono_digitos', label: 'Telefono Digitos' },
+        { key: 'usuario_whatsapp', label: 'Usuario WhatsApp' },
         { key: 'direccion', label: 'Direccion' },
         { key: 'primera_visita', label: 'Primera Visita' },
         { key: 'ultima_visita', label: 'Ultima Visita' },
@@ -14490,6 +14501,7 @@ function buildClientExportRows(clients) {
         nombre: client.customerName,
         telefono: client.customerPhone,
         telefono_digitos: client.customerPhoneDigits,
+        usuario_whatsapp: client.whatsappUser || '',
         direccion: client.address,
         primera_visita: formatExportDate(client.firstOrderAt),
         ultima_visita: formatExportDate(client.lastOrderAt),
@@ -14729,6 +14741,9 @@ function openEditClientModal(client, focusField = 'customerName') {
     if (clientEditPhoneInput) {
         clientEditPhoneInput.value = client.customerPhone;
     }
+    if (clientEditWhatsappUserInput) {
+        clientEditWhatsappUserInput.value = client.whatsappUser || '';
+    }
     if (clientEditAddressInput) {
         clientEditAddressInput.value = client.address;
     }
@@ -14931,13 +14946,13 @@ function _occRenderResults(order, term) {
     const matches = clientsState.filter((client) => {
         if (!normTerm) return true;
         const haystack = [client.customerName, client.customerPhone, client.address].join(' | ');
-        return normalizeCategoryKey(haystack).includes(normTerm);
+        return normalizeCategoryKey(haystack).includes(normTerm) || clientUserMatches(client, normTerm);
     }).slice(0, 50);
 
     list.innerHTML = matches.length ? matches.map((client) => `
         <button type="button" class="occ-result-row" data-client-id="${escapeHtml(client.id)}">
             <strong>${escapeHtml(client.customerName || 'Sin nombre')}</strong>
-            <span>${escapeHtml(client.customerPhone || 'Sin telefono')}</span>
+            <span>${escapeHtml(client.customerPhone || 'Sin telefono')}${client.whatsappUser ? ` · 💬 ${escapeHtml(client.whatsappUser)}` : ''}</span>
             <span class="occ-result-address">${escapeHtml(client.address || 'Sin direccion')}</span>
         </button>`).join('') : `<p style="color:var(--admin-muted);font-size:0.85rem;padding:10px 0;">No hay clientes que coincidan.</p>`;
 
@@ -20979,7 +20994,8 @@ document.getElementById('inboxSearch')?.addEventListener('input', () => renderMe
         const matches = q
             ? clientsState.filter(c =>
                 String(c.customerName || '').toLowerCase().includes(q) ||
-                String(c.customerPhone || '').toLowerCase().includes(q)
+                String(c.customerPhone || '').toLowerCase().includes(q) ||
+                clientUserMatches(c, normalizeCategoryKey(q))
               )
             : clientsState.slice(0, 20);
 
@@ -20997,7 +21013,7 @@ document.getElementById('inboxSearch')?.addEventListener('input', () => renderMe
                 <div class="inbox-client-avatar">${initial}</div>
                 <div class="inbox-client-info">
                     <div class="inbox-client-name">${escapeHtml(client.customerName || 'Sin nombre')}</div>
-                    <div class="inbox-client-phone">${escapeHtml(client.customerPhone || '')}</div>
+                    <div class="inbox-client-phone">${escapeHtml(client.customerPhone || '')}${client.whatsappUser ? ` · 💬 ${escapeHtml(client.whatsappUser)}` : ''}</div>
                 </div>
             `;
             item.addEventListener('click', () => openOrCreateConversation(client));
@@ -21425,6 +21441,7 @@ if (clientEditForm) {
 
         const customerName = String(clientEditNameInput?.value || '').trim();
         const customerPhone = String(clientEditPhoneInput?.value || '').trim();
+        const whatsappUser = String(clientEditWhatsappUserInput?.value || '').trim();
         const address = String(clientEditAddressInput?.value || '').trim();
         const savedAddresses = normalizeClientSavedAddresses(getClientAddrChips(), address);
         const customerPhoneDigits = normalizePhoneDigits(customerPhone);
@@ -21480,6 +21497,8 @@ if (clientEditForm) {
                 customerName,
                 customerPhone,
                 customerPhoneDigits,
+                // Opcional; al crear sin usuario no se escribe el campo, al editar sí (para poder borrarlo).
+                ...(whatsappUser || oldClientId ? { whatsappUser } : {}),
                 address: savedAddresses[0] || address,
                 savedAddresses,
                 totalOrders: Number(baseData?.totalOrders || 0),
