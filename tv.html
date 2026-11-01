@@ -72,6 +72,17 @@
         .f-qr span { font-weight: 800; font-size: 34px; text-transform: uppercase; letter-spacing: 1px; }
         .qr { width: 104px; height: 104px; background: #fff; border-radius: 10px; padding: 4px; }
         .qr svg { width: 100%; height: 100%; display: block; }
+
+        /* ── Pantalla completa: el botón y la ayuda solo aparecen al mover el mouse / tocar y se ocultan solos ── */
+        body.activo, body.activo * { cursor: default; }
+        #btnFs { position: fixed; top: 18px; right: 18px; width: 58px; height: 58px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .75); background: rgba(0, 0, 0, .6); color: #fff; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .25s ease; z-index: 50; padding: 0; }
+        body.activo #btnFs { opacity: 1; pointer-events: auto; cursor: pointer; }
+        #btnFs svg { width: 30px; height: 30px; }
+        #btnFs .ico-salir { display: none; }
+        body.es-fs #btnFs .ico-entrar { display: none; }
+        body.es-fs #btnFs .ico-salir { display: block; }
+        #hint { position: fixed; left: 50%; top: 22px; transform: translateX(-50%); background: rgba(0, 0, 0, .78); color: #fff; font-weight: 700; font-size: 20px; padding: 14px 26px; border-radius: 999px; z-index: 50; display: none; max-width: 86vw; text-align: center; }
+        body.con-ayuda #hint { display: block; }
     </style>
 </head>
 <body>
@@ -92,6 +103,11 @@
             <div class="f-qr"><span>Pide aquí</span><div class="qr"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges" role="img" aria-label="QR hacia www.roalburger.com"><rect width="29" height="29" fill="#fff"/><path fill="#000" d="M2 2h7v1h-7zM10 2h1v1h-1zM12 2h2v1h-2zM15 2h1v1h-1zM20 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM10 3h2v1h-2zM14 3h2v1h-2zM20 3h1v1h-1zM26 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM10 4h2v1h-2zM14 4h3v1h-3zM18 4h1v1h-1zM20 4h1v1h-1zM22 4h3v1h-3zM26 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM11 5h2v1h-2zM14 5h2v1h-2zM18 5h1v1h-1zM20 5h1v1h-1zM22 5h3v1h-3zM26 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM10 6h3v1h-3zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h3v1h-3zM26 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM11 7h2v1h-2zM14 7h2v1h-2zM18 7h1v1h-1zM20 7h1v1h-1zM26 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h7v1h-7zM11 9h1v1h-1zM13 9h1v1h-1zM15 9h2v1h-2zM18 9h1v1h-1zM2 10h1v1h-1zM5 10h7v1h-7zM16 10h1v1h-1zM18 10h2v1h-2zM22 10h1v1h-1zM24 10h3v1h-3zM6 11h1v1h-1zM9 11h3v1h-3zM16 11h2v1h-2zM19 11h1v1h-1zM21 11h5v1h-5zM2 12h1v1h-1zM5 12h5v1h-5zM12 12h1v1h-1zM15 12h1v1h-1zM17 12h2v1h-2zM20 12h2v1h-2zM23 12h1v1h-1zM26 12h1v1h-1zM4 13h4v1h-4zM9 13h1v1h-1zM13 13h2v1h-2zM16 13h1v1h-1zM18 13h1v1h-1zM21 13h1v1h-1zM23 13h4v1h-4zM2 14h2v1h-2zM5 14h1v1h-1zM7 14h2v1h-2zM10 14h3v1h-3zM14 14h1v1h-1zM17 14h2v1h-2zM20 14h1v1h-1zM26 14h1v1h-1zM2 15h1v1h-1zM6 15h1v1h-1zM14 15h6v1h-6zM22 15h1v1h-1zM25 15h1v1h-1zM2 16h2v1h-2zM5 16h2v1h-2zM8 16h1v1h-1zM10 16h2v1h-2zM15 16h3v1h-3zM19 16h2v1h-2zM22 16h5v1h-5zM2 17h1v1h-1zM4 17h1v1h-1zM7 17h1v1h-1zM9 17h2v1h-2zM17 17h1v1h-1zM19 17h1v1h-1zM21 17h1v1h-1zM23 17h2v1h-2zM26 17h1v1h-1zM2 18h1v1h-1zM6 18h1v1h-1zM8 18h1v1h-1zM10 18h1v1h-1zM14 18h2v1h-2zM18 18h5v1h-5zM24 18h2v1h-2zM10 19h1v1h-1zM12 19h1v1h-1zM16 19h1v1h-1zM18 19h1v1h-1zM22 19h1v1h-1zM24 19h2v1h-2zM2 20h7v1h-7zM10 20h2v1h-2zM13 20h1v1h-1zM16 20h1v1h-1zM18 20h1v1h-1zM20 20h1v1h-1zM22 20h1v1h-1zM26 20h1v1h-1zM2 21h1v1h-1zM8 21h1v1h-1zM10 21h4v1h-4zM15 21h4v1h-4zM22 21h1v1h-1zM2 22h1v1h-1zM4 22h3v1h-3zM8 22h1v1h-1zM10 22h1v1h-1zM13 22h2v1h-2zM17 22h6v1h-6zM2 23h1v1h-1zM4 23h3v1h-3zM8 23h1v1h-1zM10 23h4v1h-4zM15 23h2v1h-2zM20 23h1v1h-1zM25 23h2v1h-2zM2 24h1v1h-1zM4 24h3v1h-3zM8 24h1v1h-1zM11 24h1v1h-1zM13 24h1v1h-1zM15 24h1v1h-1zM17 24h1v1h-1zM19 24h1v1h-1zM22 24h5v1h-5zM2 25h1v1h-1zM8 25h1v1h-1zM11 25h2v1h-2zM14 25h1v1h-1zM17 25h1v1h-1zM21 25h2v1h-2zM24 25h3v1h-3zM2 26h7v1h-7zM10 26h5v1h-5zM18 26h2v1h-2zM23 26h1v1h-1zM26 26h1v1h-1z"/></svg></div></div>
         </footer>
     </div>
+    <button type="button" id="btnFs" aria-label="Pantalla completa" title="Pantalla completa (F)">
+        <svg class="ico-entrar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        <svg class="ico-salir" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+    </button>
+    <div id="hint">Haz clic en cualquier parte para pantalla completa</div>
     <noscript><p style="color:#fff;font-family:sans-serif;padding:40px">Activa JavaScript para ver la pantalla del local.</p></noscript>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>

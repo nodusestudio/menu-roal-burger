@@ -12,7 +12,7 @@
     // Mismo cierre que el Festival Sabe a Quindío en script-v2.js (FESTIVAL_TRIFASICA_HASTA).
     var FESTIVAL_HASTA = Date.parse('2026-11-08T23:59:59-05:00');
     var CACHE_KEY = 'roal_tv_cache_v1';
-    var RECARGA_MS = 6 * 60 * 60 * 1000; // por si hay una versión nueva de la página
+    var REVISION_MS = 30 * 60 * 1000; // cada cuánto se busca una versión nueva de la página
 
     var stage = document.getElementById('stage');
     var panel = document.getElementById('panel');
@@ -306,17 +306,68 @@
     setInterval(pedirWakeLock, 30000);
     pedirWakeLock();
 
-    // Pantalla completa invisible: doble clic o tecla F (en modo kiosco no hace falta).
-    function pantallaCompleta() {
-        var el = document.documentElement;
-        if (document.fullscreenElement) { if (document.exitFullscreen) document.exitFullscreen(); }
-        else if (el.requestFullscreen) el.requestFullscreen().catch(function () {});
-    }
-    document.addEventListener('dblclick', pantallaCompleta);
-    document.addEventListener('keydown', function (e) { if (e.key === 'f' || e.key === 'F') pantallaCompleta(); });
+    // ── Pantalla completa ──
+    // El navegador solo la permite tras un clic/toque en ESTA página. Por eso: un clic en cualquier parte la activa,
+    // y hay un botón (esquina superior derecha) que aparece al mover el mouse o tocar y se oculta solo.
+    var btnFs = document.getElementById('btnFs');
+    var hint = document.getElementById('hint');
+    var inactivoT = null;
 
-    // Una recarga cada 6 h (solo con internet) para tomar versiones nuevas de la página.
-    setInterval(function () { if (navigator.onLine) location.reload(); }, RECARGA_MS);
+    function esFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+    function entrarFs() {
+        var el = document.documentElement;
+        var p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : (el.webkitRequestFullscreen ? el.webkitRequestFullscreen() : null);
+        if (p && p.catch) p.catch(function () { /* el navegador la rechazó: se reintenta con el próximo clic */ });
+    }
+    function salirFs() {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+    function alternarFs() { if (esFs()) salirFs(); else entrarFs(); }
+
+    function actividad() {
+        document.body.classList.add('activo');
+        clearTimeout(inactivoT);
+        // Fuera de pantalla completa (configurando la TV) el mouse y el botón se quedan a la vista 15 s; ya en pantalla
+        // completa se ocultan a los 3 s para que la TV quede limpia.
+        inactivoT = setTimeout(function () { document.body.classList.remove('activo'); }, esFs() ? 3000 : 15000);
+    }
+    ['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach(function (ev) { document.addEventListener(ev, actividad, { passive: true }); });
+
+    function alCambiarFs() {
+        document.body.classList.toggle('es-fs', esFs());
+        if (esFs()) document.body.classList.remove('con-ayuda');
+        actividad(); // al entrar o salir se muestra el mouse un momento (reinicia el temporizador con el tiempo que corresponde)
+    }
+    document.addEventListener('fullscreenchange', alCambiarFs);
+    document.addEventListener('webkitfullscreenchange', alCambiarFs);
+
+    actividad(); // al abrir la página el mouse y el botón se ven desde el primer momento
+    if (btnFs) btnFs.addEventListener('click', function (e) { e.stopPropagation(); alternarFs(); });
+    // Clic en cualquier parte: si no está en pantalla completa, entra (así basta un clic para dejar la TV lista).
+    document.addEventListener('click', function () { if (!esFs()) entrarFs(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'f' || e.key === 'F') alternarFs(); });
+
+    // Si se abrió desde el botón "Modo TV" del admin (?ctl=1) se muestra una ayuda unos segundos y se quita el parámetro.
+    if (/[?&]ctl=1\b/.test(location.search)) {
+        document.body.classList.add('con-ayuda');
+        setTimeout(function () { document.body.classList.remove('con-ayuda'); }, 12000);
+        try { history.replaceState(null, '', location.pathname); } catch (_) { /* sin history */ }
+    }
+
+    // Versión nueva de la página: cada 30 min se compara el ?v= de tv.js con el publicado y solo entonces se recarga
+    // (una recarga ciega sacaría a la TV de la pantalla completa sin necesidad).
+    function versionDe(texto) { var m = /tv\.js\?v=([\w-]+)/.exec(texto || ''); return m ? m[1] : null; }
+    function revisarVersion() {
+        if (!navigator.onLine || !window.fetch) return;
+        var actual = versionDe(Array.prototype.map.call(document.scripts, function (sc) { return sc.src; }).join(' '));
+        if (!actual) return; // en local no hay ?v=
+        fetch(location.pathname, { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
+            var nueva = versionDe(t);
+            if (nueva && nueva !== actual) location.reload();
+        }).catch(function () { /* sin red: se reintenta luego */ });
+    }
+    setInterval(revisarVersion, REVISION_MS);
 
     cargarCache();
     reconstruir();

@@ -1042,6 +1042,14 @@ function applyAdminRuntimeLinks() {
     }
 }
 
+// Modo TV: abre la pantalla del local (/tv) en su propia ventana. ?ctl=1 hace que muestre la ayuda de
+// "clic para pantalla completa" (el navegador solo permite pantalla completa tras un clic en esa página).
+document.getElementById('adminTvBtn')?.addEventListener('click', () => {
+    let url = '/tv?ctl=1';
+    try { url = new URL('tv?ctl=1', new URL(resolvePublicAppUrl(), window.location.href)).href; } catch (_) { /* se usa la ruta relativa */ }
+    window.open(url, 'roalTV');
+});
+
 function showModalFeedback(element, text, type = 'ok') {
     if (!element) {
         return;
