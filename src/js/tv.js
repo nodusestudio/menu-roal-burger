@@ -12,7 +12,7 @@
     // Mismo cierre que el Festival Sabe a Quindío en script-v2.js (FESTIVAL_TRIFASICA_HASTA).
     var FESTIVAL_HASTA = Date.parse('2026-11-08T23:59:59-05:00');
     var CACHE_KEY = 'roal_tv_cache_v1';
-    var REVISION_MS = 30 * 60 * 1000; // cada cuánto se busca una versión nueva de la página
+    var REVISION_MS = Math.max(3, Number((/[?&]rev=(\d+)/.exec(location.search) || [])[1]) || 1800) * 1000; // cada cuánto se busca una versión nueva (?rev=segundos solo para pruebas)
 
     var stage = document.getElementById('stage');
     var panel = document.getElementById('panel');
@@ -355,18 +355,39 @@
         try { history.replaceState(null, '', location.pathname); } catch (_) { /* sin history */ }
     }
 
-    // Versión nueva de la página: cada 30 min se compara el ?v= de tv.js con el publicado y solo entonces se recarga
-    // (una recarga ciega sacaría a la TV de la pantalla completa sin necesidad).
-    function versionDe(texto) { var m = /tv\.js\?v=([\w-]+)/.exec(texto || ''); return m ? m[1] : null; }
+    // ── Actualizaciones de la página SIN sacar a la TV de la pantalla completa ──
+    // Recargar la página (location.reload) hace que el navegador salga de la pantalla completa, y no se puede volver a
+    // entrar sin un clic. Antes se comparaba el ?v= de tv.js, pero el build lo cambia en CADA publicación (aunque la TV
+    // no haya cambiado), así que a los ≤30 min de cualquier deploy la TV se recargaba y se "achicaba".
+    // Ahora se compara el CONTENIDO (huella del HTML sin ?v= y del tv.js) y, si de verdad cambió:
+    //   · en pantalla completa de la página → se espera a la madrugada (3–5 a. m., hora de Bogotá, local cerrado);
+    //   · si no está en pantalla completa (o está en F11/kiosco, que sobrevive a la recarga) → se recarga ya.
+    function huella(t) { var h = 2166136261; t = String(t || ""); for (var i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36) + ":" + t.length; }
+    function sinVersion(t) { return String(t || "").replace(/\?v=[\w-]+/g, ""); }
+    function leerPagina(sinCache) {
+        var op = sinCache ? { cache: "no-store" } : {};
+        return fetch(location.pathname, op).then(function (r) { return r.text(); }).then(function (html) {
+            var m = /<script[^>]+src="([^"]*tv\.js[^"]*)"/.exec(html);
+            return fetch(m ? m[1] : "tv.js", op).then(function (r) { return r.text(); }).then(function (js) { return huella(sinVersion(html)) + "|" + huella(js); });
+        });
+    }
+    function esMadrugada(ms) {
+        var h = Number(new Date(ms).toLocaleString("en-GB", { timeZone: "America/Bogota", hour: "2-digit", hourCycle: "h23" }));
+        return h >= 3 && h < 5;
+    }
+    var huellaInicial = null, hayActualizacion = false;
+    function aplicarActualizacion() {
+        if (!hayActualizacion) return;
+        if (!esFs() || esMadrugada(Date.now())) location.reload();
+    }
     function revisarVersion() {
         if (!navigator.onLine || !window.fetch) return;
-        var actual = versionDe(Array.prototype.map.call(document.scripts, function (sc) { return sc.src; }).join(' '));
-        if (!actual) return; // en local no hay ?v=
-        fetch(location.pathname, { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (t) {
-            var nueva = versionDe(t);
-            if (nueva && nueva !== actual) location.reload();
-        }).catch(function () { /* sin red: se reintenta luego */ });
+        if (hayActualizacion) { aplicarActualizacion(); return; }
+        if (!huellaInicial) { leerPagina(false).then(function (h) { huellaInicial = h; }).catch(function () { /* se reintenta */ }); return; }
+        leerPagina(true).then(function (h) { if (h !== huellaInicial) { hayActualizacion = true; aplicarActualizacion(); } }).catch(function () { /* sin red: se reintenta luego */ });
     }
+    // La huella de partida se toma al abrir la página (con la misma caché que cargó esta versión).
+    if (window.fetch) leerPagina(false).then(function (h) { huellaInicial = h; }).catch(function () { /* se toma en la primera revisión */ });
     setInterval(revisarVersion, REVISION_MS);
 
     cargarCache();
