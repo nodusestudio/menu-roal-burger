@@ -35694,7 +35694,8 @@ document.getElementById('fodiBaseBox')?.addEventListener('click', async (e) => {
 // primer clic en cualquier parte del panel lo vuelve a armar (siempre que ya se hubiera activado antes).
 function _bancoEstado() { return (window.__bancoEstado = window.__bancoEstado || { voz: false, primera: true, dichos: {}, iniciado: false }); }
 function _bancoMsg(texto) { const el = document.getElementById('bancoEstado'); if (el) el.textContent = texto; }
-function _bancoHablar() { const c = document.getElementById('bancoHablarChk'); return !c || c.checked; }
+function _bancoHablar() { const c = document.getElementById('bancoHablarChk'); return !!(c && c.checked); }
+function _bancoTextoReposo() { return _bancoHablar() ? (_bancoEstado().voz ? '✅ Voz activada: escuchando pagos.' : 'Voz sin activar.') : '🔕 Voz del navegador apagada: los pagos los dice el programa de Windows (si lo instalaste).'; }
 function _bancoVoces() { try { return window.speechSynthesis.getVoices().filter((v) => /^es/i.test(v.lang)); } catch (_) { return []; } }
 function _bancoPintarVoces() {
     const el = document.getElementById('bancoVocesInfo'); if (!el) return;
@@ -35715,7 +35716,7 @@ function _bancoDecir(frase, silencioso) {
             if (voz) u.voice = voz;
             if (!silencioso) {
                 u.onstart = () => _bancoMsg('🔊 Hablando…');
-                u.onend = () => _bancoMsg(_bancoEstado().voz ? '✅ Voz activada: escuchando pagos.' : 'Voz sin activar.');
+                u.onend = () => _bancoMsg(_bancoTextoReposo());
                 u.onerror = (e) => _bancoMsg(`La voz falló (${(e && e.error) || 'error desconocido'}). Revisa el volumen del computador o prueba con Chrome/Edge.`);
             }
             synth.resume();
@@ -35752,7 +35753,7 @@ function _bancoFlag() { try { return localStorage.getItem('roal_banco_voz') === 
 // Franja roja fija arriba: aparece cuando la voz estaba activada y la página se recargó (el navegador exige un clic otra vez).
 function _bancoBanner(textoExtra) {
     let b = document.getElementById('bancoBanner');
-    const apagada = _bancoFlag() && !_bancoEstado().voz;
+    const apagada = _bancoHablar() && _bancoFlag() && !_bancoEstado().voz;
     if (!apagada) { if (b) b.hidden = true; return; }
     if (!b) {
         b = document.createElement('button'); b.type = 'button'; b.id = 'bancoBanner';
@@ -35769,10 +35770,20 @@ function _bancoIniciar() {
     st.iniciado = true;
     document.getElementById('bancoVozBtn')?.addEventListener('click', _bancoActivar);
     document.getElementById('bancoProbarBtn')?.addEventListener('click', () => { _bancoEstado().voz = true; _bancoDecir('Pago recibido de Juan Pérez por 27500 pesos'); });
+    const chk = document.getElementById('bancoHablarChk');
+    if (chk) {
+        let guardado = null; try { guardado = localStorage.getItem('roal_banco_hablar'); } catch (_) { /* sin almacenamiento */ }
+        chk.checked = guardado === '1'; // por defecto APAGADA: la voz principal es el programa de Windows
+        chk.addEventListener('change', () => {
+            try { localStorage.setItem('roal_banco_hablar', chk.checked ? '1' : '0'); } catch (_) { /* sin almacenamiento */ }
+            _bancoMsg(_bancoTextoReposo()); _bancoBanner();
+        });
+        _bancoMsg(_bancoTextoReposo());
+    }
     _bancoBanner();
     ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => document.addEventListener(ev, () => {
         const e = _bancoEstado();
-        if (e.voz || !_bancoFlag()) return;
+        if (e.voz || !_bancoFlag() || !_bancoHablar()) return;
         e.voz = true; _bancoMsg('✅ Voz activada: escuchando pagos.'); _bancoBanner(); _bancoDecir(' ', true);
     }, { once: true, capture: true }));
     if ('speechSynthesis' in window) { window.speechSynthesis.getVoices(); window.speechSynthesis.addEventListener?.('voiceschanged', _bancoPintarVoces); }
@@ -35787,7 +35798,7 @@ function _bancoIniciar() {
             const t = x.creadoEn && x.creadoEn.toMillis ? x.creadoEn.toMillis() : Date.now();
             if (Date.now() - t > 10 * 60 * 1000) return; // un pago viejo no se canta
             if (st.voz && _bancoHablar()) _bancoDecir(x.frase || '');
-            else if (!st.voz) {
+            else if (!st.voz && _bancoHablar()) {
                 _bancoBanner(`🔇 ${x.frase || 'Pago recibido'}. La voz está apagada: toca aquí para activarla.`);
                 try { if ('Notification' in window && Notification.permission === 'granted') new Notification('💸 Pago recibido', { body: x.frase || '', requireInteraction: true }); } catch (_) { /* sin notificación */ }
             }
