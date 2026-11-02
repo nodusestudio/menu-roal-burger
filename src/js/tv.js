@@ -19,7 +19,13 @@
     var barra = document.getElementById('barra');
     var fotos = [document.getElementById('fotoA'), document.getElementById('fotoB')];
 
-    var state = { productos: [], categorias: [], promos: [] };
+    var state = { productos: [], categorias: [], promos: [], cfg: {} };
+
+    // Configuración que se maneja desde el admin (FODEXA → Modo TV), en configuracion/tv_config. Sin ese documento
+    // la pantalla se comporta como siempre: todo el menú, 8 s por producto.
+    var CFG_BASE = { pausada: false, segundos: 8, modo: 'todo', categorias: [], productos: [], orden: 'menu', precio: true, ingredientes: true, etiquetas: true };
+    var cfg = Object.assign({}, CFG_BASE);
+    var semilla = String(Date.now()); // orden aleatorio estable mientras la pantalla esté abierta
     var lista = [];
     var actualId = null;
     var idx = -1;
@@ -52,6 +58,27 @@
         };
     }
 
+    function aplicarCfg(d) {
+        d = d || {};
+        var seg = Number(d.segundos);
+        var nuevo = {
+            pausada: d.pausada === true,
+            segundos: Math.min(300, Math.max(3, isFinite(seg) && seg > 0 ? seg : CFG_BASE.segundos)),
+            modo: ['todo', 'categorias', 'productos', 'promos', 'destacados'].indexOf(d.modo) !== -1 ? d.modo : 'todo',
+            categorias: Array.isArray(d.categorias) ? d.categorias.map(norm) : [],
+            productos: Array.isArray(d.productos) ? d.productos.map(String) : [],
+            orden: d.orden === 'aleatorio' ? 'aleatorio' : 'menu',
+            precio: d.precio !== false,
+            ingredientes: d.ingredientes !== false,
+            etiquetas: d.etiquetas !== false
+        };
+        if (nuevo.orden === 'aleatorio' && cfg.orden !== 'aleatorio') semilla = String(Date.now());
+        cfg = nuevo;
+        state.cfg = d;
+        ROTACION_MS = cfg.segundos * 1000;
+        document.body.classList.toggle('en-pausa', cfg.pausada);
+    }
+
     function guardarCache() {
         try { localStorage.setItem(CACHE_KEY, JSON.stringify(state)); } catch (_) { /* sin almacenamiento */ }
     }
@@ -62,6 +89,7 @@
                 state.productos = raw.productos;
                 state.categorias = Array.isArray(raw.categorias) ? raw.categorias : [];
                 state.promos = Array.isArray(raw.promos) ? raw.promos : [];
+                if (raw.cfg) aplicarCfg(raw.cfg);
             }
         } catch (_) { /* cache dañado: se ignora */ }
     }
@@ -135,10 +163,25 @@
                 ingredientes: parseIngredientes(p.descripcion),
                 img: resolverImg((es2x1 && p.promo2x1 && p.promo2x1.image_url) || img),
                 imgBase: resolverImg(img),
-                orden: Number.isFinite(Number(p.order)) ? Number(p.order) : 9999
+                orden: Number.isFinite(Number(p.order)) ? Number(p.order) : 9999,
+                categoria: norm(p.categoria),
+                destacado: p.es_destacado === true
             });
         });
         out.sort(function (a, b) { return a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'); });
+        // Qué se muestra (admin → Modo TV → Contenido). Si el filtro no deja nada, se muestra todo: una TV nunca debe quedar vacía.
+        var filtrada = out.filter(function (x) {
+            if (cfg.modo === 'categorias') return cfg.categorias.indexOf(x.categoria) !== -1;
+            if (cfg.modo === 'productos') return cfg.productos.indexOf(String(x.id)) !== -1;
+            if (cfg.modo === 'promos') return x.es2x1;
+            if (cfg.modo === 'destacados') return x.destacado;
+            return true;
+        });
+        if (filtrada.length) out = filtrada;
+        if (cfg.orden === 'aleatorio') {
+            var clave = function (x) { return huella(semilla + x.id); };
+            out.sort(function (a, b) { return clave(a) < clave(b) ? -1 : clave(a) > clave(b) ? 1 : 0; });
+        }
         // Durante el festival, su producto sale al inicio y otra vez a la mitad de cada vuelta (si no, caería de último).
         var fest = out.filter(function (x) { return x.festival; });
         if (fest.length) {
@@ -186,10 +229,10 @@
         var precio = p.es2x1
             ? '<div class="precio dos" style="--d:' + dPrecio + 's">2×1</div>'
             : (p.precio > 0 ? '<div class="precio" style="--d:' + dPrecio + 's"><small>$</small>' + esc(Number(p.precio).toLocaleString('es-CO')) + '</div>' : '');
-        return (p.etiqueta ? '<div class="etq">' + esc(p.etiqueta) + '</div>' : '')
+        return (p.etiqueta && cfg.etiquetas ? '<div class="etq">' + esc(p.etiqueta) + '</div>' : '')
             + '<h1 class="nombre" style="font-size:' + tamanoNombre(p.nombre) + 'px">' + palabras + '</h1>'
-            + (ings ? '<ul class="ings">' + ings + '</ul>' : '')
-            + precio;
+            + (ings && cfg.ingredientes ? '<ul class="ings">' + ings + '</ul>' : '')
+            + (cfg.precio ? precio : '');
     }
 
     function pintar(p, conFoto) {
@@ -242,6 +285,8 @@
         clearTimeout(timer);
         timer = null;
         if (enCurso) return;
+        // En pausa se queda en el producto que está en pantalla (la primera vez sí muestra uno).
+        if (cfg.pausada && actualId) { timer = setTimeout(avanzar, 2000); return; }
         if (!lista.length) {
             panel.innerHTML = '<h1 class="nombre" style="font-size:96px"><span class="w" style="--i:0">Cargando</span> <span class="w" style="--i:1">el</span> <span class="w" style="--i:2">menú…</span></h1>';
             timer = setTimeout(avanzar, 5000);
@@ -282,6 +327,18 @@
             guardarCache();
             reconstruir();
         }, err('productos'));
+        db.collection('configuracion').doc('tv_config').onSnapshot(function (snap) {
+            var estabaPausada = cfg.pausada, antes = JSON.stringify(cfg);
+            aplicarCfg(snap.exists ? snap.data() : {});
+            if (JSON.stringify(cfg) === antes) return;
+            guardarCache();
+            reconstruir();
+            var actual = lista.filter(function (x) { return x.id === actualId; })[0];
+            if (!actual && actualId) { actualId = null; avanzar(); return; } // el producto en pantalla quedó fuera del filtro: pasa al siguiente ya
+            if (actual) pintar(actual, false); // repinta ya con los textos/precio que correspondan
+            if (estabaPausada && !cfg.pausada) avanzar(); // al reanudar pasa al siguiente enseguida
+            else if (!estabaPausada && !cfg.pausada && !enCurso) { clearTimeout(timer); timer = setTimeout(avanzar, ROTACION_MS); } // cambió el tiempo
+        }, err('tv_config'));
         db.collection('categorias').onSnapshot(function (snap) {
             state.categorias = snap.docs.map(function (d) { var c = d.data(); return { name: c.name, active: c.active }; });
             guardarCache();

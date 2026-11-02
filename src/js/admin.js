@@ -1058,7 +1058,250 @@ function abrirModoTv() {
             .catch((e) => console.warn('[Modo TV] no se pudo registrar la apertura:', e && (e.code || e.message)));
     } catch (_) { /* sin Firebase: solo se abre la TV */ }
 }
-document.getElementById('adminTvBtn')?.addEventListener('click', abrirModoTv);
+// El botón del pie abre el panel Modo TV (configuración y control); desde ahí se abre la pantalla.
+document.getElementById('adminTvBtn')?.addEventListener('click', () => document.querySelector('.admin-accordion-trigger[data-accordion-target="tv"]')?.click());
+// ── Modo TV: panel de control de la pantalla del local (/tv) ──
+// Guarda en configuracion/tv_config (lectura pública: la TV no inicia sesión). tv.js aplica los cambios en vivo.
+// Mismas reglas de elegibilidad que src/js/tv.js (construirLista) y functions/fodiTv.js: si cambian allá, cambiar aquí.
+const TV_CFG_BASE = { pausada: false, segundos: 8, modo: 'todo', categorias: [], productos: [], orden: 'menu', precio: true, ingredientes: true, etiquetas: true };
+const TV_TIEMPOS_RAPIDOS = [8, 15, 20, 30, 45, 60, 90];
+const tvState = { tab: 'control', cfg: { ...TV_CFG_BASE }, listo: false, busqueda: '', uso: null };
+
+function tvCfgNormalizar(d) {
+    d = d || {};
+    const seg = Number(d.segundos);
+    return {
+        pausada: d.pausada === true,
+        segundos: Math.min(300, Math.max(3, Number.isFinite(seg) && seg > 0 ? Math.round(seg) : TV_CFG_BASE.segundos)),
+        modo: ['todo', 'categorias', 'productos', 'promos', 'destacados'].includes(d.modo) ? d.modo : 'todo',
+        categorias: Array.isArray(d.categorias) ? d.categorias.map(String) : [],
+        productos: Array.isArray(d.productos) ? d.productos.map(String) : [],
+        orden: d.orden === 'aleatorio' ? 'aleatorio' : 'menu',
+        precio: d.precio !== false,
+        ingredientes: d.ingredientes !== false,
+        etiquetas: d.etiquetas !== false
+    };
+}
+
+const _tvNorm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+// Productos que PUEDEN salir en la TV (con foto, activos, categoría activa), antes de aplicar el filtro de Contenido.
+function tvBase() {
+    const catInactiva = (c) => { const k = _tvNorm(c); const x = k ? categoriesState.find((y) => _tvNorm(y.name) === k) : null; return !!x && x.active === false; };
+    const out = [];
+    productsState.forEach((p) => {
+        const clave = _tvNorm(p.nombre);
+        const img = String(p.image_url || '').trim();
+        if (p.estado === 'paused' || !clave || clave === 'empanadas' || clave === 'empanada') return;
+        if (!img || /(^|\/)(logo|isotipo|fondo|portada)\.[a-z]+$/i.test(img)) return;
+        if (catInactiva(p.categoria)) return;
+        const es2x1 = (p.promo2x1 && p.promo2x1.activo === true) || promos2x1State.some((q) => q.activo !== false && q.producto_id === p.id);
+        out.push({ id: String(p.id), nombre: String(p.nombre).replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim(), categoria: p.categoria || 'Sin categoría', es2x1, destacado: p.es_destacado === true });
+    });
+    return out;
+}
+
+function tvFiltrar(base, cfg) {
+    const cats = cfg.categorias.map(_tvNorm);
+    return base.filter((x) => {
+        if (cfg.modo === 'categorias') return cats.includes(_tvNorm(x.categoria));
+        if (cfg.modo === 'productos') return cfg.productos.includes(x.id);
+        if (cfg.modo === 'promos') return x.es2x1;
+        if (cfg.modo === 'destacados') return x.destacado;
+        return true;
+    });
+}
+
+function tvDuracion(seg) {
+    seg = Math.round(seg);
+    if (seg < 60) return `${seg} s`;
+    const m = Math.floor(seg / 60), s = seg % 60;
+    return s ? `${m} min ${s} s` : `${m} min`;
+}
+
+async function tvGuardar(parche, aviso) {
+    const previa = tvState.cfg;
+    tvState.cfg = tvCfgNormalizar({ ...previa, ...parche });
+    tvRender();
+    try {
+        await firebaseDb.collection('configuracion').doc('tv_config').set({ ...parche, actualizado: firestoreNow() }, { merge: true });
+        if (aviso !== false) showNotice(aviso || 'Guardado. La TV lo toma en unos segundos.', 'ok');
+    } catch (err) {
+        tvState.cfg = previa;
+        tvRender();
+        showNotice(`No se pudo guardar la configuración de la TV: ${err.message || 'error'}`, 'error');
+    }
+}
+
+async function _ensureTvLoaded() {
+    const nav = document.getElementById('tvTabs');
+    if (nav && !nav.dataset.bound) {
+        nav.dataset.bound = '1';
+        nav.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-tv-tab]');
+            if (!b) return;
+            tvState.tab = b.dataset.tvTab;
+            tvRender();
+        });
+        const host = nav.closest('.tvc-card');
+        host.addEventListener('click', tvOnClick);
+        host.addEventListener('change', tvOnChange);
+        host.addEventListener('input', (e) => {
+            if (e.target.matches('[data-tv-buscar]')) { tvState.busqueda = e.target.value; tvPintarProductos(); }
+        });
+    }
+    if (!tvState.listo) {
+        tvState.listo = true;
+        firebaseDb.collection('configuracion').doc('tv_config').onSnapshot((snap) => {
+            tvState.cfg = tvCfgNormalizar(snap.exists ? snap.data() : {});
+            tvRender();
+        }, (err) => console.warn('[Modo TV] config:', err && (err.code || err.message)));
+    }
+    try {
+        const d = await firebaseDb.collection('configuracion').doc('tv_modo').get();
+        tvState.uso = d.exists ? d.data() : {};
+    } catch (_) { tvState.uso = null; }
+    tvRender();
+}
+
+function tvOnClick(e) {
+    const a = e.target.closest('[data-tv-act]');
+    if (!a) return;
+    const act = a.dataset.tvAct;
+    if (act === 'abrir') abrirModoTv();
+    else if (act === 'pausar') tvGuardar({ pausada: true }, 'TV en pausa: se queda en el producto que está en pantalla.');
+    else if (act === 'reanudar') tvGuardar({ pausada: false }, 'TV reanudada.');
+    else if (act === 'copiar') copyTextToClipboard('https://roalburger.com/tv').then(() => showNotice('Enlace de la TV copiado.', 'ok'));
+    else if (act === 'seg') tvGuardar({ segundos: Number(a.dataset.seg) });
+    else if (act === 'marcar' || act === 'quitar') {
+        const visibles = tvVisiblesProductos().map((x) => x.id);
+        const actuales = new Set(tvState.cfg.productos);
+        visibles.forEach((id) => (act === 'marcar' ? actuales.add(id) : actuales.delete(id)));
+        tvGuardar({ productos: [...actuales] }, false);
+    }
+}
+
+function tvOnChange(e) {
+    const t = e.target;
+    if (t.matches('[data-tv-modo]')) tvGuardar({ modo: t.value });
+    else if (t.matches('[data-tv-cat]')) {
+        const set = new Set(tvState.cfg.categorias);
+        t.checked ? set.add(t.value) : set.delete(t.value);
+        tvGuardar({ categorias: [...set] }, false);
+    } else if (t.matches('[data-tv-prod]')) {
+        const set = new Set(tvState.cfg.productos);
+        t.checked ? set.add(t.value) : set.delete(t.value);
+        tvGuardar({ productos: [...set] }, false);
+    } else if (t.matches('[data-tv-segundos]')) {
+        const n = Number(t.value);
+        if (!Number.isFinite(n) || n < 3 || n > 300) { showNotice('El tiempo por producto debe estar entre 3 y 300 segundos.', 'error'); tvRender(); return; }
+        tvGuardar({ segundos: Math.round(n) });
+    } else if (t.matches('[data-tv-orden]')) tvGuardar({ orden: t.value });
+    else if (t.matches('[data-tv-flag]')) tvGuardar({ [t.dataset.tvFlag]: t.checked });
+}
+
+function tvVisiblesProductos() {
+    const q = _tvNorm(tvState.busqueda);
+    return tvBase().filter((x) => !q || _tvNorm(x.nombre).includes(q) || _tvNorm(x.categoria).includes(q));
+}
+
+function tvPintarProductos() {
+    const cont = document.getElementById('tvListaProductos');
+    if (!cont) return;
+    const sel = new Set(tvState.cfg.productos);
+    const grupos = {};
+    tvVisiblesProductos().forEach((x) => { (grupos[x.categoria] = grupos[x.categoria] || []).push(x); });
+    const html = Object.keys(grupos).map((cat) => `<div class="tvc-grupo">${escapeHtml(cat)}</div><div class="tvc-chips">${grupos[cat].map((x) => `<label class="tvc-chip${sel.has(x.id) ? ' on' : ''}"><input type="checkbox" data-tv-prod value="${escapeHtml(x.id)}"${sel.has(x.id) ? ' checked' : ''}>${escapeHtml(x.nombre)}</label>`).join('')}</div>`).join('');
+    cont.innerHTML = html || '<p class="admin-hint">No hay productos que coincidan.</p>';
+}
+
+function tvRender() {
+    const nav = document.getElementById('tvTabs');
+    if (!nav) return;
+    nav.querySelectorAll('[data-tv-tab]').forEach((b) => {
+        const on = b.dataset.tvTab === tvState.tab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+    });
+    document.querySelectorAll('.tvc-panel[data-tv-panel]').forEach((p) => { p.hidden = p.dataset.tvPanel !== tvState.tab; });
+    const cfg = tvState.cfg;
+    const base = tvBase();
+    const lista = tvFiltrar(base, cfg);
+    const vacia = lista.length === 0;
+    const enRotacion = vacia ? base.length : lista.length;
+    const vuelta = enRotacion * cfg.segundos;
+    const panel = (k) => document.querySelector(`.tvc-panel[data-tv-panel="${k}"]`);
+
+    // Control
+    const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+    const uso = tvState.uso || {};
+    const ab = uso.aperturas || {};
+    const sieteDias = Object.entries(ab).reduce((s, [d, n]) => (Date.parse(`${d}T12:00:00-05:00`) >= Date.now() - 7 * 86400000 ? s + (Number(n) || 0) : s), 0);
+    panel('control').innerHTML = `
+        <div class="tvc-estado${cfg.pausada ? ' pausa' : ''}">
+            <span class="tvc-dot"></span>
+            <div><strong>${cfg.pausada ? 'En pausa' : 'En rotación'}</strong><br><span class="tvc-sub">${cfg.pausada ? 'La TV se queda quieta en el producto que muestra.' : `Cambia de producto cada ${tvDuracion(cfg.segundos)}.`}</span></div>
+            <div class="tvc-acciones">
+                <button type="button" class="section-action-btn primary" data-tv-act="${cfg.pausada ? 'reanudar' : 'pausar'}">${cfg.pausada ? '▶ Reanudar' : '⏸ Pausar'}</button>
+                <button type="button" class="section-action-btn" data-tv-act="abrir">📺 Abrir pantalla</button>
+                <button type="button" class="section-action-btn" data-tv-act="copiar">🔗 Copiar enlace</button>
+            </div>
+        </div>
+        ${vacia && cfg.modo !== 'todo' ? '<div class="tvc-aviso">⚠️ Con el filtro actual no hay ningún producto disponible, así que la TV está mostrando todo el menú. Revisa la pestaña Contenido.</div>' : ''}
+        <div class="tvc-stats">
+            <div class="tvc-stat"><b>${enRotacion}</b><small>productos en rotación</small></div>
+            <div class="tvc-stat"><b>${tvDuracion(vuelta)}</b><small>dura una vuelta completa</small></div>
+            <div class="tvc-stat"><b>${{ todo: 'Todo el menú', categorias: 'Por categorías', productos: 'Productos elegidos', promos: 'Solo promos 2×1', destacados: 'Los más pedidos' }[cfg.modo]}</b><small>qué se muestra</small></div>
+            <div class="tvc-stat"><b>${Number(uso.total) || 0}</b><small>veces abierta desde el admin · hoy ${Number(ab[hoy]) || 0} · 7 días ${sieteDias}</small></div>
+        </div>`;
+
+    // Contenido
+    const op = (v, titulo, desc) => `<label class="tvc-op${cfg.modo === v ? ' on' : ''}"><input type="radio" name="tvModo" data-tv-modo value="${v}"${cfg.modo === v ? ' checked' : ''}><span><b>${titulo}</b><small>${desc}</small></span></label>`;
+    const cats = categoriesState.filter((c) => c.active !== false);
+    const selCats = new Set(cfg.categorias.map(_tvNorm));
+    const cuenta = (c) => base.filter((x) => _tvNorm(x.categoria) === _tvNorm(c.name)).length;
+    panel('contenido').innerHTML = `
+        <div class="tvc-opciones">
+            ${op('todo', 'Todo el menú', 'Rota por todos los productos con foto, como hasta ahora.')}
+            ${op('categorias', 'Por categorías', 'Por ejemplo solo los Pepitos o solo los Combos.')}
+            ${op('productos', 'Productos específicos', 'Eliges uno por uno cuáles promocionar.')}
+            ${op('promos', 'Solo promos 2×1', 'Únicamente los productos con 2×1 activo.')}
+            ${op('destacados', 'Solo los más pedidos', 'Los productos marcados como destacados.')}
+        </div>
+        ${cfg.modo === 'categorias' ? `<div class="tvc-grupo">Categorías a mostrar</div><div class="tvc-chips">${cats.map((c) => `<label class="tvc-chip${selCats.has(_tvNorm(c.name)) ? ' on' : ''}${cuenta(c) ? '' : ' off'}"><input type="checkbox" data-tv-cat value="${escapeHtml(c.name)}"${selCats.has(_tvNorm(c.name)) ? ' checked' : ''}${cuenta(c) ? '' : ' disabled'}>${escapeHtml(c.name)} · ${cuenta(c)}</label>`).join('') || '<span class="admin-hint">No hay categorías activas.</span>'}</div>` : ''}
+        ${cfg.modo === 'productos' ? `<div class="tvc-fila"><input type="search" class="tvc-buscar" data-tv-buscar placeholder="Buscar producto o categoría…" value="${escapeHtml(tvState.busqueda)}"><button type="button" class="section-action-btn" data-tv-act="marcar">Marcar visibles</button><button type="button" class="section-action-btn" data-tv-act="quitar">Quitar visibles</button><span class="admin-hint">${cfg.productos.length} elegidos</span></div><div id="tvListaProductos"></div>` : ''}
+        <p class="admin-hint">Solo pueden salir productos activos, con foto y de una categoría activa. Hoy cumplen eso ${base.length} de ${productsState.length}.</p>
+        ${vacia && cfg.modo !== 'todo' ? '<div class="tvc-aviso">⚠️ Ahora mismo no hay nada elegido: la TV muestra todo el menú hasta que elijas algo.</div>' : ''}`;
+    if (cfg.modo === 'productos') tvPintarProductos();
+
+    // Tiempos
+    panel('tiempos').innerHTML = `
+        <div class="tvc-grupo">Tiempo por producto</div>
+        <div class="tvc-chips">${TV_TIEMPOS_RAPIDOS.map((s) => `<button type="button" class="tvc-chip${cfg.segundos === s ? ' on' : ''}" data-tv-act="seg" data-seg="${s}">${tvDuracion(s)}</button>`).join('')}</div>
+        <div class="tvc-fila"><label for="tvSegundos">Otro valor (3 a 300 segundos):</label><input id="tvSegundos" type="number" class="tvc-num" min="3" max="300" step="1" value="${cfg.segundos}" data-tv-segundos></div>
+        <p class="admin-hint">Con ${enRotacion} productos, una vuelta completa dura ${tvDuracion(vuelta)}.</p>
+        <div class="tvc-grupo">Orden</div>
+        <div class="tvc-opciones">
+            <label class="tvc-op${cfg.orden === 'menu' ? ' on' : ''}"><input type="radio" name="tvOrden" data-tv-orden value="menu"${cfg.orden === 'menu' ? ' checked' : ''}><span><b>El del menú</b><small>Sigue el orden de los productos en Artículos.</small></span></label>
+            <label class="tvc-op${cfg.orden === 'aleatorio' ? ' on' : ''}"><input type="radio" name="tvOrden" data-tv-orden value="aleatorio"${cfg.orden === 'aleatorio' ? ' checked' : ''}><span><b>Aleatorio</b><small>Mezcla los productos; el orden se mantiene mientras la TV siga abierta.</small></span></label>
+        </div>`;
+
+    // Pantalla
+    const sw = (k, t, d) => `<label class="tvc-switch"><span><b>${t}</b><small>${d}</small></span><input type="checkbox" data-tv-flag="${k}"${cfg[k] ? ' checked' : ''}></label>`;
+    panel('pantalla').innerHTML = `
+        ${sw('precio', 'Mostrar el precio', 'El precio grande (o "2×1" en las promos).')}
+        ${sw('ingredientes', 'Mostrar los ingredientes', 'Las etiquetas con lo que lleva cada producto.')}
+        ${sw('etiquetas', 'Mostrar la etiqueta', '"Promo 2×1", "Los más pedidos", "Sabe a Quindío"…')}
+        <p class="admin-hint">Para promocionar solo la foto y el nombre, apaga las tres.</p>`;
+
+    // Videos
+    panel('videos').innerHTML = `
+        <div class="tvc-proximo">
+            <h3>🎬 Videos entre productos</h3>
+            <p>Próximamente: aquí podrás cargar tus videos y elegir cada cuántos productos se intercalan.<br>La pantalla ya está lista para recibirlos.</p>
+        </div>`;
+}
+
 
 // Avisos al celular: /avisos activa el push en ESTE dispositivo (se hace en una página aparte porque el panel no puede
 // cargar firebase-messaging junto a firebase-functions; ver el comentario en admin.html).
@@ -2096,10 +2339,11 @@ function setupAccordion() {
         costos: ['costos'],
         asistente: ['asistente'],
         cuponpana: ['cuponpana'],
-        redes: ['redes']
+        redes: ['redes'],
+        tv: ['tv']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', costos:'Costos y recetas', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', costos:'Costos y recetas', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes', tv:'Modo TV' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -2155,6 +2399,10 @@ function setupAccordion() {
 
         if (target === 'cuponpana') {
             _ensureCuponPanaLoaded();
+        }
+
+        if (target === 'tv') {
+            _ensureTvLoaded().catch((err) => { console.error('Modo TV:', err); showNotice(`No se pudo cargar el Modo TV: ${err.message || 'error'}`, 'error'); });
         }
 
         if (target === 'redes') {

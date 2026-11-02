@@ -5266,6 +5266,39 @@
         .cpana-temp-aviso { font-size: 0.78rem; font-weight: 700; color: #ffb48f; }
         .cpana-badge--warn { background: rgba(251,191,36,0.16); color: #fcd34d; }
         .cpana-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+        /* ── Modo TV (panel de control de la pantalla del local) ── */
+        .tvc-estado { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); margin-bottom: 14px; }
+        .tvc-estado .tvc-dot { width: 14px; height: 14px; border-radius: 50%; background: #3ddc84; box-shadow: 0 0 10px #3ddc84; flex: none; }
+        .tvc-estado.pausa .tvc-dot { background: #ffb020; box-shadow: 0 0 10px #ffb020; }
+        .tvc-estado strong { font-size: 1.05rem; color: #fff; }
+        .tvc-estado span.tvc-sub { color: var(--admin-muted); font-size: 0.85rem; }
+        .tvc-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+        .tvc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+        .tvc-stat { padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); }
+        .tvc-stat b { display: block; font-size: 1.4rem; color: #fff; }
+        .tvc-stat small { color: var(--admin-muted); }
+        .tvc-aviso { padding: 10px 14px; border-radius: 12px; background: rgba(255,176,32,0.12); border: 1px solid rgba(255,176,32,0.4); color: #ffd98a; font-size: 0.85rem; margin-bottom: 14px; }
+        .tvc-opciones { display: grid; gap: 8px; margin-bottom: 14px; }
+        .tvc-op { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); }
+        .tvc-op.on { border-color: rgba(255,123,69,0.6); background: var(--admin-accent-soft); }
+        .tvc-op input { margin-top: 3px; accent-color: #ff7b45; }
+        .tvc-op b { color: #fff; display: block; }
+        .tvc-op small { color: var(--admin-muted); }
+        .tvc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 14px; }
+        .tvc-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; cursor: pointer; font-size: 0.85rem; color: var(--admin-muted); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.14); }
+        .tvc-chip.on { color: #fff; background: var(--admin-accent-soft); border-color: rgba(255,123,69,0.55); }
+        .tvc-chip input { display: none; }
+        .tvc-grupo { margin: 14px 0 4px; font-size: 0.8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--admin-muted); }
+        .tvc-chip.off { opacity: .45; cursor: not-allowed; }
+        .tvc-buscar { width: 100%; max-width: 360px; padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #fff; margin: 6px 0; }
+        .tvc-num { width: 110px; padding: 9px 12px; border-radius: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #fff; font-size: 1rem; }
+        .tvc-fila { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 14px; }
+        .tvc-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px; cursor: pointer; }
+        .tvc-switch b { color: #fff; display: block; }
+        .tvc-switch small { color: var(--admin-muted); }
+        .tvc-switch input { width: 22px; height: 22px; accent-color: #ff7b45; flex: none; }
+        .tvc-proximo { text-align: center; padding: 34px 18px; border: 2px dashed rgba(255,255,255,0.18); border-radius: 16px; color: var(--admin-muted); }
+        .tvc-proximo h3 { color: #fff; margin-bottom: 8px; }
         .cpana-editor-head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         /* Barra de acciones del editor siempre a la vista al hacer scroll en el formulario largo. */
         .cpana-actions-bar {
@@ -13880,6 +13913,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="finanzas"><span class="nav-icon">💰</span><span>Finanzas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="costos"><span class="nav-icon">🧮</span><span>Costos y recetas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="cuponpana"><span class="nav-icon">🎟️</span><span>Fuera del Menú</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="tv" style="display:none" tabindex="-1" aria-hidden="true"></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="redes"><span class="nav-icon">📣</span><span>Redes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
         </nav>
@@ -13890,7 +13924,7 @@
             <a class="admin-link" id="adminPublicLink" href="/" target="_blank" rel="noopener noreferrer">Ir a Publico</a>
             <button type="button" class="preview-refresh-btn" id="adminInstallBtn" style="display:none;">📲 Descargar App</button>
             <button type="button" class="preview-refresh-btn" id="adminAvisosBtn" title="Activa los avisos en este celular o computador (pedidos, chats, redes, clientes nuevos)">🔔 Avisos al celular</button>
-            <button type="button" class="preview-refresh-btn" id="adminTvBtn" title="Abre la pantalla de TV del local (/tv) en otra ventana">📺 Modo TV</button>
+            <button type="button" class="preview-refresh-btn" id="adminTvBtn" title="Configura y controla la pantalla de TV del local (productos, tiempos, pausa)">📺 Modo TV</button>
             <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">Cerrar sesion</button>
         </div>
     </aside>
@@ -15573,6 +15607,27 @@
                     <div class="card-body rd-panel" data-rd-panel="ia" hidden><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="contenido" hidden><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="cuentas" hidden><!-- render JS --></div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="tv">
+                <article class="admin-card tvc-card">
+                    <div class="card-head">
+                        <h2>📺 Modo TV</h2>
+                        <div class="cpana-tabs" role="tablist" id="tvTabs">
+                            <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-tv-tab="control">🎛️ Control</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-tv-tab="contenido">📋 Contenido</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-tv-tab="tiempos">⏱️ Tiempos</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-tv-tab="pantalla">🎨 Pantalla</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-tv-tab="videos">🎬 Videos</button>
+                        </div>
+                    </div>
+                    <p class="admin-hint">Lo que cambies aquí se ve en la pantalla del local en segundos, sin recargarla.</p>
+                    <div class="card-body tvc-panel" data-tv-panel="control"><!-- render JS --></div>
+                    <div class="card-body tvc-panel" data-tv-panel="contenido" hidden><!-- render JS --></div>
+                    <div class="card-body tvc-panel" data-tv-panel="tiempos" hidden><!-- render JS --></div>
+                    <div class="card-body tvc-panel" data-tv-panel="pantalla" hidden><!-- render JS --></div>
+                    <div class="card-body tvc-panel" data-tv-panel="videos" hidden><!-- render JS --></div>
                 </article>
             </div>
 

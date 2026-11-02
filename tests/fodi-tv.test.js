@@ -80,3 +80,29 @@ test('FODI: la herramienta pantalla_tv está registrada y se ejecuta; abrir_tv s
     assert.ok(prop.input_schema.properties.tipo.enum.includes('abrir_tv'));
     assert.deepStrictEqual(await A.proponerAccion(dbCon({}), { tipo: 'abrir_tv' }), { ok: true, accion: { tipo: 'abrir_tv' } });
 });
+
+test('respeta la configuración del admin: tiempo, filtro por categoría y pausa', async () => {
+    const cfg = { segundos: 30, modo: 'categorias', categorias: ['Pepitos'], pausada: true, precio: false };
+    const db = { collection: (c) => ({
+        get: async () => ({ docs: ({ productos, categorias, promos_2x1: [] }[c] || []).map((x, n) => ({ id: x.id || c + n, data: () => x })) }),
+        doc: (d) => ({ get: async () => (d === 'tv_config' ? { exists: true, data: () => cfg } : { exists: false }) })
+    }) };
+    const r = await pantallaTv(db, AHORA);
+    assert.strictEqual(r.segundos_por_producto, 30);
+    assert.strictEqual(r.en_rotacion, 1);
+    assert.strictEqual(r.duracion_de_una_vuelta_segundos, 30);
+    assert.strictEqual(r.configuracion_modo_tv.pausada, true);
+    assert.strictEqual(r.configuracion_modo_tv.muestra.precio, false);
+    assert.deepStrictEqual(r.productos.map((x) => x.nombre), ['Pepito Mix']);
+});
+
+test('si el filtro no deja ningún producto, la TV muestra todo y lo dice', async () => {
+    const cfg = { modo: 'categorias', categorias: ['NoExiste'] };
+    const db = { collection: (c) => ({
+        get: async () => ({ docs: ({ productos, categorias, promos_2x1: [] }[c] || []).map((x, n) => ({ id: x.id || c + n, data: () => x })) }),
+        doc: (d) => ({ get: async () => (d === 'tv_config' ? { exists: true, data: () => cfg } : { exists: false }) })
+    }) };
+    const r = await pantallaTv(db, AHORA);
+    assert.strictEqual(r.en_rotacion, 4);
+    assert.strictEqual(r.configuracion_modo_tv.filtro_sin_resultados_muestra_todo, true);
+});
