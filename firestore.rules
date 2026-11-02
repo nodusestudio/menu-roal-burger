@@ -86,7 +86,17 @@ service cloud.firestore {
     }
 
     match /pedidos/{doc} {
-      allow read: if true;
+      // get por ID sigue publico: el seguimiento del pedido (cliente invitado o con cuenta) abre el
+      // documento por su ID aleatorio, que solo conoce quien hizo el pedido. LISTAR la coleccion ya
+      // NO es publico (antes cualquiera podia bajarse todos los pedidos con nombre, telefono y
+      // direccion): solo admin, sesion de mesero (tablero de cocina) o el cliente dueno de esos
+      // pedidos (su uid es phone_<digitos>, igual que en /mensajes).
+      allow get: if true;
+      allow list: if isAdmin()
+        || isMeseroSession()
+        || (request.auth != null
+            && resource.data.customerPhoneDigits is string
+            && request.auth.uid == 'phone_' + resource.data.customerPhoneDigits);
       // El checkout web publico (source:'web') ya no escribe pedidos directo: pasa por la
       // Cloud Function submitPublicOrder, que recalcula el total contra el catalogo real
       // (functions/pricing.js) antes de crear el documento con el Admin SDK -- y el Admin SDK
