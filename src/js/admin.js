@@ -1314,6 +1314,16 @@ function tvRender() {
     });
 });
 
+// Menú del celular: los botones del pie (TV, cerrar sesión, etc.) reenvían el clic al botón original.
+document.querySelectorAll('.admin-nav-extra[data-proxy]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        const destino = document.getElementById(btn.dataset.proxy);
+        if (!destino) return;
+        document.getElementById('adminNavToggleBtn')?.click(); // cierra el menú
+        destino.click();
+    });
+});
+
 // Avisos del computador: el permiso del navegador solo se concede de forma fiable con un clic del usuario (pedirlo al
 // cargar la página lo bloquean Chrome/Brave/Edge en silencio). El botón lo pide y muestra un cuadrito de prueba.
 function probarAvisoComputador() {

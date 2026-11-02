@@ -13916,6 +13916,11 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="tv" style="display:none" tabindex="-1" aria-hidden="true"></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="redes"><span class="nav-icon">📣</span><span>Redes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="configuracion"><span class="nav-icon">⚙️</span><span>Configuracion</span></button>
+            <!-- Solo celular: el pie de la barra lateral (donde están estos botones en escritorio) se oculta en pantallas chicas; cada uno reenvía el clic al botón del pie -->
+            <button type="button" class="admin-nav-extra admin-nav-extra--pie" data-proxy="adminTvBtn"><span class="nav-icon">📺</span><span>Modo TV</span></button>
+            <button type="button" class="admin-nav-extra admin-nav-extra--pie" data-proxy="adminAvisosPcBtn"><span class="nav-icon">🖥️</span><span>Probar avisos de este equipo</span></button>
+            <button type="button" class="admin-nav-extra admin-nav-extra--pie" data-proxy="adminPublicLink"><span class="nav-icon">🌐</span><span>Ir a Público</span></button>
+            <button type="button" class="admin-nav-extra admin-nav-extra--pie" data-proxy="adminSignOutBtn"><span class="nav-icon">🚪</span><span>Cerrar sesión</span></button>
         </nav>
 
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
