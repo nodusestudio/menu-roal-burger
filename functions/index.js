@@ -388,6 +388,27 @@ exports.bancoAviso = onRequest(
     }
 );
 
+// Lector para el programa de voz de Windows (herramientas/voz-pagos): pregunta cada pocos segundos si hay pagos nuevos.
+// Clave propia de SOLO LECTURA (BANCO_LECTOR_TOKEN), distinta de la que escribe avisos. Sin `desde` solo devuelve la hora del
+// servidor, para que el programa empiece desde "ahora" y no repita pagos viejos.
+const BANCO_LECTOR_TOKEN = defineSecret('BANCO_LECTOR_TOKEN');
+exports.bancoLector = onRequest(
+    { region: 'us-central1', secrets: [BANCO_LECTOR_TOKEN], cors: false, maxInstances: 3 },
+    async (req, res) => {
+        const recibido = Buffer.from(String(req.get('x-banco-lector') || ''));
+        const esperado = Buffer.from(BANCO_LECTOR_TOKEN.value());
+        if (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) { res.status(401).json({ ok: false, error: 'clave' }); return; }
+        const ahora = Date.now();
+        const desde = Number(req.query.desde);
+        if (!Number.isFinite(desde) || desde <= 0) { res.json({ ok: true, ahora, pagos: [] }); return; }
+        const { Timestamp } = require('firebase-admin/firestore');
+        const snap = await getFirestore().collection('avisos_banco')
+            .where('creadoEn', '>', Timestamp.fromMillis(desde)).orderBy('creadoEn', 'asc').limit(10).get();
+        const pagos = snap.docs.map((d) => { const x = d.data(); return { id: d.id, frase: x.frase || '', creadoMs: x.creadoEn?.toMillis?.() || ahora, prueba: !!x.prueba }; });
+        res.json({ ok: true, ahora, pagos });
+    }
+);
+
 // ─────────────────────────────────────────────────────────────
 // Un dispositivo se activó (admin_fcm_tokens nuevo) o pidió una prueba (probarAt cambió) → aviso de bienvenida
 // SOLO a ese dispositivo. Así el dueño sabe al instante que los avisos le van a llegar.

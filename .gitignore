@@ -27,3 +27,10 @@ functions/.secret.local
 
 .vercel
 _qa-shots/
+
+# Voz de pagos: la clave y los paquetes no se suben
+herramientas/voz-pagos/config.json
+herramientas/voz-pagos/*.zip
+herramientas/voz-pagos/*.log
+herramientas/voz-pagos/estado.txt
+herramientas/voz-pagos-ROAL.zip
