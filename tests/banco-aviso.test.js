@@ -26,6 +26,11 @@ test('montos en distintos formatos', () => {
     assert.strictEqual(B.parsearMonto('abc'), null);
 });
 
+test('la frase agradece al cliente, confirma el pago y despide', () => {
+    assert.strictEqual(B.frasePago('Johan Eduardo Rojas Albornoz', 1225),
+        'Muchas gracias Johan Eduardo Rojas Albornoz por tu pago de 1225 pesos. Ya ha sido confirmado. Que vuelvas pronto.');
+});
+
 test('el remitente debe ser de Bancolombia', () => {
     assert.ok(B.REMITENTE_OK.test('alertasynotificaciones@an.notificacionesbancolombia.com'));
     assert.ok(!B.REMITENTE_OK.test('estafa@correo-falso.com'));

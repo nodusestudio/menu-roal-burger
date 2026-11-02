@@ -35769,7 +35769,7 @@ function _bancoIniciar() {
     if (st.iniciado || _meseroSession || !firebaseDb) return;
     st.iniciado = true;
     document.getElementById('bancoVozBtn')?.addEventListener('click', _bancoActivar);
-    document.getElementById('bancoProbarBtn')?.addEventListener('click', () => { _bancoEstado().voz = true; _bancoDecir('Pago recibido de Juan Pérez por 27500 pesos'); });
+    document.getElementById('bancoProbarBtn')?.addEventListener('click', () => { _bancoEstado().voz = true; _bancoDecir('Muchas gracias Juan Pérez por tu pago de 27500 pesos. Ya ha sido confirmado. Que vuelvas pronto.'); });
     const chk = document.getElementById('bancoHablarChk');
     if (chk) {
         let guardado = null; try { guardado = localStorage.getItem('roal_banco_hablar'); } catch (_) { /* sin almacenamiento */ }

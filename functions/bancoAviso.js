@@ -42,8 +42,9 @@ function leerPagoRecibido(texto) {
     return null;
 }
 
+// Lo oyen los clientes en caja: agradece, confirma el pago y despide.
 function frasePago(nombre, monto) {
-    return `Pago recibido de ${nombre} por ${monto} pesos`;
+    return `Muchas gracias ${nombre} por tu pago de ${monto} pesos. Ya ha sido confirmado. Que vuelvas pronto.`;
 }
 
 module.exports = { REMITENTE_OK, parsearMonto, nombrePropio, leerPagoRecibido, frasePago };
