@@ -1,4 +1,5 @@
 # Instala la voz de pagos: copia los archivos, la programa para arrancar sola al iniciar sesion en Windows y la prueba.
+param([switch]$SinPrueba)
 $ErrorActionPreference = 'Stop'
 $dest = Join-Path $env:LOCALAPPDATA 'RoalVoz'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
@@ -23,7 +24,9 @@ Register-ScheduledTask -TaskName 'RoalVozPagos' -Action $accion -Trigger $dispar
 Start-ScheduledTask -TaskName 'RoalVozPagos'
 
 Start-Sleep -Seconds 3
-Write-Host 'Probando la voz... deberias escuchar: "Prueba de voz. Pago recibido de Juan Perez por 27500 pesos."'
+if (-not $SinPrueba) {
+Write-Host 'Probando la voz... deberias escuchar: "Prueba de voz. Muchas gracias Juan Perez por tu pago de 27500 pesos. Ya ha sido confirmado."'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Prueba
+}
 Write-Host ''
 Write-Host 'LISTO. La voz de pagos ya esta corriendo y arrancara sola cada vez que inicies sesion en este computador.'

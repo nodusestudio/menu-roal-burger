@@ -35742,11 +35742,47 @@ async function _bancoBorrarPruebas() {
         showNotice(`${snap.size} registro(s) de prueba eliminados.`, 'ok');
     } catch (e) { showNotice(`No se pudo borrar: ${e.message || e}`, 'error'); }
 }
+// Botón de la esquina: silencia/activa la voz del programa de Windows DE ESTE computador (herramientas/voz-pagos escucha en
+// 127.0.0.1:47831). Si el programa no está instalado aquí (o es un celular), el botón no aparece.
+async function _bancoLocal(ruta) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 1500);
+    try { const r = await fetch('http://127.0.0.1:47831' + ruta, { signal: ctl.signal }); return await r.json(); }
+    catch (_) { return null; } finally { clearTimeout(t); }
+}
+function _bancoBotonSilencio() {
+    let b = document.getElementById('bancoSilencioBtn');
+    if (!b) {
+        b = document.createElement('button'); b.type = 'button'; b.id = 'bancoSilencioBtn'; b.hidden = true;
+        b.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9998;width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.92);color:#fff;font-size:21px;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4);padding:0';
+        b.addEventListener('click', async () => {
+            const nuevo = b.dataset.silenciado === '1' ? 0 : 1;
+            const r = await _bancoLocal('/silenciar?on=' + nuevo);
+            if (r && r.ok) { _bancoPintarSilencio(r); showNotice(r.silenciado ? '🔇 Voz de pagos silenciada en este computador.' : '🔊 Voz de pagos activada en este computador.', 'ok'); }
+            else showNotice('No se pudo hablar con el programa de voz de este computador.', 'error');
+        });
+        document.body.appendChild(b);
+    }
+    return b;
+}
+function _bancoPintarSilencio(r) {
+    const b = _bancoBotonSilencio();
+    if (!r || !r.ok) { b.hidden = true; return; }
+    b.hidden = false; b.dataset.silenciado = r.silenciado ? '1' : '0';
+    b.textContent = r.silenciado ? '🔇' : '🔊';
+    b.style.background = r.silenciado ? '#c62828' : 'rgba(20,23,42,.92)';
+    b.title = r.silenciado ? 'Voz de pagos SILENCIADA en este computador (toca para activarla)' : 'Voz de pagos activa en este computador (toca para silenciarla)';
+    b.setAttribute('aria-label', b.title);
+}
+async function _bancoRefrescarSilencio() { _bancoPintarSilencio(await _bancoLocal('/estado')); }
 function _bancoIniciar() {
     const st = _bancoEstado();
     if (st.iniciado || _meseroSession || !firebaseDb) return;
     st.iniciado = true;
     document.getElementById('bancoBorrarPruebasBtn')?.addEventListener('click', _bancoBorrarPruebas);
+    _bancoRefrescarSilencio();
+    setInterval(_bancoRefrescarSilencio, 20000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) _bancoRefrescarSilencio(); });
     firebaseDb.collection('avisos_banco').orderBy('creadoEn', 'desc').limit(30).onSnapshot((snap) => _bancoPintarLista(snap.docs),
         (e) => console.warn('[BANCO] no se pudo leer avisos_banco:', e && (e.code || e.message)));
 }
