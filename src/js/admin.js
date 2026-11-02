@@ -756,6 +756,123 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
     });
 }
 
+// ── Guardia global de cierre ───────────────────────────────────────────────────
+// Una ventana (modal) donde el usuario ya escribió o cambió algo NUNCA se cierra por un
+// toque accidental fuera de ella ni por Escape: primero se pide confirmación. Funciona sobre
+// cualquier modal (contenedor fijo de pantalla completa) sin tocar el código de cada uno.
+(function _admGuardiaCierre() {
+    const sucios = new Set();
+    let escConfirmado = false;
+
+    const visible = (el) => {
+        if (!el.isConnected || !el.getClientRects().length) return false;
+        const cs = getComputedStyle(el);
+        return cs.visibility !== 'hidden' && cs.display !== 'none' && parseFloat(cs.opacity) > 0.01;
+    };
+    // Fondo de un modal = ancestro fijo que cubre (casi) toda la pantalla.
+    const fondoDe = (node) => {
+        for (let el = node; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+            if (el.classList.contains('admin-auth-overlay')) return null;
+            if (getComputedStyle(el).position !== 'fixed') continue;
+            if (el.offsetWidth >= window.innerWidth * 0.95 && el.offsetHeight >= window.innerHeight * 0.9) return el;
+        }
+        return null;
+    };
+    const marcar = (fondo) => {
+        if (sucios.has(fondo)) return;
+        sucios.add(fondo);
+        // Al cerrarse/ocultarse el modal (guardado o cancelado) se olvida lo "sucio".
+        const obs = new MutationObserver(() => {
+            if (!visible(fondo)) { sucios.delete(fondo); obs.disconnect(); }
+        });
+        obs.observe(fondo, { attributes: true, attributeFilter: ['class', 'hidden', 'style', 'aria-hidden'] });
+        obs.observe(fondo.parentNode || document.body, { childList: true });
+    };
+    const alEditar = (e) => {
+        if (!e.isTrusted) return; // solo cambios hechos por una persona, no los precargados por código
+        const t = e.target;
+        if (!(t instanceof HTMLElement) || !t.matches('input, textarea, select') || t.type === 'search' || t.hasAttribute('data-sin-guardia')) return;
+        const fondo = fondoDe(t);
+        if (fondo) marcar(fondo);
+    };
+    document.addEventListener('input', alEditar, true);
+    document.addEventListener('change', alEditar, true);
+    // Quitar una dirección (chip) de un cliente también es un cambio sin guardar.
+    document.addEventListener('click', (e) => {
+        if (!e.isTrusted || !(e.target instanceof Element)) return;
+        if (e.target.closest('.client-addr-del')) { const f = fondoDe(e.target); if (f) marcar(f); }
+    }, true);
+
+    const preguntar = () => showConfirmModal({
+        icon: '✋',
+        title: '¿Cerrar sin guardar?',
+        message: 'Hay cambios sin guardar en esta ventana. Si la cierras, se pierden.',
+        confirmText: 'Sí, cerrar',
+        cancelText: 'Seguir editando'
+    });
+
+    // Toque en el fondo (fuera de la ventana).
+    document.addEventListener('click', (e) => {
+        const fondo = e.target;
+        if (!sucios.has(fondo)) return;
+        if (!visible(fondo)) { sucios.delete(fondo); return; }
+        if (fondo.dataset.cierreConfirmado) { delete fondo.dataset.cierreConfirmado; sucios.delete(fondo); return; }
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        preguntar().then((ok) => {
+            if (!ok) return;
+            fondo.dataset.cierreConfirmado = '1';
+            fondo.click(); // reinyecta el clic: el manejador original cierra el modal
+            setTimeout(() => { delete fondo.dataset.cierreConfirmado; }, 0);
+        });
+    }, true);
+
+    // Tecla Escape.
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (escConfirmado) { escConfirmado = false; return; }
+        const activo = [...sucios].filter(visible).pop();
+        if (!activo) return;
+        if (document.getElementById('_genericConfirmOverlay')) return;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        preguntar().then((ok) => {
+            if (!ok) return;
+            escConfirmado = true;
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            setTimeout(() => { escConfirmado = false; }, 0);
+        });
+    }, true);
+
+    // Lo "sucio" también cuenta para no recargar la pantalla (ver _admBloqueoRecarga).
+    window._admHayVentanaConCambios = () => [...sucios].some(visible);
+})();
+
+// ── Pedido en curso: no se debe poder recargar la pantalla por accidente ───────
+// Jalar hacia abajo con el dedo (pull-to-refresh) o F5 recargan la página y se pierde el
+// pedido que se está armando en el POS o los datos de una ventana abierta.
+(function _admBloqueoRecarga() {
+    const hayTrabajoEnCurso = () =>
+        (typeof internalOrderItems !== 'undefined' && internalOrderItems.length > 0)
+        || (typeof window._admHayVentanaConCambios === 'function' && window._admHayVentanaConCambios());
+
+    // Apaga el gesto de "jalar para actualizar" solo mientras haya algo en curso.
+    const estilo = document.createElement('style');
+    estilo.textContent = 'html.adm-sin-recarga, html.adm-sin-recarga body { overscroll-behavior-y: none !important; }';
+    document.head.appendChild(estilo);
+    const actualizarBloqueo = () => document.documentElement.classList.toggle('adm-sin-recarga', hayTrabajoEnCurso());
+    document.addEventListener('touchstart', actualizarBloqueo, { capture: true, passive: true });
+    document.addEventListener('focusin', actualizarBloqueo, true);
+
+    // Red de seguridad: recarga manual (F5, botón del navegador) o gesto que se cuele → el
+    // navegador pregunta antes de descartar el pedido.
+    window.addEventListener('beforeunload', (e) => {
+        if (!hayTrabajoEnCurso()) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+})();
+
 // Pedidos que llegan del menu publico marcados con el metodo generico "transferencia" no
 // dicen a que cuenta entro la plata — antes de cerrar el pedido, el cajero debe indicar si
 // fue Bancolombia o Nequi, para que Informes/Cierre de Caja cuadren contra el banco correcto.
@@ -1332,6 +1449,7 @@ function probarAvisoComputador() {
         try {
             const n = new Notification('✅ Avisos del computador activos', { body: 'Así verás aquí abajo a la derecha cada pedido, chat o mensaje nuevo.', icon: 'isotipo.png', tag: 'roal-prueba-pc' });
             n.onclick = () => { window.focus(); n.close(); };
+            cerrarAvisoSolo(n);
             showNotice('Listo: debió salir un cuadrito en la esquina de tu pantalla. Si no lo ves, revisa "Asistente de concentración / No molestar" de Windows.', 'ok');
         } catch (e) { showNotice(`No se pudo mostrar el aviso: ${e.message || e}`, 'error'); }
     };
@@ -1983,6 +2101,11 @@ function updateOrdersAttentionState() {
     updateAdminDocumentTitle(unreadCount);
 }
 
+// El cuadrito del sistema (esquina de la pantalla) se cierra solo a los 10 segundos.
+function cerrarAvisoSolo(notification, ms = 10000) {
+    setTimeout(() => { try { notification.close(); } catch (_) { /* ya cerrado */ } }, ms);
+}
+
 function notifyNewOrder(order) {
     if (!order || typeof Notification === 'undefined' || Notification.permission !== 'granted') {
         return;
@@ -1995,8 +2118,9 @@ function notifyNewOrder(order) {
         badge: 'isotipo.png',
         tag: `roal-order-${order.id}`,
         renotify: true,
-        requireInteraction: true
+        requireInteraction: false
     });
+    cerrarAvisoSolo(notification);
 
     notification.onclick = () => {
         window.focus();
@@ -2038,6 +2162,7 @@ function notifyNewMessage(message) {
         tag: `roal-message-${message.id}`,
         renotify: true
     });
+    cerrarAvisoSolo(notification);
 
     notification.onclick = () => {
         window.focus();
@@ -2146,6 +2271,7 @@ function showRedesToast({ clave, titulo, texto, esComentario }) {
                 document.querySelector('.admin-accordion-trigger[data-accordion-target="redes"]')?.click();
                 n.close();
             };
+            cerrarAvisoSolo(n);
         }
     } catch (_) {}
     // Con otra ventana/pestaña al frente: parpadeo del título de la pestaña.
@@ -13992,9 +14118,10 @@ function notifyNewChatRoalConversation(conv, kind) {
             badge: 'isotipo.png',
             tag: `roal-chat-${conv.id}-${kind}`,
             renotify: true,
-            requireInteraction: isEscalation
+            requireInteraction: false
         }
     );
+    cerrarAvisoSolo(notification);
 
     notification.onclick = () => {
         window.focus();
@@ -24035,6 +24162,13 @@ document.getElementById('pfOverlay')?.addEventListener('click', async (e) => {
             const confirmBtn = document.getElementById('pfCashConfirmBtn');
             if (confirmBtn) confirmBtn.disabled = true;
             _pfShowStep('pfStep2Cash');
+            // Pedido web que ya indicó "paga con $X": precarga el billete (solo si alcanza para
+            // el total) y deja calculado el cambio; el cajero solo confirma o lo corrige.
+            const declaredTender = Number(_pfOrder?.cashTenderAmount || 0);
+            if (cashInput && declaredTender >= _pfOrderTotal && declaredTender > 0) {
+                cashInput.value = _pfFormatCash(declaredTender);
+                cashInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
             setTimeout(() => document.getElementById('pfCashInput')?.focus(), 120);
         } else {
             const names = { bancolombia: 'Bancolombia', nequi: 'Nequi', bold: 'Bold' };
@@ -35302,6 +35436,9 @@ setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_m
             const intentar = () => {
                 const a = document.activeElement;
                 if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value) return setTimeout(intentar, 15000); // no pisar lo que se escribe
+                // Tampoco con un pedido armado en el POS o una ventana con cambios sin guardar.
+                if ((typeof internalOrderItems !== 'undefined' && internalOrderItems.length > 0)
+                    || (window._admHayVentanaConCambios && window._admHayVentanaConCambios())) return setTimeout(intentar, 15000);
                 location.reload();
             };
             setTimeout(intentar, 6000);
