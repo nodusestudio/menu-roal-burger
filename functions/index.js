@@ -349,6 +349,46 @@ exports.notifyCierreCaja = onDocumentCreated(
 );
 
 // ─────────────────────────────────────────────────────────────
+// Pago recibido en Bancolombia → documento avisos_banco/{id}, que la página /banco dice en voz alta.
+// Lo llama un Apps Script del Gmail de Roal Burger (cada minuto) con la clave BANCO_WEBHOOK_TOKEN.
+// El correo completo NO se guarda: solo nombre, monto y hora. El id sale del id del mensaje de Gmail, así que un
+// reintento no duplica el aviso.
+// ─────────────────────────────────────────────────────────────
+const BANCO_WEBHOOK_TOKEN = defineSecret('BANCO_WEBHOOK_TOKEN');
+exports.bancoAviso = onRequest(
+    { region: 'us-central1', secrets: [BANCO_WEBHOOK_TOKEN], cors: false, maxInstances: 3 },
+    async (req, res) => {
+        if (req.method !== 'POST') { res.status(405).json({ ok: false, error: 'metodo' }); return; }
+        const banco = require('./bancoAviso');
+        const recibido = Buffer.from(String(req.get('x-banco-token') || ''));
+        const esperado = Buffer.from(BANCO_WEBHOOK_TOKEN.value());
+        if (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) { res.status(401).json({ ok: false, error: 'clave' }); return; }
+
+        const { mensajeId, remitente, texto, prueba } = req.body || {};
+        if (!mensajeId || typeof mensajeId !== 'string') { res.status(400).json({ ok: false, error: 'sin-id' }); return; }
+        if (!banco.REMITENTE_OK.test(String(remitente || ''))) { res.json({ ok: true, ignorado: 'remitente' }); return; }
+        const pago = prueba ? { nombre: 'Prueba Roal Burger', monto: 10000 } : banco.leerPagoRecibido(texto);
+        if (!pago) { res.json({ ok: true, ignorado: 'no-es-pago-recibido' }); return; }
+
+        const db = getFirestore();
+        const id = crypto.createHash('sha256').update(mensajeId).digest('hex').slice(0, 24);
+        try {
+            await db.collection('avisos_banco').doc(id).create({
+                nombre: pago.nombre, monto: pago.monto, prueba: !!prueba,
+                frase: banco.frasePago(pago.nombre, pago.monto), creadoEn: FieldValue.serverTimestamp()
+            });
+        } catch (err) {
+            if (err?.code === 6 || /already exists/i.test(err?.message || '')) { res.json({ ok: true, ignorado: 'repetido' }); return; }
+            console.error('bancoAviso:', err?.message || err);
+            res.status(500).json({ ok: false, error: 'guardar' });
+            return;
+        }
+        console.log('bancoAviso', JSON.stringify({ monto: pago.monto, prueba: !!prueba }));
+        res.json({ ok: true, aviso: true });
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
 // Un dispositivo se activó (admin_fcm_tokens nuevo) o pidió una prueba (probarAt cambió) → aviso de bienvenida
 // SOLO a ese dispositivo. Así el dueño sabe al instante que los avisos le van a llegar.
 // ─────────────────────────────────────────────────────────────

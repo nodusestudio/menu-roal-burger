@@ -272,6 +272,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Pagos recibidos en Bancolombia (los escribe la función bancoAviso; la página /banco solo lee).
+    match /avisos_banco/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /phone_verifications/{doc} {
       allow read, write: if false;
     }
