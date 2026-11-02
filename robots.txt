@@ -1,5 +1,6 @@
 User-agent: *
 Disallow: /admin.html
+Disallow: /fodexa
 Disallow: /eliminar-cuenta.html
 
 Sitemap: https://roalburger.com/sitemap.xml
