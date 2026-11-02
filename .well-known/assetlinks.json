@@ -1,10 +1,15 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "com.roalburger.app",
-    "sha256_cert_fingerprints": [
-      "76:E3:D2:6A:5F:08:97:D5:A8:9A:9C:57:D0:E9:CF:DE:E9:3A:F5:CB:8A:F6:95:A6:27:38:3B:CF:B9:CB:DD:C9"
-    ]
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.roalburger.app",
+      "sha256_cert_fingerprints": [
+        "76:E3:D2:6A:5F:08:97:D5:A8:9A:9C:57:D0:E9:CF:DE:E9:3A:F5:CB:8A:F6:95:A6:27:38:3B:CF:B9:CB:DD:C9",
+        "73:40:D0:85:21:85:C9:9F:F7:AE:E0:96:1F:94:61:D3:0B:41:18:1A:37:BD:4E:6A:88:C3:65:7B:98:6B:3C:47",
+        "BA:BD:89:2E:FE:D7:77:17:64:B3:D6:E6:8E:AA:C5:78:A2:9A:51:B2:03:FF:A3:85:5F:46:BB:06:4D:F7:66:54",
+        "4B:6B:94:B9:F1:46:8F:E6:8E:3B:59:0B:04:89:F2:90:A7:21:CE:C2:B3:94:BA:21:91:ED:80:EA:5D:D8:D6:54"
+      ]
+    }
   }
-}]
+]
