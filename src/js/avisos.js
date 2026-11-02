@@ -50,6 +50,7 @@
         var ok = soportado();
         $('btnActivar').hidden = !(ok && user && !activo);
         $('btnProbar').hidden = !(ok && user && activo);
+        $('btnLocal').hidden = !(ok && user && activo);
         $('btnDesactivar').hidden = !(ok && user && activo);
         $('btnActivar').disabled = $('btnProbar').disabled = $('btnDesactivar').disabled = ocupado;
         $('ayudaIphone').hidden = !(esIphone() && !instalada());
@@ -129,6 +130,20 @@
             .then(function () { ocupado = false; pintar(); });
     }
 
+    // Diagnóstico: muestra un aviso desde el propio service worker, SIN pasar por el servidor ni por Google. Si este sale y
+    // el de "Enviar prueba" no, el celular puede mostrar avisos pero no está recibiendo los push (batería, red, datos).
+    // Si ni este sale, Android está bloqueando la visualización de avisos de esta app.
+    function probarLocal() {
+        mostrar('Mostrando aviso local…', '');
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+            var info = regs.map(function (r) { return (r.scope || '').replace(location.origin, '') + (r.active ? ' [activo]' : r.installing ? ' [instalando]' : r.waiting ? ' [en espera]' : ' [sin sw]'); }).join(' · ') || 'ningún service worker';
+            var reg = regs.filter(function (r) { return /firebase-cloud-messaging-push-scope/.test(r.scope) && r.active; })[0];
+            if (!reg) { mostrar('No hay service worker de avisos activo (' + info + '). Toca "Desactivar" y luego "Activar avisos".', 'malo'); return; }
+            return reg.showNotification('🔍 Prueba local', { body: 'Si ves esto, el celular sí puede mostrar avisos.', icon: '/isotipo.png', tag: 'roal-local' })
+                .then(function () { mostrar('Se pidió el aviso local (' + info + '). Mira la barra de notificaciones: ¿salió "Prueba local"?', 'bueno'); });
+        }).catch(function (e) { mostrar('El aviso local falló: ' + ((e && e.message) || e), 'malo'); });
+    }
+
     function desactivar() {
         var id = null; try { id = localStorage.getItem(CLAVE_DOC); } catch (_) { /* sin almacenamiento */ }
         if (ocupado) return;
@@ -144,6 +159,7 @@
         $('btnActivar').addEventListener('click', activar);
         $('btnProbar').addEventListener('click', probar);
         $('btnDesactivar').addEventListener('click', desactivar);
+        $('btnLocal').addEventListener('click', probarLocal);
         // Salir de esta pantalla: volver a donde estabas (o al panel si se abrió directo)
         var salir = function (e) { e.preventDefault(); if (window.history.length > 1 && document.referrer && document.referrer.indexOf(location.origin) === 0) window.history.back(); else location.href = '/admin.html'; };
         $('btnAtras').addEventListener('click', salir);
