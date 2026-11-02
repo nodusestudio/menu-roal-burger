@@ -35709,7 +35709,12 @@ function _bancoPintarLista(docs) {
     cont.innerHTML = docs.map((d) => {
         const x = d.data();
         let cuando = '';
-        try { cuando = x.creadoEn.toDate().toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); } catch (_) { /* sin fecha aún */ }
+        const hora = (d) => d.toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+        try {
+            const aviso = x.creadoEn.toDate();
+            cuando = aviso.toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short' }) + ' · ';
+            cuando += x.correoMs ? `correo ${hora(new Date(x.correoMs))} → aviso ${hora(aviso)}` : `aviso ${hora(aviso)}`;
+        } catch (_) { /* sin fecha aún */ }
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(128,128,128,.25);">
             <div><div style="font-weight:700;">${escapeHtml(x.nombre || '')}${x.prueba ? ' (prueba)' : ''}</div><div style="font-size:0.78rem;color:var(--admin-muted);">${escapeHtml(cuando)}</div></div>
             <div style="font-weight:800;white-space:nowrap;">$${Number(x.monto || 0).toLocaleString('es-CO')}</div>
@@ -35773,12 +35778,14 @@ function _bancoPintarEquipos(docs) {
             <button type="button" data-banco-equipo="${escapeHtml(e.id)}" data-banco-mudo="${e.silenciado ? '0' : '1'}" style="flex:none;border:0;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer;background:${e.silenciado ? '#2e7d32' : '#c62828'};color:#fff;">${e.silenciado ? '🔊 Activar' : '🔇 Silenciar'}</button>
         </div>`;
     };
-    caja.innerHTML = `<div style="font-weight:800;margin-bottom:6px;">Voz de pagos por computador</div>` +
-        (equipos.length ? equipos.map(fila).join('') : '<div style="font-size:13px;opacity:.8;">Aún no hay computadores con el programa de voz. Instálalo y espera 1 minuto.</div>');
-    caja.querySelectorAll('[data-banco-equipo]').forEach((b) => b.addEventListener('click', async () => {
+    const contenido = equipos.length ? equipos.map(fila).join('') : '<div style="font-size:13px;opacity:.8;">Aún no hay computadores con el programa de voz. Instálalo y espera 1 minuto.</div>';
+    caja.innerHTML = `<div style="font-weight:800;margin-bottom:6px;">Voz de pagos por computador</div>` + contenido;
+    const inline = document.getElementById('bancoEquiposInline');
+    if (inline) inline.innerHTML = contenido;
+    [caja, inline].forEach((raiz) => raiz && raiz.querySelectorAll('[data-banco-equipo]').forEach((b) => b.addEventListener('click', async () => {
         try { await firebaseDb.collection('banco_equipos').doc(b.dataset.bancoEquipo).update({ silenciado: b.dataset.bancoMudo === '1' }); }
         catch (e) { showNotice(`No se pudo cambiar: ${e.message || e}`, 'error'); }
-    }));
+    })));
 }
 function _bancoIniciar() {
     const st = _bancoEstado();

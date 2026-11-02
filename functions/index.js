@@ -364,7 +364,7 @@ exports.bancoAviso = onRequest(
         const esperado = Buffer.from(BANCO_WEBHOOK_TOKEN.value());
         if (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) { res.status(401).json({ ok: false, error: 'clave' }); return; }
 
-        const { mensajeId, remitente, texto, prueba } = req.body || {};
+        const { mensajeId, remitente, texto, prueba, correoMs } = req.body || {};
         if (!mensajeId || typeof mensajeId !== 'string') { res.status(400).json({ ok: false, error: 'sin-id' }); return; }
         if (!banco.REMITENTE_OK.test(String(remitente || ''))) { res.json({ ok: true, ignorado: 'remitente' }); return; }
         const pago = prueba ? { nombre: 'Prueba Roal Burger', monto: 10000 } : banco.leerPagoRecibido(texto);
@@ -375,7 +375,8 @@ exports.bancoAviso = onRequest(
         try {
             await db.collection('avisos_banco').doc(id).create({
                 nombre: pago.nombre, monto: pago.monto, prueba: !!prueba,
-                frase: banco.frasePago(pago.nombre, pago.monto), creadoEn: FieldValue.serverTimestamp()
+                frase: banco.frasePago(pago.nombre, pago.monto), creadoEn: FieldValue.serverTimestamp(),
+                ...(Number(correoMs) > 0 ? { correoMs: Number(correoMs) } : {})
             });
         } catch (err) {
             if (err?.code === 6 || /already exists/i.test(err?.message || '')) { res.json({ ok: true, ignorado: 'repetido' }); return; }
