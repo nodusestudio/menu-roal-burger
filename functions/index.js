@@ -325,7 +325,7 @@ exports.notifyNewAgentChat = onDocumentWritten(
 // directo por WhatsApp como antes.
 // ─────────────────────────────────────────────────────────────
 // Cliente nuevo → aviso al celular con el botón "Agregar a contactos" (ver functions/pushAdmin.js).
-// Los creados desde el propio panel/POS o por importación no avisan.
+// Los creados desde el panel/POS también avisan (para guardarlos en la agenda del móvil); la importación masiva no.
 // ─────────────────────────────────────────────────────────────
 exports.notifyNewClient = onDocumentCreated(
     { document: 'clientes/{clienteId}', region: 'us-central1' },

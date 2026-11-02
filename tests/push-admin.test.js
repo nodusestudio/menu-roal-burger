@@ -72,7 +72,7 @@ test('aviso de cliente nuevo: lleva el botón y la dirección para el contacto; 
     assert.strictEqual(a.actions[0].action, 'agregar');
     assert.strictEqual(a.data.clienteId, 'phone_300');
     assert.match(a.url, /agregarContacto=phone_300/);
-    for (const origen of ['admin_panel', 'admin_pos', 'import', 'fodi']) assert.strictEqual(P.armarAvisoClienteNuevo('x', { customerName: 'Z', customerPhone: '3', source: origen }), null);
+    for (const origen of ['admin_import', 'import']) assert.strictEqual(P.armarAvisoClienteNuevo('x', { customerName: 'Z', customerPhone: '3', source: origen }), null);
     assert.strictEqual(P.armarAvisoClienteNuevo('x', { customerName: 'Z', customerPhone: '', source: 'web' }), null);
     assert.strictEqual(P.armarAvisoClienteNuevo('x', null), null);
 });

@@ -1314,6 +1314,35 @@ function tvRender() {
     });
 });
 
+// Avisos del computador: el permiso del navegador solo se concede de forma fiable con un clic del usuario (pedirlo al
+// cargar la página lo bloquean Chrome/Brave/Edge en silencio). El botón lo pide y muestra un cuadrito de prueba.
+function probarAvisoComputador() {
+    if (typeof Notification === 'undefined') { showNotice('Este navegador no permite avisos del sistema.', 'error'); return; }
+    const mostrarPrueba = () => {
+        try {
+            const n = new Notification('✅ Avisos del computador activos', { body: 'Así verás aquí abajo a la derecha cada pedido, chat o mensaje nuevo.', icon: 'isotipo.png', tag: 'roal-prueba-pc' });
+            n.onclick = () => { window.focus(); n.close(); };
+            showNotice('Listo: debió salir un cuadrito en la esquina de tu pantalla. Si no lo ves, revisa "Asistente de concentración / No molestar" de Windows.', 'ok');
+        } catch (e) { showNotice(`No se pudo mostrar el aviso: ${e.message || e}`, 'error'); }
+    };
+    if (Notification.permission === 'granted') { mostrarPrueba(); return; }
+    if (Notification.permission === 'denied') {
+        showNotice('Las notificaciones están bloqueadas para este sitio. Toca el candado junto a la dirección → Notificaciones → Permitir, y recarga.', 'error');
+        return;
+    }
+    Notification.requestPermission().then((p) => {
+        if (p === 'granted') mostrarPrueba();
+        else showNotice('No se concedió el permiso de notificaciones.', 'error');
+    }).catch(() => undefined);
+}
+document.getElementById('adminAvisosPcBtn')?.addEventListener('click', probarAvisoComputador);
+// Primera interacción con el panel: si el permiso sigue sin decidir, se pide con ese clic (sí cuenta como gesto del usuario).
+document.addEventListener('click', function pedirPermisoAvisos() {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'default') { document.removeEventListener('click', pedirPermisoAvisos); return; }
+    document.removeEventListener('click', pedirPermisoAvisos);
+    Notification.requestPermission().catch(() => undefined);
+}, { once: false });
+
 // ── Contactos del celular: tarjeta .vcf ─────────────────────────────────────────────────────────────
 // Una web NO puede escribir en la agenda del teléfono; lo más cercano es descargar una tarjeta de contacto: al abrirla,
 // el teléfono ofrece "Guardar contacto" con un toque. La usan el aviso de "Cliente nuevo" y el botón 📇 de cada cliente.
@@ -1949,12 +1978,7 @@ function notifyNewOrder(order) {
         return;
     }
 
-    // Solo mostrar notificación del sistema cuando la pestaña está en segundo plano.
-    // Si el admin ya está viendo el panel, el banner showNotice es suficiente.
-    if (!document.hidden) {
-        return;
-    }
-
+    // El cuadrito del sistema (abajo a la derecha en Windows) sale SIEMPRE, también con el panel a la vista.
     const notification = new Notification(`Nuevo pedido en ${brandingState.restaurantName || 'Roal Burger'}`, {
         body: `${getOrderDisplayCustomerName(order)} | ${getOrderTypeLabel(order)} | ${formatMoney(getOrderDisplayTotal(order))}`,
         icon: 'isotipo.png',
@@ -2103,19 +2127,19 @@ function showRedesToast({ clave, titulo, texto, esComentario }) {
         setTimeout(() => toast.remove(), 300);
     }, 30000);
 
-    // Con otra ventana/pestaña al frente el recuadro de arriba no se ve: aviso del sistema
-    // (con su propio sonido del SO) y parpadeo del título de la pestaña.
+    // Aviso del sistema (cuadrito abajo a la derecha, con su propio sonido del SO), esté o no a la vista el panel.
+    try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            const n = new Notification(titulo, { body: String(texto || '(sin texto)').slice(0, 140), tag: `redes-${clave}`, renotify: true, silent: false });
+            n.onclick = () => {
+                window.focus();
+                document.querySelector('.admin-accordion-trigger[data-accordion-target="redes"]')?.click();
+                n.close();
+            };
+        }
+    } catch (_) {}
+    // Con otra ventana/pestaña al frente: parpadeo del título de la pestaña.
     if (document.visibilityState !== 'visible') {
-        try {
-            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                const n = new Notification(titulo, { body: String(texto || '(sin texto)').slice(0, 140), tag: `redes-${clave}`, renotify: true, silent: false });
-                n.onclick = () => {
-                    window.focus();
-                    document.querySelector('.admin-accordion-trigger[data-accordion-target="redes"]')?.click();
-                    n.close();
-                };
-            }
-        } catch (_) {}
         try {
             if (!_redesAviso.tituloOriginal) {
                 _redesAviso.tituloOriginal = document.title;
@@ -13949,9 +13973,6 @@ function updateChatRoalAttentionState() {
 
 function notifyNewChatRoalConversation(conv, kind) {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-    // Igual que notifyNewOrder: si la pestaña está visible, con el sonido + showNotice alcanza.
-    if (!document.hidden) return;
-
     const isEscalation = kind === 'escalation';
     const notification = new Notification(
         isEscalation ? `🙋 Necesita atención — ${brandingState.restaurantName || 'Roal Burger'}` : `Nuevo chat en ${brandingState.restaurantName || 'Roal Burger'}`,

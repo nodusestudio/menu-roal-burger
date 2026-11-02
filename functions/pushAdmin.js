@@ -94,8 +94,9 @@ async function avisarComentario(db, c) {
     }
 }
 
-// Clientes creados desde el propio panel o por importación no avisan (quien los creó ya lo sabe).
-const ORIGENES_SIN_AVISO = ['admin_panel', 'admin_pos', 'admin_import', 'import', 'fodi'];
+// Solo las importaciones masivas no avisan. Un cliente creado en el computador (panel/POS) SÍ avisa al celular:
+// es justo para que lo guarden en la agenda del móvil.
+const ORIGENES_SIN_AVISO = ['admin_import', 'import'];
 
 /** Arma el aviso de cliente nuevo (puro, para pruebas). Devuelve null si no debe avisarse. */
 function armarAvisoClienteNuevo(id, c) {
