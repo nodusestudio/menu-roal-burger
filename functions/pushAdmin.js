@@ -32,7 +32,7 @@ async function anotarEnvio(db, tipo, enviados, fallidos, nowMs) {
  * deps.messaging / deps.nowMs: solo para pruebas.
  */
 async function enviarPush(db, opts, deps = {}) {
-    const { title, body, tag, url = '/admin.html', actions, data, tipo = 'otro', soloDoc } = opts;
+    const { title, body, tag, url = '/admin.html', actions, data, tipo = 'otro', soloDoc, bodyMax = 140 } = opts;
     const nowMs = deps.nowMs || Date.now();
     let docs;
     if (soloDoc) {
@@ -43,7 +43,7 @@ async function enviarPush(db, opts, deps = {}) {
     if (!filas.length) { console.log('pushAdmin.enviarPush', JSON.stringify({ tipo, dispositivos: 0, motivo: 'no hay dispositivos registrados' })); return { enviados: 0 }; }
 
     const strs = {};
-    Object.entries({ title, body: String(body || '').slice(0, 140), tag, url, tipo, ...(actions && actions.length ? { acciones: JSON.stringify(actions) } : {}), ...(data || {}) })
+    Object.entries({ title, body: String(body || '').slice(0, bodyMax), tag, url, tipo, ...(actions && actions.length ? { acciones: JSON.stringify(actions) } : {}), ...(data || {}) })
         .forEach(([k, v]) => { if (v !== undefined && v !== null) strs[k] = String(v); });
 
     const messaging = deps.messaging || getMessaging();
@@ -128,6 +128,41 @@ async function avisarClienteNuevo(db, id, c) {
     }
 }
 
+const _plata = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO');
+const _metodo = (k) => String(k || '').replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
+
+/** Arma el aviso de cierre de caja con el resumen del día (puro, para pruebas). Devuelve null si no hay datos. */
+function armarAvisoCierre(id, c) {
+    if (!c) return null;
+    const lineas = [];
+    const ventas = Number(c.ingresosTotal ?? c.grandTotal ?? 0);
+    lineas.push(`Ventas ${_plata(ventas)} · ${Number(c.transactionCount || 0)} pedidos${c.voidedCount ? ` · ${c.voidedCount} anulados` : ''}`);
+    const metodos = Object.entries(c.ingresosMethod || c.methodTotals || {}).filter(([, v]) => Number(v) > 0);
+    if (metodos.length) lineas.push(metodos.map(([k, v]) => `${_metodo(k)} ${_plata(v)}`).join(' · '));
+    lineas.push(`Gastos ${_plata(c.gastosTotal)} · Neto ${_plata(c.grandTotal)}`);
+    if (c.aperturaBy) lineas.push(`Abrió: ${c.aperturaBy}`);
+    return {
+        title: `🔒 Caja cerrada — ${_plata(c.grandTotal)}`,
+        body: lineas.join('\n'),
+        bodyMax: 600,
+        tag: `roal-cierre-${id}`,
+        url: '/fodexa',
+        tipo: 'cierre_caja'
+    };
+}
+
+/** Cierre de caja → aviso con el resumen del día. */
+async function avisarCierreCaja(db, id, c) {
+    try {
+        const aviso = armarAvisoCierre(id, c);
+        if (!aviso) return { motivo: 'sin-aviso' };
+        return await enviarPush(db, aviso);
+    } catch (err) {
+        console.error('pushAdmin.avisarCierreCaja:', err?.message || err);
+        return { motivo: 'error' };
+    }
+}
+
 /** Aviso de bienvenida/prueba SOLO al dispositivo que acaba de activarse (o que pidió una prueba). */
 async function avisarActivacion(db, docId) {
     try {
@@ -142,4 +177,4 @@ async function avisarActivacion(db, docId) {
     }
 }
 
-module.exports = { anotarEnvio, enviarPush, avisarMensaje, avisarComentario, avisarClienteNuevo, avisarActivacion, armarAvisoClienteNuevo, ESPERA_PUSH_CHAT_MS, FCM_TOKENS_COLLECTION };
+module.exports = { anotarEnvio, enviarPush, avisarMensaje, avisarComentario, avisarClienteNuevo, avisarCierreCaja, armarAvisoCierre, avisarActivacion, armarAvisoClienteNuevo, ESPERA_PUSH_CHAT_MS, FCM_TOKENS_COLLECTION };

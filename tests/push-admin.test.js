@@ -127,3 +127,14 @@ test('la tarjeta de contacto lleva nombre, teléfono con indicativo, dirección 
     assert.match(sinDatos, /FN:@solo/);
     assert.ok(!/TEL;/.test(sinDatos) && !/ADR;/.test(sinDatos));
 });
+
+test('aviso de cierre de caja: resumen con ventas, métodos, gastos y neto, y sin datos no avisa', () => {
+    const a = P.armarAvisoCierre('c1', { ingresosTotal: 1250000, transactionCount: 42, voidedCount: 1, ingresosMethod: { efectivo: 500000, nequi: 750000 }, gastosTotal: 200000, grandTotal: 1050000, aperturaBy: 'ANA' });
+    assert.match(a.title, /Caja cerrada/);
+    assert.match(a.body, /42 pedidos · 1 anulados/);
+    assert.match(a.body, /Efectivo .*500\.000/);
+    assert.match(a.body, /Neto .*1\.050\.000/);
+    assert.match(a.body, /Abrió: ANA/);
+    assert.strictEqual(a.tipo, 'cierre_caja');
+    assert.strictEqual(P.armarAvisoCierre('x', null), null);
+});

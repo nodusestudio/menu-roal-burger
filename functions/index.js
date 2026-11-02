@@ -337,6 +337,18 @@ exports.notifyNewClient = onDocumentCreated(
 );
 
 // ─────────────────────────────────────────────────────────────
+// Cierre de caja → aviso al celular/PC con el resumen del día (ventas, pedidos, métodos de pago, gastos y neto).
+// ─────────────────────────────────────────────────────────────
+exports.notifyCierreCaja = onDocumentCreated(
+    { document: 'cierres_caja/{cierreId}', region: 'us-central1' },
+    async (event) => {
+        const c = event.data?.data();
+        if (!c) return;
+        await require('./pushAdmin').avisarCierreCaja(getFirestore(), event.params.cierreId, c);
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
 // Un dispositivo se activó (admin_fcm_tokens nuevo) o pidió una prueba (probarAt cambió) → aviso de bienvenida
 // SOLO a ese dispositivo. Así el dueño sabe al instante que los avisos le van a llegar.
 // ─────────────────────────────────────────────────────────────
