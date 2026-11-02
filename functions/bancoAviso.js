@@ -42,9 +42,34 @@ function leerPagoRecibido(texto) {
     return null;
 }
 
-// Lo oyen los clientes en caja: agradece, confirma el pago y despide.
-function frasePago(nombre, monto) {
-    return `Muchas gracias ${nombre} por tu pago de ${monto} pesos. Ya ha sido confirmado. Que vuelvas pronto.`;
+// Segundos nombres frecuentes: sirven para decidir si, en un nombre de 3 palabras, la segunda es otro nombre o el primer apellido.
+const SEGUNDOS_NOMBRES = new Set(['carlos', 'andres', 'david', 'eduardo', 'fernando', 'alberto', 'jose', 'antonio', 'felipe', 'camilo', 'alejandro',
+    'javier', 'enrique', 'ricardo', 'arturo', 'mauricio', 'esteban', 'ernesto', 'humberto', 'rafael', 'fabian', 'steven', 'stiven', 'yesid', 'albeiro',
+    'maria', 'fernanda', 'alejandra', 'camila', 'paola', 'isabel', 'lucia', 'cristina', 'patricia', 'andrea', 'carolina', 'viviana', 'milena', 'juliana',
+    'catalina', 'eugenia', 'johana', 'yolanda', 'liliana', 'marcela', 'natalia', 'valentina', 'vanessa', 'jimena', 'daniela', 'sofia', 'luz', 'del', 'rosa']);
+const PARTICULAS = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'san', 'santa']);
+const ES_EMPRESA = /(^|\s)(sas|s\.a\.s\.?|s\.a\.?|ltda|cia|compania|compañia|empresa|fundacion|asociacion|corporacion|inversiones|comercializadora|restaurante|club|iglesia|cooperativa)(?=\s|$)/i;
+
+/** "Johan Eduardo Rojas Albornoz" → "Johan Rojas": un solo nombre y un solo apellido. Las empresas se dejan completas. */
+function nombreCorto(nombre) {
+    const completo = String(nombre || '').trim().replace(/\s+/g, ' ');
+    if (!completo || ES_EMPRESA.test(completo)) return completo;
+    // "de la Cruz", "del Carmen"…: la partícula pertenece a la palabra que sigue
+    const t = [];
+    let pendiente = '';
+    for (const w of completo.split(' ')) {
+        if (PARTICULAS.has(w.toLowerCase())) { pendiente += (pendiente ? ' ' : '') + w; continue; }
+        t.push(pendiente ? `${pendiente} ${w}` : w); pendiente = '';
+    }
+    if (pendiente) t.push(pendiente);
+    if (t.length <= 2) return t.join(' ');
+    if (t.length === 3) return SEGUNDOS_NOMBRES.has(t[1].toLowerCase()) ? `${t[0]} ${t[2]}` : `${t[0]} ${t[1]}`;
+    return `${t[0]} ${t[2]}`;
 }
 
-module.exports = { REMITENTE_OK, parsearMonto, nombrePropio, leerPagoRecibido, frasePago };
+// Lo oyen los clientes en caja: agradece, confirma el pago y despide.
+function frasePago(nombre, monto) {
+    return `Muchas gracias ${nombreCorto(nombre)} por tu pago de ${monto} pesos. Ya ha sido confirmado. Que vuelvas pronto.`;
+}
+
+module.exports = { REMITENTE_OK, parsearMonto, nombrePropio, leerPagoRecibido, nombreCorto, frasePago };
