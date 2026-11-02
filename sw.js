@@ -88,7 +88,7 @@ self.addEventListener('fetch', (event) => {
     if (url.origin !== self.location.origin) return;
 
     // Admin — siempre red (codigo sensible, no se cachea en cliente)
-    if (url.pathname.startsWith('/admin')) return;
+    if (url.pathname.startsWith('/admin') || url.pathname.startsWith('/fodexa')) return;
 
     const path = url.pathname.toLowerCase();
 

@@ -3,6 +3,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".",
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/admin.html", "missing": [{ "type": "host", "value": "admin-roal.vercel.app" }], "destination": "/fodexa", "permanent": false },
+    { "source": "/admin", "missing": [{ "type": "host", "value": "admin-roal.vercel.app" }], "destination": "/fodexa", "permanent": false }
+  ],
   "rewrites": [
     { "source": "/fodexa", "destination": "/admin" },
     { "source": "/og-compartir.jpg", "destination": "/api/og" },
