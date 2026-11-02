@@ -34075,6 +34075,9 @@ function _asistAcciones(msg, acciones) {
         } else if (a.tipo === 'editar_pedido') {
             txt = `<b>✏️ Editar pedido ${escapeHtml(a.codigo || '')}</b><br><small>${(a.resumen || []).map(escapeHtml).join('<br>')}</small>`;
             btn = '✅ Aplicar cambio';
+        } else if (a.tipo === 'tv_config') {
+            txt = `<b>📺 Cambiar la pantalla de TV</b><br><small>${(a.resumen || []).map(escapeHtml).join('<br>')}</small>`;
+            btn = '✅ Aplicar a la TV';
         } else if (a.tipo === 'abrir_tv') {
             txt = '📺 Abrir el <b>Modo TV</b> (la pantalla del local) en otra ventana';
             btn = '📺 Abrir Modo TV';
@@ -34114,7 +34117,7 @@ function _asistAcciones(msg, acciones) {
             if (a.tipo === 'crear_pedido' && _fodiPedidoPend && _fodiPedidoPend.a === a) _fodiPedidoPend = null;
             card.querySelector('[data-acc="ok"]').disabled = true; bNo.remove(); estado.style.color = 'inherit'; estado.textContent = 'Descartado, no se hizo nada.';
         });
-        if (a.tipo === 'catalogo' || a.tipo === 'precio_insumo' || a.tipo === 'editar_pedido') { // "sí" / "no" por chat también confirma o descarta estas acciones
+        if (a.tipo === 'catalogo' || a.tipo === 'precio_insumo' || a.tipo === 'editar_pedido' || a.tipo === 'tv_config') { // "sí" / "no" por chat también confirma o descarta estas acciones
             _fodiPedidoPend = { a, btn: card.querySelector('[data-acc="ok"]'), ejecutar };
         }
         if (a.tipo === 'crear_pedido') {
@@ -34159,6 +34162,14 @@ async function _asistEjecutarAccion(a) {
         return;
     }
     if (a.tipo === 'abrir_tv') { abrirModoTv(); return; }
+    if (a.tipo === 'tv_config') {
+        const permitidos = ['pausada', 'segundos', 'modo', 'categorias', 'productos', 'orden', 'precio', 'ingredientes', 'etiquetas'];
+        const datos = Object.fromEntries(Object.entries(a.cambios || {}).filter(([k]) => permitidos.includes(k)));
+        if (!Object.keys(datos).length) throw new Error('No hay cambios para la TV.');
+        await firebaseDb.collection('configuracion').doc('tv_config').set({ ...datos, actualizado: firestoreNow() }, { merge: true });
+        showNotice('Configuración de la TV actualizada.', 'ok');
+        return;
+    }
     if (a.tipo === 'catalogo') return _fodiCatalogoEjecutar(a);
     if (a.tipo === 'editar_pedido') return _fodiEditarPedidoEjecutar(a);
     if (a.tipo === 'crear_pedido') {

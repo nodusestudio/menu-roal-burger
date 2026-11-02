@@ -18,3 +18,17 @@ test('precio_insumo resuelve por nombre sin tildes y rechaza ambiguos/inválidos
     assert.ok((await proponerAccion(db, { tipo: 'precio_insumo', nombre: 'mozz', precio_nuevo: -5 })).error);
     assert.ok((await proponerAccion(db, { tipo: 'precio_insumo', nombre: 'zzz', precio_nuevo: 5 })).error);
 });
+
+test('tv_config resuelve categorías y productos por nombre y valida los tiempos', async () => {
+    const cols = { categorias: [{ name: 'PEPITOS' }, { name: 'COMBOS' }], productos: [{ nombre: 'Pepito Mix' }, { nombre: 'Combo Papuda' }, { nombre: 'Combo Pareja' }] };
+    const db = { collection: (c) => ({ get: async () => ({ docs: (cols[c] || []).map((x, n) => ({ id: c[0] + n, data: () => x })) }) }) };
+    const r = await proponerAccion(db, { tipo: 'tv_config', mostrar: 'categorias', categorias: ['pepitos'], segundos: 30, pausada: false, ver_precio: false });
+    assert.deepStrictEqual(r.accion.cambios, { pausada: false, segundos: 30, precio: false, modo: 'categorias', categorias: ['PEPITOS'] });
+    assert.ok(r.accion.resumen.length >= 4);
+    assert.deepStrictEqual((await proponerAccion(db, { tipo: 'tv_config', mostrar: 'productos', productos: ['pepito mix'] })).accion.cambios, { modo: 'productos', productos: ['p0'] });
+    assert.ok((await proponerAccion(db, { tipo: 'tv_config', mostrar: 'productos', productos: ['combo'] })).error); // ambiguo
+    assert.ok((await proponerAccion(db, { tipo: 'tv_config', mostrar: 'categorias', categorias: ['Postres'] })).error);
+    assert.ok((await proponerAccion(db, { tipo: 'tv_config', segundos: 2 })).error);
+    assert.ok((await proponerAccion(db, { tipo: 'tv_config' })).error); // sin cambios
+    assert.deepStrictEqual((await proponerAccion(db, { tipo: 'tv_config', pausada: true })).accion.cambios, { pausada: true });
+});

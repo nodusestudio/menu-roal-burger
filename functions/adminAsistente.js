@@ -844,13 +844,22 @@ const TOOLS = [
     },
     {
         name: 'proponer_accion',
-        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). tipo "abrir_tv" propone abrir el Modo TV (pantalla del local) en otra ventana. Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
+        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). tipo "abrir_tv" propone abrir el Modo TV (pantalla del local) en otra ventana. tipo "tv_config" propone cambiar la configuración de la pantalla de TV (pausar/reanudar, segundos por producto, qué se muestra: todo/categorías/productos/promos/destacados, orden y qué textos salen); pasa solo lo que cambia. Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
         input_schema: { type: 'object', properties: {
-            tipo: { type: 'string', enum: ['navegar', 'precio_insumo', 'abrir_tv'] },
+            tipo: { type: 'string', enum: ['navegar', 'precio_insumo', 'abrir_tv', 'tv_config'] },
             tab: { type: 'string', enum: PESTANAS_NAVEGABLES, description: 'Solo con tipo "navegar".' },
             vista: { type: 'string', enum: VISTAS_COSTOS, description: 'Solo con tab "costos".' },
             nombre: { type: 'string', description: 'Solo con tipo "precio_insumo": nombre del insumo (como en la pestaña Insumos).' },
-            precio_nuevo: { type: 'number', description: 'Solo con tipo "precio_insumo": nuevo precio de compra del empaque.' }
+            precio_nuevo: { type: 'number', description: 'Solo con tipo "precio_insumo": nuevo precio de compra del empaque.' },
+            pausada: { type: 'boolean', description: 'Solo con tipo "tv_config": true pausa la TV, false la reanuda.' },
+            segundos: { type: 'number', description: 'Solo con tipo "tv_config": segundos por producto (3 a 300).' },
+            mostrar: { type: 'string', enum: ['todo', 'categorias', 'productos', 'promos', 'destacados'], description: 'Solo con tipo "tv_config": qué se muestra en la TV.' },
+            categorias: { type: 'array', items: { type: 'string' }, description: 'Solo con tipo "tv_config" y mostrar "categorias": nombres de categorías (ej. "Pepitos").' },
+            productos: { type: 'array', items: { type: 'string' }, description: 'Solo con tipo "tv_config" y mostrar "productos": nombres de productos.' },
+            orden: { type: 'string', enum: ['menu', 'aleatorio'], description: 'Solo con tipo "tv_config".' },
+            ver_precio: { type: 'boolean', description: 'Solo con tipo "tv_config": mostrar el precio en la TV.' },
+            ver_ingredientes: { type: 'boolean', description: 'Solo con tipo "tv_config": mostrar los ingredientes.' },
+            ver_etiqueta: { type: 'boolean', description: 'Solo con tipo "tv_config": mostrar la etiqueta (2×1, más pedidos…).' }
         }, required: ['tipo'] }
     },
     require('./fodiCatalogo').TOOL,
@@ -894,7 +903,53 @@ async function proponerAccion(db, args = {}) {
         return { ok: true, accion: { tipo: 'precio_insumo', insumoId: i.id, nombre: String(i.nombre || ''), precioActual: Number(i.precioCompra) || 0, precioNuevo: Math.round(nuevo * 100) / 100 } };
     }
     if (args.tipo === 'abrir_tv') return { ok: true, accion: { tipo: 'abrir_tv' } };
+    if (args.tipo === 'tv_config') return proponerTvConfig(db, args);
     return { error: 'tipo desconocido.' };
+}
+
+// Cambios a configuracion/tv_config (los aplica el panel al confirmar). Los nombres se resuelven aquí para que el botón guarde ids/nombres reales.
+async function proponerTvConfig(db, args) {
+    const cambios = {}, resumen = [];
+    if (typeof args.pausada === 'boolean') { cambios.pausada = args.pausada; resumen.push(args.pausada ? 'Pausar la TV' : 'Reanudar la TV'); }
+    if (args.segundos != null) {
+        const s = Number(args.segundos);
+        if (!Number.isFinite(s) || s < 3 || s > 300) return { error: 'segundos debe estar entre 3 y 300.' };
+        cambios.segundos = Math.round(s); resumen.push(`${cambios.segundos} segundos por producto`);
+    }
+    if (args.orden) { cambios.orden = args.orden === 'aleatorio' ? 'aleatorio' : 'menu'; resumen.push(cambios.orden === 'aleatorio' ? 'Orden aleatorio' : 'Orden del menú'); }
+    for (const [arg, campo, texto] of [['ver_precio', 'precio', 'el precio'], ['ver_ingredientes', 'ingredientes', 'los ingredientes'], ['ver_etiqueta', 'etiquetas', 'la etiqueta']]) {
+        if (typeof args[arg] === 'boolean') { cambios[campo] = args[arg]; resumen.push(`${args[arg] ? 'Mostrar' : 'Ocultar'} ${texto}`); }
+    }
+    if (args.mostrar) {
+        if (!['todo', 'categorias', 'productos', 'promos', 'destacados'].includes(args.mostrar)) return { error: 'mostrar desconocido.' };
+        cambios.modo = args.mostrar;
+        if (args.mostrar === 'categorias') {
+            const cats = (await db.collection('categorias').get()).docs.map((d) => String(d.data().name || ''));
+            const elegidas = [], falta = [];
+            for (const n of (Array.isArray(args.categorias) ? args.categorias : [])) {
+                const h = cats.find((c) => norm(c) === norm(n)) || (norm(n) ? cats.find((c) => norm(c).includes(norm(n))) : null);
+                if (h) { if (!elegidas.includes(h)) elegidas.push(h); } else falta.push(n);
+            }
+            if (falta.length) return { error: `No existe la categoría: ${falta.join(', ')}. Categorías: ${cats.slice(0, 30).join('; ')}.` };
+            if (!elegidas.length) return { error: 'Falta indicar qué categorías mostrar.' };
+            cambios.categorias = elegidas; resumen.push(`Mostrar solo categorías: ${elegidas.join(', ')}`);
+        } else if (args.mostrar === 'productos') {
+            const prods = (await db.collection('productos').get()).docs.map((d) => ({ id: d.id, nombre: String(d.data().nombre || '') }));
+            const ids = [], nombres = [], falta = [];
+            for (const n of (Array.isArray(args.productos) ? args.productos : [])) {
+                let h = prods.filter((p) => norm(p.nombre) === norm(n));
+                if (!h.length && norm(n)) h = prods.filter((p) => norm(p.nombre).includes(norm(n)));
+                if (!h.length) falta.push(n);
+                else if (h.length > 1) return { error: `"${n}" coincide con varios productos: ${h.slice(0, 8).map((p) => p.nombre).join('; ')}. Pide que elija uno.` };
+                else if (!ids.includes(h[0].id)) { ids.push(h[0].id); nombres.push(h[0].nombre); }
+            }
+            if (falta.length) return { error: `No hay un producto llamado: ${falta.join(', ')}.` };
+            if (!ids.length) return { error: 'Falta indicar qué productos mostrar.' };
+            cambios.productos = ids; resumen.push(`Mostrar solo: ${nombres.join(', ')}`);
+        } else resumen.push({ todo: 'Mostrar todo el menú', promos: 'Mostrar solo promos 2×1', destacados: 'Mostrar solo los más pedidos' }[args.mostrar]);
+    }
+    if (!Object.keys(cambios).length) return { error: 'No indicaste ningún cambio para la TV.' };
+    return { ok: true, accion: { tipo: 'tv_config', cambios, resumen } };
 }
 
 async function tarifaDomicilio(db, args = {}) {
