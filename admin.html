@@ -13911,6 +13911,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="asistente"><span class="nav-icon">🤖</span><span>Asistente</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="finanzas"><span class="nav-icon">💰</span><span>Finanzas</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="banco"><span class="nav-icon">💸</span><span>Pagos Bancolombia</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="costos"><span class="nav-icon">🧮</span><span>Costos y recetas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="cuponpana"><span class="nav-icon">🎟️</span><span>Fuera del Menú</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="tv" style="display:none" tabindex="-1" aria-hidden="true"></button>
@@ -15576,6 +15577,28 @@
                 <article class="admin-card">
                     <div class="card-head"><h2>Este mes, en vivo</h2></div>
                     <div class="card-body" id="finanzasEnVivoBody"><!-- render JS --></div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="banco">
+                <article class="admin-card">
+                    <div class="card-head">
+                        <h2>💸 Pagos de Bancolombia</h2>
+                    </div>
+                    <div class="card-body">
+                        <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 14px;line-height:1.5;">
+                            Cuando llega a Gmail un aviso de pago recibido de Bancolombia, este computador lo dice en voz alta. Deja el panel abierto en este computador. El navegador exige un clic para permitir el sonido: pulsa "Activar voz" una vez (después, cualquier clic en el panel lo reactiva si recargas).
+                        </p>
+                        <p id="bancoEstado" role="status" aria-live="polite" style="margin:0 0 12px;font-weight:600;">Voz sin activar.</p>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                            <button type="button" class="section-action-btn primary" id="bancoVozBtn">🔊 Activar voz en este computador</button>
+                            <button type="button" class="section-action-btn" id="bancoProbarBtn">▶ Probar la voz</button>
+                        </div>
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="bancoHablarChk" checked> Hablar en este computador</label>
+                        <p id="bancoVocesInfo" style="font-size:0.78rem;color:var(--admin-muted);margin:6px 0 14px;"></p>
+                        <strong>Últimos pagos recibidos</strong>
+                        <div id="bancoLista" style="margin-top:8px;"><p style="font-size:0.85rem;color:var(--admin-muted);">Todavía no hay pagos.</p></div>
+                    </div>
                 </article>
             </div>
 
