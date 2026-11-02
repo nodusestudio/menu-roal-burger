@@ -345,9 +345,11 @@ exports.notifyTokenActivado = onDocumentWritten(
     async (event) => {
         const before = event.data?.before?.exists ? event.data.before.data() : null;
         const after = event.data?.after?.exists ? event.data.after.data() : null;
-        if (!after || !after.token) return;
+        if (!after || !after.token) { console.log('notifyTokenActivado: sin documento o sin token', event.params.tokenDoc); return; }
         const nuevo = !before || before.token !== after.token;
-        const pidioPrueba = after.probarAt && (!before || !before.probarAt || before.probarAt.isEqual?.(after.probarAt) === false);
+        const ms = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : null);
+        const pidioPrueba = !!after.probarAt && (!before || !before.probarAt || ms(before.probarAt) !== ms(after.probarAt));
+        console.log('notifyTokenActivado', JSON.stringify({ doc: event.params.tokenDoc, nuevo, pidioPrueba, tieneAntes: !!before }));
         if (!nuevo && !pidioPrueba) return;
         await require('./pushAdmin').avisarActivacion(getFirestore(), event.params.tokenDoc);
     }
