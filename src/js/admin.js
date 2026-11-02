@@ -2862,7 +2862,7 @@ const FEEDBACK_MAX_AGE_MS = 24 * 60 * 60 * 1000; // más viejo que esto ya no se
 const FEEDBACK_SURVEY_URL = 'https://roalburger.com/encuesta';
 const FEEDBACK_INSTAGRAM_URL = 'https://www.instagram.com/roalburger';
 const FEEDBACK_VOTE_URL = 'https://sabeaquindio.com/';
-let _feedbackPendingSig = '';
+let _feedbackPendingSig = null;
 const _feedbackSending = new Set();
 // Pedidos ya copiados cuyo guardado el servidor aún no confirma: se ocultan de la lista al instante.
 // (ordersState se rehace con fetchOrders(), así que marcar solo el objeto en memoria no basta.)
@@ -2962,7 +2962,7 @@ async function sendFeedbackRequest(orderId, btn) {
                 confirmado = true;
                 _feedbackMarcadosLocal.delete(orderId);
                 order.feedbackRequestedAt = null;
-                _feedbackPendingSig = '';
+                _feedbackPendingSig = null;
                 renderFeedbackPending();
                 showNotice(`No se pudo guardar que el feedback de ${nombre} ya se envió: ${error.message || 'error inesperado.'} Volverá a aparecer en la lista.`, 'error');
             })
@@ -2971,7 +2971,7 @@ async function sendFeedbackRequest(orderId, btn) {
         showNotice(`No se pudo preparar el mensaje de feedback: ${error.message || 'error inesperado.'}`, 'error');
     } finally {
         _feedbackSending.delete(orderId);
-        _feedbackPendingSig = '';
+        _feedbackPendingSig = null;
         renderFeedbackPending();
     }
     return marcado;
