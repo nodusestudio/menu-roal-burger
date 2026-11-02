@@ -20,6 +20,12 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/meseros/$(meseroId));
     }
 
+    function isMeseroSession() {
+      return request.auth != null
+        && request.auth.token.mesero == true
+        && exists(/databases/$(database)/documents/meseros/$(request.auth.token.meseroToken));
+    }
+
     // El PIN de supervisor del POS NUNCA se lee desde el cliente: solo el Admin SDK,
     // vía verifySupervisorPin / getSupervisorPinStatus (functions/index.js). En Firestore
     // las reglas son ADITIVAS -- un match especifico no revoca lo que concede uno mas
@@ -30,8 +36,16 @@ service cloud.firestore {
       allow read: if false;
       allow write: if isAdmin();
     }
+    // Documentos de configuracion con informacion interna del negocio (costos fijos, finanzas,
+    // instrucciones del agente/asistente, estadisticas de avisos, etc.): SOLO admin. Antes caian en
+    // el wildcard de abajo y cualquiera que consultara la API de Firestore sin sesion podia leerlos.
+    // El resto de la coleccion sigue publico porque el menu, la TV y el modo mesero lo leen.
+    function isConfigInterna(doc) {
+      return doc in ['supervisor_pin', 'costos_fijos', 'finanzas', 'finanzas_festival',
+        'chat_roal_config', 'asistente_ia', 'push_stats'];
+    }
     match /configuracion/{doc} {
-      allow read: if doc != 'supervisor_pin';
+      allow read: if !isConfigInterna(doc) || (doc != 'supervisor_pin' && isAdmin());
       allow write: if isAdmin();
     }
     match /categorias/{doc} {
@@ -112,9 +126,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Contador de codigo de pedido: lo usa el POS (admin) y el POS del mesero. Antes cualquiera
+    // sin sesion podia escribirlo y desordenar la numeracion de pedidos.
     match /pedidos/_meta_order_sequence {
       allow read: if true;
-      allow write: if request.resource.data.metaType == 'order_sequence'
+      allow write: if (isAdmin() || isMeseroSession())
+        && request.resource.data.metaType == 'order_sequence'
         && request.resource.data.current is int;
     }
 
