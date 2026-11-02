@@ -117,7 +117,13 @@
         var id = null; try { id = localStorage.getItem(CLAVE_DOC); } catch (_) { /* sin almacenamiento */ }
         if (!id || ocupado) return;
         ocupado = true; pintar();
-        db.collection(COL).doc(id).set({ probarAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        // Siempre se pide un token fresco y se guarda junto con la prueba: si el servidor borró el anterior por vencido,
+        // un simple "probarAt" dejaría un documento sin token y la prueba nunca saldría.
+        Promise.resolve(firebase.messaging().getToken({ vapidKey: VAPID_KEY }))
+            .then(function (token) {
+                if (!token) throw new Error('No se obtuvo el token del dispositivo.');
+                return db.collection(COL).doc(id).set({ token: token, uid: user.uid, etiqueta: etiquetaDispositivo(), instalada: instalada(), updatedAt: firebase.firestore.FieldValue.serverTimestamp(), probarAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+            })
             .then(function () { mostrar('Prueba enviada. Con esta pantalla abierta lo verás aquí en unos segundos; para ver cómo llega de verdad, bloquea el celular o sal de la app y espera unos segundos.', 'bueno'); })
             .catch(function (e) { mostrar(mensajeError(e), 'malo'); })
             .then(function () { ocupado = false; pintar(); });
@@ -153,7 +159,7 @@
             var id = null; try { id = localStorage.getItem(CLAVE_DOC); } catch (_) { /* sin almacenamiento */ }
             if (!user || !id) { activo = false; pintar(); return; }
             // ¿Este dispositivo sigue registrado? (el servidor borra los tokens vencidos)
-            db.collection(COL).doc(id).get().then(function (d) { activo = d.exists && Notification.permission === 'granted'; pintar(); })
+            db.collection(COL).doc(id).get().then(function (d) { activo = d.exists && !!(d.data() || {}).token && Notification.permission === 'granted'; pintar(); })
                 .catch(function () { activo = false; pintar(); });
         });
     }
