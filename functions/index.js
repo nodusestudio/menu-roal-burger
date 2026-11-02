@@ -399,13 +399,24 @@ exports.bancoLector = onRequest(
         const esperado = Buffer.from(BANCO_LECTOR_TOKEN.value());
         if (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) { res.status(401).json({ ok: false, error: 'clave' }); return; }
         const ahora = Date.now();
+        const db = getFirestore();
+        // Cada programa de voz se identifica con el nombre de su computador; el panel puede silenciarlo (banco_equipos/{equipo}.silenciado).
+        const equipo = String(req.query.equipo || '').replace(/[^A-Za-z0-9 _.-]/g, '').slice(0, 40);
+        let silenciado = false;
+        if (equipo) {
+            const ref = db.collection('banco_equipos').doc(equipo);
+            const x = (await ref.get()).data() || null;
+            silenciado = !!(x && x.silenciado);
+            const visto = x?.visto?.toMillis?.() || 0;
+            if (!x || ahora - visto > 2 * 60 * 1000) await ref.set({ equipo, visto: FieldValue.serverTimestamp(), ...(x ? {} : { silenciado: false }) }, { merge: true });
+        }
         const desde = Number(req.query.desde);
-        if (!Number.isFinite(desde) || desde <= 0) { res.json({ ok: true, ahora, pagos: [] }); return; }
+        if (!Number.isFinite(desde) || desde <= 0) { res.json({ ok: true, ahora, silenciado, pagos: [] }); return; }
         const { Timestamp } = require('firebase-admin/firestore');
-        const snap = await getFirestore().collection('avisos_banco')
+        const snap = await db.collection('avisos_banco')
             .where('creadoEn', '>', Timestamp.fromMillis(desde)).orderBy('creadoEn', 'asc').limit(10).get();
         const pagos = snap.docs.map((d) => { const x = d.data(); return { id: d.id, frase: x.frase || '', creadoMs: x.creadoEn?.toMillis?.() || ahora, prueba: !!x.prueba }; });
-        res.json({ ok: true, ahora, pagos });
+        res.json({ ok: true, ahora, silenciado, pagos });
     }
 );
 

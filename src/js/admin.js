@@ -35742,47 +35742,51 @@ async function _bancoBorrarPruebas() {
         showNotice(`${snap.size} registro(s) de prueba eliminados.`, 'ok');
     } catch (e) { showNotice(`No se pudo borrar: ${e.message || e}`, 'error'); }
 }
-// Botón de la esquina: silencia/activa la voz del programa de Windows DE ESTE computador (herramientas/voz-pagos escucha en
-// 127.0.0.1:47831). Si el programa no está instalado aquí (o es un celular), el botón no aparece.
-async function _bancoLocal(ruta) {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 1500);
-    try { const r = await fetch('http://127.0.0.1:47831' + ruta, { signal: ctl.signal }); return await r.json(); }
-    catch (_) { return null; } finally { clearTimeout(t); }
+// Botón de la esquina: abre una mini lista de los computadores con el programa de voz y deja silenciar/activar cada uno.
+// El silencio vive en el servidor (banco_equipos/{computador}.silenciado); cada programa lo lee al consultar los pagos.
+function _bancoEquiposUI() {
+    let btn = document.getElementById('bancoSilencioBtn');
+    if (btn) return btn;
+    btn = document.createElement('button'); btn.type = 'button'; btn.id = 'bancoSilencioBtn';
+    btn.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9998;width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.92);color:#fff;font-size:21px;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4);padding:0';
+    btn.textContent = '🔊'; btn.title = 'Voz de pagos: silenciar o activar cada computador';
+    const caja = document.createElement('div'); caja.id = 'bancoSilencioCaja'; caja.hidden = true;
+    caja.style.cssText = 'position:fixed;right:14px;bottom:68px;z-index:9998;width:min(330px,calc(100vw - 28px));max-height:60vh;overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.97);color:#fff;font:14px system-ui,sans-serif;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,.5)';
+    btn.addEventListener('click', () => { caja.hidden = !caja.hidden; });
+    document.body.appendChild(caja); document.body.appendChild(btn);
+    return btn;
 }
-function _bancoBotonSilencio() {
-    let b = document.getElementById('bancoSilencioBtn');
-    if (!b) {
-        b = document.createElement('button'); b.type = 'button'; b.id = 'bancoSilencioBtn'; b.hidden = true;
-        b.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9998;width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.92);color:#fff;font-size:21px;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4);padding:0';
-        b.addEventListener('click', async () => {
-            const nuevo = b.dataset.silenciado === '1' ? 0 : 1;
-            const r = await _bancoLocal('/silenciar?on=' + nuevo);
-            if (r && r.ok) { _bancoPintarSilencio(r); showNotice(r.silenciado ? '🔇 Voz de pagos silenciada en este computador.' : '🔊 Voz de pagos activada en este computador.', 'ok'); }
-            else showNotice('No se pudo hablar con el programa de voz de este computador.', 'error');
-        });
-        document.body.appendChild(b);
-    }
-    return b;
+function _bancoPintarEquipos(docs) {
+    const btn = _bancoEquiposUI(), caja = document.getElementById('bancoSilencioCaja');
+    const ahora = Date.now();
+    const equipos = docs.map((d) => ({ id: d.id, ...d.data() }));
+    const hayMudo = equipos.some((e) => e.silenciado);
+    btn.textContent = hayMudo ? '🔇' : '🔊';
+    btn.style.background = hayMudo ? '#c62828' : 'rgba(20,23,42,.92)';
+    const fila = (e) => {
+        const t = e.visto && e.visto.toMillis ? e.visto.toMillis() : 0;
+        const min = t ? Math.round((ahora - t) / 60000) : null;
+        const enLinea = min !== null && min <= 5;
+        const estado = enLinea ? '🟢 en línea' : (min === null ? '⚪ sin señal' : `⚪ sin señal hace ${min >= 120 ? Math.round(min / 60) + ' h' : min + ' min'}`);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.12);">
+            <div style="min-width:0;"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(e.equipo || e.id)}</div><div style="font-size:12px;opacity:.75;">${estado}${e.silenciado ? ' · 🔇 silenciado' : ''}</div></div>
+            <button type="button" data-banco-equipo="${escapeHtml(e.id)}" data-banco-mudo="${e.silenciado ? '0' : '1'}" style="flex:none;border:0;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer;background:${e.silenciado ? '#2e7d32' : '#c62828'};color:#fff;">${e.silenciado ? '🔊 Activar' : '🔇 Silenciar'}</button>
+        </div>`;
+    };
+    caja.innerHTML = `<div style="font-weight:800;margin-bottom:6px;">Voz de pagos por computador</div>` +
+        (equipos.length ? equipos.map(fila).join('') : '<div style="font-size:13px;opacity:.8;">Aún no hay computadores con el programa de voz. Instálalo y espera 1 minuto.</div>');
+    caja.querySelectorAll('[data-banco-equipo]').forEach((b) => b.addEventListener('click', async () => {
+        try { await firebaseDb.collection('banco_equipos').doc(b.dataset.bancoEquipo).update({ silenciado: b.dataset.bancoMudo === '1' }); }
+        catch (e) { showNotice(`No se pudo cambiar: ${e.message || e}`, 'error'); }
+    }));
 }
-function _bancoPintarSilencio(r) {
-    const b = _bancoBotonSilencio();
-    if (!r || !r.ok) { b.hidden = true; return; }
-    b.hidden = false; b.dataset.silenciado = r.silenciado ? '1' : '0';
-    b.textContent = r.silenciado ? '🔇' : '🔊';
-    b.style.background = r.silenciado ? '#c62828' : 'rgba(20,23,42,.92)';
-    b.title = r.silenciado ? 'Voz de pagos SILENCIADA en este computador (toca para activarla)' : 'Voz de pagos activa en este computador (toca para silenciarla)';
-    b.setAttribute('aria-label', b.title);
-}
-async function _bancoRefrescarSilencio() { _bancoPintarSilencio(await _bancoLocal('/estado')); }
 function _bancoIniciar() {
     const st = _bancoEstado();
     if (st.iniciado || _meseroSession || !firebaseDb) return;
     st.iniciado = true;
     document.getElementById('bancoBorrarPruebasBtn')?.addEventListener('click', _bancoBorrarPruebas);
-    _bancoRefrescarSilencio();
-    setInterval(_bancoRefrescarSilencio, 20000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) _bancoRefrescarSilencio(); });
+    _bancoEquiposUI();
+    firebaseDb.collection('banco_equipos').onSnapshot((snap) => _bancoPintarEquipos(snap.docs), (e) => console.warn('[BANCO] equipos:', e && (e.code || e.message)));
     firebaseDb.collection('avisos_banco').orderBy('creadoEn', 'desc').limit(30).onSnapshot((snap) => _bancoPintarLista(snap.docs),
         (e) => console.warn('[BANCO] no se pudo leer avisos_banco:', e && (e.code || e.message)));
 }
