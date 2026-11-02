@@ -35688,48 +35688,20 @@ document.getElementById('fodiBaseBox')?.addEventListener('click', async (e) => {
     } catch (err) { showNotice(err.message || 'No se pudo completar.', 'error'); }
 });
 
-// ── Pagos de Bancolombia: aviso en voz alta en ESTE computador ─────────────
-// Gmail (Apps Script) → función bancoAviso → avisos_banco/{id} → aquí. Ver functions/bancoAviso.js.
-// El navegador no deja sonar audio hasta que hay un clic en la página: "Activar voz" lo da; si se recarga, el
-// primer clic en cualquier parte del panel lo vuelve a armar (siempre que ya se hubiera activado antes).
-function _bancoEstado() { return (window.__bancoEstado = window.__bancoEstado || { voz: false, primera: true, dichos: {}, iniciado: false }); }
-function _bancoMsg(texto) { const el = document.getElementById('bancoEstado'); if (el) el.textContent = texto; }
-function _bancoHablar() { const c = document.getElementById('bancoHablarChk'); return !!(c && c.checked); }
-function _bancoTextoReposo() { return _bancoHablar() ? (_bancoEstado().voz ? '✅ Voz activada: escuchando pagos.' : 'Voz sin activar.') : '🔕 Voz del navegador apagada: los pagos los dice el programa de Windows (si lo instalaste).'; }
-function _bancoVoces() { try { return window.speechSynthesis.getVoices().filter((v) => /^es/i.test(v.lang)); } catch (_) { return []; } }
-function _bancoPintarVoces() {
-    const el = document.getElementById('bancoVocesInfo'); if (!el) return;
-    if (!('speechSynthesis' in window)) { el.textContent = 'Este navegador no tiene voz. Usa Chrome o Edge.'; return; }
-    const n = _bancoVoces().length;
-    el.textContent = n ? `Voces en español disponibles en este computador: ${n}.` : 'No se detectan voces en español en este navegador. Prueba con Chrome o Edge, o instala una voz en español en Windows (Configuración → Hora e idioma → Voz).';
-}
-function _bancoDecir(frase, silencioso) {
-    if (!('speechSynthesis' in window)) { _bancoMsg('Este navegador no tiene voz. Usa Chrome o Edge.'); return; }
+// ── Pagos de Bancolombia: lista de pagos recibidos ─────────────────────────
+// Gmail (Apps Script) → función bancoAviso → avisos_banco/{id}. La VOZ la dice el programa de Windows de cada computador
+// (herramientas/voz-pagos), no el navegador: así nunca suenan dos voces. Aquí solo se ven y se borran los registros.
+function _bancoEstado() { return (window.__bancoEstado = window.__bancoEstado || { iniciado: false }); }
+function _bancoRepetir(frase) {
+    if (!('speechSynthesis' in window) || !frase) return;
     try {
-        const synth = window.speechSynthesis;
-        synth.cancel();
-        setTimeout(() => {
-            const u = new SpeechSynthesisUtterance(frase);
-            u.lang = 'es-CO'; u.rate = 0.95; u.volume = silencioso ? 0 : 1;
-            const voces = synth.getVoices();
-            const voz = voces.find((v) => /^es[-_](CO|MX|US|419)/i.test(v.lang)) || voces.find((v) => /^es/i.test(v.lang));
-            if (voz) u.voice = voz;
-            if (!silencioso) {
-                u.onstart = () => _bancoMsg('🔊 Hablando…');
-                u.onend = () => _bancoMsg(_bancoTextoReposo());
-                u.onerror = (e) => _bancoMsg(`La voz falló (${(e && e.error) || 'error desconocido'}). Revisa el volumen del computador o prueba con Chrome/Edge.`);
-            }
-            synth.resume();
-            synth.speak(u);
-        }, 80);
-    } catch (e) { _bancoMsg(`La voz falló: ${e.message || e}`); }
-}
-function _bancoActivar() {
-    _bancoEstado().voz = true;
-    try { localStorage.setItem('roal_banco_voz', '1'); } catch (_) { /* sin almacenamiento */ }
-    _bancoMsg('✅ Voz activada: escuchando pagos.');
-    _bancoBanner();
-    _bancoDecir('Voz activada. Escuchando pagos de Bancolombia.');
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(frase);
+        u.lang = 'es-CO';
+        const voz = window.speechSynthesis.getVoices().find((v) => /^es/i.test(v.lang));
+        if (voz) u.voice = voz;
+        window.speechSynthesis.speak(u);
+    } catch (_) { /* sin voz en este navegador */ }
 }
 function _bancoPintarLista(docs) {
     const cont = document.getElementById('bancoLista'); if (!cont) return;
@@ -35741,67 +35713,40 @@ function _bancoPintarLista(docs) {
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(128,128,128,.25);">
             <div><div style="font-weight:700;">${escapeHtml(x.nombre || '')}${x.prueba ? ' (prueba)' : ''}</div><div style="font-size:0.78rem;color:var(--admin-muted);">${escapeHtml(cuando)}</div></div>
             <div style="font-weight:800;white-space:nowrap;">$${Number(x.monto || 0).toLocaleString('es-CO')}</div>
-            <button type="button" class="section-action-btn" data-banco-repetir="${escapeHtml(d.id)}" aria-label="Repetir en voz alta">🔊</button>
+            <div style="display:flex;gap:6px;">
+                <button type="button" class="section-action-btn" data-banco-repetir="${escapeHtml(d.id)}" title="Oír otra vez en este navegador" aria-label="Oír otra vez">🔊</button>
+                <button type="button" class="section-action-btn" data-banco-borrar="${escapeHtml(d.id)}" title="Eliminar este registro" aria-label="Eliminar este registro">🗑️</button>
+            </div>
         </div>`;
     }).join('');
     cont.querySelectorAll('[data-banco-repetir]').forEach((b) => b.addEventListener('click', () => {
         const d = docs.find((z) => z.id === b.dataset.bancoRepetir);
-        if (d) _bancoDecir(d.data().frase || '');
+        if (d) _bancoRepetir(d.data().frase || '');
+    }));
+    cont.querySelectorAll('[data-banco-borrar]').forEach((b) => b.addEventListener('click', async () => {
+        const d = docs.find((z) => z.id === b.dataset.bancoBorrar); if (!d) return;
+        const x = d.data();
+        if (!confirm(`¿Eliminar el registro de ${x.nombre || 'este pago'} por $${Number(x.monto || 0).toLocaleString('es-CO')}?`)) return;
+        try { await firebaseDb.collection('avisos_banco').doc(d.id).delete(); showNotice('Registro eliminado.', 'ok'); }
+        catch (e) { showNotice(`No se pudo eliminar: ${e.message || e}`, 'error'); }
     }));
 }
-function _bancoFlag() { try { return localStorage.getItem('roal_banco_voz') === '1'; } catch (_) { return false; } }
-// Franja roja fija arriba: aparece cuando la voz estaba activada y la página se recargó (el navegador exige un clic otra vez).
-function _bancoBanner(textoExtra) {
-    let b = document.getElementById('bancoBanner');
-    const apagada = _bancoHablar() && _bancoFlag() && !_bancoEstado().voz;
-    if (!apagada) { if (b) b.hidden = true; return; }
-    if (!b) {
-        b = document.createElement('button'); b.type = 'button'; b.id = 'bancoBanner';
-        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;border:0;padding:12px 16px;background:#c62828;color:#fff;font:700 15px system-ui,sans-serif;cursor:pointer;text-align:center';
-        b.addEventListener('click', () => { _bancoActivar(); _bancoBanner(); });
-        document.body.appendChild(b);
-    }
-    b.hidden = false;
-    b.textContent = textoExtra || '🔇 La voz de pagos de Bancolombia está apagada. Toca aquí para activarla.';
+async function _bancoBorrarPruebas() {
+    try {
+        const snap = await firebaseDb.collection('avisos_banco').where('prueba', '==', true).limit(100).get();
+        if (snap.empty) { showNotice('No hay pagos de prueba para borrar.', 'info'); return; }
+        if (!confirm(`¿Eliminar ${snap.size} registro(s) de prueba? Los pagos reales no se tocan.`)) return;
+        const lote = firebaseDb.batch();
+        snap.docs.forEach((d) => lote.delete(d.ref));
+        await lote.commit();
+        showNotice(`${snap.size} registro(s) de prueba eliminados.`, 'ok');
+    } catch (e) { showNotice(`No se pudo borrar: ${e.message || e}`, 'error'); }
 }
 function _bancoIniciar() {
     const st = _bancoEstado();
     if (st.iniciado || _meseroSession || !firebaseDb) return;
     st.iniciado = true;
-    document.getElementById('bancoVozBtn')?.addEventListener('click', _bancoActivar);
-    document.getElementById('bancoProbarBtn')?.addEventListener('click', () => { _bancoEstado().voz = true; _bancoDecir('Muchas gracias Juan Pérez por tu pago de 27500 pesos. Ya ha sido confirmado. Que vuelvas pronto.'); });
-    const chk = document.getElementById('bancoHablarChk');
-    if (chk) {
-        let guardado = null; try { guardado = localStorage.getItem('roal_banco_hablar'); } catch (_) { /* sin almacenamiento */ }
-        chk.checked = guardado === '1'; // por defecto APAGADA: la voz principal es el programa de Windows
-        chk.addEventListener('change', () => {
-            try { localStorage.setItem('roal_banco_hablar', chk.checked ? '1' : '0'); } catch (_) { /* sin almacenamiento */ }
-            _bancoMsg(_bancoTextoReposo()); _bancoBanner();
-        });
-        _bancoMsg(_bancoTextoReposo());
-    }
-    _bancoBanner();
-    ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => document.addEventListener(ev, () => {
-        const e = _bancoEstado();
-        if (e.voz || !_bancoFlag() || !_bancoHablar()) return;
-        e.voz = true; _bancoMsg('✅ Voz activada: escuchando pagos.'); _bancoBanner(); _bancoDecir(' ', true);
-    }, { once: true, capture: true }));
-    if ('speechSynthesis' in window) { window.speechSynthesis.getVoices(); window.speechSynthesis.addEventListener?.('voiceschanged', _bancoPintarVoces); }
-    _bancoPintarVoces();
-    firebaseDb.collection('avisos_banco').orderBy('creadoEn', 'desc').limit(15).onSnapshot((snap) => {
-        _bancoPintarLista(snap.docs);
-        if (st.primera) { st.primera = false; snap.docs.forEach((d) => { st.dichos[d.id] = true; }); return; } // lo que ya existía no se canta
-        snap.docChanges().forEach((ch) => {
-            if (ch.type !== 'added' || st.dichos[ch.doc.id]) return;
-            st.dichos[ch.doc.id] = true;
-            const x = ch.doc.data();
-            const t = x.creadoEn && x.creadoEn.toMillis ? x.creadoEn.toMillis() : Date.now();
-            if (Date.now() - t > 10 * 60 * 1000) return; // un pago viejo no se canta
-            if (st.voz && _bancoHablar()) _bancoDecir(x.frase || '');
-            else if (!st.voz && _bancoHablar()) {
-                _bancoBanner(`🔇 ${x.frase || 'Pago recibido'}. La voz está apagada: toca aquí para activarla.`);
-                try { if ('Notification' in window && Notification.permission === 'granted') new Notification('💸 Pago recibido', { body: x.frase || '', requireInteraction: true }); } catch (_) { /* sin notificación */ }
-            }
-        });
-    }, (e) => console.warn('[BANCO] no se pudo leer avisos_banco:', e && (e.code || e.message)));
+    document.getElementById('bancoBorrarPruebasBtn')?.addEventListener('click', _bancoBorrarPruebas);
+    firebaseDb.collection('avisos_banco').orderBy('creadoEn', 'desc').limit(30).onSnapshot((snap) => _bancoPintarLista(snap.docs),
+        (e) => console.warn('[BANCO] no se pudo leer avisos_banco:', e && (e.code || e.message)));
 }
