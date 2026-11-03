@@ -416,7 +416,7 @@ exports.bancoLector = onRequest(
         const { Timestamp } = require('firebase-admin/firestore');
         const snap = await db.collection('avisos_banco')
             .where('creadoEn', '>', Timestamp.fromMillis(desde)).orderBy('creadoEn', 'asc').limit(10).get();
-        const pagos = snap.docs.map((d) => { const x = d.data(); return { id: d.id, frase: x.frase || '', creadoMs: x.creadoEn?.toMillis?.() || ahora, prueba: !!x.prueba }; });
+        const pagos = snap.docs.map((d) => { const x = d.data(); return { id: d.id, frase: x.frase || '', nombre: x.nombre || '', monto: Number(x.monto) || 0, creadoMs: x.creadoEn?.toMillis?.() || ahora, prueba: !!x.prueba }; });
         res.json({ ok: true, ahora, silenciado, pagos });
     }
 );

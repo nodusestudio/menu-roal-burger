@@ -13,7 +13,7 @@ Copy-Item -Path (Join-Path $PSScriptRoot 'config.json') -Destination $dest -Forc
 # Lanzador sin ventana
 $script = Join-Path $dest 'voz-pagos.ps1'
 $vbs = Join-Path $dest 'iniciar-oculto.vbs'
-$linea = 'CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ""' + $script + '""", 0, False'
+$linea = 'CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File ""' + $script + '""", 0, False'
 Set-Content -Path $vbs -Value $linea -Encoding ASCII
 
 $accion = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"' + $vbs + '"')
@@ -26,7 +26,7 @@ Start-ScheduledTask -TaskName 'RoalVozPagos'
 Start-Sleep -Seconds 3
 if (-not $SinPrueba) {
 Write-Host 'Probando la voz... deberias escuchar: "Prueba de voz. Muchas gracias Juan Perez por tu pago de 27500 pesos. Ya ha sido confirmado."'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Prueba
+& powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File $script -Prueba
 }
 Write-Host ''
 Write-Host 'LISTO. La voz de pagos ya esta corriendo y arrancara sola cada vez que inicies sesion en este computador.'
