@@ -127,6 +127,7 @@ const tvHtmlPath = path.join(ROOT, 'tv.html');
 let tvHtml = fs.readFileSync(tvHtmlPath, 'utf8');
 tvHtml = tvHtml.replace(/tv\.js(\?v=[\w-]+)?(?=")/g, `tv.js?v=${stamp}`);
 tvHtml = tvHtml.replace(/firebase-config\.js(\?v=[\w-]+)?(?=")/g, `firebase-config.js?v=${stamp}`);
+tvHtml = tvHtml.replace(/qr-emv\.js(\?v=[\w-]+)?(?=")/g, `qr-emv.js?v=${stamp}`);
 fs.writeFileSync(tvHtmlPath, tvHtml, 'utf8');
 console.log(`[bump] tv.html      → tv.js?v=${stamp}  firebase-config.js?v=${stamp}`);
 

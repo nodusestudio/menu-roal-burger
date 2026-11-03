@@ -23419,6 +23419,7 @@ async function initAdmin() {
         ensureOrdersRealtimeTicker();
         setupLiveFirebaseSync();
         _bancoIniciar();
+        _cqRestaurar();
 
         fetchClients().then(() => {
             renderClients();
@@ -35836,6 +35837,26 @@ function _bancoPintarFiltro() {
     const inp = document.getElementById('bancoFecha');
     if (inp) { if (f.modo === 'fecha') inp.value = f.fecha; else if (f.modo !== 'fecha') inp.value = ''; }
 }
+// Métricas de los cobros con QR (botón "Cobrar con QR en la TV") del mismo día que se está viendo.
+function _bancoSuscribirCobros() {
+    const st = _bancoEstado();
+    if (st.unsubCobros) { try { st.unsubCobros(); } catch (_) { /* ya cerrada */ } st.unsubCobros = null; }
+    let q = firebaseDb.collection('cobros_bancolombia');
+    if (st.diaSuscrito) q = q.where('creadoEn', '>=', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(st.diaSuscrito))).where('creadoEn', '<', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(_bancoYmdMas(st.diaSuscrito, 1))));
+    q = q.orderBy('creadoEn', 'desc').limit(st.diaSuscrito ? 300 : 50);
+    st.unsubCobros = q.onSnapshot((snap) => {
+        const el = document.getElementById('bancoCobrosResumen'); if (!el) return;
+        const cs = snap.docs.map((d) => d.data());
+        if (!cs.length) { el.textContent = 'Cobros con QR: ninguno en esta fecha.'; return; }
+        const pagados = cs.filter((c) => c.estado === 'pagado');
+        const manuales = pagados.filter((c) => c.manual).length;
+        const cerrados = cs.filter((c) => c.estado === 'cancelado' || c.estado === 'expirado').length;
+        const esperas = pagados.map((c) => Number(c.esperaSeg) || 0).filter((n) => n > 0);
+        const prom = esperas.length ? Math.round(esperas.reduce((a, n) => a + n, 0) / esperas.length) : 0;
+        const total = pagados.reduce((a, c) => a + (Number(c.total) || 0), 0);
+        el.textContent = `Cobros con QR: ${cs.length} · ${pagados.length - manuales} pagados solos` + (manuales ? ` · ${manuales} confirmados a mano` : '') + (cerrados ? ` · ${cerrados} cancelados o vencidos` : '') + (prom ? ` · espera promedio ${prom >= 60 ? Math.floor(prom / 60) + ' min ' + (prom % 60) + ' s' : prom + ' s'}` : '') + ` · $${total.toLocaleString('es-CO')}`;
+    }, (e) => console.warn('[BANCO] cobros:', e && (e.code || e.message)));
+}
 function _bancoSuscribirLista() {
     const st = _bancoEstado();
     if (st.unsubLista) { try { st.unsubLista(); } catch (_) { /* ya cerrada */ } st.unsubLista = null; }
@@ -35844,6 +35865,7 @@ function _bancoSuscribirLista() {
     let q = firebaseDb.collection('avisos_banco');
     if (st.diaSuscrito) q = q.where('creadoEn', '>=', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(st.diaSuscrito))).where('creadoEn', '<', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(_bancoYmdMas(st.diaSuscrito, 1))));
     q = q.orderBy('creadoEn', 'desc').limit(st.diaSuscrito ? 500 : 100);
+    _bancoSuscribirCobros();
     st.unsubLista = q.onSnapshot((snap) => _bancoPintarLista(snap.docs),
         (e) => { console.warn('[BANCO] no se pudo leer avisos_banco:', e && (e.code || e.message)); const r = document.getElementById('bancoResumen'); if (r) r.textContent = 'No se pudieron leer los pagos.'; });
 }
@@ -35954,3 +35976,145 @@ function _bancoIniciar() {
     // Si el panel queda abierto pasada la medianoche, "Hoy" y "Ayer" se actualizan solos al cambiar el día.
     setInterval(() => { const st2 = _bancoEstado(); if (st2.diaSuscrito !== _bancoDiaActivo()) _bancoSuscribirLista(); }, 60000);
 }
+
+// ── Cobro con QR de Bancolombia en la TV ───────────────────────────────────
+// Botón "📲 Cobrar con QR en la TV" del modal de cobro. Abre un cobro (cobros_bancolombia/{id}) con el total del pedido,
+// muestra el QR + total en la TV (configuracion/tv_cobro, que lee /tv) y deja una tarjeta de espera abajo a la izquierda
+// para seguir trabajando. Cuando llega el pago por el valor exacto, la función bancoAviso marca el cobro 'pagado' y ESTA
+// pestaña (la que lo abrió) registra el pago del pedido como Bancolombia → Transferencia. Ver functions/cobrosQr.js.
+const COBRO_QR_ESPERA_MS = 30 * 60 * 1000;
+function _cqSesion() {
+    try { let id = sessionStorage.getItem('roal_cobro_sesion'); if (!id) { id = 's' + Math.random().toString(36).slice(2, 10); sessionStorage.setItem('roal_cobro_sesion', id); } return id; }
+    catch (_) { return window.__cqSesionMem || (window.__cqSesionMem = 's' + Math.random().toString(36).slice(2, 10)); }
+}
+function _cqEstado() { return (window.__cobroQr = window.__cobroQr || { cobro: null, unsub: null, tick: null, aplicando: false }); }
+function _cqTv(parche) {
+    return firebaseDb.collection('configuracion').doc('tv_cobro').set({ ...parche, actualizado: firestoreNow() }, { merge: true });
+}
+function _cqTarjeta() {
+    let c = document.getElementById('cobroQrCard');
+    if (!c) {
+        c = document.createElement('div'); c.id = 'cobroQrCard'; c.hidden = true;
+        c.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:9997;width:min(340px,calc(100vw - 28px));border-radius:14px;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.97);color:#fff;font:14px system-ui,sans-serif;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.5)';
+        document.body.appendChild(c);
+    }
+    return c;
+}
+function _cqPintar() {
+    const st = _cqEstado(), c = _cqTarjeta(), x = st.cobro;
+    if (!x) { c.hidden = true; return; }
+    c.hidden = false;
+    const seg = Math.max(0, Math.round((Date.now() - x.creadoMs) / 1000));
+    const reloj = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
+    const quien = x.cliente ? ` · ${escapeHtml(x.cliente)}` : '';
+    const btn = (id, txt, color) => `<button type="button" id="${id}" style="flex:1;border:0;border-radius:10px;padding:9px 8px;font-weight:700;cursor:pointer;background:${color};color:#fff;">${txt}</button>`;
+    if (x.estado === 'pagado') {
+        c.innerHTML = `<div style="font-weight:800;color:#7ee2a8;">✅ Pago recibido${x.pagador ? ' de ' + escapeHtml(x.pagador) : ''}</div><div style="margin-top:4px;">$${Number(x.total).toLocaleString('es-CO')}${quien} · registrando el cobro del pedido…</div>`;
+    } else {
+        c.innerHTML = `<div style="font-weight:800;">📲 Esperando pago · ${reloj}</div><div style="margin:4px 0 10px;">$${Number(x.total).toLocaleString('es-CO')}${quien}<br><span style="opacity:.75;font-size:12px;">El cliente escanea el QR de la TV y paga este valor exacto.</span></div><div style="display:flex;gap:8px;">${btn('cqYaPagoBtn', '✓ Ya pagó', '#2e7d32')}${btn('cqCancelarBtn', 'Cancelar', '#c62828')}</div>`;
+        document.getElementById('cqYaPagoBtn')?.addEventListener('click', _cqConfirmarManual);
+        document.getElementById('cqCancelarBtn')?.addEventListener('click', () => _cqCancelar('cancelado'));
+    }
+}
+function _cqLimpiar() {
+    const st = _cqEstado();
+    if (st.unsub) { try { st.unsub(); } catch (_) { /* ya cerrada */ } st.unsub = null; }
+    if (st.tick) { clearInterval(st.tick); st.tick = null; }
+    st.cobro = null; st.aplicando = false;
+    try { sessionStorage.removeItem('roal_cobro_id'); } catch (_) { /* sin almacenamiento */ }
+    _cqPintar();
+}
+async function _cqCancelar(motivo) {
+    const st = _cqEstado(), x = st.cobro; if (!x) return;
+    try {
+        await firebaseDb.collection('cobros_bancolombia').doc(x.id).update({ estado: motivo, cerradoEn: firestoreNow() });
+        const tv = await firebaseDb.collection('configuracion').doc('tv_cobro').get();
+        if (tv.exists && tv.data().cobroId === x.id) await _cqTv({ activo: false, estado: motivo });
+    } catch (e) { console.warn('[COBRO QR] cancelar:', e && e.message); }
+    _cqLimpiar();
+    if (motivo === 'expirado') showNotice('El cobro con QR venció (30 min) y se cerró.', 'info');
+}
+async function _cqConfirmarManual() {
+    const x = _cqEstado().cobro; if (!x || x.estado !== 'abierto') return;
+    if (!(await showConfirmModal({ title: '¿Ya llegó el pago?', message: `Confirma que el cliente ya pagó $${Number(x.total).toLocaleString('es-CO')} por Bancolombia. Se registrará el cobro del pedido.`, confirmText: 'Sí, ya pagó', cancelText: 'Todavía no', danger: false }))) return;
+    try {
+        await firebaseDb.collection('cobros_bancolombia').doc(x.id).update({ estado: 'pagado', manual: true, pagadoEn: firestoreNow(), esperaSeg: Math.round((Date.now() - x.creadoMs) / 1000) });
+        await _cqTv({ estado: 'pagado', pagador: '', pagadoMs: Date.now() });
+    } catch (e) { showNotice(`No se pudo confirmar: ${e.message || e}`, 'error'); }
+}
+// Registra el pago en el pedido: el mismo camino del modal de cobro (Bancolombia → Transferencia), una sola vez.
+async function _cqAplicar(x) {
+    const st = _cqEstado();
+    if (st.aplicando) return; st.aplicando = true;
+    try {
+        const ref = firebaseDb.collection('cobros_bancolombia').doc(x.id);
+        const toca = await firebaseDb.runTransaction(async (tx) => { const d = await tx.get(ref); if (!d.exists || d.data().aplicado) return false; tx.update(ref, { aplicado: true, aplicadoEn: firestoreNow() }); return true; });
+        if (!toca) return;
+        const order = ordersState.find((o) => o.id === x.pedidoId);
+        if (!order) { showNotice('Llegó el pago del QR pero no encuentro el pedido en pantalla. Revísalo en el POS.', 'error'); }
+        else if (isOrderPaid(order)) { showNotice('El pedido ya estaba cobrado; el pago del QR quedó registrado aparte.', 'info'); }
+        else {
+            const receive = x.receiveOrder === 'mesa' ? 'mesa' : (x.receiveOrder === 'true');
+            await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id });
+        }
+    } catch (e) { showNotice(`No se pudo registrar el pago del QR: ${e.message || e}`, 'error'); }
+    // la TV agradece unos segundos y luego vuelve a la publicidad
+    setTimeout(async () => { try { const tv = await firebaseDb.collection('configuracion').doc('tv_cobro').get(); if (tv.exists && tv.data().cobroId === x.id) await _cqTv({ activo: false }); } catch (_) { /* sin red */ } }, 16000);
+    _cqLimpiar();
+}
+function _cqEscuchar(id, datos) {
+    const st = _cqEstado();
+    if (st.unsub) { try { st.unsub(); } catch (_) { /* ya cerrada */ } }
+    st.cobro = { id, ...datos };
+    try { sessionStorage.setItem('roal_cobro_id', id); } catch (_) { /* sin almacenamiento */ }
+    st.unsub = firebaseDb.collection('cobros_bancolombia').doc(id).onSnapshot((snap) => {
+        if (!snap.exists) { _cqLimpiar(); return; }
+        const d = snap.data();
+        st.cobro = { id, ...d, creadoMs: st.cobro && st.cobro.creadoMs ? st.cobro.creadoMs : (d.creadoEn && d.creadoEn.toMillis ? d.creadoEn.toMillis() : Date.now()) };
+        if (d.estado === 'pagado' && !d.aplicado) { _cqPintar(); _cqAplicar(st.cobro); return; }
+        if (d.estado !== 'abierto') { _cqLimpiar(); return; }
+        _cqPintar();
+    }, (e) => console.warn('[COBRO QR] escuchando:', e && (e.code || e.message)));
+    if (st.tick) clearInterval(st.tick);
+    st.tick = setInterval(() => {
+        const x = st.cobro; if (!x) return;
+        if (x.estado === 'abierto' && Date.now() > x.expiraEn) { _cqCancelar('expirado'); return; }
+        _cqPintar();
+    }, 1000);
+    _cqPintar();
+}
+async function _cqIniciar() {
+    const order = _pfOrder, receive = _pfReceiveOrder;
+    if (!order) return;
+    const total = Math.round(_pfOrderTotal);
+    if (!(total > 0)) { showNotice('El pedido no tiene un total para cobrar.', 'error'); return; }
+    const st = _cqEstado();
+    if (st.cobro && st.cobro.estado === 'abierto') {
+        if (!(await showConfirmModal({ title: 'Ya hay un cobro en la TV', message: `Está esperando $${Number(st.cobro.total).toLocaleString('es-CO')}. ¿Cancelarlo y cobrar este pedido?`, confirmText: 'Sí, cambiar', cancelText: 'No', danger: false }))) return;
+        await _cqCancelar('cancelado');
+    }
+    _pfClose();
+    try {
+        const ref = firebaseDb.collection('cobros_bancolombia').doc();
+        const ahora = Date.now();
+        const cliente = String(order.customerName || '').trim();
+        const datos = { pedidoId: order.id, total, cliente, receiveOrder: receive === 'mesa' ? 'mesa' : String(!!receive), estado: 'abierto', origen: 'qr', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + COBRO_QR_ESPERA_MS };
+        await ref.set(datos);
+        await firebaseDb.collection('configuracion').doc('tv_cobro').set({ activo: true, cobroId: ref.id, estado: 'esperando', total, cliente: cliente.split(/\s+/)[0] || '', pagador: '', creadoMs: ahora, pagadoMs: 0, actualizado: firestoreNow() });
+        _cqEscuchar(ref.id, { ...datos, creadoMs: ahora });
+        showNotice('QR en la TV. Esperando el pago…', 'ok');
+    } catch (e) { showNotice(`No se pudo abrir el cobro con QR: ${e.message || e}`, 'error'); }
+}
+// Si se recarga el panel con un cobro abierto, esta pestaña lo retoma (solo la pestaña que lo abrió).
+async function _cqRestaurar() {
+    let id = null; try { id = sessionStorage.getItem('roal_cobro_id'); } catch (_) { /* sin almacenamiento */ }
+    if (!id || _meseroSession) return;
+    try {
+        const d = await firebaseDb.collection('cobros_bancolombia').doc(id).get();
+        if (!d.exists) return;
+        const x = d.data();
+        if (x.sesion !== _cqSesion() || x.estado !== 'abierto' || Date.now() > x.expiraEn) return;
+        _cqEscuchar(id, { ...x, creadoMs: x.creadoEn && x.creadoEn.toMillis ? x.creadoEn.toMillis() : Date.now() });
+    } catch (_) { /* sin red: se reintenta con el próximo arranque */ }
+}
+document.getElementById('pfQrTvBtn')?.addEventListener('click', _cqIniciar);

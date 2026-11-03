@@ -384,8 +384,10 @@ exports.bancoAviso = onRequest(
             res.status(500).json({ ok: false, error: 'guardar' });
             return;
         }
-        console.log('bancoAviso', JSON.stringify({ monto: pago.monto, prueba: !!prueba }));
-        res.json({ ok: true, aviso: true });
+        // Si hay UN cobro con QR abierto por ese valor exacto (botón "Cobrar con QR" del POS), se enlaza y la TV agradece.
+        const enlace = prueba ? { enlazado: false, motivo: 'prueba' } : await require('./cobrosQr').enlazarPago(db, { id, nombre: pago.nombre, monto: pago.monto });
+        console.log('bancoAviso', JSON.stringify({ monto: pago.monto, prueba: !!prueba, cobro: enlace.enlazado ? enlace.cobroId : enlace.motivo }));
+        res.json({ ok: true, aviso: true, cobro: enlace.enlazado ? enlace.cobroId : null });
     }
 );
 

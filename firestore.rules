@@ -273,6 +273,11 @@ service cloud.firestore {
     }
 
     // Pagos recibidos en Bancolombia (los escribe la función bancoAviso; el administrador puede leer y eliminar).
+    // Cobros con QR de Bancolombia (POS + TV): los abre y cierra el panel; la función bancoAviso los marca pagados.
+    match /cobros_bancolombia/{doc} {
+      allow read, write: if isAdmin();
+    }
+
     // Computadores con el programa de voz de pagos: el panel solo puede cambiar `silenciado` (lo crea la función bancoLector).
     match /banco_equipos/{doc} {
       allow read, delete: if isAdmin();

@@ -339,6 +339,8 @@
             if (estabaPausada && !cfg.pausada) avanzar(); // al reanudar pasa al siguiente enseguida
             else if (!estabaPausada && !cfg.pausada && !enCurso) { clearTimeout(timer); timer = setTimeout(avanzar, ROTACION_MS); } // cambió el tiempo
         }, err('tv_config'));
+        // El POS abre/cierra el cobro con QR aquí (en modo demo no se escucha, para no taparlo)
+        if (!/[?&]cobro_demo=/.test(location.search)) db.collection('configuracion').doc('tv_cobro').onSnapshot(function (snap) { aplicarCobro(snap.exists ? snap.data() : null); }, err('tv_cobro'));
         db.collection('categorias').onSnapshot(function (snap) {
             state.categorias = snap.docs.map(function (d) { var c = d.data(); return { name: c.name, active: c.active }; });
             guardarCache();
@@ -446,6 +448,132 @@
     // La huella de partida se toma al abrir la página (con la misma caché que cargó esta versión).
     if (window.fetch) leerPagina(false).then(function (h) { huellaInicial = h; }).catch(function () { /* se toma en la primera revisión */ });
     setInterval(revisarVersion, REVISION_MS);
+
+
+    // ── Cobro con QR ──
+    // El POS abre un cobro y escribe configuracion/tv_cobro { activo, cobroId, estado: 'esperando' | 'pagado', total, cliente,
+    // pagador }. Mientras esté activo, la mitad derecha muestra el QR de Bancolombia y el total (la foto sigue rotando). Al llegar
+    // el pago (estado 'pagado') FODI agradece unos segundos y la pantalla vuelve a la publicidad.
+    // Prueba sin POS: /tv?cobro_demo=38000 (esperando 12 s y luego el agradecimiento). /tv?cobro_demo=1000&qrvalor=12 prueba el QR con valor.
+    var infoEl = document.querySelector('.info');
+    var cobroEl = document.getElementById('cobro');
+    var qrJson = null;
+    var ultimoCobro = null;
+    var cobroPintado = '';
+    var cobroVisto = {};      // cobroId → ms (reloj de ESTA pantalla) en que se vio por primera vez en cada estado
+    var cobroFin = null;
+    var cobroReloj = null;
+    var CONFETI = ['#fb4b08', '#5e3d2c', '#2e9d5b', '#f5b800', '#1d2140'];
+
+    function dinero(n) { return '$' + String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+
+    function cargarQr() {
+        function usar(j) { if (j && j.payload) { qrJson = j; cobroPintado = ''; if (ultimoCobro) aplicarCobro(ultimoCobro); } }
+        var guardado = null;
+        try { guardado = JSON.parse(localStorage.getItem('roal_tv_qr') || 'null'); } catch (_) { guardado = null; }
+        if (guardado) usar(guardado);
+        if (!window.fetch) return;
+        fetch('qr-cobro.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+            try { localStorage.setItem('roal_tv_qr', JSON.stringify(j)); } catch (_) { /* sin almacenamiento */ }
+            usar(j);
+        }).catch(function () { /* sin red: se usa el guardado */ });
+    }
+
+    // Texto que lleva el QR: el fijo del comercio; solo si se pidió (qrvalor=11|12 en la URL o "conValor" en qr-cobro.json) se prueba con el valor incluido.
+    function textoQr(total) {
+        if (!qrJson || !qrJson.payload) return '';
+        var modo = (/[?&]qrvalor=(11|12)\b/.exec(location.search) || [])[1] || (qrJson.conValor === true ? '12' : (qrJson.conValor === '11' ? '11' : ''));
+        if (modo && window.RoalQrEmv) { var q = window.RoalQrEmv.conMonto(qrJson.payload, total, modo); if (q) return q; }
+        return qrJson.payload;
+    }
+
+    function dibujarQr(texto) {
+        if (!window.qrcode || !texto) return '';
+        try { var q = window.qrcode(0, 'L'); q.addData(texto, 'Byte'); q.make(); return q.createSvgTag({ cellSize: 1, margin: 0, scalable: true }); } catch (e) { console.warn('[TV] QR:', e && e.message); return ''; }
+    }
+
+    function ocultarCobro() {
+        clearTimeout(cobroFin); clearInterval(cobroReloj); cobroFin = null; cobroReloj = null;
+        infoEl.classList.remove('con-cobro'); cobroEl.classList.remove('pagado'); cobroPintado = '';
+    }
+
+    function mensajeEspera(seg) {
+        var pts = '<span class="pts"><i>.</i><i>.</i><i>.</i></span>';
+        if (seg < 30) return 'Esperando tu pago' + pts;
+        if (seg < 100) return 'Ya casi… el banco está confirmando tu pago' + pts;
+        return 'Sigo atento a tu pago' + pts;
+    }
+
+    function pintarEspera(d) {
+        var clave = d.cobroId + ':' + d.total;
+        if (cobroPintado !== clave) {
+            cobroPintado = clave;
+            if (!cobroVisto[d.cobroId + ':e']) cobroVisto[d.cobroId + ':e'] = Date.now();
+            document.getElementById('cQr').innerHTML = dibujarQr(textoQr(d.total));
+            document.getElementById('cTotal').textContent = dinero(d.total);
+            clearInterval(cobroReloj);
+            var msg = document.getElementById('cMsg');
+            var tic = function () {
+                var seg = Math.round((Date.now() - cobroVisto[d.cobroId + ':e']) / 1000);
+                if (seg > 32 * 60) { ocultarCobro(); return; } // el POS no lo cerró (se cerró la pestaña): la TV vuelve sola a la publicidad
+                msg.innerHTML = mensajeEspera(seg);
+            };
+            tic();
+            cobroReloj = setInterval(tic, 4000);
+        }
+        cobroEl.classList.remove('pagado');
+        infoEl.classList.add('con-cobro');
+    }
+
+    function lanzarConfeti() {
+        var c = document.getElementById('cConfeti'), h = '';
+        for (var i = 0; i < 38; i++) {
+            h += '<i style="left:' + Math.round(Math.random() * 100) + '%;background:' + CONFETI[i % CONFETI.length] + ';animation-delay:' + (Math.random() * 0.9).toFixed(2) + 's;animation-duration:' + (2.4 + Math.random() * 1.4).toFixed(2) + 's"></i>';
+        }
+        c.innerHTML = h;
+        setTimeout(function () { c.innerHTML = ''; }, 5000);
+    }
+
+    function pintarGracias(d) {
+        var clave = d.cobroId + ':pagado';
+        if (cobroPintado !== clave) {
+            cobroPintado = clave;
+            clearInterval(cobroReloj); cobroReloj = null;
+            document.getElementById('gNombre').textContent = d.pagador ? '¡Gracias, ' + d.pagador + '!' : '¡Gracias por tu pago!';
+            document.getElementById('gDetalle').textContent = 'Tu pago de ' + dinero(d.total) + ' fue confirmado';
+            document.getElementById('cMsg').innerHTML = '¡Pago confirmado!';
+            // se reinicia la animación del check al volver a mostrarla
+            var chk = cobroEl.querySelector('.g-check'); if (chk) { var p = chk.parentNode; p.removeChild(chk); p.insertBefore(chk, p.firstChild); }
+            lanzarConfeti();
+        }
+        cobroEl.classList.add('pagado');
+        infoEl.classList.add('con-cobro');
+    }
+
+    function aplicarCobro(d) {
+        ultimoCobro = d;
+        if (!d || d.activo !== true || !d.cobroId) { ocultarCobro(); return; }
+        if (d.estado === 'pagado') {
+            var k = d.cobroId + ':p';
+            if (!cobroVisto[k]) cobroVisto[k] = Date.now();
+            var resta = 14000 - (Date.now() - cobroVisto[k]);
+            if (resta <= 0) { ocultarCobro(); return; }
+            pintarGracias(d);
+            clearTimeout(cobroFin); cobroFin = setTimeout(ocultarCobro, resta);
+            return;
+        }
+        if (d.estado === 'esperando') { pintarEspera(d); return; }
+        ocultarCobro();
+    }
+
+    (function demoCobro() {
+        var m = /[?&]cobro_demo=(\d+)/.exec(location.search);
+        if (!m) return;
+        var base = { activo: true, cobroId: 'demo' + Date.now(), total: Number(m[1]) || 38000, cliente: '', pagador: '' };
+        aplicarCobro(Object.assign({}, base, { estado: 'esperando' }));
+        setTimeout(function () { aplicarCobro(Object.assign({}, base, { estado: 'pagado', pagador: 'Johan Rojas' })); }, 12000);
+    })();
+    cargarQr();
 
     cargarCache();
     reconstruir();

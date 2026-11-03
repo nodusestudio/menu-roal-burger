@@ -819,6 +819,11 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { ...FECHAS } }
     },
     {
+        name: 'cobros_qr',
+        description: 'Cobros con QR de Bancolombia hechos desde el POS con la pantalla de TV: cuántos se abrieron, cuántos se pagaron solos (el sistema los enlazó con el pago que llegó) o confirmados a mano, cancelados o vencidos, cuánto tardó en promedio el cliente en pagar y el total cobrado. Sin fechas = hoy.',
+        input_schema: { type: 'object', properties: { ...FECHAS } }
+    },
+    {
         name: 'alertas_fodi',
         description: 'Alertas proactivas del día: insumos que subieron, productos/promos con margen bajo, caída o alza de ventas de ayer y resultados de sugerencias evaluadas. "leer" trae las últimas guardadas; "recalcular" las vuelve a calcular ahora.',
         input_schema: { type: 'object', properties: { accion: { type: 'string', enum: ['leer', 'recalcular'] } } }
@@ -1153,6 +1158,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'pantalla_tv') return await require('./fodiTv').pantallaTv(db);
         if (nombre === 'avisos_celular') return await require('./fodiAvisos').avisosCelular(db);
         if (nombre === 'pagos_bancolombia') return await require('./fodiBanco').pagosBancolombia(db, args);
+        if (nombre === 'cobros_qr') return await require('./fodiCobrosQr').cobrosQr(db, args);
         if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);
         if (nombre === 'lecciones') return await require('./fodiLecciones').lecciones(db, args);
         if (nombre === 'sumar_mesas') return await require('./fodiPedidos').sumarMesas(db, args);
