@@ -24661,10 +24661,69 @@ function renderGastoMethodButtons() {
     ).join('');
 }
 
+// Pago dividido: un solo gasto (ej. un sueldo) repartido entre varios métodos. Se guarda un
+// documento por método (los saldos por método leen paymentMethod/monto de cada documento, así
+// no hay que tocar ningún cálculo) unidos por el mismo `grupoId`; el ticket sale único.
+let _gastoSplitOn = false;
+let _gastoSplitAmounts = {};
+
+function _gastoMontoTotal() {
+    return Number((document.getElementById('gastoMonto')?.value || '').replace(/\./g, '') || 0);
+}
+
+function _gastoSplitPartes() {
+    return Object.entries(_gastoSplitAmounts)
+        .map(([method, amount]) => ({ method, amount: Math.round(Number(amount) || 0) }))
+        .filter((p) => p.amount > 0);
+}
+
+function _gastoSplitResumen() {
+    const total = _gastoMontoTotal();
+    const asignado = _gastoSplitPartes().reduce((s, p) => s + p.amount, 0);
+    return { total, asignado, falta: total - asignado };
+}
+
+function _renderGastoSplitBox() {
+    const box = document.getElementById('gastoSplitBox');
+    const toggle = document.getElementById('gastoSplitToggle');
+    const grid = document.getElementById('gastoMethodsGrid');
+    if (toggle) toggle.textContent = _gastoSplitOn ? '↩ Pagar con un solo método' : '✂️ Dividir entre varios métodos';
+    if (grid) grid.toggleAttribute('hidden', _gastoSplitOn);
+    if (!box) return;
+    box.toggleAttribute('hidden', !_gastoSplitOn);
+    if (!_gastoSplitOn) { box.innerHTML = ''; return; }
+    const metodos = [...getEnabledPaymentMethods(), OTRO_PAYMENT_METHOD];
+    box.innerHTML = metodos.map((m) => {
+        const v = Number(_gastoSplitAmounts[m.id]) || 0;
+        return `<div class="gasto-field" style="margin-bottom:8px;">
+            <label>${m.icon} ${escapeHtml(m.label)}</label>
+            <div class="dpm-cash-wrap"><span class="dpm-cash-prefix">$</span>
+            <input type="text" class="dpm-cash-input" data-gasto-split-input="${escapeHtml(m.id)}" placeholder="0" inputmode="numeric" autocomplete="off" value="${v ? String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}"></div>
+        </div>`;
+    }).join('') + '<p id="gastoSplitStatus" style="margin:4px 0 0;font-size:0.85rem;"></p>';
+    _updateGastoSplitStatus();
+}
+
+function _updateGastoSplitStatus() {
+    const el = document.getElementById('gastoSplitStatus');
+    if (!el) return;
+    const { total, falta } = _gastoSplitResumen();
+    if (!total) { el.style.color = 'var(--admin-muted, #9ca3af)'; el.textContent = 'Escribe primero el monto total.'; }
+    else if (falta === 0) { el.style.color = '#22c55e'; el.textContent = `✓ Cuadra: ${formatMoney(total)}`; }
+    else if (falta > 0) { el.style.color = '#f59e0b'; el.textContent = `Faltan ${formatMoney(falta)} por asignar`; }
+    else { el.style.color = '#ef4444'; el.textContent = `Te pasaste por ${formatMoney(-falta)}`; }
+}
+
 function _updateGastoConfirmState() {
     const btn = document.getElementById('gastoRegistrarBtn');
     if (!btn) return;
-    const monto = Number((document.getElementById('gastoMonto')?.value || '').replace(/\./g, '') || 0);
+    const monto = _gastoMontoTotal();
+    if (_gastoSplitOn) {
+        const { falta } = _gastoSplitResumen();
+        btn.disabled = !(monto > 0 && falta === 0 && _gastoSplitPartes().length > 0);
+        _updateGastoSplitStatus();
+        return;
+    }
     btn.disabled = !(monto > 0 && _gastoSelectedMethod);
 }
 
@@ -24770,8 +24829,11 @@ function _gastoShowStep2(catId) {
     if (descEl)  descEl.value  = '';
     if (montoEl) montoEl.value = '';
     _gastoSelectedMethod = null;
+    _gastoSplitOn = false;
+    _gastoSplitAmounts = {};
     document.querySelectorAll('#gastoMethodsGrid .dpm-method-btn').forEach((b) => b.classList.remove('dpm-method-btn--active'));
     renderGastoMethodButtons();
+    _renderGastoSplitBox();
     _updateGastoConfirmState();
     descEl?.focus();
 }
@@ -25059,6 +25121,14 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
     const backBtn = e.target.closest('#gastoBackBtn');
     if (backBtn) { _gastoShowStep1(); return; }
 
+    if (e.target.closest('#gastoSplitToggle')) {
+        _gastoSplitOn = !_gastoSplitOn;
+        _gastoSplitAmounts = {};
+        _renderGastoSplitBox();
+        _updateGastoConfirmState();
+        return;
+    }
+
     const methodBtn = e.target.closest('[data-gasto-method]');
     if (methodBtn) {
         document.querySelectorAll('[data-gasto-method]').forEach((b) => b.classList.remove('dpm-method-btn--active'));
@@ -25074,6 +25144,17 @@ document.getElementById('gastoModal')?.addEventListener('keydown', (e) => {
         e.preventDefault();
         _addGastoSubcategoria();
     }
+});
+
+// Montos por método del pago dividido: se formatean con puntos como el monto total. Sin
+// re-renderizar la caja (hacerlo le quitaría el foco al teclear).
+document.getElementById('gastoSplitBox')?.addEventListener('input', (e) => {
+    const input = e.target.closest('[data-gasto-split-input]');
+    if (!input) return;
+    const raw = input.value.replace(/\D/g, '');
+    input.value = raw === '' ? '' : parseInt(raw, 10).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    _gastoSplitAmounts[input.dataset.gastoSplitInput] = raw === '' ? 0 : parseInt(raw, 10);
+    _updateGastoConfirmState();
 });
 
 document.getElementById('gastoMonto')?.addEventListener('input', (e) => {
@@ -25102,6 +25183,14 @@ function _gastoCategoriaLabel(gasto) {
 function _gastoMetodoLabel(gasto) {
     const m = findPaymentMethodOrOtro(gasto.paymentMethod);
     return m ? m.label : (gasto.paymentMethod || 'Sin especificar');
+}
+
+// Filas [etiqueta, valor] del método de pago: una por método si el gasto fue dividido (sin recortar nada).
+function _gastoMetodoRows(gasto) {
+    if (Array.isArray(gasto.partes) && gasto.partes.length > 1) {
+        return gasto.partes.map((p) => [_gastoMetodoLabel({ paymentMethod: p.method }), formatMoney(p.amount)]);
+    }
+    return [['Metodo de pago', _gastoMetodoLabel(gasto)]];
 }
 
 function buildGastoTicketHtml(gasto) {
@@ -25137,10 +25226,11 @@ function buildGastoTicketHtml(gasto) {
                             <span>Descripcion</span>
                             <span>${escapeHtml(gasto.descripcion || 'Sin descripcion')}</span>
                         </div>
+                        ${_gastoMetodoRows(gasto).map(([k, v]) => `
                         <div class="ticket-customer-row">
-                            <span>Metodo de pago</span>
-                            <span>${escapeHtml(_gastoMetodoLabel(gasto))}</span>
-                        </div>
+                            <span>${escapeHtml(k)}</span>
+                            <span>${escapeHtml(v)}</span>
+                        </div>`).join('')}
                     </div>
                 </section>
                 <div class="ticket-total">
@@ -25179,7 +25269,7 @@ function buildGastoESCPOSData(gasto) {
     if (gasto.subcategoria) wc('Subcategoria', gasto.subcategoria);
     wl('Descripcion:');
     wl('  ' + (gasto.descripcion || 'Sin descripcion'));
-    wc('Metodo de pago', _gastoMetodoLabel(gasto));
+    _gastoMetodoRows(gasto).forEach(([k, v]) => wc(k, v));
 
     sep2();
     pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);
@@ -25293,8 +25383,10 @@ document.getElementById('gastoTicketPreviewPrintBtn')?.addEventListener('click',
 
 document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async () => {
     const descripcion = document.getElementById('gastoDescripcion')?.value?.trim() || '';
-    const monto = Number((document.getElementById('gastoMonto')?.value || '').replace(/\./g, '') || 0);
-    if (!monto || monto <= 0 || !_gastoSelectedMethod) return;
+    const monto = _gastoMontoTotal();
+    const partes = _gastoSplitOn ? _gastoSplitPartes() : [];
+    if (!monto || monto <= 0) return;
+    if (_gastoSplitOn ? (!partes.length || partes.reduce((s, p) => s + p.amount, 0) !== monto) : !_gastoSelectedMethod) return;
 
     const registrarBtn = document.getElementById('gastoRegistrarBtn');
     if (registrarBtn) { registrarBtn.disabled = true; registrarBtn.textContent = 'Guardando...'; }
@@ -25302,23 +25394,28 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
     try {
         const gastoId = `gasto_${Date.now()}`;
         const fromHistorial = _gastoFromHistorial;
-        const gasto = {
-            id: gastoId,
+        const base = {
             categoria: _gastoCategoriaId || 'otros',
             subcategoria: _gastoSubcategoria || '',
             descripcion,
-            monto,
-            paymentMethod: _gastoSelectedMethod,
             registradoAt: Date.now(),
             cajaAperturaAt: fromHistorial ? null : (cajaAperturaAt || 0),
             tipo: fromHistorial ? 'externo' : 'caja',
         };
-        await saveGasto(gasto);
+        // Un documento por método (con `grupoId` común si fue dividido): los saldos por método
+        // y los informes siguen leyendo paymentMethod/monto sin cambios.
+        const docs = partes.length > 1
+            ? partes.map((p, i) => ({ ...base, id: `${gastoId}_${i + 1}`, grupoId: gastoId, monto: p.amount, montoTotal: monto, paymentMethod: p.method }))
+            : [{ ...base, id: gastoId, monto, paymentMethod: partes.length === 1 ? partes[0].method : _gastoSelectedMethod }];
+        const gasto = partes.length > 1
+            ? { ...base, id: gastoId, monto, paymentMethod: 'split', partes }
+            : docs[0];
+        for (const d of docs) await saveGasto(d);
         // Informes → Gastos lee de _gastosCajaState sin importar el tipo/origen, así que
         // se actualiza sin importar desde qué pantalla se registró (antes solo se hacía
         // para el caso "no viene de Historial", y el ledger de Informes quedaba desfasado
         // hasta el próximo refresco manual).
-        _gastosCajaState = [gasto, ..._gastosCajaState];
+        _gastosCajaState = [...docs, ..._gastosCajaState];
         closeGastoModal();
         if (fromHistorial) {
             await renderLibroCierres();
