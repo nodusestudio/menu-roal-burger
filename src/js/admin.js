@@ -35995,7 +35995,7 @@ function _cqTarjeta() {
     let c = document.getElementById('cobroQrCard');
     if (!c) {
         c = document.createElement('div'); c.id = 'cobroQrCard'; c.hidden = true;
-        c.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:9997;width:min(340px,calc(100vw - 28px));border-radius:14px;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.97);color:#fff;font:14px system-ui,sans-serif;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.5)';
+        c.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:2147482000;width:min(340px,calc(100vw - 28px));border-radius:14px;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.97);color:#fff;font:14px system-ui,sans-serif;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.5)';
         document.body.appendChild(c);
     }
     return c;
@@ -36096,7 +36096,7 @@ function _cqPedirMonto(total, cliente) {
     return new Promise((resolve) => {
         const fmt = (n) => '$' + Number(n).toLocaleString('es-CO');
         const fondo = document.createElement('div');
-        fondo.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+        fondo.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
         const caja = document.createElement('div');
         caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:20px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
         const boton = 'border:0;border-radius:12px;padding:13px 14px;font-weight:800;font-size:16px;cursor:pointer;color:#fff;';
@@ -36173,3 +36173,14 @@ async function _cqRestaurar() {
     } catch (_) { /* sin red: se reintenta con el próximo arranque */ }
 }
 document.getElementById('pfQrTvBtn')?.addEventListener('click', _cqIniciar);
+
+// ── Ticket de Recepción: si es más alto que la pantalla no debe quedar "pegado" (el botón Cobrar quedaba inalcanzable) ──
+(function _admTicketAlto() {
+    const panel = document.getElementById('orderTicketPanel');
+    if (!panel) return;
+    const revisar = () => panel.classList.toggle('ticket-alto', panel.offsetHeight > window.innerHeight - 24);
+    if (window.ResizeObserver) new ResizeObserver(revisar).observe(panel);
+    window.addEventListener('resize', revisar);
+    setInterval(revisar, 1500); // red de seguridad: el ticket cambia de alto al cargar un pedido, y no todos los navegadores avisan
+    revisar();
+})();

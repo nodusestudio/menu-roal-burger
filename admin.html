@@ -13846,6 +13846,14 @@
         }
         @keyframes adminSpinLoad { to { transform: rotate(360deg); } }
     </style>
+<style>
+        /* Ticket de Recepción más alto que la pantalla: deja de estar "pegado" arriba. Si se queda fijo, la parte de abajo
+           (el botón Cobrar) no se puede alcanzar con la rueda del mouse mientras las listas de la izquierda sean largas.
+           Con esta clase (la pone admin.js) el ticket se desplaza junto con la página. Si cabe en la pantalla sigue pegado. */
+        @media (min-width: 769px) {
+            .ticket-panel.ticket-alto { position: relative !important; top: auto !important; }
+        }
+    </style>
 </head>
 <body class="admin-loading">
     <section class="admin-auth-overlay" id="adminAuthOverlay" aria-label="Acceso administrador">
