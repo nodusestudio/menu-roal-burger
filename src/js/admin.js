@@ -23832,7 +23832,11 @@ function _pfShowStep(stepId) {
 
 // Aplica el resultado del cobro al pedido (método simple o dividido) y hace la transición
 // de estado correspondiente (mesa/recepción/solo-pago). Compartido por ambos flujos.
-async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
+async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate, opts = {}) {
+    // opts.despues: el pago llegó solo (QR), así que primero se actualiza y se cierra el ticket y recién después se pregunta por imprimir;
+    // si no, la pregunta bloquea el cierre del ticket hasta que alguien la conteste.
+    const _despues = [];
+    const _pedirImpresion = async (o) => { if (opts.despues) _despues.push(o); else await _promptPrintReceiptAfterCharge(o); };
     try {
         const todayStr = new Date().toISOString().split('T')[0];
         const paidSinceApertura = ordersState.filter((o) => {
@@ -23865,7 +23869,7 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             // 'entregado' definitivo ~20 min después (y ahí se acreditan los puntos).
             await updateOrder(order.id, { status: 'enviado', enviadoAt: firestoreNow(), deliveredAt: firestoreNow(), ...paymentUpdate });
             _patchLocalOrder({ status: 'enviado' });
-            await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState, status: 'enviado' });
+            await _pedirImpresion({ ...order, ...paymentFieldsForLocalState, status: 'enviado' });
             await reloadDataAndRender();
             // Ocultar el ticket al cobrar en escritorio también — antes solo se cerraba en
             // móvil (isMobileAdminViewport) y en desktop el panel quedaba abierto mostrando
@@ -23876,7 +23880,7 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             const copied = await copyTextToClipboard(buildReceivedOrderMessage({ ...order, ...paymentUpdate }));
             await updateOrder(order.id, { status: 'preparacion', receivedAt: firestoreNow(), ...paymentUpdate });
             _patchLocalOrder({ status: 'preparacion' });
-            await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState, status: 'preparacion' });
+            await _pedirImpresion({ ...order, ...paymentFieldsForLocalState, status: 'preparacion' });
             await reloadDataAndRender();
             closeMobileTicketPanel({ clearSelection: true });
             showNotice(
@@ -23891,7 +23895,7 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             await updateOrder(order.id, paymentUpdate);
             _patchLocalOrder();
             if (!wasAlreadyPaid) {
-                await _promptPrintReceiptAfterCharge({ ...order, ...paymentFieldsForLocalState });
+                await _pedirImpresion({ ...order, ...paymentFieldsForLocalState });
                 // Domicilio cobrado: deja copiado el mensaje de confirmación (con el pago ya definido),
                 // después de la impresión para que no lo pise el mensaje del recibo.
                 if (order.orderType === 'domicilio') {
@@ -23907,6 +23911,7 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate) {
             _cajaDiariaAutoOpened = true;
             _navigateToCajaDiaria();
         }
+        for (const o of _despues) await _promptPrintReceiptAfterCharge(o);
     } catch (err) {
         showNotice(`No se pudo procesar el pedido: ${err.message || 'error inesperado.'}`, 'error');
     }
@@ -36010,14 +36015,63 @@ function _cqPintar() {
     const btn = (id, txt, color) => `<button type="button" id="${id}" style="flex:1;border:0;border-radius:10px;padding:9px 8px;font-weight:700;cursor:pointer;background:${color};color:#fff;">${txt}</button>`;
     if (x.estado === 'pagado') {
         c.innerHTML = `<div style="font-weight:800;color:#7ee2a8;">✅ Pago recibido${x.pagador ? ' de ' + escapeHtml(x.pagador) : ''}</div><div style="margin-top:4px;">$${Number(x.total).toLocaleString('es-CO')}${quien} · registrando el cobro del pedido…</div>`;
+    } else if (st.pagoSuelto) {
+        const p = st.pagoSuelto, ped = Number(x.pedidoTotal) || Number(x.total);
+        const rel = p.monto < ped ? `es menos del total del pedido ($${ped.toLocaleString('es-CO')}): quedaría como pago parcial` : (p.monto > ped ? `es más del total del pedido ($${ped.toLocaleString('es-CO')}): se registra el total` : 'es el total del pedido');
+        c.innerHTML = `<div style="font-weight:800;color:#ffd479;">💬 Llegó un pago distinto</div><div style="margin:4px 0 10px;">$${p.monto.toLocaleString('es-CO')}${p.nombre ? ' de ' + escapeHtml(p.nombre) : ''}<br><span style="opacity:.8;font-size:12px;">El cobro era de $${Number(x.total).toLocaleString('es-CO')}; ${rel}. ¿Es de este cliente?</span></div><div style="display:flex;gap:8px;">${btn('cqAceptarBtn', '✓ Sí, aplicarlo', '#2e7d32')}${btn('cqIgnorarBtn', 'No', '#555')}</div>`;
+        document.getElementById('cqAceptarBtn')?.addEventListener('click', _cqAceptarPagoSuelto);
+        document.getElementById('cqIgnorarBtn')?.addEventListener('click', () => { _cqEstado().pagoSuelto = null; _cqPintar(); });
     } else {
         c.innerHTML = `<div style="font-weight:800;">📲 Esperando pago · ${reloj}</div><div style="margin:4px 0 10px;">$${Number(x.total).toLocaleString('es-CO')}${quien}<br><span style="opacity:.75;font-size:12px;">El cliente escanea el QR de la TV y paga este valor exacto.</span></div><div style="display:flex;gap:8px;">${btn('cqYaPagoBtn', '✓ Ya pagó', '#2e7d32')}${btn('cqCancelarBtn', 'Cancelar', '#c62828')}</div>`;
         document.getElementById('cqYaPagoBtn')?.addEventListener('click', _cqConfirmarManual);
         document.getElementById('cqCancelarBtn')?.addEventListener('click', () => _cqCancelar('cancelado'));
     }
 }
+// Nombre corto para la TV: un nombre y un apellido (mismo criterio que la voz).
+function _cqNombreCorto(n) {
+    const t = String(n || '').trim().split(/\s+/).filter(Boolean);
+    if (t.length <= 2) return t.join(' ');
+    return t.length === 3 ? `${t[0]} ${t[1]}` : `${t[0]} ${t[2]}`;
+}
+// Un pago llegó mientras hay un cobro abierto, pero NO por el valor del cobro (o no pudo enlazarse solo): se pregunta si es de este cobro.
+function _cqVigilarPagos(creadoMs) {
+    const st = _cqEstado();
+    if (st.unsubPagos) { try { st.unsubPagos(); } catch (_) { /* ya cerrada */ } st.unsubPagos = null; }
+    st.unsubPagos = firebaseDb.collection('avisos_banco').where('creadoEn', '>', firebase.firestore.Timestamp.fromMillis(creadoMs - 2000)).orderBy('creadoEn', 'asc').limit(10).onSnapshot((snap) => {
+        snap.docChanges().forEach((ch) => {
+            if (ch.type !== 'added') return;
+            const id = ch.doc.id, p = ch.doc.data();
+            if (p.prueba || p.cobroId) return;
+            // se espera unos segundos: la función puede estar enlazándolo solo en este mismo momento
+            setTimeout(async () => {
+                try {
+                    const x = st.cobro; if (!x || x.estado !== 'abierto') return;
+                    const d = await firebaseDb.collection('avisos_banco').doc(id).get();
+                    if (!d.exists || d.data().cobroId) return;
+                    st.pagoSuelto = { id, nombre: p.nombre || '', monto: Number(p.monto) || 0 };
+                    _cqPintar();
+                } catch (_) { /* sin red */ }
+            }, 4500);
+        });
+    }, (e) => console.warn('[COBRO QR] vigilando pagos:', e && (e.code || e.message)));
+}
+// El cajero acepta ese pago como el de este cobro: si fue menos del total del pedido queda como pago parcial; si fue igual o más, como pago completo.
+async function _cqAceptarPagoSuelto() {
+    const st = _cqEstado(), x = st.cobro, p = st.pagoSuelto; if (!x || !p || x.estado !== 'abierto') return;
+    const pedidoTotal = Number(x.pedidoTotal) || Number(x.total);
+    const completo = p.monto >= pedidoTotal;
+    const monto = completo ? pedidoTotal : p.monto;
+    try {
+        await firebaseDb.collection('cobros_bancolombia').doc(x.id).update({ estado: 'pagado', manual: true, pagoId: p.id, pagador: p.nombre, pagadoEn: firestoreNow(), esperaSeg: Math.round((Date.now() - x.creadoMs) / 1000), total: monto, parcial: !completo, montoRecibido: p.monto, pedidoTotal });
+        const tv = await firebaseDb.collection('configuracion').doc('tv_cobro').get();
+        if (tv.exists && tv.data().cobroId === x.id) await _cqTv({ estado: 'pagado', pagador: _cqNombreCorto(p.nombre), pagadoMs: Date.now(), total: monto, parcial: !completo, pedidoTotal });
+        st.pagoSuelto = null;
+    } catch (e) { showNotice(`No se pudo aplicar el pago: ${e.message || e}`, 'error'); }
+}
 function _cqLimpiar() {
     const st = _cqEstado();
+    if (st.unsubPagos) { try { st.unsubPagos(); } catch (_) { /* ya cerrada */ } st.unsubPagos = null; }
+    st.pagoSuelto = null;
     if (st.unsub) { try { st.unsub(); } catch (_) { /* ya cerrada */ } st.unsub = null; }
     if (st.tick) { clearInterval(st.tick); st.tick = null; }
     st.cobro = null; st.aplicando = false;
@@ -36063,7 +36117,7 @@ async function _cqAplicar(x) {
             showNotice(`Llegaron $${Number(x.total).toLocaleString('es-CO')} por QR${x.pagador ? ' de ' + x.pagador : ''}. Elige cómo paga el resto ($${(Number(x.pedidoTotal) - Number(x.total)).toLocaleString('es-CO')}) y confirma.`, 'ok');
         } else {
             const receive = x.receiveOrder === 'mesa' ? 'mesa' : (x.receiveOrder === 'true');
-            await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id });
+            await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id }, { despues: true });
         }
     } catch (e) { showNotice(`No se pudo registrar el pago del QR: ${e.message || e}`, 'error'); }
     // la TV agradece unos segundos y luego vuelve a la publicidad
@@ -36074,6 +36128,7 @@ function _cqEscuchar(id, datos) {
     const st = _cqEstado();
     if (st.unsub) { try { st.unsub(); } catch (_) { /* ya cerrada */ } }
     st.cobro = { id, ...datos };
+    _cqVigilarPagos(datos.creadoMs || Date.now());
     try { sessionStorage.setItem('roal_cobro_id', id); } catch (_) { /* sin almacenamiento */ }
     st.unsub = firebaseDb.collection('cobros_bancolombia').doc(id).onSnapshot((snap) => {
         if (!snap.exists) { _cqLimpiar(); return; }
