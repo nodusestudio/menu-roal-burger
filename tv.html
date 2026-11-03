@@ -107,19 +107,22 @@
         @keyframes cPulso { 0% { opacity: .55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.09); } }
         @keyframes cPunto { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
 
-        /* FODI: la carita del asistente. Parpadea y mira de lado esperando; al confirmarse el pago sonríe y salta. */
-        .fodi { flex: none; width: 108px; height: 108px; border-radius: 50%; background: #1d2140; box-shadow: 0 0 0 5px var(--naranja), 0 8px 22px rgba(0, 0, 0, .3); position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; animation: fodiFlota 3.2s ease-in-out infinite; }
-        .fodi .ojos { display: flex; gap: 22px; animation: fodiMira 5s ease-in-out infinite; }
-        .fodi .ojos i { display: block; width: 17px; height: 27px; border-radius: 9px; background: #fff; animation: fodiParpadeo 4.2s infinite; }
-        .fodi .boca { width: 28px; height: 8px; border-radius: 0 0 20px 20px; background: #fff; opacity: .9; transition: all .3s; }
-        .cobro.pagado .fodi { animation: fodiSalto .7s ease-in-out infinite; }
-        .cobro.pagado .fodi .ojos { animation: none; }
-        .cobro.pagado .fodi .ojos i { width: 24px; height: 12px; background: transparent; border: 0; border-top: 8px solid #fff; border-radius: 30px 30px 0 0; animation: none; }
-        .cobro.pagado .fodi .boca { width: 50px; height: 24px; border-radius: 0 0 50px 50px; opacity: 1; }
-        @keyframes fodiFlota { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-        @keyframes fodiMira { 0%, 18%, 100% { transform: translateX(0); } 28%, 42% { transform: translateX(-7px); } 55%, 70% { transform: translateX(7px); } }
-        @keyframes fodiParpadeo { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
-        @keyframes fodiSalto { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-22px) rotate(4deg); } }
+        /* FODI, la mascota: MISMOS colores y formas que en el panel (mini pantalla con ojos y boca). Lo dibuja tv.js. */
+        .fodi { flex: none; width: 150px; height: 150px; border-radius: 30%; }
+        .fodi-svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 3px 10px rgba(197, 139, 255, .35)); }
+        .f-screen { fill: #14101f; stroke: rgba(255, 179, 92, .6); stroke-width: 1.8; }
+        .f-gloss { fill: rgba(255, 255, 255, .08); }
+        .f-eye { fill: #ffd9a0; }
+        .f-arc { fill: none; stroke: #ffd9a0; stroke-width: 3.6; stroke-linecap: round; opacity: 0; }
+        .f-mouth { fill: #ff8a5c; stroke: #ffd9a0; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+        .f-blush { fill: #ff7a8a; opacity: 0; }
+        .f-zzz, .f-stars, .f-bulb, .f-qm, .f-hearts { opacity: 0; }
+        .f-hearts path { fill: #ff6b9d; }
+        .f-zzz text, .f-qm { fill: #c58bff; font-weight: 700; font-family: system-ui, sans-serif; }
+        .f-stars path { fill: #ffe27a; }
+        .f-bulb circle { fill: #ffe27a; } .f-bulb rect { fill: #c9a24a; }
+        .f-stars { animation: fodiTwinkle .9s ease-in-out infinite alternate; }
+        @keyframes fodiTwinkle { from { transform: scale(.9); } to { transform: scale(1.08); } }
 
         /* Pago confirmado: se esconde el QR y aparece el agradecimiento */
         .c-gracias { display: none; flex-direction: column; align-items: center; text-align: center; margin-top: 6px; }
@@ -160,7 +163,7 @@
                     <div class="g-adios" id="gAdios">¡Que vuelvas pronto!</div>
                 </div>
                 <div class="c-fodi">
-                    <div class="fodi" aria-hidden="true"><div class="ojos"><i></i><i></i></div><div class="boca"></div></div>
+                    <div class="fodi" id="fodi" aria-hidden="true"></div>
                     <div class="c-msg" id="cMsg"></div>
                 </div>
                 <div class="c-confeti" id="cConfeti" aria-hidden="true"></div>

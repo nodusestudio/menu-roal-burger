@@ -450,6 +450,121 @@
     setInterval(revisarVersion, REVISION_MS);
 
 
+
+    // ── FODI (la mascota): MISMO dibujo, colores y expresiones que en el panel (src/js/admin.js, "FODI: mini pantalla con ojos y boca").
+    // Aquí solo hay una cara, sin mouse ni voz: parpadea, flota y mira de lado. Solo se anima mientras el cobro está en pantalla. ──
+    var FODI_BASE = {
+        ehL: 1, ehR: 1, ew: 1, tilt: 0, eyeY: 42, arc: 0, gx: 0, gy: 0, gk: 1,
+        mw: 6, mc: 1.2, mo: 0, mx: 0, my: 64, blush: 0, zzz: 0, stars: 0, bulb: 0, qm: 0, hearts: 0, bob: 0.5
+    };
+    var FODI_EX = {
+        neutral: {},
+        thinking: { ehL: 0.85, ehR: 0.85, tilt: -5, gx: 4, gy: -4, gk: 0, mw: 3.5, mc: -0.3, mx: 7, bob: 0.3 },
+        talking: { mc: 0.9, mw: 6 },
+        happy: { arc: 1, mw: 9, mc: 4, mo: 2, blush: 0.75 },
+        surprised: { ehL: 1.35, ehR: 1.35, ew: 1.1, eyeY: 40, mw: 3.5, mc: 0, mo: 7, my: 66, bob: 0.2 },
+        wink: { ehR: 0.08, mw: 7.5, mc: 3, mo: 1.5, blush: 0.4 },
+        sad: { ehL: 0.8, ehR: 0.8, tilt: 14, eyeY: 44, gy: 2, mw: 5, mc: -3, my: 68, bob: 0.2 },
+        confused: { ehR: 0.55, tilt: 4, gk: 0.3, mw: 5, mc: -0.8, mx: -3, qm: 1 },
+        celebrating: { arc: 1, mw: 10, mc: 5, mo: 5, blush: 1, stars: 1, bob: 2.4 },
+        sleeping: { ehL: 0.06, ehR: 0.06, eyeY: 46, gk: 0, mw: 3.5, mc: 0.2, mo: 1.2, my: 66, zzz: 1, bob: 0.4 },
+        focused: { ehL: 0.55, ehR: 0.55, ew: 1.05, tilt: -9, mw: 5, mc: -0.2, my: 65, bob: 0.1 },
+        love: { arc: 1, mw: 9, mc: 4.5, mo: 2.5, blush: 1, hearts: 1, bob: 1.6 },
+        shy: { ehL: 0.9, ehR: 0.9, tilt: 7, gx: -4, gy: 3, gk: 0, mw: 4, mc: 2, blush: 1, bob: 0.9 },
+        giggle: { arc: 1, mw: 8, mc: 4, mo: 3, blush: 0.9, stars: 0.6, bob: 2.2 },
+        eureka: { ehL: 1.3, ehR: 1.3, ew: 1.05, eyeY: 41, gy: -3, mw: 6, mc: 3, mo: 4, bulb: 1, bob: 0.6 }
+    };
+    
+    var FODI_SVG = '<svg class="fodi-svg" viewBox="0 0 100 100" aria-hidden="true">'
+    + '<g class="f-head"><rect class="f-screen" x="5" y="13" width="90" height="74" rx="28"/>'
+    + '<path class="f-gloss" d="M20 24 Q50 14 80 24 Q50 20 20 24Z"/>'
+    + '<ellipse class="f-blush" cx="19" cy="61" rx="6" ry="3.4"/><ellipse class="f-blush" cx="81" cy="61" rx="6" ry="3.4"/>'
+    + '<rect class="f-eye" rx="5" /><rect class="f-eye" rx="5" />'
+    + '<path class="f-arc" /><path class="f-arc" />'
+    + '<path class="f-mouth" />'
+    + '<g class="f-zzz"><text x="70" y="30" font-size="10">z</text><text x="78" y="21" font-size="7">z</text></g>'
+    + '<g class="f-stars"><path d="M16 26 l2 4 4 2 -4 2 -2 4 -2 -4 -4 -2 4 -2z"/><path d="M84 24 l1.6 3.2 3.2 1.6 -3.2 1.6 -1.6 3.2 -1.6 -3.2 -3.2 -1.6 3.2 -1.6z"/><path d="M50 8 l1.3 2.7 2.7 1.3 -2.7 1.3 -1.3 2.7 -1.3 -2.7 -2.7 -1.3 2.7 -1.3z"/></g>'
+    + '<g class="f-hearts"><path transform="translate(10 18) scale(1.5)" d="M0 2 C0 -1 4 -1 4 2 C4 -1 8 -1 8 2 C8 5 4 8 4 9 C4 8 0 5 0 2Z"/><path transform="translate(76 14) scale(1.1)" d="M0 2 C0 -1 4 -1 4 2 C4 -1 8 -1 8 2 C8 5 4 8 4 9 C4 8 0 5 0 2Z"/></g>'
+    + '<g class="f-bulb"><circle cx="50" cy="9" r="5"/><rect x="47.5" y="13" width="5" height="3" rx="1"/></g>'
+    + '<text class="f-qm" x="76" y="30" font-size="14">?</text>'
+    + '</g></svg>';
+    var fodi = null, fodiRaf = 0, fodiUlt = 0, fodiTemp = 0;
+    function fodiParams(n) { return Object.assign({}, FODI_BASE, FODI_EX[n] || {}); }
+    function fodiPintar(f, p) {
+        var e = f.els, gx = p.gx + f.deriva.x * p.gk, gy = p.gy + f.deriva.y * p.gk, ew = 13 * p.ew;
+        function ojo(el, cx, eh, giro) {
+            var h = Math.max(1.8, 20 * eh), cy = p.eyeY + gy;
+            el.setAttribute('x', (cx + gx - ew / 2).toFixed(2)); el.setAttribute('y', (cy - h / 2).toFixed(2));
+            el.setAttribute('width', ew.toFixed(2)); el.setAttribute('height', h.toFixed(2));
+            el.setAttribute('rx', Math.min(ew, h) / 2 * 0.9);
+            el.setAttribute('transform', 'rotate(' + giro.toFixed(1) + ' ' + (cx + gx).toFixed(2) + ' ' + cy.toFixed(2) + ')');
+            el.style.opacity = (1 - p.arc).toFixed(2);
+        }
+        ojo(e.eyes[0], 32, p.ehL, -p.tilt); ojo(e.eyes[1], 68, p.ehR, p.tilt);
+        function arco(el, cx) {
+            var x = cx + gx, y = p.eyeY + gy + 3;
+            el.setAttribute('d', 'M' + (x - 6.5).toFixed(1) + ' ' + y.toFixed(1) + ' Q' + x.toFixed(1) + ' ' + (y - 11).toFixed(1) + ' ' + (x + 6.5).toFixed(1) + ' ' + y.toFixed(1));
+            el.style.opacity = p.arc.toFixed(2);
+        }
+        arco(e.arcs[0], 32); arco(e.arcs[1], 68);
+        var cy = -p.mc, mid = p.mc, mw = Math.max(1.5, p.mw), mo = Math.max(0, p.mo), cu = 2 * mid - cy, cl = 2 * (mid + mo) - cy;
+        var x0 = 50 + p.mx - mw, x1 = 50 + p.mx + mw, y = p.my;
+        e.mouth.setAttribute('d', 'M' + x0.toFixed(2) + ' ' + (y + cy).toFixed(2) + ' Q' + (50 + p.mx).toFixed(2) + ' ' + (y + cu).toFixed(2) + ' ' + x1.toFixed(2) + ' ' + (y + cy).toFixed(2) + ' Q' + (50 + p.mx).toFixed(2) + ' ' + (y + cl).toFixed(2) + ' ' + x0.toFixed(2) + ' ' + (y + cy).toFixed(2) + 'Z');
+        e.mouth.style.fillOpacity = Math.min(1, mo / 3).toFixed(2);
+        e.blush.forEach(function (b) { b.style.opacity = p.blush.toFixed(2); });
+        e.zzz.style.opacity = p.zzz.toFixed(2); e.stars.style.opacity = p.stars.toFixed(2); e.hearts.style.opacity = p.hearts.toFixed(2);
+        e.hearts.setAttribute('transform', 'translate(0 ' + (-Math.abs(f.bobY) * 2).toFixed(2) + ')');
+        e.bulb.style.opacity = p.bulb.toFixed(2); e.qm.style.opacity = p.qm.toFixed(2);
+        e.head.setAttribute('transform', 'translate(0 ' + f.bobY.toFixed(2) + ')');
+    }
+    function fodiMontar() {
+        if (fodi) return fodi;
+        var host = document.getElementById('fodi');
+        if (!host) return null;
+        host.innerHTML = FODI_SVG;
+        var svg = host.firstChild;
+        fodi = {
+            host: host, expr: 'neutral', cur: fodiParams('neutral'), proxParpadeo: performance.now() + 1500, parpadeoFin: 0, proxDeriva: 0,
+            deriva: { x: 0, y: 0 }, derivaObj: { x: 0, y: 0 }, microMc: 0, bobY: 0,
+            els: { head: svg.querySelector('.f-head'), eyes: [].slice.call(svg.querySelectorAll('.f-eye')), arcs: [].slice.call(svg.querySelectorAll('.f-arc')),
+                mouth: svg.querySelector('.f-mouth'), blush: [].slice.call(svg.querySelectorAll('.f-blush')), zzz: svg.querySelector('.f-zzz'),
+                stars: svg.querySelector('.f-stars'), hearts: svg.querySelector('.f-hearts'), bulb: svg.querySelector('.f-bulb'), qm: svg.querySelector('.f-qm') }
+        };
+        fodiPintar(fodi, fodi.cur);
+        return fodi;
+    }
+    function fodiFrame(ahora) {
+        var f = fodi; if (!f) { fodiRaf = 0; return; }
+        var dt = Math.min(0.05, (ahora - fodiUlt) / 1000 || 0.016); fodiUlt = ahora;
+        var obj = fodiParams(f.expr), t = ahora / 1000;
+        if (f.expr === 'thinking') { obj.gx += Math.sin(t * 1.7) * 3; obj.gy += Math.cos(t * 1.1) * 1.5; }
+        if (ahora > f.proxParpadeo) { f.parpadeoFin = ahora + 130; f.proxParpadeo = ahora + 2200 + Math.random() * 3800; }
+        var parpadea = ahora < f.parpadeoFin;
+        if (parpadea) { obj.ehL *= 0.08; obj.ehR *= 0.08; }
+        if (ahora > f.proxDeriva) {
+            f.derivaObj = { x: (Math.random() - 0.5) * 3.4, y: (Math.random() - 0.5) * 2.2 };
+            f.proxDeriva = ahora + 900 + Math.random() * 2200;
+            if (Math.random() < 0.25) f.microMc = (Math.random() - 0.5) * 0.9;
+        }
+        f.deriva.x += (f.derivaObj.x - f.deriva.x) * Math.min(1, dt * 4); f.deriva.y += (f.derivaObj.y - f.deriva.y) * Math.min(1, dt * 4);
+        obj.mc += f.microMc || 0;
+        f.bobY = Math.sin(t * (f.expr === 'celebrating' || f.expr === 'giggle' ? 9 : 2.2)) * obj.bob;
+        var k = 1 - Math.exp(-dt * (parpadea ? 26 : 11));
+        for (var clave in obj) f.cur[clave] += (obj[clave] - f.cur[clave]) * k;
+        fodiPintar(f, f.cur);
+        fodiRaf = requestAnimationFrame(fodiFrame);
+    }
+    function fodiArrancar() { if (!fodiMontar() || fodiRaf) return; fodiUlt = performance.now(); fodiRaf = requestAnimationFrame(fodiFrame); }
+    function fodiParar() { if (fodiRaf) { cancelAnimationFrame(fodiRaf); fodiRaf = 0; } clearTimeout(fodiTemp); }
+    // Cambia de expresión; con `ms` vuelve a `volverA` pasado ese tiempo
+    function fodiExpr(nombre, ms, volverA) {
+        if (!fodiMontar()) return;
+        if (!FODI_EX[nombre]) nombre = 'neutral';
+        if (fodi.expr === nombre && !ms) return;
+        clearTimeout(fodiTemp); fodi.expr = nombre; fodiArrancar();
+        if (ms) fodiTemp = setTimeout(function () { fodiExpr(volverA || 'neutral'); }, ms);
+    }
+
     // ── Cobro con QR ──
     // El POS abre un cobro y escribe configuracion/tv_cobro { activo, cobroId, estado: 'esperando' | 'pagado', total, cliente,
     // pagador }. Mientras esté activo, la mitad derecha muestra el QR de Bancolombia y el total (la foto sigue rotando). Al llegar
@@ -494,7 +609,7 @@
     }
 
     function ocultarCobro() {
-        clearTimeout(cobroFin); clearInterval(cobroReloj); cobroFin = null; cobroReloj = null;
+        clearTimeout(cobroFin); clearInterval(cobroReloj); cobroFin = null; cobroReloj = null; fodiParar();
         infoEl.classList.remove('con-cobro'); cobroEl.classList.remove('pagado'); cobroPintado = '';
     }
 
@@ -522,12 +637,14 @@
                 var seg = Math.round((Date.now() - cobroVisto[d.cobroId + ':e']) / 1000);
                 if (seg > 32 * 60) { ocultarCobro(); return; } // el POS no lo cerró (se cerró la pestaña): la TV vuelve sola a la publicidad
                 msg.innerHTML = mensajeEspera(seg);
+                fodiExpr(seg < 6 ? 'happy' : seg < 30 ? 'thinking' : seg < 100 ? 'focused' : 'neutral');
             };
             tic();
             cobroReloj = setInterval(tic, 4000);
         }
         cobroEl.classList.remove('pagado');
         infoEl.classList.add('con-cobro');
+        fodiArrancar();
     }
 
     function lanzarConfeti() {
@@ -551,6 +668,7 @@
             // se reinicia la animación del check al volver a mostrarla
             var chk = cobroEl.querySelector('.g-check'); if (chk) { var p = chk.parentNode; p.removeChild(chk); p.insertBefore(chk, p.firstChild); }
             lanzarConfeti();
+            fodiExpr(d.parcial ? 'happy' : 'celebrating', 7000, 'happy');
         }
         cobroEl.classList.add('pagado');
         infoEl.classList.add('con-cobro');
