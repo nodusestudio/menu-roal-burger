@@ -372,10 +372,14 @@ exports.bancoAviso = onRequest(
 
         const db = getFirestore();
         const id = crypto.createHash('sha256').update(mensajeId).digest('hex').slice(0, 24);
+        // Si el cajero ya confirmó este pago con "Ya pagó" (y se dijo en voz alta), el correo se guarda en SILENCIO y se enlaza a ese cobro.
+        const cobrosQr = require('./cobrosQr');
+        const manual = prueba ? null : await cobrosQr.buscarManualPendiente(db, pago.monto);
         try {
             await db.collection('avisos_banco').doc(id).create({
                 nombre: pago.nombre, monto: pago.monto, prueba: !!prueba,
                 frase: banco.frasePago(pago.nombre, pago.monto), creadoEn: FieldValue.serverTimestamp(),
+                ...(manual ? { silencioso: true, cobroId: manual.id } : {}),
                 ...(Number(correoMs) > 0 ? { correoMs: Number(correoMs) } : {})
             });
         } catch (err) {
@@ -385,7 +389,9 @@ exports.bancoAviso = onRequest(
             return;
         }
         // Si hay UN cobro con QR abierto por ese valor exacto (botón "Cobrar con QR" del POS), se enlaza y la TV agradece.
-        const enlace = prueba ? { enlazado: false, motivo: 'prueba' } : await require('./cobrosQr').enlazarPago(db, { id, nombre: pago.nombre, monto: pago.monto });
+        const enlace = prueba ? { enlazado: false, motivo: 'prueba' }
+            : manual ? await cobrosQr.enlazarManual(db, manual, { id, nombre: pago.nombre })
+            : await cobrosQr.enlazarPago(db, { id, nombre: pago.nombre, monto: pago.monto });
         console.log('bancoAviso', JSON.stringify({ monto: pago.monto, prueba: !!prueba, cobro: enlace.enlazado ? enlace.cobroId : enlace.motivo }));
         res.json({ ok: true, aviso: true, cobro: enlace.enlazado ? enlace.cobroId : null });
     }
@@ -416,10 +422,39 @@ exports.bancoLector = onRequest(
         const desde = Number(req.query.desde);
         if (!Number.isFinite(desde) || desde <= 0) { res.json({ ok: true, ahora, silenciado, pagos: [] }); return; }
         const { Timestamp } = require('firebase-admin/firestore');
-        const snap = await db.collection('avisos_banco')
-            .where('creadoEn', '>', Timestamp.fromMillis(desde)).orderBy('creadoEn', 'asc').limit(10).get();
-        const pagos = snap.docs.map((d) => { const x = d.data(); return { id: d.id, frase: x.frase || '', nombre: x.nombre || '', monto: Number(x.monto) || 0, creadoMs: x.creadoEn?.toMillis?.() || ahora, prueba: !!x.prueba }; });
+        const desdeTs = Timestamp.fromMillis(desde);
+        const lee = (col) => db.collection(col).where('creadoEn', '>', desdeTs).orderBy('creadoEn', 'asc').limit(10).get();
+        const [avisos, anuncios] = await Promise.all([lee('avisos_banco'), lee('anuncios_caja')]);
+        const pagos = [...avisos.docs, ...anuncios.docs]
+            .map((d) => { const x = d.data(); return { silencioso: x.silencioso === true, id: d.id, frase: x.frase || '', nombre: x.nombre || '', monto: Number(x.monto) || 0, creadoMs: x.creadoEn?.toMillis?.() || ahora, prueba: !!x.prueba }; })
+            .filter((x) => !x.silencioso)
+            .sort((p, q) => p.creadoMs - q.creadoMs)
+            .slice(0, 10)
+            .map(({ silencioso, ...resto }) => resto);
         res.json({ ok: true, ahora, silenciado, pagos });
+    }
+);
+
+// El cajero toca "Ya pagó" en la tarjeta del cobro con QR: se confirma al instante (TV + voz) sin esperar el correo del banco.
+exports.confirmarCobroManual = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    async (request) => {
+        const uid = await ensureAdminCaller(request);
+        const cobroId = String(request.data?.cobroId || '').trim();
+        if (!cobroId) throw new HttpsError('invalid-argument', 'Falta el cobro.');
+        return await require('./cobrosQr').confirmarManual(getFirestore(), cobroId, uid);
+    }
+);
+
+// Vigilancia del aviso del banco: cada 10 min (de 9 a. m. a 11 p. m., hora de Bogotá) revisa si hay cobros Bancolombia del POS sin
+// su aviso del banco pasados 8 min y avisa por push. Ver functions/vigilanciaBanco.js.
+exports.vigilarAvisosBanco = onSchedule(
+    { schedule: 'every 10 minutes', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        const hora = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
+        if (hora < 9 || hora >= 23) return;
+        const r = await require('./vigilanciaBanco').revisar(getFirestore());
+        console.log('vigilarAvisosBanco', JSON.stringify({ alerta: r.alerta, pendientes: r.pendientes.length, accion: r.accion }));
     }
 );
 

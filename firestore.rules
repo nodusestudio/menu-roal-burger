@@ -42,7 +42,7 @@ service cloud.firestore {
     // El resto de la coleccion sigue publico porque el menu, la TV y el modo mesero lo leen.
     function isConfigInterna(doc) {
       return doc in ['supervisor_pin', 'costos_fijos', 'finanzas', 'finanzas_festival',
-        'chat_roal_config', 'asistente_ia', 'push_stats'];
+        'chat_roal_config', 'asistente_ia', 'push_stats', 'vigilancia_banco'];
     }
     match /configuracion/{doc} {
       allow read: if !isConfigInterna(doc) || (doc != 'supervisor_pin' && isAdmin());
@@ -273,6 +273,12 @@ service cloud.firestore {
     }
 
     // Pagos recibidos en Bancolombia (los escribe la función bancoAviso; el administrador puede leer y eliminar).
+    // Anuncios de voz de los cobros confirmados a mano ("Ya pagó"): los crea la función confirmarCobroManual; el programa de voz los lee por bancoLector.
+    match /anuncios_caja/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // Cobros con QR de Bancolombia (POS + TV): los abre y cierra el panel; la función bancoAviso los marca pagados.
     match /cobros_bancolombia/{doc} {
       allow read, write: if isAdmin();

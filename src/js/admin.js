@@ -35988,12 +35988,18 @@ function _bancoPintarEquipos(docs) {
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.12);">
             <div style="min-width:0;"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(e.equipo || e.id)}</div><div style="font-size:12px;opacity:.75;">${estado}${e.silenciado ? ' · 🔇 silenciado' : ''}</div></div>
             <button type="button" data-banco-equipo="${escapeHtml(e.id)}" data-banco-mudo="${e.silenciado ? '0' : '1'}" style="flex:none;border:0;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer;background:${e.silenciado ? '#2e7d32' : '#c62828'};color:#fff;">${e.silenciado ? '🔊 Activar' : '🔇 Silenciar'}</button>
+            ${enLinea ? '' : `<button type="button" data-banco-equipo-borrar="${escapeHtml(e.id)}" title="Quitar este computador de la lista" aria-label="Quitar este computador de la lista" style="flex:none;border:0;border-radius:10px;padding:8px 10px;cursor:pointer;background:rgba(255,255,255,.14);color:#fff;">🗑️</button>`}
         </div>`;
     };
     const contenido = equipos.length ? equipos.map(fila).join('') : '<div style="font-size:13px;opacity:.8;">Aún no hay computadores con el programa de voz. Instálalo y espera 1 minuto.</div>';
     caja.innerHTML = `<div style="font-weight:800;margin-bottom:6px;">Voz de pagos por computador</div>` + contenido;
     const inline = document.getElementById('bancoEquiposInline');
     if (inline) inline.innerHTML = contenido;
+    [caja, inline].forEach((raiz) => raiz && raiz.querySelectorAll('[data-banco-equipo-borrar]').forEach((b) => b.addEventListener('click', async () => {
+        if (!confirm(`¿Quitar "${b.dataset.bancoEquipoBorrar}" de la lista? Si ese computador vuelve a conectarse, aparece otra vez.`)) return;
+        try { await firebaseDb.collection('banco_equipos').doc(b.dataset.bancoEquipoBorrar).delete(); }
+        catch (e) { showNotice(`No se pudo quitar: ${e.message || e}`, 'error'); }
+    })));
     [caja, inline].forEach((raiz) => raiz && raiz.querySelectorAll('[data-banco-equipo]').forEach((b) => b.addEventListener('click', async () => {
         try { await firebaseDb.collection('banco_equipos').doc(b.dataset.bancoEquipo).update({ silenciado: b.dataset.bancoMudo === '1' }); }
         catch (e) { showNotice(`No se pudo cambiar: ${e.message || e}`, 'error'); }
@@ -36004,6 +36010,17 @@ function _bancoIniciar() {
     if (st.iniciado || _meseroSession || !firebaseDb) return;
     st.iniciado = true;
     document.getElementById('bancoBorrarPruebasBtn')?.addEventListener('click', _bancoBorrarPruebas);
+    // Vigilancia: la función vigilarAvisosBanco deja aquí si hay cobros Bancolombia sin su aviso del banco.
+    let _vigPrev = null;
+    firebaseDb.collection('configuracion').doc('vigilancia_banco').onSnapshot((snap) => {
+        const v = snap.exists ? snap.data() : {}, el = document.getElementById('bancoVigilancia');
+        if (v.alerta === true) {
+            const min = v.desdeMs ? Math.max(1, Math.round((Date.now() - Number(v.desdeMs)) / 60000)) : 0;
+            if (el) { el.hidden = false; el.textContent = `⚠️ ${v.pendientes} cobro${v.pendientes === 1 ? '' : 's'} por Bancolombia ($${Number(v.monto || 0).toLocaleString('es-CO')}) sin aviso del banco${min ? ' desde hace ' + min + ' min' : ''}. Revisa que lleguen los correos (Gmail / script) o que el pago sea real.`; }
+            if (_vigPrev === false) showNotice('⚠️ Hay cobros por Bancolombia sin aviso del banco. Mira la pestaña Pagos Bancolombia.', 'error');
+        } else if (el) el.hidden = true;
+        _vigPrev = v.alerta === true;
+    }, (e) => console.warn('[BANCO] vigilancia:', e && (e.code || e.message)));
     _bancoEquiposUI();
     firebaseDb.collection('banco_equipos').onSnapshot((snap) => _bancoPintarEquipos(snap.docs), (e) => console.warn('[BANCO] equipos:', e && (e.code || e.message)));
     document.querySelectorAll('[data-banco-filtro]').forEach((b) => b.addEventListener('click', () => { _bancoFiltro().modo = b.dataset.bancoFiltro; _bancoSuscribirLista(); }));
@@ -36124,11 +36141,13 @@ async function _cqCancelar(motivo) {
 }
 async function _cqConfirmarManual() {
     const x = _cqEstado().cobro; if (!x || x.estado !== 'abierto') return;
-    if (!(await showConfirmModal({ title: '¿Ya llegó el pago?', message: `Confirma que el cliente ya pagó $${Number(x.total).toLocaleString('es-CO')} por Bancolombia. Se registrará el cobro del pedido.`, confirmText: 'Sí, ya pagó', cancelText: 'Todavía no', danger: false }))) return;
+    // Sin pregunta extra: es un botón deliberado y lo importante es la rapidez. El servidor cierra el cobro, la TV agradece, la voz
+    // lo dice y el correo del banco, cuando llegue, se enlaza en silencio al mismo cobro (ver functions/cobrosQr.js).
+    const boton = document.getElementById('cqYaPagoBtn'); if (boton) { boton.disabled = true; boton.textContent = 'Confirmando…'; }
     try {
-        await firebaseDb.collection('cobros_bancolombia').doc(x.id).update({ estado: 'pagado', manual: true, pagadoEn: firestoreNow(), esperaSeg: Math.round((Date.now() - x.creadoMs) / 1000) });
-        await _cqTv({ estado: 'pagado', pagador: '', pagadoMs: Date.now() });
-    } catch (e) { showNotice(`No se pudo confirmar: ${e.message || e}`, 'error'); }
+        const r = (await firebaseFunctions.httpsCallable('confirmarCobroManual')({ cobroId: x.id })).data;
+        if (!r || !r.ok) showNotice('Ese cobro ya no estaba abierto.', 'info');
+    } catch (e) { showNotice(`No se pudo confirmar: ${e.message || e}`, 'error'); if (boton) { boton.disabled = false; boton.textContent = '✓ Ya pagó'; } }
 }
 // Registra el pago en el pedido: el mismo camino del modal de cobro (Bancolombia → Transferencia), una sola vez.
 async function _cqAplicar(x) {

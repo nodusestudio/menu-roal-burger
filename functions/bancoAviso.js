@@ -69,7 +69,8 @@ function nombreCorto(nombre) {
 
 // Lo oyen los clientes en caja: agradece, confirma el pago y despide.
 function frasePago(nombre, monto) {
-    return `Muchas gracias ${nombreCorto(nombre)} por tu pago de ${monto} pesos. Ya ha sido confirmado. Que vuelvas pronto.`;
+    const n = nombreCorto(nombre);
+    return `Muchas gracias${n ? ' ' + n : ''} por tu pago de ${monto} pesos. Ya ha sido confirmado. Que vuelvas pronto.`;
 }
 
 module.exports = { REMITENTE_OK, parsearMonto, nombrePropio, leerPagoRecibido, nombreCorto, frasePago };

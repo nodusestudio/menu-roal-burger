@@ -829,6 +829,11 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { fecha: { type: 'string', description: 'Día YYYY-MM-DD (hora Bogotá). Por defecto hoy.' } } }
     },
     {
+        name: 'estado_avisos_banco',
+        description: 'Estado de los avisos del banco (Bancolombia): si hay una alerta de cobros del POS sin su aviso del banco, hace cuánto llegó el último aviso y si el programa de voz de cada computador está en línea. Úsala para "¿están llegando los avisos del banco?" o "¿por qué no sonó el pago?".',
+        input_schema: { type: 'object', properties: {} }
+    },
+    {
         name: 'alertas_fodi',
         description: 'Alertas proactivas del día: insumos que subieron, productos/promos con margen bajo, caída o alza de ventas de ayer y resultados de sugerencias evaluadas. "leer" trae las últimas guardadas; "recalcular" las vuelve a calcular ahora.',
         input_schema: { type: 'object', properties: { accion: { type: 'string', enum: ['leer', 'recalcular'] } } }
@@ -1165,6 +1170,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'pagos_bancolombia') return await require('./fodiBanco').pagosBancolombia(db, args);
         if (nombre === 'cobros_qr') return await require('./fodiCobrosQr').cobrosQr(db, args);
         if (nombre === 'conciliacion_bancolombia') return await require('./fodiConciliacion').conciliacionBancolombia(db, args);
+        if (nombre === 'estado_avisos_banco') return await require('./fodiVigilancia').estadoAvisosBanco(db, args);
         if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);
         if (nombre === 'lecciones') return await require('./fodiLecciones').lecciones(db, args);
         if (nombre === 'sumar_mesas') return await require('./fodiPedidos').sumarMesas(db, args);
