@@ -22382,10 +22382,13 @@ if (ordersActionRoot) {
                         showNotice('Procesa el pago antes de pedir domiciliario.', 'error');
                         return;
                     }
-                    // Actualizar estado primero para que falle del portapapeles no bloquee la operación
+                    // El copiado se lanza ANTES de esperar a Firestore: el navegador solo deja escribir al portapapeles
+                    // mientras dura el clic, y el guardado (long-polling) a veces tarda segundos. Si el portapapeles
+                    // falla, igual se guarda el estado.
                     const courierMsg = buildCourierRequestMessage(order);
+                    const copiedPromise = copyTextToClipboard(courierMsg).catch(() => false);
                     await updateOrder(orderId, { status: nextStatus, courierRequestedAt: firestoreNow() });
-                    const copied = await copyTextToClipboard(courierMsg);
+                    const copied = await copiedPromise;
                     showNotice(
                         copied
                             ? 'Mensaje para domiciliario copiado y pedido en espera.'
