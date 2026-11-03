@@ -695,7 +695,7 @@ function calcular(expr) {
     }
 }
 
-const PESTANAS_NAVEGABLES =['pedidos', 'menu', 'informes', 'configuracion', 'clientes', 'mensajes', 'chatroal', 'metricas', 'finanzas', 'costos', 'cuponpana', 'redes'];
+const PESTANAS_NAVEGABLES =['pedidos', 'menu', 'informes', 'configuracion', 'clientes', 'mensajes', 'chatroal', 'metricas', 'finanzas', 'banco', 'costos', 'cuponpana', 'redes'];
 const VISTAS_COSTOS = ['platos', 'ideas', 'insumos', 'recetas', 'promos', 'conexion', 'pendientes'];
 
 const TOOLS = [
@@ -812,6 +812,11 @@ const TOOLS = [
         name: 'sugerencias_fodi',
         description: 'Historial de tus propias sugerencias registradas: pendientes de evaluar y evaluadas con su resultado (mejoró / sin cambio / empeoró). Úsala para aprender de lo que funcionó y no repetir lo que no.',
         input_schema: { type: 'object', properties: { parte: { type: 'string', enum: ['pendientes', 'evaluadas', 'todas'] } } }
+    },
+    {
+        name: 'pagos_bancolombia',
+        description: 'Pagos recibidos por Bancolombia (Llave, QR, transferencias) que llegaron al correo y se anunciaron en voz alta en caja: total, cantidad, promedio, mayor pago y últimos pagos de un día o rango. Úsala para "¿cuánto entró por Bancolombia hoy/ayer?". Sin fechas = hoy. Las pruebas no suman. No es un cierre contable.',
+        input_schema: { type: 'object', properties: { ...FECHAS } }
     },
     {
         name: 'alertas_fodi',
@@ -1147,6 +1152,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'finanzas_festival') return await require('./fodiFinanzasFestival').finanzasFestival(db);
         if (nombre === 'pantalla_tv') return await require('./fodiTv').pantallaTv(db);
         if (nombre === 'avisos_celular') return await require('./fodiAvisos').avisosCelular(db);
+        if (nombre === 'pagos_bancolombia') return await require('./fodiBanco').pagosBancolombia(db, args);
         if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);
         if (nombre === 'lecciones') return await require('./fodiLecciones').lecciones(db, args);
         if (nombre === 'sumar_mesas') return await require('./fodiPedidos').sumarMesas(db, args);

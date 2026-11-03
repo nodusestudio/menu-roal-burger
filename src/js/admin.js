@@ -3281,10 +3281,17 @@ function buildFeedbackMessage(order) {
     return `¡Hola! ¿Qué tal? 🍔 Esperamos que hayas disfrutado tu Burger Trifásica. Es un producto nuevo y tu opinión nos ayuda a mejorarla. ¿Nos regalas 30 segundos para contarnos qué tal te pareció? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}\n\n📸 Y si quieres, déjanos tu comentario sobre el producto en nuestro Instagram: ${FEEDBACK_INSTAGRAM_URL}\n\n🏆 La Trifásica compite en Sabe a Quindío: ¡vota por nosotros! 👉 ${FEEDBACK_VOTE_URL}`;
 }
 
+// Hasta el 9 de nov. el cuestionario es solo para quien compró el 2×1 Aquí, digo: el pedido puede traer
+// otros productos, pero debe tener al menos un ítem 2×1 (si no, no entra al feedback).
+function orderHas2x1ForFeedback(order) {
+    return Array.isArray(order?.items) && order.items.some((item) => _sqItemEs2x1(item));
+}
+
 function getPendingFeedbackOrders() {
     const now = Date.now();
     return ordersState.filter((order) => {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
+        if (!orderHas2x1ForFeedback(order)) return false;
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
@@ -26480,6 +26487,7 @@ function _getFeedbackPendingForClose() {
     const now = Date.now();
     return ordersState.filter((order) => {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
+        if (!orderHas2x1ForFeedback(order)) return false;
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
@@ -35703,9 +35711,52 @@ function _bancoRepetir(frase) {
         window.speechSynthesis.speak(u);
     } catch (_) { /* sin voz en este navegador */ }
 }
+// Filtro por fecha (hora de Bogotá, UTC-5): hoy, ayer, un día elegido o los últimos 100.
+function _bancoHoyYmd() { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); }
+function _bancoYmdMas(ymd, dias) { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + dias)).toISOString().slice(0, 10); }
+function _bancoInicioMs(ymd) { const [y, m, d] = ymd.split('-').map(Number); return Date.UTC(y, m - 1, d, 5, 0, 0); }
+function _bancoFiltro() { return (window.__bancoFiltro = window.__bancoFiltro || { modo: 'hoy', fecha: '' }); }
+function _bancoDiaActivo() {
+    const f = _bancoFiltro();
+    if (f.modo === 'hoy') return _bancoHoyYmd();
+    if (f.modo === 'ayer') return _bancoYmdMas(_bancoHoyYmd(), -1);
+    if (f.modo === 'fecha' && /^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return f.fecha;
+    return null; // últimos 100
+}
+function _bancoTituloFiltro() {
+    const d = _bancoDiaActivo();
+    if (!d) return 'Últimos 100 pagos';
+    const f = _bancoFiltro();
+    const txt = new Date(_bancoInicioMs(d) + 6 * 3600000).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return f.modo === 'hoy' ? `Hoy (${txt})` : (f.modo === 'ayer' ? `Ayer (${txt})` : txt);
+}
+function _bancoPintarFiltro() {
+    const f = _bancoFiltro();
+    document.querySelectorAll('[data-banco-filtro]').forEach((b) => b.classList.toggle('primary', b.dataset.bancoFiltro === f.modo));
+    const inp = document.getElementById('bancoFecha');
+    if (inp) { if (f.modo === 'fecha') inp.value = f.fecha; else if (f.modo !== 'fecha') inp.value = ''; }
+}
+function _bancoSuscribirLista() {
+    const st = _bancoEstado();
+    if (st.unsubLista) { try { st.unsubLista(); } catch (_) { /* ya cerrada */ } st.unsubLista = null; }
+    st.diaSuscrito = _bancoDiaActivo();
+    _bancoPintarFiltro();
+    let q = firebaseDb.collection('avisos_banco');
+    if (st.diaSuscrito) q = q.where('creadoEn', '>=', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(st.diaSuscrito))).where('creadoEn', '<', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(_bancoYmdMas(st.diaSuscrito, 1))));
+    q = q.orderBy('creadoEn', 'desc').limit(st.diaSuscrito ? 500 : 100);
+    st.unsubLista = q.onSnapshot((snap) => _bancoPintarLista(snap.docs),
+        (e) => { console.warn('[BANCO] no se pudo leer avisos_banco:', e && (e.code || e.message)); const r = document.getElementById('bancoResumen'); if (r) r.textContent = 'No se pudieron leer los pagos.'; });
+}
 function _bancoPintarLista(docs) {
     const cont = document.getElementById('bancoLista'); if (!cont) return;
-    if (!docs.length) { cont.innerHTML = '<p style="font-size:0.85rem;color:var(--admin-muted);">Todavía no hay pagos.</p>'; return; }
+    const resumen = document.getElementById('bancoResumen');
+    if (resumen) {
+        const reales = docs.map((d) => d.data()).filter((x) => !x.prueba);
+        const total = reales.reduce((a, x) => a + (Number(x.monto) || 0), 0);
+        const pruebas = docs.length - reales.length;
+        resumen.textContent = `${_bancoTituloFiltro()}: ${reales.length} pago${reales.length === 1 ? '' : 's'} · $${total.toLocaleString('es-CO')}${pruebas ? ` · (${pruebas} de prueba, no suman)` : ''}`;
+    }
+    if (!docs.length) { cont.innerHTML = '<p style="font-size:0.85rem;color:var(--admin-muted);">No hay pagos en esta fecha.</p>'; return; }
     cont.innerHTML = docs.map((d) => {
         const x = d.data();
         let cuando = '';
@@ -35794,6 +35845,12 @@ function _bancoIniciar() {
     document.getElementById('bancoBorrarPruebasBtn')?.addEventListener('click', _bancoBorrarPruebas);
     _bancoEquiposUI();
     firebaseDb.collection('banco_equipos').onSnapshot((snap) => _bancoPintarEquipos(snap.docs), (e) => console.warn('[BANCO] equipos:', e && (e.code || e.message)));
-    firebaseDb.collection('avisos_banco').orderBy('creadoEn', 'desc').limit(30).onSnapshot((snap) => _bancoPintarLista(snap.docs),
-        (e) => console.warn('[BANCO] no se pudo leer avisos_banco:', e && (e.code || e.message)));
+    document.querySelectorAll('[data-banco-filtro]').forEach((b) => b.addEventListener('click', () => { _bancoFiltro().modo = b.dataset.bancoFiltro; _bancoSuscribirLista(); }));
+    document.getElementById('bancoFecha')?.addEventListener('change', (e) => {
+        if (!e.target.value) return;
+        const f = _bancoFiltro(); f.modo = 'fecha'; f.fecha = e.target.value; _bancoSuscribirLista();
+    });
+    _bancoSuscribirLista();
+    // Si el panel queda abierto pasada la medianoche, "Hoy" y "Ayer" se actualizan solos al cambiar el día.
+    setInterval(() => { const st2 = _bancoEstado(); if (st2.diaSuscrito !== _bancoDiaActivo()) _bancoSuscribirLista(); }, 60000);
 }

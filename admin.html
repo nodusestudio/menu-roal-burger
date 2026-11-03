@@ -15593,7 +15593,14 @@
                         <strong>🔊 Voz por computador</strong>
                         <p style="font-size:0.78rem;color:var(--admin-muted);margin:4px 0 6px;">Aquí silencias o activas la voz de cada computador. El del negocio y este pueden ser distintos.</p>
                         <div id="bancoEquiposInline" style="margin-bottom:18px;"></div>
-                        <strong>Últimos pagos recibidos</strong>
+                        <strong>Pagos recibidos</strong>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0;">
+                            <button type="button" class="section-action-btn primary" data-banco-filtro="hoy">Hoy</button>
+                            <button type="button" class="section-action-btn" data-banco-filtro="ayer">Ayer</button>
+                            <input type="date" id="bancoFecha" aria-label="Elegir una fecha" style="padding:7px 10px;border-radius:10px;border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;">
+                            <button type="button" class="section-action-btn" data-banco-filtro="todos">Últimos 100</button>
+                        </div>
+                        <p id="bancoResumen" style="margin:6px 0 4px;font-weight:700;"></p>
                         <div id="bancoLista" style="margin-top:8px;"><p style="font-size:0.85rem;color:var(--admin-muted);">Todavía no hay pagos.</p></div>
                     </div>
                 </article>
