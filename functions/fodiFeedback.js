@@ -13,6 +13,10 @@ const enmascarar = (tel) => { const t = String(tel || ''); return t.length > 4 ?
 const ms = (v) => (v && typeof v.toMillis === 'function' ? v.toMillis() : Number(v) || 0);
 const fechaBogota = (t) => new Date(t - 5 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
 
+// Hasta el 9 de nov. el feedback es solo para pedidos con al menos un ítem 2×1 (mismo criterio que el panel).
+const tiene2x1 = (o) => Array.isArray(o.items) && o.items.some((it) => (it?.orderOptions?.promo2x1 === true)
+    || /2\s*[x×]\s*1/i.test(String(it?.orderOptions?.promoLabel || it?.optionLabel || '')));
+
 function distribucion(filas, clave, etiquetas) {
     return Object.keys(etiquetas).map((k) => {
         const n = filas.filter((f) => f[clave] === k).length;
@@ -28,11 +32,11 @@ async function feedbackClientes(db, args = {}) {
         const snap = await db.collection('pedidos').where('status', 'in', ['enviado', 'entregado']).get();
         const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((o) => {
             const t = ms(o.enviadoAt) || ms(o.entregadoAt) || ms(o.deliveredAt);
-            return t && !o.anulado && !o.feedbackRequestedAt && !o.feedbackAnsweredAt
+            return t && !o.anulado && !o.feedbackRequestedAt && !o.feedbackAnsweredAt && tiene2x1(o)
                 && String(o.customerPhoneDigits || '').replace(/\D/g, '').length >= 10
                 && ahora - t >= DOS_HORAS_MS && ahora - t <= MAX_EDAD_PENDIENTE_MS;
         }).map((o) => ({ pedido: o.code || o.id, cliente: o.customerName || 'Cliente', telefono: enmascarar(o.customerPhoneDigits), despachado: fechaBogota(ms(o.enviadoAt) || ms(o.entregadoAt) || ms(o.deliveredAt)) }));
-        return { total: items.length, pendientes: items.slice(0, 40), nota: 'Pedidos entregados hace 2 h o más (máx. 24 h) a los que aún no se les pidió el feedback. El botón "Copiar y abrir WhatsApp" está en Recepción de Pedidos. Solo cubre pedidos activos (los archivados al cerrar caja no se listan).' };
+        return { total: items.length, pendientes: items.slice(0, 40), nota: 'Pedidos entregados hace 2 h o más (máx. 24 h) con al menos un 2×1 a los que aún no se les pidió el feedback (los pedidos sin 2×1 no entran). El botón "Copiar y abrir WhatsApp" está en Recepción de Pedidos. Solo cubre pedidos activos (los archivados al cerrar caja no se listan).' };
     }
 
     const snap = await db.collection('encuestas_pedido').orderBy('createdAt', 'desc').limit(2000).get();
