@@ -13109,6 +13109,16 @@ document.addEventListener('keydown', (event) => {
     };
     document.addEventListener('input', alEditar, true);
     document.addEventListener('change', alEditar, true);
+    // Elegir opciones (sabores, variantes, cantidades) sin escribir nada también cuenta como cambio.
+    document.addEventListener('click', (e) => {
+        if (!e.isTrusted || !(e.target instanceof Element)) return;
+        const el = e.target.closest('[class]');
+        const clase = el ? String(el.getAttribute('class') || '') : '';
+        if (/chip|sabor|opcion|option|variant|pill|stepper|qty|cantidad/i.test(clase) && !/close|cancel|cerrar|secondary|back|volver/i.test(clase)) {
+            const f = fondoDe(el); if (f) marcar(f);
+        }
+    }, true);
+    window._ventanaConCambios = () => [...sucios].some(visible);
 
     const preguntar = () => new Promise((resolve) => {
         const ov = document.createElement('div');
@@ -13127,6 +13137,7 @@ document.addEventListener('keydown', (event) => {
         });
         document.body.appendChild(ov);
     });
+    window._preguntarCierre = preguntar;
 
     document.addEventListener('click', (e) => {
         const fondo = e.target;
@@ -14045,6 +14056,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Botón ATRÁS de Android: cierra el overlay activo en vez de salir de la app ──
     window.addEventListener('popstate', () => {
         if (_skipNextPopstate) { _skipNextPopstate = false; return; }
+        // Atrás con una ventana que tiene datos escritos/opciones elegidas: preguntar antes de descartarla.
+        if (_modalHistoryDepth > 0 && !window._atrasConfirmado && window._ventanaConCambios && window._ventanaConCambios()) {
+            _modalHistoryDepth++;
+            history.pushState({ roalModal: _modalHistoryDepth }, '');
+            window._preguntarCierre().then((ok) => {
+                if (!ok) return;
+                window._atrasConfirmado = true;
+                history.back();
+                setTimeout(() => { window._atrasConfirmado = false; }, 800);
+            });
+            return;
+        }
         if (_modalHistoryDepth > 0) {
             // Modales tienen mayor prioridad (z-index superior)
             _modalHistoryDepth--;

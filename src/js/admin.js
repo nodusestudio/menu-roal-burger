@@ -802,7 +802,13 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
     // Quitar una dirección (chip) de un cliente también es un cambio sin guardar.
     document.addEventListener('click', (e) => {
         if (!e.isTrusted || !(e.target instanceof Element)) return;
-        if (e.target.closest('.client-addr-del')) { const f = fondoDe(e.target); if (f) marcar(f); }
+        if (e.target.closest('.client-addr-del')) { const f = fondoDe(e.target); if (f) marcar(f); return; }
+        // Elegir opciones (sabores, variantes, cantidades) sin escribir nada también es trabajo hecho.
+        const el = e.target.closest('[class]');
+        const clase = el ? String(el.getAttribute('class') || '') : '';
+        if (/chip|sabor|opcion|option|variant|pill|stepper|qty|cantidad/i.test(clase) && !/close|cancel|cerrar|secondary|back|volver/i.test(clase)) {
+            const f = fondoDe(el); if (f) marcar(f);
+        }
     }, true);
 
     const preguntar = () => showConfirmModal({
@@ -868,10 +874,36 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
 
     // Red de seguridad: recarga manual (F5, botón del navegador) o gesto que se cuele → el
     // navegador pregunta antes de descartar el pedido.
+    let salidaConfirmada = false;
     window.addEventListener('beforeunload', (e) => {
-        if (!hayTrabajoEnCurso()) return;
+        if (salidaConfirmada || !hayTrabajoEnCurso()) return;
         e.preventDefault();
         e.returnValue = '';
+    });
+
+    // Botón "atrás" del celular/navegador: con trabajo en curso se coloca una entrada de
+    // historial de guardia; al pulsar atrás se consume y se pregunta antes de salir.
+    let guardia = false;
+    const asegurarGuardia = () => {
+        if (guardia || !hayTrabajoEnCurso()) return;
+        history.pushState({ admGuardia: 1 }, '', location.href);
+        guardia = true;
+    };
+    ['click', 'input', 'touchend'].forEach((ev) => document.addEventListener(ev, () => setTimeout(asegurarGuardia, 0), true));
+    window.addEventListener('popstate', () => {
+        if (!guardia) return;
+        guardia = false;
+        if (!hayTrabajoEnCurso()) { history.back(); return; } // ya no hay nada que proteger: el "atrás" sigue su curso
+        showConfirmModal({
+            icon: '✋',
+            title: '¿Salir y perder lo que llevas?',
+            message: 'Hay un pedido armado o una ventana con cambios sin guardar. Si sales, se pierden.',
+            confirmText: 'Sí, salir',
+            cancelText: 'Quedarme'
+        }).then((ok) => {
+            if (ok) { salidaConfirmada = true; history.back(); setTimeout(() => { salidaConfirmada = false; }, 1500); }
+            else { history.pushState({ admGuardia: 1 }, '', location.href); guardia = true; }
+        });
     });
 })();
 
