@@ -13075,6 +13075,19 @@ document.addEventListener('keydown', (event) => {
     }
 });
 
+// Con productos en el carrito, jalar la pantalla hacia abajo (pull-to-refresh) no debe recargar
+// la página: se perdería el pedido que el cliente está armando.
+(function bloquearRecargaConCarrito() {
+    const estilo = document.createElement('style');
+    estilo.textContent = 'html.sin-recarga, html.sin-recarga body { overscroll-behavior-y: none !important; }';
+    document.head.appendChild(estilo);
+    document.addEventListener('touchstart', () => {
+        let hayCarrito = false;
+        try { hayCarrito = getCartProductCount() > 0; } catch (_) { /* carrito aún no listo */ }
+        document.documentElement.classList.toggle('sin-recarga', hayCarrito);
+    }, { capture: true, passive: true });
+})();
+
 window.addEventListener('beforeunload', () => {
     if (typeof featuredProductsUnsubscribe === 'function') featuredProductsUnsubscribe();
     if (typeof categoriesUnsubscribe === 'function') categoriesUnsubscribe();
