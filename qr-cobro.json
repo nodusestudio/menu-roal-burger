@@ -1,5 +1,5 @@
 {
  "payload": "00020101021126330014CO.COM.RBM.LLA0411@roalburger49250014CO.COM.RBM.RED0103RBM50310013CO.COM.RBM.CU0110009146920451250013CO.COM.RBM.CA010499995204999953031705502015802CO5911ROAL BURGER600511001610511001622703030000703000080200110363180270016CO.COM.RBM.CANAL0103APP81250015CO.COM.RBM.CIVA01020182260014CO.COM.RBM.IVA01040.0083270015CO.COM.RBM.BASE01040.0084250015CO.COM.RBM.CINC01020185260014CO.COM.RBM.INC01040.0090430016CO.COM.RBM.TRXID0119000001TlSOddgQODsXX91460014CO.COM.RBM.SEC0124EeQ34pao+gvPMB2NnYSq/v7I63047228",
- "conValor": false,
- "nota": "QR fijo de Bancolombia (Bre-B) de ROAL BURGER, leido de la tarjeta fisica el 2026-11-03 y verificado con su CRC. conValor=true prueba un QR con el monto incluido (hay que comprobarlo con el celular antes de usarlo)."
+ "conValor": "12",
+ "nota": "QR fijo de Bancolombia (Bre-B) de ROAL BURGER, leido de la tarjeta fisica el 2026-11-03 y verificado con su CRC. conValor='12': el QR de cada cobro lleva el valor incluido (probado por el dueno el 2026-11-03: la app muestra el monto). Para volver al QR fijo: poner false."
 }

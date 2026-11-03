@@ -482,7 +482,8 @@
     // Texto que lleva el QR: el fijo del comercio; solo si se pidió (qrvalor=11|12 en la URL o "conValor" en qr-cobro.json) se prueba con el valor incluido.
     function textoQr(total) {
         if (!qrJson || !qrJson.payload) return '';
-        var modo = (/[?&]qrvalor=(11|12)\b/.exec(location.search) || [])[1] || (qrJson.conValor === true ? '12' : (qrJson.conValor === '11' ? '11' : ''));
+        var modo = (/[?&]qrvalor=(0|11|12)\b/.exec(location.search) || [])[1] || (qrJson.conValor === true || qrJson.conValor === '12' ? '12' : (qrJson.conValor === '11' ? '11' : ''));
+        if (modo === '0') return qrJson.payload;
         if (modo && window.RoalQrEmv) { var q = window.RoalQrEmv.conMonto(qrJson.payload, total, modo); if (q) return q; }
         return qrJson.payload;
     }
@@ -511,6 +512,10 @@
             if (!cobroVisto[d.cobroId + ':e']) cobroVisto[d.cobroId + ':e'] = Date.now();
             document.getElementById('cQr').innerHTML = dibujarQr(textoQr(d.total));
             document.getElementById('cTotal').textContent = dinero(d.total);
+            var par = document.getElementById('cParcial');
+            if (d.parcial && d.pedidoTotal) { par.hidden = false; par.textContent = 'Pago parcial · total del pedido ' + dinero(d.pedidoTotal); } else { par.hidden = true; }
+            var conValor = !!qrJson && textoQr(d.total) !== qrJson.payload;
+            document.getElementById('cAyuda').textContent = conValor ? 'Escanea con la app de tu banco y confirma el valor' : 'Escanea con la app de tu banco y paga este valor exacto';
             clearInterval(cobroReloj);
             var msg = document.getElementById('cMsg');
             var tic = function () {
@@ -541,6 +546,7 @@
             clearInterval(cobroReloj); cobroReloj = null;
             document.getElementById('gNombre').textContent = d.pagador ? '¡Gracias, ' + d.pagador + '!' : '¡Gracias por tu pago!';
             document.getElementById('gDetalle').textContent = 'Tu pago de ' + dinero(d.total) + ' fue confirmado';
+            document.getElementById('gAdios').textContent = d.parcial && d.pedidoTotal ? 'Resta ' + dinero(d.pedidoTotal - d.total) + ' por pagar' : '¡Que vuelvas pronto!';
             document.getElementById('cMsg').innerHTML = '¡Pago confirmado!';
             // se reinicia la animación del check al volver a mostrarla
             var chk = cobroEl.querySelector('.g-check'); if (chk) { var p = chk.parentNode; p.removeChild(chk); p.insertBefore(chk, p.firstChild); }
@@ -570,6 +576,8 @@
         var m = /[?&]cobro_demo=(\d+)/.exec(location.search);
         if (!m) return;
         var base = { activo: true, cobroId: 'demo' + Date.now(), total: Number(m[1]) || 38000, cliente: '', pagador: '' };
+        var pt = Number((/[?&]pedido=(\d+)/.exec(location.search) || [])[1]) || 0;
+        if (pt > base.total) { base.parcial = true; base.pedidoTotal = pt; }
         aplicarCobro(Object.assign({}, base, { estado: 'esperando' }));
         setTimeout(function () { aplicarCobro(Object.assign({}, base, { estado: 'pagado', pagador: 'Johan Rojas' })); }, 12000);
     })();

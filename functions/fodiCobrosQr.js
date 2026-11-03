@@ -27,6 +27,7 @@ function resumirCobros(cobros) {
         cancelados: por('cancelado').length,
         vencidos_sin_pago: por('expirado').length,
         aun_esperando: por('abierto').length,
+        cobros_parciales: cobros.filter((c) => c.parcial).length,
         total_cobrado: pagados.reduce((a, c) => a + (Number(c.total) || 0), 0),
         espera_promedio_seg: esperas.length ? Math.round(esperas.reduce((a, n) => a + n, 0) / esperas.length) : 0,
         espera_mediana_seg: mediana(esperas),

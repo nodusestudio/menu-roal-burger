@@ -95,6 +95,8 @@
         .c-qr svg { width: 100%; height: 100%; display: block; shape-rendering: crispEdges; }
         .c-qr::after { content: ''; position: absolute; inset: -6px; border-radius: 26px; border: 6px solid var(--naranja); opacity: 0; animation: cPulso 2.4s ease-out infinite; pointer-events: none; }
         .c-total { font-family: 'Anton', Impact, sans-serif; font-size: 122px; line-height: 1.05; color: var(--naranja); margin-top: 14px; letter-spacing: 2px; animation: cIn .7s cubic-bezier(.2, .9, .25, 1) .2s both, latido 2.6s ease-in-out 1.2s infinite; }
+        .c-parcial { font-weight: 800; font-size: 26px; color: var(--naranja); background: rgba(251, 75, 8, .12); border-radius: 999px; padding: 5px 22px; margin-top: 2px; }
+        .c-parcial[hidden] { display: none; }
         .c-ayuda { font-weight: 700; font-size: 29px; color: var(--marron); text-align: center; margin-top: 2px; }
         .c-fodi { display: flex; align-items: center; gap: 22px; margin-top: auto; padding-top: 12px; width: 100%; justify-content: center; }
         .c-msg { font-weight: 800; font-size: 30px; color: var(--marron); max-width: 640px; line-height: 1.15; }
@@ -121,7 +123,7 @@
 
         /* Pago confirmado: se esconde el QR y aparece el agradecimiento */
         .c-gracias { display: none; flex-direction: column; align-items: center; text-align: center; margin-top: 6px; }
-        .cobro.pagado .c-etq, .cobro.pagado .c-qr, .cobro.pagado .c-total, .cobro.pagado .c-ayuda { display: none; }
+        .cobro.pagado .c-etq, .cobro.pagado .c-qr, .cobro.pagado .c-total, .cobro.pagado .c-ayuda, .cobro.pagado .c-parcial { display: none; }
         .cobro.pagado .c-gracias { display: flex; }
         .g-check { width: 200px; height: 200px; }
         .g-check circle { fill: none; stroke: #2e9d5b; stroke-width: 8; stroke-dasharray: 300; stroke-dashoffset: 300; animation: gTrazo .7s ease-out .1s forwards; }
@@ -149,12 +151,13 @@
                 <div class="c-etq">Paga con QR · Bancolombia</div>
                 <div class="c-qr" id="cQr"></div>
                 <div class="c-total" id="cTotal"></div>
-                <div class="c-ayuda">Escanea con la app de tu banco y paga este valor exacto</div>
+                <div class="c-parcial" id="cParcial" hidden></div>
+                <div class="c-ayuda" id="cAyuda">Escanea con la app de tu banco y paga este valor exacto</div>
                 <div class="c-gracias">
                     <svg class="g-check" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46"></circle><path d="M28 52 L44 67 L73 35"></path></svg>
                     <div class="g-nombre" id="gNombre"></div>
                     <div class="g-detalle" id="gDetalle"></div>
-                    <div class="g-adios">¡Que vuelvas pronto!</div>
+                    <div class="g-adios" id="gAdios">¡Que vuelvas pronto!</div>
                 </div>
                 <div class="c-fodi">
                     <div class="fodi" aria-hidden="true"><div class="ojos"><i></i><i></i></div><div class="boca"></div></div>

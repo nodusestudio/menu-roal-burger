@@ -36006,7 +36006,7 @@ function _cqPintar() {
     c.hidden = false;
     const seg = Math.max(0, Math.round((Date.now() - x.creadoMs) / 1000));
     const reloj = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
-    const quien = x.cliente ? ` · ${escapeHtml(x.cliente)}` : '';
+    const quien = (x.cliente ? ` · ${escapeHtml(x.cliente)}` : '') + (x.parcial && x.pedidoTotal ? ` · paga solo una parte (pedido $${Number(x.pedidoTotal).toLocaleString('es-CO')})` : '');
     const btn = (id, txt, color) => `<button type="button" id="${id}" style="flex:1;border:0;border-radius:10px;padding:9px 8px;font-weight:700;cursor:pointer;background:${color};color:#fff;">${txt}</button>`;
     if (x.estado === 'pagado') {
         c.innerHTML = `<div style="font-weight:800;color:#7ee2a8;">✅ Pago recibido${x.pagador ? ' de ' + escapeHtml(x.pagador) : ''}</div><div style="margin-top:4px;">$${Number(x.total).toLocaleString('es-CO')}${quien} · registrando el cobro del pedido…</div>`;
@@ -36053,7 +36053,15 @@ async function _cqAplicar(x) {
         const order = ordersState.find((o) => o.id === x.pedidoId);
         if (!order) { showNotice('Llegó el pago del QR pero no encuentro el pedido en pantalla. Revísalo en el POS.', 'error'); }
         else if (isOrderPaid(order)) { showNotice('El pedido ya estaba cobrado; el pago del QR quedó registrado aparte.', 'info'); }
-        else {
+        else if (x.parcial) {
+            // Pago parcial: se abre el pago dividido con la parte de Bancolombia ya puesta; el cajero solo elige cómo paga el resto.
+            const receive = x.receiveOrder === 'mesa' ? 'mesa' : (x.receiveOrder === 'true');
+            openDeliveryPaymentModal(order, receive);
+            _pfEnterSplitMode();
+            _pfSplitParts = [{ method: 'bancolombia', amount: Number(x.total) }, { method: null, amount: null }];
+            _pfRenderSplitParts();
+            showNotice(`Llegaron $${Number(x.total).toLocaleString('es-CO')} por QR${x.pagador ? ' de ' + x.pagador : ''}. Elige cómo paga el resto ($${(Number(x.pedidoTotal) - Number(x.total)).toLocaleString('es-CO')}) y confirma.`, 'ok');
+        } else {
             const receive = x.receiveOrder === 'mesa' ? 'mesa' : (x.receiveOrder === 'true');
             await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id });
         }
@@ -36083,11 +36091,58 @@ function _cqEscuchar(id, datos) {
     }, 1000);
     _cqPintar();
 }
+// Pregunta cuánto se cobra por QR: el total del pedido u otro monto (cliente que paga solo una parte). Devuelve el monto o null si se cancela.
+function _cqPedirMonto(total, cliente) {
+    return new Promise((resolve) => {
+        const fmt = (n) => '$' + Number(n).toLocaleString('es-CO');
+        const fondo = document.createElement('div');
+        fondo.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+        const caja = document.createElement('div');
+        caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:20px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
+        const boton = 'border:0;border-radius:12px;padding:13px 14px;font-weight:800;font-size:16px;cursor:pointer;color:#fff;';
+        caja.innerHTML = `<div style="font-weight:800;font-size:18px;margin-bottom:4px;">📲 Cobrar con QR</div>
+            <div style="opacity:.75;margin-bottom:14px;">${cliente ? escapeHtml(cliente) + ' · ' : ''}Total del pedido ${fmt(total)}</div>
+            <button type="button" id="cqmTotal" style="${boton}width:100%;background:#2e7d32;">Cobrar el total · ${fmt(total)}</button>
+            <div style="text-align:center;opacity:.7;margin:12px 0 8px;">o cobrar otro monto (el cliente paga solo una parte)</div>
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="cqmOtro" inputmode="numeric" autocomplete="off" placeholder="Monto" style="flex:1;min-width:0;border-radius:12px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;font-size:18px;font-weight:700;padding:11px 12px;">
+                <button type="button" id="cqmOtroBtn" style="${boton}background:#ff7a1a;">Cobrar</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;"><button type="button" id="cqmMitad" style="${boton}flex:1;background:rgba(255,255,255,.14);font-size:14px;padding:9px;">Mitad · ${fmt(Math.round(total / 2))}</button></div>
+            <div id="cqmError" style="color:#ff9c9c;min-height:20px;margin-top:8px;font-size:13px;"></div>
+            <button type="button" id="cqmCancelar" style="${boton}width:100%;background:transparent;border:1px solid rgba(255,255,255,.3);font-size:14px;padding:10px;">Cancelar</button>`;
+        fondo.appendChild(caja);
+        document.body.appendChild(fondo);
+        const q = (id) => caja.querySelector('#' + id);
+        const cerrar = (valor) => { document.removeEventListener('keydown', alTeclear, true); fondo.remove(); resolve(valor); };
+        const alTeclear = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(null); } };
+        document.addEventListener('keydown', alTeclear, true);
+        const leer = () => Number(String(q('cqmOtro').value).replace(/\D/g, '')) || 0;
+        const usarOtro = () => {
+            const n = leer();
+            if (!(n > 0)) { q('cqmError').textContent = 'Escribe el monto que va a pagar.'; return; }
+            if (n > total) { q('cqmError').textContent = `No puede ser mayor que el total (${fmt(total)}).`; return; }
+            cerrar(n); // si es igual al total se cobra completo
+        };
+        q('cqmOtro').addEventListener('input', () => { const n = leer(); q('cqmOtro').value = n ? n.toLocaleString('es-CO') : ''; q('cqmError').textContent = ''; });
+        q('cqmOtro').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); usarOtro(); } });
+        q('cqmOtroBtn').addEventListener('click', usarOtro);
+        q('cqmMitad').addEventListener('click', () => cerrar(Math.round(total / 2)));
+        q('cqmTotal').addEventListener('click', () => cerrar(total));
+        q('cqmCancelar').addEventListener('click', () => cerrar(null));
+        fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(null); });
+        setTimeout(() => q('cqmTotal').focus(), 50);
+    });
+}
 async function _cqIniciar() {
     const order = _pfOrder, receive = _pfReceiveOrder;
     if (!order) return;
-    const total = Math.round(_pfOrderTotal);
-    if (!(total > 0)) { showNotice('El pedido no tiene un total para cobrar.', 'error'); return; }
+    const pedidoTotal = Math.round(_pfOrderTotal);
+    if (!(pedidoTotal > 0)) { showNotice('El pedido no tiene un total para cobrar.', 'error'); return; }
+    // Total del pedido u otro monto (el cliente que paga solo una parte): el resto se cobra con otro método al llegar el pago.
+    const total = await _cqPedirMonto(pedidoTotal, order.customerName);
+    if (!total) return;
+    const parcial = total < pedidoTotal;
     const st = _cqEstado();
     if (st.cobro && st.cobro.estado === 'abierto') {
         if (!(await showConfirmModal({ title: 'Ya hay un cobro en la TV', message: `Está esperando $${Number(st.cobro.total).toLocaleString('es-CO')}. ¿Cancelarlo y cobrar este pedido?`, confirmText: 'Sí, cambiar', cancelText: 'No', danger: false }))) return;
@@ -36098,9 +36153,9 @@ async function _cqIniciar() {
         const ref = firebaseDb.collection('cobros_bancolombia').doc();
         const ahora = Date.now();
         const cliente = String(order.customerName || '').trim();
-        const datos = { pedidoId: order.id, total, cliente, receiveOrder: receive === 'mesa' ? 'mesa' : String(!!receive), estado: 'abierto', origen: 'qr', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + COBRO_QR_ESPERA_MS };
+        const datos = { pedidoId: order.id, total, pedidoTotal, parcial, cliente, receiveOrder: receive === 'mesa' ? 'mesa' : String(!!receive), estado: 'abierto', origen: 'qr', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + COBRO_QR_ESPERA_MS };
         await ref.set(datos);
-        await firebaseDb.collection('configuracion').doc('tv_cobro').set({ activo: true, cobroId: ref.id, estado: 'esperando', total, cliente: cliente.split(/\s+/)[0] || '', pagador: '', creadoMs: ahora, pagadoMs: 0, actualizado: firestoreNow() });
+        await firebaseDb.collection('configuracion').doc('tv_cobro').set({ activo: true, cobroId: ref.id, estado: 'esperando', total, pedidoTotal, parcial, cliente: cliente.split(/\s+/)[0] || '', pagador: '', creadoMs: ahora, pagadoMs: 0, actualizado: firestoreNow() });
         _cqEscuchar(ref.id, { ...datos, creadoMs: ahora });
         showNotice('QR en la TV. Esperando el pago…', 'ok');
     } catch (e) { showNotice(`No se pudo abrir el cobro con QR: ${e.message || e}`, 'error'); }
