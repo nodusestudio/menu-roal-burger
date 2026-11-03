@@ -36273,3 +36273,134 @@ document.getElementById('pfQrTvBtn')?.addEventListener('click', _cqIniciar);
     setInterval(revisar, 1500); // red de seguridad: el ticket cambia de alto al cargar un pedido, y no todos los navegadores avisan
     revisar();
 })();
+
+// SYNC:conciliacion-banco:inicio
+const CONC_DIA_MS = 86400000;
+const CONC_MARGEN_CREACION_DIAS = 7; // un pedido se puede crear días antes de cobrarse
+function concMs(v) {
+    if (v == null || v === '') return 0;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+    if (typeof v.toMillis === 'function') return v.toMillis();
+    if (typeof v.toDate === 'function') return v.toDate().getTime();
+    if (typeof v === 'object' && typeof v._seconds === 'number') return v._seconds * 1000;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+}
+function concTotal(o) {
+    const t = Number(o.total);
+    if (Number.isFinite(t) && t > 0) return t;
+    return (Number(o.subtotal) || 0) + (Number(o.deliveryFee) || 0);
+}
+function concEsPagado(o) {
+    const m = String(o.paymentMethod || '').toLowerCase();
+    if (!m || m === 'pendiente') return false;
+    if (o.paidAt) return true;
+    if (o.status === 'entregado' || o.status === 'enviado') return true;
+    return o.isAdminOrder === true || o.source === 'admin_pos';
+}
+/**
+ * De los pedidos crudos [{id, data}] saca los cobros por Bancolombia cuya fecha de venta cae en [desdeMs, hastaMs):
+ *   · pago simple por transferencia/QR → { monto: total del pedido }
+ *   · pago con tarjeta de Bancolombia (datáfono) → NO llega correo: se cuenta aparte, no se concilia
+ *   · pago dividido con una parte Bancolombia → { monto: esa parte, incierto: true } (no se sabe si fue transferencia o tarjeta)
+ */
+function concExtraerPagosPos(pedidos, desdeMs, hastaMs) {
+    const pagos = [];
+    let tarjeta = 0, tarjetaMonto = 0;
+    const vistos = {};
+    (pedidos || []).forEach((p) => {
+        if (!p || vistos[p.id]) return;
+        vistos[p.id] = true;
+        const o = p.data || {};
+        if (o.voided === true || o.anulado === true || o.status === 'cancelado' || !concEsPagado(o)) return;
+        const ms = concMs(o.paidAt) || concMs(o.deliveredAt) || concMs(o.createdAt);
+        if (!(ms >= desdeMs && ms < hastaMs)) return;
+        const metodo = String(o.paymentMethod || '').toLowerCase();
+        const sub = String(o.paymentSubMethod || '').toLowerCase();
+        const base = { pedidoId: p.id, ms, cliente: String(o.customerName || '').trim(), qrCobroId: o.qrCobroId || '' };
+        if (metodo === 'bancolombia') {
+            if (sub === 'tarjeta') { tarjeta++; tarjetaMonto += concTotal(o); return; }
+            pagos.push({ ...base, monto: concTotal(o), incierto: false });
+        } else if (metodo === 'split' && Array.isArray(o.paymentSplit)) {
+            o.paymentSplit.forEach((s) => {
+                const monto = Number(s.amount) || 0;
+                if (String(s.method || '').toLowerCase() === 'bancolombia' && monto > 0) pagos.push({ ...base, monto, incierto: true });
+            });
+        }
+    });
+    return { pagos, tarjeta, tarjetaMonto };
+}
+/**
+ * Empareja pagos del banco [{id, nombre, monto, ms, cobroId}] con cobros del POS [{pedidoId, monto, ms, incierto, qrCobroId}].
+ * 1) por el cobro con QR (enlace exacto); 2) por valor exacto, tomando el más cercano en el tiempo.
+ */
+function concConciliar(banco, pos) {
+    const b = (banco || []).map((x) => ({ ...x, _u: false }));
+    const p = (pos || []).map((x) => ({ ...x, _u: false }));
+    const pares = [];
+    b.forEach((pb) => {
+        if (!pb.cobroId) return;
+        const pp = p.find((x) => !x._u && x.qrCobroId && x.qrCobroId === pb.cobroId);
+        if (pp) { pb._u = pp._u = true; pares.push({ banco: pb, pos: pp, via: 'cobro con QR' }); }
+    });
+    b.filter((x) => !x._u).sort((x, y) => x.ms - y.ms).forEach((pb) => {
+        let mejor = null;
+        p.forEach((x) => { if (!x._u && x.monto === pb.monto && (!mejor || Math.abs(x.ms - pb.ms) < Math.abs(mejor.ms - pb.ms))) mejor = x; });
+        if (mejor) { pb._u = mejor._u = true; pares.push({ banco: pb, pos: mejor, via: 'mismo valor' }); }
+    });
+    const suma = (xs) => xs.reduce((a, x) => a + (Number(x.monto) || 0), 0);
+    const bancoSolo = b.filter((x) => !x._u), posSolo = p.filter((x) => !x._u);
+    const limpio = (x) => { const c = { ...x }; delete c._u; return c; };
+    return {
+        emparejados: pares.map((q) => ({ banco: limpio(q.banco), pos: limpio(q.pos), via: q.via })),
+        banco_sin_pedido: bancoSolo.map(limpio),
+        pos_sin_banco: posSolo.filter((x) => !x.incierto).map(limpio),
+        pos_por_revisar: posSolo.filter((x) => x.incierto).map(limpio),
+        totales: {
+            banco: { pagos: b.length, monto: suma(b) },
+            pos: { pagos: p.length, monto: suma(p) },
+            emparejados: { pagos: pares.length, monto: suma(pares.map((q) => q.banco)) },
+            diferencia: suma(b) - suma(p)
+        },
+        cuadra: !bancoSolo.length && !posSolo.filter((x) => !x.incierto).length
+    };
+}
+// SYNC:conciliacion-banco:fin
+
+// ── Conciliación Bancolombia en el panel (usa el bloque SYNC de arriba) ──────────────────────────────
+// Compara, para el día que se está viendo en Pagos Bancolombia, los pagos que entraron al banco con los cobros por Bancolombia del POS.
+async function _bancoConciliar() {
+    const st = _bancoEstado(), out = document.getElementById('bancoConcResultado'), btn = document.getElementById('bancoConcBtn');
+    if (!out) return;
+    const dia = st.diaSuscrito;
+    if (!dia) { out.textContent = 'Elige Hoy, Ayer o una fecha del calendario para conciliar ese día.'; return; }
+    const desdeMs = _bancoInicioMs(dia), hastaMs = _bancoInicioMs(_bancoYmdMas(dia, 1));
+    const TS = firebase.firestore.Timestamp;
+    if (btn) btn.disabled = true;
+    out.textContent = 'Calculando…';
+    try {
+        const ini = TS.fromMillis(desdeMs - CONC_MARGEN_CREACION_DIAS * CONC_DIA_MS), fin = TS.fromMillis(hastaMs);
+        const consulta = (col) => firebaseDb.collection(col).where('createdAt', '>=', ini).where('createdAt', '<', fin).get().then((s) => s.docs.map((d) => ({ id: d.id, data: d.data() })));
+        const [activos, archivados, avisos] = await Promise.all([
+            consulta('pedidos'), consulta('pedidos_archivados'),
+            firebaseDb.collection('avisos_banco').where('creadoEn', '>=', TS.fromMillis(desdeMs)).where('creadoEn', '<', TS.fromMillis(hastaMs)).orderBy('creadoEn', 'asc').limit(1000).get()
+        ]);
+        const { pagos, tarjeta, tarjetaMonto } = concExtraerPagosPos([...activos, ...archivados], desdeMs, hastaMs);
+        const banco = avisos.docs.map((d) => { const x = d.data(); return { id: d.id, nombre: String(x.nombre || ''), monto: Number(x.monto) || 0, ms: concMs(x.creadoEn), cobroId: x.cobroId || '', prueba: !!x.prueba }; }).filter((x) => !x.prueba);
+        const r = concConciliar(banco, pagos);
+        const $ = (n) => (Number(n) < 0 ? '-$' : '$') + Math.abs(Number(n)).toLocaleString('es-CO');
+        const hora = (ms) => new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' });
+        const lista = (titulo, color, items, fila) => items.length ? `<div style="margin-top:10px;"><div style="font-weight:800;color:${color};">${titulo} (${items.length})</div>${items.map((x) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-top:1px solid rgba(128,128,128,.2);"><span>${fila(x)}</span><strong style="white-space:nowrap;">${$(x.monto)}</strong></div>`).join('')}</div>` : '';
+        const cab = r.cuadra
+            ? `<div style="font-weight:800;color:#7ee2a8;">✅ Cuadra: ${r.emparejados.length} pago${r.emparejados.length === 1 ? '' : 's'} del banco, todos con su pedido · ${$(r.totales.emparejados.monto)}</div>`
+            : `<div style="font-weight:800;color:#ffd479;">⚠️ Hay diferencias · banco ${$(r.totales.banco.monto)} (${r.totales.banco.pagos}) vs POS ${$(r.totales.pos.monto)} (${r.totales.pos.pagos}) · diferencia ${$(r.totales.diferencia)}</div>`;
+        out.innerHTML = cab
+            + lista('💸 Entró plata al banco SIN pedido', '#ff9c9c', r.banco_sin_pedido, (x) => `${hora(x.ms)} · ${escapeHtml(x.nombre || 'sin nombre')}`)
+            + lista('🧾 Pedido cobrado como Bancolombia SIN pago del banco', '#ff9c9c', r.pos_sin_banco, (x) => `${hora(x.ms)} · ${escapeHtml(x.cliente || 'sin cliente')} · pedido ${escapeHtml(String(x.pedidoId).slice(0, 8))}`)
+            + lista('🔎 Por revisar (parte Bancolombia de un pago dividido: no se sabe si fue transferencia o tarjeta)', '#ffd479', r.pos_por_revisar, (x) => `${hora(x.ms)} · ${escapeHtml(x.cliente || 'sin cliente')}`)
+            + (tarjeta ? `<div style="margin-top:10px;opacity:.75;font-size:0.82rem;">ℹ️ ${tarjeta} cobro${tarjeta === 1 ? '' : 's'} con tarjeta de Bancolombia (${$(tarjetaMonto)}): no generan correo de pago, por eso no se concilian.</div>` : '');
+    } catch (e) {
+        out.textContent = `No se pudo conciliar: ${(e && e.message) || e}`;
+    } finally { if (btn) btn.disabled = false; }
+}
+document.getElementById('bancoConcBtn')?.addEventListener('click', _bancoConciliar);
