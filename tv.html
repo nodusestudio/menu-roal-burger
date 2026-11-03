@@ -59,7 +59,8 @@
         @keyframes latido { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
 
         /* ── Barra de progreso hacia el siguiente producto ── */
-        #barra { position: absolute; left: 0; right: 0; top: 952px; height: 8px; background: rgba(0, 0, 0, .22); z-index: 5; }
+        /* Oculta por pedido del dueño (2026-11-03); el JS de tv.js sigue animándola sin efecto visible. */
+        #barra { display: none; position: absolute; left: 0; right: 0; top: 952px; height: 8px; background: rgba(0, 0, 0, .22); z-index: 5; }
         body.en-pausa #barra { opacity: 0; }
         #barra i { display: block; height: 100%; width: 0; background: var(--naranja); }
         @keyframes prog { from { width: 0; } to { width: 100%; } }
