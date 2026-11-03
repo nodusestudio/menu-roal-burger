@@ -774,7 +774,9 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
         for (let el = node; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
             if (el.classList.contains('admin-auth-overlay')) return null;
             if (getComputedStyle(el).position !== 'fixed') continue;
-            if (el.offsetWidth >= window.innerWidth * 0.95 && el.offsetHeight >= window.innerHeight * 0.9) return el;
+            // Con el teclado abierto en el celular el modal se encoge (visualViewport): se mide contra el área visible.
+            const altoVisible = Math.min(window.innerHeight, window.visualViewport ? window.visualViewport.height : Infinity);
+            if (el.offsetWidth >= window.innerWidth * 0.95 && el.offsetHeight >= altoVisible * 0.9) return el;
         }
         return null;
     };

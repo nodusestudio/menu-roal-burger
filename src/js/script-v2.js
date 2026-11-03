@@ -13075,6 +13075,90 @@ document.addEventListener('keydown', (event) => {
     }
 });
 
+// Ventana con datos escritos (registro, comentario de un producto…): tocar fuera de ella o
+// pulsar Escape pide confirmación antes de descartar lo que el cliente ya escribió.
+(function guardiaCierreVentanas() {
+    const sucios = new Set();
+    let escConfirmado = false;
+    const visible = (el) => {
+        if (!el.isConnected || !el.getClientRects().length) return false;
+        const cs = getComputedStyle(el);
+        return cs.visibility !== 'hidden' && cs.display !== 'none' && parseFloat(cs.opacity) > 0.01;
+    };
+    const fondoDe = (node) => {
+        for (let el = node; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+            if (getComputedStyle(el).position !== 'fixed') continue;
+            const alto = Math.min(window.innerHeight, window.visualViewport ? window.visualViewport.height : Infinity);
+            if (el.offsetWidth >= window.innerWidth * 0.95 && el.offsetHeight >= alto * 0.9) return el;
+        }
+        return null;
+    };
+    const marcar = (fondo) => {
+        if (sucios.has(fondo)) return;
+        sucios.add(fondo);
+        const obs = new MutationObserver(() => { if (!visible(fondo)) { sucios.delete(fondo); obs.disconnect(); } });
+        obs.observe(fondo, { attributes: true, attributeFilter: ['class', 'hidden', 'style', 'aria-hidden'] });
+        obs.observe(fondo.parentNode || document.body, { childList: true });
+    };
+    const alEditar = (e) => {
+        if (!e.isTrusted) return;
+        const t = e.target;
+        if (!(t instanceof HTMLElement) || !t.matches('input, textarea, select') || t.type === 'search') return;
+        const fondo = fondoDe(t);
+        if (fondo) marcar(fondo);
+    };
+    document.addEventListener('input', alEditar, true);
+    document.addEventListener('change', alEditar, true);
+
+    const preguntar = () => new Promise((resolve) => {
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;';
+        ov.innerHTML = '<div role="alertdialog" aria-modal="true" style="background:#1e1e2e;color:#fff;border:1.5px solid rgba(255,255,255,.14);border-radius:18px;padding:24px 20px;max-width:340px;width:100%;text-align:center;font-family:inherit">'
+            + '<div style="font-size:30px;margin-bottom:8px">✋</div>'
+            + '<h3 style="margin:0 0 6px;font-size:18px">¿Cerrar sin guardar?</h3>'
+            + '<p style="margin:0 0 16px;font-size:14px;line-height:1.45;opacity:.75">Escribiste información en esta ventana. Si la cierras, se pierde.</p>'
+            + '<div style="display:flex;gap:10px"><button type="button" data-r="0" style="flex:1;padding:12px;border-radius:10px;border:1.5px solid rgba(255,255,255,.2);background:transparent;color:#fff;font-size:14px">Seguir editando</button>'
+            + '<button type="button" data-r="1" style="flex:1;padding:12px;border-radius:10px;border:0;background:#e53935;color:#fff;font-size:14px;font-weight:700">Sí, cerrar</button></div></div>';
+        ov.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-r]');
+            if (!b && e.target !== ov) return;
+            ov.remove();
+            resolve(!!b && b.dataset.r === '1');
+        });
+        document.body.appendChild(ov);
+    });
+
+    document.addEventListener('click', (e) => {
+        const fondo = e.target;
+        if (!sucios.has(fondo)) return;
+        if (!visible(fondo)) { sucios.delete(fondo); return; }
+        if (fondo.dataset.cierreConfirmado) { delete fondo.dataset.cierreConfirmado; sucios.delete(fondo); return; }
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        preguntar().then((ok) => {
+            if (!ok) return;
+            fondo.dataset.cierreConfirmado = '1';
+            fondo.click();
+            setTimeout(() => { delete fondo.dataset.cierreConfirmado; }, 0);
+        });
+    }, true);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (escConfirmado) { escConfirmado = false; return; }
+        const activo = [...sucios].filter(visible).pop();
+        if (!activo) return;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        preguntar().then((ok) => {
+            if (!ok) return;
+            escConfirmado = true;
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            setTimeout(() => { escConfirmado = false; }, 0);
+        });
+    }, true);
+})();
+
 // Con productos en el carrito, jalar la pantalla hacia abajo (pull-to-refresh) no debe recargar
 // la página: se perdería el pedido que el cliente está armando.
 (function bloquearRecargaConCarrito() {
