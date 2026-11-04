@@ -5598,15 +5598,30 @@ function _posBuildCuponFidSection() {
 async function _posCanjearCuponFid(codigo) {
     if (internalOrderItems.some((i) => i.cuponFidelizacionCodigo === codigo)) throw new Error('Ese cupón ya está en el ticket.');
     const ref = firebaseDb.collection('cupones_fidelizacion').doc(codigo);
+    await _fidCargarCfg();
     const k = await firebaseDb.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         if (!snap.exists) throw new Error(`No encuentro el cupón ${codigo}. Revisa que esté bien escrito.`);
         const x = snap.data() || {};
         if (x.estado === 'canjeado') throw new Error(`El cupón ${codigo} ya fue canjeado${x.canjeadoPedido ? ` (pedido ${x.canjeadoPedido})` : ''}.`);
         if (_tsMs(x.venceAt) < Date.now()) throw new Error(`El cupón ${codigo} está vencido.`);
-        tx.update(ref, { estado: 'canjeado', canjeadoAt: firebase.firestore.FieldValue.serverTimestamp(), canjeadoVia: 'pos' });
-        return x;
+        const cambios = { estado: 'canjeado', canjeadoAt: firebase.firestore.FieldValue.serverTimestamp(), canjeadoVia: 'pos' };
+        // Invitación de referido: al canjearla, queda lista la recompensa de quien invitó (se envía desde Feedback → Referidos).
+        if (x.motivo === 'referido' && x.referidoPor) {
+            const rCodigo = _fidNuevoCodigo(x.referidorNombre);
+            const ahora = firebase.firestore.Timestamp.now();
+            const prodR = _fidCfg.referidoRecompensaProductoId ? productsState.find((p) => p.id === _fidCfg.referidoRecompensaProductoId) : null;
+            tx.set(firebaseDb.collection('cupones_fidelizacion').doc(rCodigo), {
+                codigo: rCodigo, motivo: 'referidor', clientId: x.referidoPor, telefono: x.referidorTelefono || '', nombre: x.referidorNombre || '',
+                beneficio: _fidCfg.referidoRecompensa, productoId: prodR ? prodR.id : '', productoNombre: prodR ? String(prodR.nombre || '') : '',
+                creadoAt: ahora, venceAt: firebase.firestore.Timestamp.fromMillis(ahora.toMillis() + 30 * 86400000), estado: 'activo', origenCodigo: codigo
+            });
+            cambios.recompensaCodigo = rCodigo;
+        }
+        tx.update(ref, cambios);
+        return { ...x, recompensaCodigo: cambios.recompensaCodigo || '' };
     });
+    if (k.recompensaCodigo) showNotice(`🎁 Quedó lista la recompensa de ${k.referidorNombre || 'quien lo invitó'}: envíasela desde Feedback → Referidos.`, 'ok');
     const prod = k.productoId ? productsState.find((p) => p.id === k.productoId) : null;
     const precio = prod ? Number(prod.precio || 0) : 0;
     const etiqueta = `CUPÓN ${codigo} — ${String(k.beneficio || '').slice(0, 80)}`;
@@ -5642,7 +5657,13 @@ function _posRevertirCuponFid(codigo) {
         const x = snap.exists ? snap.data() : null;
         if (!x || x.estado !== 'canjeado' || x.canjeadoPedido) return;
         const del = firebase.firestore.FieldValue.delete();
-        tx.update(ref, { estado: 'activo', canjeadoAt: del, canjeadoVia: del });
+        // Si el canje había generado la recompensa de un referido y aún no se envió, se retira.
+        if (x.recompensaCodigo) {
+            const rRef = firebaseDb.collection('cupones_fidelizacion').doc(x.recompensaCodigo);
+            const rSnap = await tx.get(rRef);
+            if (rSnap.exists && !rSnap.data().enviadoAt && rSnap.data().estado === 'activo') tx.delete(rRef);
+        }
+        tx.update(ref, { estado: 'activo', canjeadoAt: del, canjeadoVia: del, recompensaCodigo: del });
     }).then(() => showNotice(`Cupón ${codigo} devuelto: sigue activo.`, 'ok'))
         .catch((err) => { console.error('revertir cupón fidelización:', err); showNotice(`No se pudo devolver el cupón ${codigo}. Reactívalo en Feedback → Cupones.`, 'error'); });
 }
@@ -11463,7 +11484,7 @@ function _fbAttach() {
                 const x = d.data();
                 return {
                     id: d.id, orderCode: String(x.orderCode || ''), name: String(x.customerName || ''), phone: String(x.customerPhone || ''),
-                    tipo: x.tipo === 'general' ? 'general' : 'quindio', cumple: String(x.cumple || ''), q1: x.q1, q2: x.q2, q3: x.q3, q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
+                    tipo: x.tipo === 'general' ? 'general' : 'quindio', cumple: String(x.cumple || ''), clientId: String(x.clientId || ''), requiere: x.requiereAtencion === true, motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [], q1: x.q1, q2: x.q2, q3: x.q3, q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
                 };
             });
             renderMetricasFeedback();
@@ -11817,10 +11838,10 @@ let _cumpleVentana = 7; // días hacia adelante: 0 = solo hoy, 1 = mañana, 7, 3
 let _cumpleQ = '';
 
 function _fbNavTipoHtml(extra = '') {
-    const TIPOS = [['quindio', '🏆', 'Sabe a Quindío'], ['general', '💛', 'Fidelización'], ['cumple', '🎂', 'Cumpleaños'], ['reactivar', '🔁', 'Reactivar'], ['cupones', '🎟️', 'Cupones'], ['metas', '🎯', 'Metas']];
+    const TIPOS = [['quindio', '🏆', 'Sabe a Quindío'], ['general', '💛', 'Fidelización'], ['cumple', '🎂', 'Cumpleaños'], ['reactivar', '🔁', 'Reactivar'], ['atender', '⚠️', 'Atender'], ['referidos', '🤝', 'Referidos'], ['cupones', '🎟️', 'Cupones'], ['metas', '🎯', 'Metas']];
     return `<article class="admin-card menu-section-card" style="padding-bottom:0">
         <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Tipo de feedback">
-            ${TIPOS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
+            ${TIPOS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}${id === 'atender' && _fidAtenderPendientes() ? ` <b style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:.72rem">${_fidAtenderPendientes()}</b>` : ''}</span></button>`).join('')}
         </nav>
         ${extra}
     </article>`;
@@ -11968,10 +11989,12 @@ function _fbCumpleClick(e) {
 //  · cupones_fidelizacion/{codigo}: cupón personal (cliente, beneficio, vigencia, estado, canje).
 //  · configuracion/fidelizacion: textos, umbrales y metas semanales editables.
 // Atribución: un cliente "volvió" si hizo un pedido pagado dentro de los 14 días siguientes al último mensaje/cupón que recibió.
-const FB_TIPOS_FID = ['cumple', 'reactivar', 'cupones', 'metas'];
+const FB_TIPOS_FID = ['cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
+    disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: '',
+    referidoAmigo: 'una bebida gratis en tu primer pedido', referidoRecompensa: 'unas papas gratis en tu próximo pedido', referidoAmigoProductoId: '', referidoRecompensaProductoId: '',
     metaMensajes: 30, metaReactivados: 8, metaCanjes: 6, metaVentas: 500000, margenPct: 35, costoRegalo: 3000
 };
 let _fidCfg = { ...FID_CFG_DEF };
@@ -11994,6 +12017,9 @@ async function _fidCargarCfg() {
         _fidCfg = {
             reactivarOferta: String(x.reactivarOferta || FID_CFG_DEF.reactivarOferta),
             reactivarProductoId: String(x.reactivarProductoId || ''), cumpleProductoId: String(x.cumpleProductoId || ''),
+            disculpaOferta: String(x.disculpaOferta || FID_CFG_DEF.disculpaOferta), disculpaProductoId: String(x.disculpaProductoId || ''), googleResenaUrl: String(x.googleResenaUrl || ''),
+            referidoAmigo: String(x.referidoAmigo || FID_CFG_DEF.referidoAmigo), referidoRecompensa: String(x.referidoRecompensa || FID_CFG_DEF.referidoRecompensa),
+            referidoAmigoProductoId: String(x.referidoAmigoProductoId || ''), referidoRecompensaProductoId: String(x.referidoRecompensaProductoId || ''),
             reactivarDias: num(x.reactivarDias, FID_CFG_DEF.reactivarDias), vigenciaDias: num(x.vigenciaDias, FID_CFG_DEF.vigenciaDias),
             metaMensajes: num(x.metaMensajes, FID_CFG_DEF.metaMensajes), metaReactivados: num(x.metaReactivados, FID_CFG_DEF.metaReactivados),
             metaCanjes: num(x.metaCanjes, FID_CFG_DEF.metaCanjes), metaVentas: num(x.metaVentas, FID_CFG_DEF.metaVentas),
@@ -12019,16 +12045,16 @@ function _fidNuevoCodigo(nombre) {
 }
 
 // Guarda el mensaje enviado y, si lleva cupón, el cupón. Va en segundo plano: el copiado ya se hizo en el mismo clic.
-function _fidGuardarEnvio(cliente, motivo, { codigo = '', beneficio = '', dias = 0, productoId = '' } = {}) {
+function _fidGuardarEnvio(cliente, motivo, { codigo = '', beneficio = '', dias = 0, productoId = '', envioExtra = {}, cuponExtra = {} } = {}) {
     const ahora = firebase.firestore.Timestamp.now();
     const telefono = String(cliente.customerPhoneDigits || cliente.customerPhone || '').replace(/\D/g, '');
     const base = { clientId: cliente.id || '', telefono, nombre: cliente.customerName || '', motivo };
-    const envio = { ...base, creadoAt: ahora, cuponCodigo: codigo };
+    const envio = { ...base, creadoAt: ahora, cuponCodigo: codigo, ...envioExtra };
     _fidEnvios = [..._fidEnvios, { id: `local-${Date.now()}`, ...envio }];
     const escrituras = [firebaseDb.collection('fidelizacion_envios').add(envio)];
     if (codigo) {
         const prod = productoId ? productsState.find((p) => p.id === productoId) : null;
-        const cupon = { ...base, codigo, beneficio, productoId: prod ? prod.id : '', productoNombre: prod ? String(prod.nombre || '') : '', creadoAt: ahora, venceAt: firebase.firestore.Timestamp.fromMillis(ahora.toMillis() + dias * 86400000), estado: 'activo' };
+        const cupon = { ...base, codigo, beneficio, productoId: prod ? prod.id : '', productoNombre: prod ? String(prod.nombre || '') : '', ...cuponExtra, creadoAt: ahora, venceAt: firebase.firestore.Timestamp.fromMillis(ahora.toMillis() + dias * 86400000), estado: 'activo' };
         _fidCupones = [..._fidCupones, { id: codigo, ...cupon }];
         escrituras.push(firebaseDb.collection('cupones_fidelizacion').doc(codigo).set(cupon));
     }
@@ -12100,6 +12126,142 @@ function _fidOpcionesProducto(sel) {
     return `<option value="">— Sin producto (solo texto: el cajero lo agrega con 🎁) —</option>${prods.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === sel ? ' selected' : ''}>${escapeHtml(p.nombre)}</option>`).join('')}`;
 }
 
+// Respuestas con calificación baja que aún no se han atendido (no hay un mensaje de disculpa registrado para esa encuesta).
+function _fidEncuestasAtendidas(motivo) {
+    return new Set(_fidEnvios.filter((e) => e.motivo === motivo && e.encuestaId).map((e) => e.encuestaId));
+}
+function _fidAtenderPendientes() {
+    const atendidas = _fidEncuestasAtendidas('disculpa');
+    return _fbResponses.filter((r) => r.requiere && !atendidas.has(r.id)).length;
+}
+
+let _fidAtenderVista = 'baja'; // baja | resena
+let _fidAtenderQ = '';
+
+function _fidAtenderHtml() {
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const disculpadas = _fidEncuestasAtendidas('disculpa');
+    const resenadas = _fidEncuestasAtendidas('resena');
+    const bajas = _fbResponses.filter((r) => r.requiere).sort((a, b) => b.ts - a.ts);
+    const felices = _fbResponses.filter((r) => r.q1 === 'brutal' && !r.requiere).sort((a, b) => b.ts - a.ts);
+    const fecha = (ts) => new Date(ts).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const lista = (_fidAtenderVista === 'baja' ? bajas : felices).filter((r) => smartMatch(_fidAtenderQ, r.name, r.phone, r.orderCode, r.q4));
+    const filas = lista.slice(0, 100).map((r) => {
+        const hecho = (_fidAtenderVista === 'baja' ? disculpadas : resenadas).has(r.id);
+        const phone = String(r.phone || '').replace(/\D/g, '');
+        const detalle = _fidAtenderVista === 'baja' ? `⚠️ ${escapeHtml((r.motivos || []).join(', ') || 'calificación baja')}` : '🔥 Brutal 10/10';
+        return `<div class="met-user-row-v2">
+            <div class="met-avatar">${_fidAtenderVista === 'baja' ? '⚠️' : '⭐'}</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(r.orderCode)} · ${escapeHtml(fecha(r.ts))}</div>
+                <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · ` : ''}${detalle}${hecho ? ' · <span style="color:#34d399;font-weight:700">✅ Atendido</span>' : ''}${r.q4 ? `<br>💬 ${escapeHtml(r.q4)}` : ''}</div>
+            </div>
+            ${phone ? `<button type="button" class="${hecho ? 'ghost-button' : 'feedback-pending-btn'}" ${hecho ? 'style="padding:6px 10px" ' : ''}data-fid-atender="${escapeHtml(r.id)}" data-fid-atender-tipo="${_fidAtenderVista}">${hecho ? 'Volver a copiar' : (_fidAtenderVista === 'baja' ? 'Copiar disculpa + cupón' : 'Copiar pedido de reseña')}</button>` : ''}
+        </div>`;
+    }).join('');
+    const chips = [['baja', `⚠️ Mala calificación (${nf(bajas.length - bajas.filter((r) => disculpadas.has(r.id)).length)} por atender)`], ['resena', `⭐ Pedir reseña (${nf(felices.filter((r) => !resenadas.has(r.id)).length)})`]]
+        .map(([n, l]) => `<button type="button" class="rango-btn${_fidAtenderVista === n ? ' active' : ''}" data-fid-atender-vista="${n}">${l}</button>`).join('');
+    const config = _fidAtenderVista === 'baja'
+        ? `<label class="admin-hint">Compensación del mensaje («queremos compensarte: <em>oferta</em>»)<input type="text" id="fidDisculpaOferta" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.disculpaOferta)}"></label>
+           <label class="admin-hint">Producto regalo<select id="fidDisculpaProducto" class="admin-input">${_fidOpcionesProducto(_fidCfg.disculpaProductoId)}</select></label>`
+        : `<label class="admin-hint">Link para dejar la reseña en Google<input type="url" id="fidResenaUrl" class="admin-input" maxlength="300" placeholder="https://g.page/r/…/review" value="${escapeHtml(_fidCfg.googleResenaUrl)}"></label>`;
+    return `<article class="admin-card">
+        <div class="met-section-title">⚠️ Atender</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${chips}</div>
+        <div style="display:grid;gap:8px;margin-bottom:10px">${config}<div><button type="button" class="section-action-btn" data-fid-guardar-atender>Guardar</button></div></div>
+        ${searchBoxHtml('fidQatender', 'Buscar por nombre, teléfono o pedido', _fidAtenderQ)}
+        <div class="metrics-users-list" id="fidLista">${filas || '<p class="met-empty-note">No hay respuestas en esta lista.</p>'}</div>
+    </article>`;
+}
+
+// Disculpa con cupón de compensación / pedido de reseña (manual: se copia y se manda por WhatsApp).
+function _fidAtender(clic) {
+    const id = clic.dataset.fidAtender;
+    const vista = clic.dataset.fidAtenderTipo;
+    const r = _fbResponses.find((x) => x.id === id);
+    if (!r) return;
+    const nombre = String(r.name || '').trim().split(/\s+/)[0];
+    const saludo = nombre ? ` ${nombre}` : '';
+    const cliente = { id: r.clientId, customerName: r.name, customerPhoneDigits: String(r.phone || '').replace(/\D/g, '') };
+    const yaHecho = _fidEncuestasAtendidas(vista === 'baja' ? 'disculpa' : 'resena').has(id);
+    if (vista === 'resena') {
+        if (!_fidCfg.googleResenaUrl) { showNotice('Primero guarda el link de reseñas de Google.', 'error'); return; }
+        const copiado = copyTextToClipboard(`¡Gracias${saludo}! 🔥 Nos alegra mucho que hayas disfrutado tu pedido de ROAL BURGER. ¿Nos regalas una reseña en Google? Nos ayuda muchísimo 🙏 👉 ${_fidCfg.googleResenaUrl}`);
+        if (!yaHecho) _fidGuardarEnvio(cliente, 'resena', { envioExtra: { encuestaId: id } });
+        copiado.then((ok) => showNotice(ok ? `Pedido de reseña listo para ${r.name || 'el cliente'}.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
+        renderMetricasFeedback();
+        return;
+    }
+    const dias = Number(_fidCfg.vigenciaDias) || 3;
+    const previo = yaHecho ? _fidCupones.find((k) => k.encuestaId === id) : null;
+    const codigo = previo ? previo.codigo : _fidNuevoCodigo(r.name);
+    const motivo = (r.motivos && r.motivos[0]) ? r.motivos[0] : 'tu experiencia no fue la mejor';
+    const copiado = copyTextToClipboard(`Hola${saludo}, te escribimos de ROAL BURGER. Gracias por contarnos tu opinión: sentimos mucho que ${motivo}. Queremos compensarte: ${_fidCfg.disculpaOferta}. Tu código personal: ${codigo} (válido ${dias} días). ¿Nos cuentas qué pasó para corregirlo? 🙏`);
+    if (!yaHecho) _fidGuardarEnvio(cliente, 'disculpa', { codigo, beneficio: _fidCfg.disculpaOferta, dias, productoId: _fidCfg.disculpaProductoId, envioExtra: { encuestaId: id }, cuponExtra: { encuestaId: id } });
+    copiado.then((ok) => showNotice(ok ? `Disculpa con cupón lista para ${r.name || 'el cliente'}.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
+    renderMetricasFeedback();
+}
+
+let _fidRefQ = '';
+
+function _fidReferidosHtml() {
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const hoyMs = Date.now();
+    const contactos = _fidEnvios.filter((e) => e.motivo === 'referido');
+    const invitados = new Set(contactos.filter((e) => hoyMs - _tsMs(e.creadoAt) < 30 * 86400000).map((e) => _sqPhoneKey(e.telefono)));
+    const invitaciones = _fidCupones.filter((k) => k.motivo === 'referido');
+    const canjeadas = invitaciones.filter((k) => k.estado === 'canjeado');
+    const recompensas = _fidCupones.filter((k) => k.motivo === 'referidor');
+    const porEnviar = recompensas.filter((k) => !k.enviadoAt);
+    const buenos = (clientsState || []).filter((c) => c.totalOrders >= 3 && _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) && smartMatch(_fidRefQ, c.customerName, c.customerPhone))
+        .filter((c) => !invitados.has(_sqPhoneKey(c.customerPhoneDigits || c.customerPhone)))
+        .sort((a, b) => b.totalOrders - a.totalOrders);
+    const filasInv = buenos.slice(0, 80).map((c) => {
+        const phone = String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '');
+        return `<div class="met-user-row-v2">
+            <div class="met-avatar">🤝</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(c.customerName)}</div>
+                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}</div>
+            </div>
+            <button type="button" class="feedback-pending-btn" data-fid-invitar="${escapeHtml(c.id)}">Copiar invitación</button>
+        </div>`;
+    }).join('');
+    const filasRec = porEnviar.map((k) => {
+        const phone = String(k.telefono || '').replace(/\D/g, '');
+        return `<div class="met-user-row-v2">
+            <div class="met-avatar">🎁</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(k.nombre || 'Cliente')} · ${escapeHtml(k.codigo)}</div>
+                <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}">📋 ${escapeHtml(phone)}</button> · ` : ''}Su amigo ya canjeó la invitación · recompensa: ${escapeHtml(k.beneficio || '')}</div>
+            </div>
+            <button type="button" class="feedback-pending-btn" data-fid-recompensa="${escapeHtml(k.codigo)}">Copiar recompensa</button>
+        </div>`;
+    }).join('');
+    return `<article class="admin-card">
+        <div class="met-section-title">🤝 Referidos</div>
+        <div class="met-kpi-row">
+            ${_fidKpi('met-kpi-card--hi', nf(invitaciones.length), 'Invitaciones enviadas')}
+            ${_fidKpi('met-kpi-card--green', nf(canjeadas.length), `Amigos que vinieron (${invitaciones.length ? Math.round((canjeadas.length / invitaciones.length) * 100) : 0}%)`)}
+            ${_fidKpi('', nf(recompensas.length), 'Recompensas generadas')}
+            ${_fidKpi('met-kpi-card--purple', nf(porEnviar.length), 'Recompensas por enviar')}
+        </div>
+        <div style="margin-top:12px;display:grid;gap:8px">
+            <label class="admin-hint">Qué recibe el amigo (primer pedido)<input type="text" id="fidRefAmigo" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.referidoAmigo)}"></label>
+            <label class="admin-hint">Producto regalo del amigo<select id="fidRefAmigoProducto" class="admin-input">${_fidOpcionesProducto(_fidCfg.referidoAmigoProductoId)}</select></label>
+            <label class="admin-hint">Qué recibe quien lo invitó<input type="text" id="fidRefRecompensa" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.referidoRecompensa)}"></label>
+            <label class="admin-hint">Producto regalo de la recompensa<select id="fidRefRecompensaProducto" class="admin-input">${_fidOpcionesProducto(_fidCfg.referidoRecompensaProductoId)}</select></label>
+            <div><button type="button" class="section-action-btn" data-fid-guardar-ref>Guardar</button></div>
+        </div>
+    </article>
+    ${porEnviar.length ? `<article class="admin-card"><div class="met-section-title">🎁 Recompensas por enviar</div><div class="metrics-users-list" id="fidLista">${filasRec}</div></article>` : ''}
+    <article class="admin-card">
+        <div class="met-section-title">Invitar a un cliente <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· clientes con 3 o más pedidos, sin invitación en los últimos 30 días</small></div>
+        ${searchBoxHtml('fidQref', 'Buscar cliente o teléfono', _fidRefQ)}
+        <div class="metrics-users-list" id="fidListaInv">${filasInv || '<p class="met-empty-note">No hay clientes para invitar con estos filtros.</p>'}</div>
+    </article>`;
+}
+
 function _fidKpi(cls, val, lbl) { return `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`; }
 
 function _fbRenderFid(body) {
@@ -12110,7 +12272,11 @@ function _fbRenderFid(body) {
     const hoyMs = Date.now();
     let html = '';
 
-    if (_fbTipo === 'reactivar') {
+    if (_fbTipo === 'atender') {
+        html = _fidAtenderHtml();
+    } else if (_fbTipo === 'referidos') {
+        html = _fidReferidosHtml();
+    } else if (_fbTipo === 'reactivar') {
         const minDias = _fidReactMin || Number(_fidCfg.reactivarDias) || 21;
         const contactos = _fidContactos();
         const todos = (clientsState || []).filter((c) => c.totalOrders > 0 && _tsMs(c.lastOrderAt) > 0);
@@ -12180,7 +12346,7 @@ function _fbRenderFid(body) {
                 <div class="met-avatar">🎟️</div>
                 <div class="met-user-info-v2">
                     <div class="met-user-name-v2">${escapeHtml(k.codigo)} · ${escapeHtml(k.nombre || 'Cliente')}</div>
-                    <div class="met-user-meta-v2">${escapeHtml(k.motivo === 'cumple' ? '🎂 cumpleaños' : '🔁 reactivar')} · ${escapeHtml(k.beneficio || '')} · creado ${fechaCorta(_tsMs(k.creadoAt))} · vence ${fechaCorta(_tsMs(k.venceAt))} · <span style="color:${BADGE[est][1]};font-weight:700">${BADGE[est][0]}</span>${k.canjeadoPedido ? ` · pedido ${escapeHtml(k.canjeadoPedido)}` : ''}</div>
+                    <div class="met-user-meta-v2">${escapeHtml({ cumple: '🎂 cumpleaños', reactivar: '🔁 reactivar', disculpa: '⚠️ disculpa', referido: '🤝 invitación', referidor: '🎁 recompensa referido' }[k.motivo] || k.motivo || '')} · ${escapeHtml(k.beneficio || '')} · creado ${fechaCorta(_tsMs(k.creadoAt))} · vence ${fechaCorta(_tsMs(k.venceAt))} · <span style="color:${BADGE[est][1]};font-weight:700">${BADGE[est][0]}</span>${k.canjeadoPedido ? ` · pedido ${escapeHtml(k.canjeadoPedido)}` : ''}</div>
                 </div>
                 ${est === 'activo' ? `<button type="button" class="feedback-pending-btn" data-fid-canjear="${escapeHtml(k.codigo)}">Canjear</button>` : ''}
             </div>`;
@@ -12246,6 +12412,8 @@ function _fbRenderFid(body) {
         </article>`;
     }
     body.innerHTML = _fbNavTipoHtml(`<p class="admin-hint" style="margin:6px 0 10px">${{
+        atender: 'Clientes que calificaron mal (te llega también un aviso al celular) y clientes felices a quienes pedirles una reseña en Google.',
+        referidos: 'Invita a tus mejores clientes a traer amigos: el amigo recibe un cupón y, cuando lo canjea en la caja, tu cliente recibe su recompensa.',
         reactivar: 'Clientes que llevan tiempo sin pedir y a quienes no se les ha escrito en los últimos 14 días. Copia el mensaje con su cupón personal y mándalo por WhatsApp.',
         cupones: 'Cada cupón es único por cliente, con vigencia. Canjéalo aquí cuando el cliente dé su código.',
         metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Todo sale de los mensajes y cupones registrados y de los pedidos.'
@@ -12262,6 +12430,42 @@ function _fidClick(e) {
     const semBtn = t.closest('[data-metas-semana]');
     if (semBtn) { _metasSemana = Number(semBtn.dataset.metasSemana); renderMetricasFeedback(); return true; }
 
+    const vistaBtn = t.closest('[data-fid-atender-vista]');
+    if (vistaBtn) { _fidAtenderVista = vistaBtn.dataset.fidAtenderVista; renderMetricasFeedback(); return true; }
+    const atBtn = t.closest('[data-fid-atender]');
+    if (atBtn) { _fidAtender(atBtn); return true; }
+
+    const invitar = t.closest('[data-fid-invitar]');
+    if (invitar) {
+        const cliente = (clientsState || []).find((c) => c.id === invitar.dataset.fidInvitar);
+        if (!cliente) return true;
+        const dias = 14;
+        const codigo = _fidNuevoCodigo(cliente.customerName);
+        const nombre = String(cliente.customerName || '').trim().split(/\s+/)[0];
+        const copiado = copyTextToClipboard(`¡Hola${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! 🍔 Gracias por ser parte de ROAL BURGER. Queremos premiarte: comparte este código con un amigo que nunca nos haya pedido → ${codigo}. Él recibe ${_fidCfg.referidoAmigo} (válido ${dias} días) y, cuando lo use, tú recibes ${_fidCfg.referidoRecompensa} 🙌`);
+        _fidGuardarEnvio(cliente, 'referido', {
+            codigo, beneficio: _fidCfg.referidoAmigo, dias, productoId: _fidCfg.referidoAmigoProductoId,
+            cuponExtra: { nombre: `Amigo de ${cliente.customerName}`, telefono: '', clientId: '', referidoPor: cliente.id, referidorNombre: cliente.customerName, referidorTelefono: String(cliente.customerPhoneDigits || cliente.customerPhone || '').replace(/\D/g, '') }
+        });
+        copiado.then((ok) => showNotice(ok ? `Invitación lista para ${cliente.customerName}.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
+        renderMetricasFeedback();
+        return true;
+    }
+    const recompensa = t.closest('[data-fid-recompensa]');
+    if (recompensa) {
+        const k = _fidCupones.find((x) => x.codigo === recompensa.dataset.fidRecompensa);
+        if (!k) return true;
+        const nombre = String(k.nombre || '').trim().split(/\s+/)[0];
+        const dias = Math.max(1, Math.round((_tsMs(k.venceAt) - _tsMs(k.creadoAt)) / 86400000));
+        const copiado = copyTextToClipboard(`¡Hola${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! 🎉 Tu amigo ya pidió con tu invitación, ¡gracias por traerlo a ROAL BURGER! Tu recompensa: ${k.beneficio}. Tu código personal: ${k.codigo} (válido ${dias} días) 🙌`);
+        k.enviadoAt = firebase.firestore.Timestamp.now();
+        firebaseDb.collection('cupones_fidelizacion').doc(k.codigo).update({ enviadoAt: k.enviadoAt }).catch((err) => { k.enviadoAt = null; showNotice(`No se pudo marcar la recompensa: ${err.message || 'error'}`, 'error'); renderMetricasFeedback(); });
+        _fidGuardarEnvio({ id: k.clientId, customerName: k.nombre, customerPhoneDigits: k.telefono }, 'recompensa_referido', {});
+        copiado.then((ok) => showNotice(ok ? 'Recompensa lista para enviar.' : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
+        renderMetricasFeedback();
+        return true;
+    }
+
     const guardar = (campos, msg) => firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').set({ ...campos, actualizadoAt: firestoreNow() }, { merge: true })
         .then(() => { _fidCfg = { ..._fidCfg, ...campos }; showNotice(msg, 'ok'); renderMetricasFeedback(); })
         .catch((err) => showNotice(`No se pudo guardar: ${err.message || 'error'}`, 'error'));
@@ -12269,6 +12473,25 @@ function _fidClick(e) {
         const oferta = String(document.getElementById('fidOferta')?.value || '').trim();
         if (!oferta) { showNotice('Escribe la oferta del mensaje.', 'error'); return true; }
         guardar({ reactivarOferta: oferta, reactivarProductoId: String(document.getElementById('fidProductoReactivar')?.value || ''), cumpleProductoId: String(document.getElementById('fidProductoCumple')?.value || ''), reactivarDias: Math.max(7, Number(document.getElementById('fidDias')?.value) || 21), vigenciaDias: Math.max(1, Number(document.getElementById('fidVigencia')?.value) || 3) }, 'Configuración guardada.');
+        return true;
+    }
+    if (t.closest('[data-fid-guardar-atender]')) {
+        if (_fidAtenderVista === 'baja') {
+            const oferta = String(document.getElementById('fidDisculpaOferta')?.value || '').trim();
+            if (!oferta) { showNotice('Escribe la compensación del mensaje.', 'error'); return true; }
+            guardar({ disculpaOferta: oferta, disculpaProductoId: String(document.getElementById('fidDisculpaProducto')?.value || '') }, 'Compensación guardada.');
+        } else {
+            const url = String(document.getElementById('fidResenaUrl')?.value || '').trim();
+            if (url && !/^https:\/\//i.test(url)) { showNotice('El link debe empezar con https://', 'error'); return true; }
+            guardar({ googleResenaUrl: url }, 'Link de reseñas guardado.');
+        }
+        return true;
+    }
+    if (t.closest('[data-fid-guardar-ref]')) {
+        const a = String(document.getElementById('fidRefAmigo')?.value || '').trim();
+        const r = String(document.getElementById('fidRefRecompensa')?.value || '').trim();
+        if (!a || !r) { showNotice('Escribe qué recibe el amigo y qué recibe quien invita.', 'error'); return true; }
+        guardar({ referidoAmigo: a, referidoRecompensa: r, referidoAmigoProductoId: String(document.getElementById('fidRefAmigoProducto')?.value || ''), referidoRecompensaProductoId: String(document.getElementById('fidRefRecompensaProducto')?.value || '') }, 'Referidos guardados.');
         return true;
     }
     if (t.closest('[data-fid-guardar-metas]')) {
@@ -12324,9 +12547,9 @@ function _fbBind(body) {
         });
         // Buscadores: solo se repinta la lista (no toda la pestaña) para no perder el foco del teclado.
         body.addEventListener('input', (e) => {
-            if (e.target.id === 'fidQreactivar' || e.target.id === 'fidQcupones') {
-                const id = e.target.id; const key = id === 'fidQreactivar' ? 'reactivar' : 'cupones';
-                _fidQ[key] = e.target.value; const keep = e.target.value;
+            if (['fidQreactivar', 'fidQcupones', 'fidQatender', 'fidQref'].includes(e.target.id)) {
+                const id = e.target.id; const keep = e.target.value;
+                if (id === 'fidQatender') _fidAtenderQ = keep; else if (id === 'fidQref') _fidRefQ = keep; else _fidQ[id === 'fidQreactivar' ? 'reactivar' : 'cupones'] = keep;
                 renderMetricasFeedback(); const inp = document.getElementById(id); if (inp) { inp.focus(); inp.setSelectionRange(keep.length, keep.length); }
                 return;
             }

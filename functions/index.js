@@ -2250,6 +2250,7 @@ exports.submitOrderFeedback = onCall(
             const valid = feedbackTipo.validarRespuestasFeedback(tipo, request.data || {});
             if (!valid.ok) throw new HttpsError('invalid-argument', valid.error);
             const { q1, q2, q3, q4, cumple } = valid.value;
+            const motivosBaja = feedbackTipo.motivosCalificacionBaja(tipo, valid.value);
             const feedbackRef = db.collection('encuestas_pedido').doc(orderId);
             if (order.feedbackAnsweredAt || (await tx.get(feedbackRef)).exists) {
                 throw new HttpsError('already-exists', 'Ya respondiste esta encuesta. ¡Gracias!');
@@ -2274,6 +2275,9 @@ exports.submitOrderFeedback = onCall(
                 // Respaldo del consentimiento dado al contestar (obligatorio): quién, cuándo y con qué texto.
                 consentimiento: true,
                 consentimientoVersion: feedbackTipo.CONSENTIMIENTO_VERSION,
+                // Calificación baja: queda marcada para atenderla (panel: Feedback → Atender) y avisa al celular del dueño.
+                requiereAtencion: motivosBaja.length > 0,
+                motivosAtencion: motivosBaja,
                 pointsAwarded: points,
                 createdAt: FieldValue.serverTimestamp()
             });
@@ -2293,9 +2297,21 @@ exports.submitOrderFeedback = onCall(
                 }, { merge: true });
             }
             tx.update(found.ref, { feedbackAnsweredAt: FieldValue.serverTimestamp(), feedbackPoints: points });
-            return { points };
+            return { points, tipo, motivosBaja, nombre: String(order.customerName || '').trim(), code: String(order.code || ''), comentario: q4 };
         });
-        return result;
+        // Aviso inmediato al celular cuando alguien califica mal (nunca bloquea la respuesta del cliente).
+        if (result.motivosBaja.length) {
+            try {
+                await require('./pushAdmin').enviarPush(db, {
+                    title: '⚠️ Calificación baja',
+                    body: `${result.nombre || 'Un cliente'} (${result.code}): ${result.motivosBaja.join(', ')}${result.comentario ? ` — «${result.comentario}»` : ''}`,
+                    tag: `feedback-bajo-${orderId}`,
+                    tipo: 'feedback_bajo',
+                    bodyMax: 180
+                });
+            } catch (e) { console.error('submitOrderFeedback: aviso de calificación baja', e && e.message); }
+        }
+        return { points: result.points };
     }
 );
 

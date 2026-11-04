@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { feedbackTipoDePedido, normalizarCumple, validarRespuestasFeedback } = require('../functions/feedbackTipo');
+const { feedbackTipoDePedido, normalizarCumple, validarRespuestasFeedback, motivosCalificacionBaja } = require('../functions/feedbackTipo');
 
 test('un pedido con un ítem 2x1 es de Quindío aunque traiga otros productos', () => {
     const pedido = { items: [
@@ -60,4 +60,14 @@ test('sin consentimiento no se recibe la opinión (ninguno de los dos cuestionar
     assert.equal(validarRespuestasFeedback('quindio', { ...base, consentimiento: 'true' }).ok, false);
     assert.equal(validarRespuestasFeedback('general', { q1: 'brutal', q2: 'bien', q3: 'seguro' }).ok, false);
     assert.equal(validarRespuestasFeedback('quindio', { ...base, consentimiento: true }).value.consentimiento, true);
+});
+
+test('calificación baja: motivos por tipo de encuesta', () => {
+    assert.deepEqual(motivosCalificacionBaja('quindio', { q1: 'brutal', q2: 'web', q3: 'si' }), []);
+    assert.equal(motivosCalificacionBaja('quindio', { q1: 'no_convencio', q2: 'web', q3: 'si' }).length, 1);
+    // En Quindío q2/q3 no son de servicio: aunque el valor coincida, no cuenta.
+    assert.deepEqual(motivosCalificacionBaja('quindio', { q1: 'muy_buena', q2: 'mal', q3: 'no' }), []);
+    assert.deepEqual(motivosCalificacionBaja('general', { q1: 'brutal', q2: 'excelente', q3: 'seguro' }), []);
+    assert.equal(motivosCalificacionBaja('general', { q1: 'normalita', q2: 'mal', q3: 'no' }).length, 3);
+    assert.equal(motivosCalificacionBaja('general', { q1: 'brutal', q2: 'mejorable', q3: 'tal_vez' }).length, 1);
 });

@@ -66,6 +66,17 @@ function validarRespuestasFeedback(tipo, data) {
     return { ok: true, value: { q1, q2, q3, q4, cumple, consentimiento: true } };
 }
 
+// Motivos por los que una respuesta pide atención inmediata (para disculparse y recuperar al cliente). [] = todo bien.
+function motivosCalificacionBaja(tipo, v) {
+    const motivos = [];
+    if (v && (v.q1 === 'normalita' || v.q1 === 'no_convencio')) motivos.push(v.q1 === 'no_convencio' ? 'el sabor no lo convenció' : 'el sabor le pareció normalito');
+    if (tipo === 'general' && v) {
+        if (v.q2 === 'mejorable' || v.q2 === 'mal') motivos.push(v.q2 === 'mal' ? 'el servicio fue malo' : 'el servicio se puede mejorar');
+        if (v.q3 === 'no') motivos.push('cree que no volvería a pedir');
+    }
+    return motivos;
+}
+
 const CONSENTIMIENTO_VERSION = '2026-11-04';
 
-module.exports = { CONSENTIMIENTO_VERSION, CUESTIONARIOS, feedbackTipoDePedido, itemEs2x1, normalizarCumple, validarRespuestasFeedback };
+module.exports = { motivosCalificacionBaja, CONSENTIMIENTO_VERSION, CUESTIONARIOS, feedbackTipoDePedido, itemEs2x1, normalizarCumple, validarRespuestasFeedback };
