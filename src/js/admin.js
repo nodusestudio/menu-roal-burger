@@ -3368,8 +3368,9 @@ function renderFeedbackPending() {
     }).join('');
 }
 
-async function sendFeedbackRequest(orderId, btn) {
-    const order = ordersState.find((o) => o.id === orderId);
+async function sendFeedbackRequest(orderId, btn, orderOverride) {
+    // orderOverride: pedidos ya archivados (seguimiento por día), que no están en ordersState; updateOrder los guarda en el archivo.
+    const order = orderOverride || ordersState.find((o) => o.id === orderId);
     if (!order || _feedbackSending.has(orderId)) return false;
     let marcado = false;
     _feedbackSending.add(orderId);
@@ -11080,6 +11081,7 @@ let _fbResponses = [];
 let _fbReqActive = [];
 let _fbReqArchived = [];
 let _fbFilter = 'todos';
+let _fbArchOrders = []; // pedidos ya archivados al cerrar caja (para el seguimiento por día)
 
 function _fbDetach() {
     _fbUnsubs.forEach((u) => { try { u(); } catch (_) {} });
@@ -11107,7 +11109,11 @@ function _fbAttach() {
         }, err('solicitudes')),
         firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).where('feedbackRequestedAt', '>=', start).onSnapshot((snap) => {
             _fbReqArchived = snap.docs.map((d) => d.id); renderMetricasFeedback();
-        }, err('solicitudes archivadas'))
+        }, err('solicitudes archivadas')),
+        // Todos los archivados desde el inicio de la promo: el seguimiento por día necesita también los que NO se enviaron.
+        firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).where('createdAt', '>=', start).onSnapshot((snap) => {
+            _fbArchOrders = snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() })); renderMetricasFeedback();
+        }, err('pedidos archivados'))
     ];
     renderMetricasFeedback();
 }
@@ -11170,6 +11176,65 @@ function _fbCsv(rows) {
         FB_Q1[r.q1]?.[1] || r.q1, FB_Q2[r.q2]?.[1] || r.q2, FB_Q3[r.q3]?.[1] || r.q3, r.q4
     ].map(cell).join(','));
     return `﻿${[head.map(cell).join(','), ...body].join('\r\n')}`;
+}
+
+// Seguimiento por día: todo pedido con 2×1 ya despachado (activo o archivado) con su estado de feedback:
+// 'respondio' (llenó la encuesta), 'enviado' (se copió el mensaje, sin respuesta aún), 'sin_enviar' o 'sin_telefono'.
+function _fbSeguimiento() {
+    const byId = new Map();
+    [..._fbArchOrders, ...ordersState].forEach((o) => { if (o.id) byId.set(o.id, o); }); // el activo gana
+    const respondidos = new Set(_fbResponses.map((r) => r.id));
+    const solicitados = new Set([..._fbReqActive, ..._fbReqArchived]);
+    const dias = new Map();
+    byId.forEach((o) => {
+        if (!isOrderClosed(o) || o.anulado === true || o.voided === true || !orderHas2x1ForFeedback(o)) return;
+        const t = _tsMs(o.enviadoAt) || _tsMs(o.entregadoAt) || _tsMs(o.deliveredAt) || _tsMs(o.createdAt);
+        if (!t || t < FB_INICIO_MS) return;
+        const phone = String(o.customerPhoneDigits || o.customerPhone || '').replace(/\D/g, '');
+        let estado = 'sin_enviar';
+        if (o.feedbackAnsweredAt || respondidos.has(o.id)) estado = 'respondio';
+        else if (o.feedbackRequestedAt || solicitados.has(o.id) || _feedbackMarcadosLocal.has(o.id)) estado = 'enviado';
+        else if (phone.length < 10) estado = 'sin_telefono';
+        const key = _sqDayKey(t);
+        if (!dias.has(key)) dias.set(key, []);
+        dias.get(key).push({ order: o, phone, estado, t });
+    });
+    return [...dias.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+        .map(([key, items]) => ({ key, items: items.sort((a, b) => a.t - b.t) }));
+}
+
+function _fbSeguimientoHtml() {
+    const dias = _fbSeguimiento();
+    if (!dias.length) return '<p class="met-empty-note">Aún no hay pedidos con 2×1 despachados.</p>';
+    const BADGE = {
+        respondio: ['✅ Respondió', '#34d399'],
+        enviado: ['📨 Enviado, sin respuesta', '#fbbf24'],
+        sin_enviar: ['⏳ Sin enviar', '#f87171'],
+        sin_telefono: ['📵 Sin teléfono', '#9ca3af']
+    };
+    const cnt = (items, e) => items.filter((x) => x.estado === e).length;
+    return dias.map((d, i) => {
+        const etiqueta = new Date(`${d.key}T12:00:00-05:00`).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
+        const sinEnviar = cnt(d.items, 'sin_enviar');
+        const resumen = `${d.items.length} con 2×1 · ✅ ${cnt(d.items, 'respondio')} · 📨 ${cnt(d.items, 'enviado')} · ⏳ ${sinEnviar}${cnt(d.items, 'sin_telefono') ? ` · 📵 ${cnt(d.items, 'sin_telefono')}` : ''}`;
+        const filas = d.items.map(({ order, phone, estado }) => {
+            const [txt, color] = BADGE[estado];
+            const boton = estado === 'sin_enviar'
+                ? `<button type="button" class="feedback-pending-btn" data-fb-copy="${escapeHtml(order.id)}">Copiar mensaje</button>`
+                : (estado === 'enviado' ? `<button type="button" class="ghost-button" style="padding:6px 10px" data-fb-recopy="${escapeHtml(order.id)}">Volver a copiar</button>` : '');
+            return `<div class="met-user-row-v2">
+                <div class="met-user-info-v2">
+                    <div class="met-user-name-v2">${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)}</div>
+                    <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <span style="color:${color};font-weight:700">${txt}</span></div>
+                </div>
+                ${boton}
+            </div>`;
+        }).join('');
+        return `<details class="fb-dia"${i < 3 || sinEnviar ? ' open' : ''} style="margin-top:8px">
+            <summary style="cursor:pointer;font-weight:700;padding:6px 0;text-transform:capitalize">${escapeHtml(etiqueta)} <small style="font-weight:400;opacity:.7;text-transform:none">· ${resumen}</small></summary>
+            <div class="metrics-users-list">${filas}</div>
+        </details>`;
+    }).join('');
 }
 
 function renderMetricasFeedback() {
@@ -11237,6 +11302,10 @@ function renderMetricasFeedback() {
             </div>
         </article>
         <article class="admin-card">
+            <div class="met-section-title">📅 Día por día — a quién se le pidió feedback <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· solo pedidos con 2×1 · incluye los ya archivados</small></div>
+            <div id="fbSeguimiento">${_fbSeguimientoHtml()}</div>
+        </article>
+        <article class="admin-card">
             <div class="met-section-title">Análisis de respuestas</div>
             <div class="met-analytics-grid">
                 <div class="met-analytics-card"><div class="met-analytics-title">¿Qué tal el sabor y la calidad?</div><div id="fbQ1Chart"></div></div>
@@ -11272,6 +11341,18 @@ function renderMetricasFeedback() {
             if (e.target && e.target.id === 'fbFilter') { _fbFilter = e.target.value; renderMetricasFeedback(); }
         });
         body.addEventListener('click', async (e) => {
+            const phoneBtn = e.target.closest('[data-fb-phone]');
+            if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.fbPhone); return; }
+            const seg = e.target.closest('[data-fb-copy], [data-fb-recopy]');
+            if (seg) {
+                const id = seg.dataset.fbCopy || seg.dataset.fbRecopy;
+                const order = _fbSeguimiento().flatMap((d) => d.items).map((x) => x.order).find((o) => o.id === id);
+                if (!order) return;
+                if (seg.dataset.fbCopy) await sendFeedbackRequest(id, seg, order);
+                else await copyTextToClipboard(buildFeedbackMessage(order));
+                renderMetricasFeedback();
+                return;
+            }
             const btn = e.target.closest('[data-fb-action]');
             if (!btn) return;
             const nowRows = _fbResponses;
