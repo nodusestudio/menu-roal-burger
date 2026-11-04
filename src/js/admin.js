@@ -12011,7 +12011,7 @@ const FB_TIPOS_FID = ['cumple', 'reactivar', 'atender', 'referidos', 'cupones', 
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
-    disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: 'https://share.google/hLdBW1HL0Qmt6PXxM',
+    disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: 'https://g.page/r/CWR7IKp8khuOEAE/review',
     referidoAmigo: 'una bebida gratis en tu primer pedido', referidoRecompensa: 'unas papas gratis en tu próximo pedido', referidoAmigoProductoId: '', referidoRecompensaProductoId: '',
     metaMensajes: 30, metaReactivados: 8, metaCanjes: 6, metaVentas: 500000, margenPct: 35, costoRegalo: 3000
 };
