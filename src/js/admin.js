@@ -10419,6 +10419,52 @@ function _setMetricsFreshness(elId, loadedAtMs) {
 }
 
 // ── helper: mini bar chart ─────────────────────────────────────────────────
+// Pestañas internas reutilizables (mismo estilo que Configuración): toma las <article> hijas directas de `container`
+// y muestra solo las del grupo activo, para que una sección larga no se vea toda apilada hacia abajo.
+// defs = [{ id, icon, label, idx: [posiciones de los <article> que abre] }]. Es idempotente: se puede volver a llamar
+// después de cada render (la pestaña elegida se recuerda por `key`). Los <article> sin grupo siempre se ven.
+const _innerTabSel = {};
+function applyInnerTabs(container, key, defs) {
+    if (!container) return;
+    container.querySelectorAll(':scope > .inner-tabs-host').forEach((n) => n.remove());
+    const arts = [...container.children].filter((el) => el.tagName === 'ARTICLE');
+    const vivas = defs.filter((d) => d.idx.some((i) => arts[i]));
+    if (vivas.length < 2) return;
+    let cur = vivas.some((d) => d.id === _innerTabSel[key]) ? _innerTabSel[key] : vivas[0].id;
+    const host = document.createElement('article');
+    host.className = 'admin-card menu-section-card inner-tabs-host';
+    host.style.paddingBottom = '0';
+    host.innerHTML = `<nav class="menu-inner-tabs-nav" role="tablist">${vivas.map((d) => `<button type="button" class="menu-inner-tab" data-itab="${d.id}" role="tab"><span class="menu-inner-tab-icon">${d.icon}</span><span>${d.label}</span></button>`).join('')}</nav>`;
+    const pintar = () => {
+        arts.forEach((a, i) => { const d = vivas.find((x) => x.idx.includes(i)); a.style.display = (!d || d.id === cur) ? '' : 'none'; });
+        host.querySelectorAll('[data-itab]').forEach((b) => { const on = b.dataset.itab === cur; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
+    };
+    host.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-itab]');
+        if (!b) return;
+        cur = _innerTabSel[key] = b.dataset.itab;
+        pintar();
+    });
+    container.insertBefore(host, arts[0]);
+    pintar();
+}
+// Paneles de Métricas con HTML fijo (se arman una sola vez al cargar).
+applyInnerTabs(document.getElementById('metricsPanelPos'), 'pos', [
+    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0, 1] },
+    { id: 'analisis', icon: '📈', label: 'Análisis', idx: [2] },
+    { id: 'clientes', icon: '👥', label: 'Clientes', idx: [3] }
+]);
+applyInnerTabs(document.getElementById('metricsPanelApp'), 'app', [
+    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0] },
+    { id: 'trafico', icon: '🌐', label: 'Tráfico', idx: [1] },
+    { id: 'clientes', icon: '👥', label: 'Clientes y compra', idx: [2, 3] },
+    { id: 'usuarios', icon: '📋', label: 'Usuarios', idx: [4] }
+]);
+applyInnerTabs(document.getElementById('metricsPanelProductos'), 'productos', [
+    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0] },
+    { id: 'ranking', icon: '🏅', label: 'Ranking', idx: [1] }
+]);
+
 function _renderBarChart(containerId, data, color) {
     const el = document.getElementById(containerId);
     if (!el) return;
@@ -10844,6 +10890,12 @@ function renderMetricasSabe() {
     _renderBarChart('sqTipoChart', tipoData, '#4ade80');
     _renderBarChart('sqPromoChart', promoData, '#fbbf24');
     if (cortPorProducto.length) _renderBarChart('sqCortProdChart', cortPorProducto, '#34d399');
+    applyInnerTabs(body, 'sabe', [
+        { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0] },
+        { id: 'analisis', icon: '📈', label: 'Análisis', idx: [2] },
+        { id: 'clientes', icon: '👥', label: 'Clientes', idx: [1, 5] },
+        { id: 'pedidos', icon: '🧾', label: 'Pedidos y cortesías', idx: [3, 4] }
+    ]);
     renderMetricasSqFin();
 }
 
@@ -11029,6 +11081,10 @@ function renderMetricasSqFin() {
             <div id="sqFinDias">${_sqFinDiasHtml(rp, hoyKey, ayerKey)}</div>
         </article>` : ''}`;
 
+    applyInnerTabs(body, 'sqfin', [
+        { id: 'resumen', icon: '💰', label: 'Resumen', idx: [0, 1] },
+        { id: 'dias', icon: '📅', label: 'Día por día', idx: [2] }
+    ]);
     const sInp = body.querySelector('#sqFinSueldos'), rInp = body.querySelector('#sqFinReserva');
     const pintarDias = () => {
         const x = _sqFinReparto(_sqFinDiasData);
