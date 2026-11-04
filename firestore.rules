@@ -42,7 +42,7 @@ service cloud.firestore {
     // El resto de la coleccion sigue publico porque el menu, la TV y el modo mesero lo leen.
     function isConfigInterna(doc) {
       return doc in ['supervisor_pin', 'costos_fijos', 'finanzas', 'finanzas_festival',
-        'chat_roal_config', 'asistente_ia', 'push_stats', 'vigilancia_banco'];
+        'chat_roal_config', 'asistente_ia', 'push_stats', 'vigilancia_banco', 'fidelizacion'];
     }
     match /configuracion/{doc} {
       allow read: if !isConfigInterna(doc) || (doc != 'supervisor_pin' && isAdmin());
@@ -188,6 +188,14 @@ service cloud.firestore {
 
     // Respuestas de la encuesta de feedback (ver submitOrderFeedback): las escribe solo la Cloud
     // Function (Admin SDK); el admin las puede leer.
+    // Fidelización manual: cupones personales (código por cliente, vigencia y canje) y registro de mensajes enviados.
+    // Solo el admin los lee y escribe (el cliente nunca los toca desde el navegador).
+    match /cupones_fidelizacion/{codigo} {
+      allow read, write: if isAdmin();
+    }
+    match /fidelizacion_envios/{id} {
+      allow read, write: if isAdmin();
+    }
     match /encuestas_pedido/{orderId} {
       allow read: if isAdmin();
       allow write: if false;

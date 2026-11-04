@@ -25,11 +25,41 @@ function distribucion(filas, clave, etiquetas) {
 }
 
 async function feedbackClientes(db, args = {}) {
-    const parte = ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos'].includes(args.parte) ? args.parte : 'resumen';
+    const parte = ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos', 'fidelizacion'].includes(args.parte) ? args.parte : 'resumen';
     // 'quindio' = pedidos con 2×1; 'general' = fidelización (cualquier otro pedido). El tipo lo da el pedido.
     const tipo = args.tipo === 'general' ? 'general' : 'quindio';
     const E2 = tipo === 'general' ? ETIQ_Q2_GEN : ETIQ_Q2;
     const E3 = tipo === 'general' ? ETIQ_Q3_GEN : ETIQ_Q3;
+
+    if (parte === 'fidelizacion') {
+        // Metas de fidelización de una semana (lunes a domingo, hora de Bogotá): mensajes, cupones y respuestas contra las metas.
+        const offset = Math.min(0, Math.max(-8, Math.trunc(Number(args.semanas_atras) * -1) || 0));
+        const hoyKey = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+        const [y, mo, da] = hoyKey.split('-').map(Number);
+        const dow = new Date(Date.UTC(y, mo - 1, da)).getUTCDay();
+        const desde = Date.UTC(y, mo - 1, da - ((dow + 6) % 7)) + 5 * 3600e3 + offset * 7 * 86400e3;
+        const hasta = desde + 7 * 86400e3;
+        const TS = require('firebase-admin/firestore').Timestamp;
+        const rango = (q, campo) => q.where(campo, '>=', TS.fromMillis(desde)).where(campo, '<', TS.fromMillis(hasta));
+        const [envios, cupones, canjes, encuestas, cfgSnap] = await Promise.all([
+            rango(db.collection('fidelizacion_envios'), 'creadoAt').get(),
+            rango(db.collection('cupones_fidelizacion'), 'creadoAt').get(),
+            rango(db.collection('cupones_fidelizacion'), 'canjeadoAt').get(),
+            rango(db.collection('encuestas_pedido'), 'createdAt').get(),
+            db.collection('configuracion').doc('fidelizacion').get()
+        ]);
+        const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+        const porMotivo = {};
+        envios.docs.forEach((d) => { const m = d.data().motivo || 'otro'; porMotivo[m] = (porMotivo[m] || 0) + 1; });
+        return {
+            semana: `${new Date(desde).toISOString().slice(0, 10)} a ${new Date(hasta - 1).toISOString().slice(0, 10)}`,
+            mensajes_registrados: envios.size, mensajes_por_motivo: porMotivo,
+            cupones_emitidos: cupones.size, cupones_canjeados: canjes.docs.filter((d) => d.data().estado === 'canjeado').length,
+            respuestas_encuestas: encuestas.size,
+            metas: { mensajes: Number(cfg.metaMensajes) || 30, clientes_que_vuelven: Number(cfg.metaReactivados) || 8, cupones_canjeados: Number(cfg.metaCanjes) || 6, ventas: Number(cfg.metaVentas) || 500000, margen_pct: Number(cfg.margenPct) || 35 },
+            nota: 'Aquí van mensajes, cupones y respuestas. Los clientes que volvieron y las ventas atribuidas se calculan en el panel (Feedback → Metas) porque cruzan todos los pedidos.'
+        };
+    }
 
     if (parte === 'cumpleanos') {
         // Próximos cumpleaños (día y mes que dejó el cliente en su perfil o en la encuesta de fidelización).
@@ -105,7 +135,7 @@ async function feedbackClientes(db, args = {}) {
 const TOOL = {
     name: 'feedback_clientes',
     description: 'FEEDBACK de clientes (encuesta que se manda por WhatsApp 2 h después de entregar): parte "resumen" = respuestas, tasa de respuesta, satisfacción, sabor/calidad, cómo se enteraron, app instalada y satisfacción por canal; "respuestas" = las últimas respuestas cliente por cliente; "sugerencias" = lo que escribieron en la pregunta abierta; "pendientes" = pedidos entregados a los que aún no se les pidió feedback. Úsala para "¿qué opinan los clientes?", "¿qué piden?", "¿quién falta por encuestar?" y para armar el informe de mejoras del festival (cruza con ventas y da acciones concretas).',
-    input_schema: { type: 'object', properties: { parte: { type: 'string', enum: ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos'] }, dias: { type: 'number', description: 'Solo para cumpleanos: cuántos días hacia adelante (por defecto 30).' }, tipo: { type: 'string', enum: ['quindio', 'general'], description: 'quindio = encuesta de pedidos con 2×1 (Sabe a Quindío); general = fidelización (pedidos sin 2×1). Por defecto quindio.' } } }
+    input_schema: { type: 'object', properties: { parte: { type: 'string', enum: ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos', 'fidelizacion'] }, semanas_atras: { type: 'number', description: 'Solo para fidelizacion: 0 = esta semana, 1 = la pasada, etc.' }, dias: { type: 'number', description: 'Solo para cumpleanos: cuántos días hacia adelante (por defecto 30).' }, tipo: { type: 'string', enum: ['quindio', 'general'], description: 'quindio = encuesta de pedidos con 2×1 (Sabe a Quindío); general = fidelización (pedidos sin 2×1). Por defecto quindio.' } } }
 };
 
 module.exports = { feedbackClientes, TOOL };
