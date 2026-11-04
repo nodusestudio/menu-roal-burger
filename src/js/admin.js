@@ -10460,10 +10460,7 @@ applyInnerTabs(document.getElementById('metricsPanelApp'), 'app', [
     { id: 'clientes', icon: '👥', label: 'Clientes y compra', idx: [2, 3] },
     { id: 'usuarios', icon: '📋', label: 'Usuarios', idx: [4] }
 ]);
-applyInnerTabs(document.getElementById('metricsPanelProductos'), 'productos', [
-    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0] },
-    { id: 'ranking', icon: '🏅', label: 'Ranking', idx: [1] }
-]);
+// Productos queda en una sola vista: sus filtros (Todo / Este mes / Esta semana / Hoy) están en la tarjeta del ranking y mueven también el resumen.
 
 function _renderBarChart(containerId, data, color) {
     const el = document.getElementById(containerId);
@@ -10890,11 +10887,12 @@ function renderMetricasSabe() {
     _renderBarChart('sqTipoChart', tipoData, '#4ade80');
     _renderBarChart('sqPromoChart', promoData, '#fbbf24');
     if (cortPorProducto.length) _renderBarChart('sqCortProdChart', cortPorProducto, '#34d399');
+    // La tarjeta 0 es el selector de período (Último día / Día en curso / Todo): sin grupo, así queda visible en todas las pestañas.
     applyInnerTabs(body, 'sabe', [
-        { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0] },
-        { id: 'analisis', icon: '📈', label: 'Análisis', idx: [2] },
-        { id: 'clientes', icon: '👥', label: 'Clientes', idx: [1, 5] },
-        { id: 'pedidos', icon: '🧾', label: 'Pedidos y cortesías', idx: [3, 4] }
+        { id: 'resumen', icon: '📊', label: 'Resumen', idx: [1] },
+        { id: 'analisis', icon: '📈', label: 'Análisis', idx: [3] },
+        { id: 'clientes', icon: '👥', label: 'Clientes', idx: [2, 6] },
+        { id: 'pedidos', icon: '🧾', label: 'Pedidos y cortesías', idx: [4, 5] }
     ]);
     renderMetricasSqFin();
 }
