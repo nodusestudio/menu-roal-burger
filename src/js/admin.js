@@ -10533,9 +10533,45 @@ function smartMatch(query, ...campos) {
     const pajar = _normBusca(campos.join(' '));
     return q.split(/\s+/).every((tok) => pajar.includes(tok));
 }
+// Buscador para tablas que se repintan solas (Tickets, Gastos, Cajas…): oculta las filas que no coinciden y se
+// reaplica tras cada repintado. Los totales del pie no cambian con la búsqueda.
+function attachRowSearch(containerEl, rowSel, placeholder, beforeEl) {
+    if (!containerEl || containerEl.dataset.rowSearch) return;
+    containerEl.dataset.rowSearch = '1';
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'metrics-search';
+    input.placeholder = `${placeholder} — desde 3 letras`;
+    input.autocomplete = 'off';
+    input.style.cssText = 'width:100%;max-width:420px;margin:4px 0 10px';
+    (beforeEl || containerEl).insertAdjacentElement('beforebegin', input);
+    const aplicar = () => containerEl.querySelectorAll(rowSel).forEach((r) => {
+        if (r.querySelector('.caja-empty')) return;
+        r.style.display = smartMatch(input.value, r.textContent) ? '' : 'none';
+    });
+    input.addEventListener('input', aplicar);
+    new MutationObserver(aplicar).observe(containerEl, { childList: true, subtree: true });
+}
 function searchBoxHtml(id, placeholder, value = '') {
     return `<input type="search" id="${id}" class="metrics-search" placeholder="${escapeHtml(placeholder)} — desde 3 letras" value="${escapeHtml(value)}" autocomplete="off" style="width:100%;max-width:420px;margin:2px 0 10px">`;
 }
+
+// Buscadores inteligentes de las tablas de Informes (se reaplican solos cuando la tabla se repinta).
+attachRowSearch(document.getElementById('ticketsTableBody'), 'tr', 'Buscar ticket por cliente, código o método', document.getElementById('ticketsTableBody')?.closest('.caja-table-wrap'));
+attachRowSearch(document.getElementById('gastosInformesBody'), 'tbody tr', 'Buscar gasto por descripción, proveedor o categoría');
+attachRowSearch(document.getElementById('libroCierresList'), 'tr', 'Buscar cierre por fecha o cajero', document.getElementById('libroCierresList')?.closest('.caja-ledger-wrap'));
+attachRowSearch(document.getElementById('lcBody'), 'tr', 'Buscar movimiento', document.getElementById('lcBody')?.closest('.caja-ledger-wrap'));
+attachRowSearch(document.getElementById('cajaDiariaBody'), 'tr', 'Buscar en la caja del día', document.getElementById('cajaDiariaBody')?.closest('.caja-ledger-wrap'));
+// Finanzas y Pagos: una sección a la vez.
+applyInnerTabs(document.querySelector('[data-tab-panel="finanzas"]'), 'finanzas', [
+    { id: 'costos', icon: '💰', label: 'Costos fijos', idx: [0] },
+    { id: 'margen', icon: '🎯', label: 'Margen mínimo', idx: [1] },
+    { id: 'vivo', icon: '📈', label: 'Este mes en vivo', idx: [2] }
+]);
+applyInnerTabs(document.querySelector('[data-tab-panel="banco"]'), 'banco', [
+    { id: 'pagos', icon: '💸', label: 'Pagos recibidos', idx: [0] },
+    { id: 'voz', icon: '🔊', label: 'Voz y estado', idx: [1] }
+]);
 
 // Paneles de Métricas con HTML fijo (se arman una sola vez al cargar).
 // Selector de fechas del POS: tarjeta sin grupo (siempre visible) al inicio del panel.
@@ -27538,6 +27574,11 @@ function _datePresetRange(preset) {
         const first = new Date(today.getFullYear(), today.getMonth(), 1);
         return { from: fmt(first), to: fmt(today) };
     }
+    if (preset === 'mesant') {
+        const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const last = new Date(today.getFullYear(), today.getMonth(), 0);
+        return { from: fmt(first), to: fmt(last) };
+    }
     // 'hoy' y cualquier valor no reconocido caen en el día de hoy
     return { from: fmt(today), to: fmt(today) };
 }
@@ -36130,18 +36171,43 @@ function _bancoRepetir(frase) {
 function _bancoHoyYmd() { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }); }
 function _bancoYmdMas(ymd, dias) { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + dias)).toISOString().slice(0, 10); }
 function _bancoInicioMs(ymd) { const [y, m, d] = ymd.split('-').map(Number); return Date.UTC(y, m - 1, d, 5, 0, 0); }
-function _bancoFiltro() { return (window.__bancoFiltro = window.__bancoFiltro || { modo: 'hoy', fecha: '' }); }
+function _bancoFiltro() { return (window.__bancoFiltro = window.__bancoFiltro || { modo: 'hoy', fecha: '', hasta: '' }); }
 function _bancoDiaActivo() {
     const f = _bancoFiltro();
     if (f.modo === 'hoy') return _bancoHoyYmd();
     if (f.modo === 'ayer') return _bancoYmdMas(_bancoHoyYmd(), -1);
     if (f.modo === 'fecha' && /^\d{4}-\d{2}-\d{2}$/.test(f.fecha)) return f.fecha;
-    return null; // últimos 100
+    return null; // varios días (7 días, mes, rango) o los últimos 100
+}
+// Rango [desde, hasta) en ms. `dia` solo viene cuando es un único día (lo necesita la conciliación). null = últimos 100.
+function _bancoRangoActivo() {
+    const f = _bancoFiltro(), hoy = _bancoHoyYmd();
+    const dia = _bancoDiaActivo();
+    if (dia) return { desde: _bancoInicioMs(dia), hasta: _bancoInicioMs(_bancoYmdMas(dia, 1)), dia };
+    const finHoy = _bancoInicioMs(_bancoYmdMas(hoy, 1));
+    if (f.modo === '7d') return { desde: _bancoInicioMs(_bancoYmdMas(hoy, -6)), hasta: finHoy };
+    const primeroMes = `${hoy.slice(0, 8)}01`;
+    if (f.modo === 'mes') return { desde: _bancoInicioMs(primeroMes), hasta: finHoy };
+    if (f.modo === 'mesant') {
+        const [y, m] = hoy.split('-').map(Number);
+        const prev = m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, '0')}-01`;
+        return { desde: _bancoInicioMs(prev), hasta: _bancoInicioMs(primeroMes) };
+    }
+    if (f.modo === 'rango' && /^\d{4}-\d{2}-\d{2}$/.test(f.fecha) && /^\d{4}-\d{2}-\d{2}$/.test(f.hasta)) {
+        return { desde: _bancoInicioMs(f.fecha), hasta: _bancoInicioMs(_bancoYmdMas(f.hasta, 1)) };
+    }
+    return null;
 }
 function _bancoTituloFiltro() {
     const d = _bancoDiaActivo();
-    if (!d) return 'Últimos 100 pagos';
     const f = _bancoFiltro();
+    if (!d) {
+        if (f.modo === '7d') return 'Últimos 7 días';
+        if (f.modo === 'mes') return 'Este mes';
+        if (f.modo === 'mesant') return 'Mes pasado';
+        if (f.modo === 'rango') return `Del ${f.fecha} al ${f.hasta}`;
+        return 'Últimos 100 pagos';
+    }
     const txt = new Date(_bancoInicioMs(d) + 6 * 3600000).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     return f.modo === 'hoy' ? `Hoy (${txt})` : (f.modo === 'ayer' ? `Ayer (${txt})` : txt);
 }
@@ -36149,15 +36215,28 @@ function _bancoPintarFiltro() {
     const f = _bancoFiltro();
     document.querySelectorAll('[data-banco-filtro]').forEach((b) => b.classList.toggle('primary', b.dataset.bancoFiltro === f.modo));
     const inp = document.getElementById('bancoFecha');
-    if (inp) { if (f.modo === 'fecha') inp.value = f.fecha; else if (f.modo !== 'fecha') inp.value = ''; }
+    const hasta = document.getElementById('bancoFechaHasta');
+    if (inp) inp.value = (f.modo === 'fecha' || f.modo === 'rango') ? f.fecha : '';
+    if (hasta) hasta.value = f.modo === 'rango' ? f.hasta : '';
+}
+// Aplica el rango a una consulta de Firestore (sobre creadoEn).
+function _bancoAplicarRango(q, rango) {
+    if (!rango) return q;
+    const TS = firebase.firestore.Timestamp;
+    return q.where('creadoEn', '>=', TS.fromMillis(rango.desde)).where('creadoEn', '<', TS.fromMillis(rango.hasta));
+}
+// Buscador inteligente de la lista de pagos: oculta las filas que no coinciden (nombre o monto).
+function _bancoFiltrarTexto() {
+    const q = document.getElementById('bancoBuscar')?.value || '';
+    document.querySelectorAll('#bancoLista > div').forEach((row) => { row.style.display = smartMatch(q, row.textContent) ? '' : 'none'; });
 }
 // Métricas de los cobros con QR (botón "Cobrar con QR en la TV") del mismo día que se está viendo.
 function _bancoSuscribirCobros() {
     const st = _bancoEstado();
     if (st.unsubCobros) { try { st.unsubCobros(); } catch (_) { /* ya cerrada */ } st.unsubCobros = null; }
     let q = firebaseDb.collection('cobros_bancolombia');
-    if (st.diaSuscrito) q = q.where('creadoEn', '>=', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(st.diaSuscrito))).where('creadoEn', '<', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(_bancoYmdMas(st.diaSuscrito, 1))));
-    q = q.orderBy('creadoEn', 'desc').limit(st.diaSuscrito ? 300 : 50);
+    q = _bancoAplicarRango(q, st.rangoSuscrito);
+    q = q.orderBy('creadoEn', 'desc').limit(st.rangoSuscrito ? 300 : 50);
     st.unsubCobros = q.onSnapshot((snap) => {
         const el = document.getElementById('bancoCobrosResumen'); if (!el) return;
         const cs = snap.docs.map((d) => d.data());
@@ -36175,10 +36254,12 @@ function _bancoSuscribirLista() {
     const st = _bancoEstado();
     if (st.unsubLista) { try { st.unsubLista(); } catch (_) { /* ya cerrada */ } st.unsubLista = null; }
     st.diaSuscrito = _bancoDiaActivo();
+    st.rangoSuscrito = _bancoRangoActivo();
+    st.rangoClave = st.rangoSuscrito ? `${st.rangoSuscrito.desde}-${st.rangoSuscrito.hasta}` : '';
     _bancoPintarFiltro();
     let q = firebaseDb.collection('avisos_banco');
-    if (st.diaSuscrito) q = q.where('creadoEn', '>=', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(st.diaSuscrito))).where('creadoEn', '<', firebase.firestore.Timestamp.fromMillis(_bancoInicioMs(_bancoYmdMas(st.diaSuscrito, 1))));
-    q = q.orderBy('creadoEn', 'desc').limit(st.diaSuscrito ? 500 : 100);
+    q = _bancoAplicarRango(q, st.rangoSuscrito);
+    q = q.orderBy('creadoEn', 'desc').limit(st.rangoSuscrito ? 500 : 100);
     _bancoSuscribirCobros();
     st.unsubLista = q.onSnapshot((snap) => _bancoPintarLista(snap.docs),
         (e) => { console.warn('[BANCO] no se pudo leer avisos_banco:', e && (e.code || e.message)); const r = document.getElementById('bancoResumen'); if (r) r.textContent = 'No se pudieron leer los pagos.'; });
@@ -36211,6 +36292,7 @@ function _bancoPintarLista(docs) {
             </div>
         </div>`;
     }).join('');
+    _bancoFiltrarTexto();
     cont.querySelectorAll('[data-banco-repetir]').forEach((b) => b.addEventListener('click', () => {
         const d = docs.find((z) => z.id === b.dataset.bancoRepetir);
         if (d) _bancoRepetir(d.data().frase || '');
@@ -36299,13 +36381,20 @@ function _bancoIniciar() {
     _bancoEquiposUI();
     firebaseDb.collection('banco_equipos').onSnapshot((snap) => _bancoPintarEquipos(snap.docs), (e) => console.warn('[BANCO] equipos:', e && (e.code || e.message)));
     document.querySelectorAll('[data-banco-filtro]').forEach((b) => b.addEventListener('click', () => { _bancoFiltro().modo = b.dataset.bancoFiltro; _bancoSuscribirLista(); }));
-    document.getElementById('bancoFecha')?.addEventListener('change', (e) => {
-        if (!e.target.value) return;
-        const f = _bancoFiltro(); f.modo = 'fecha'; f.fecha = e.target.value; _bancoSuscribirLista();
-    });
+    // «Desde» solo = un día; «Desde» + «Hasta» = rango entre dos fechas.
+    const _bancoFechas = () => {
+        const d = document.getElementById('bancoFecha')?.value || '', h = document.getElementById('bancoFechaHasta')?.value || '';
+        if (!d) return;
+        const f = _bancoFiltro();
+        if (h && h >= d) { f.modo = 'rango'; f.fecha = d; f.hasta = h; } else { f.modo = 'fecha'; f.fecha = d; f.hasta = ''; }
+        _bancoSuscribirLista();
+    };
+    document.getElementById('bancoFecha')?.addEventListener('change', _bancoFechas);
+    document.getElementById('bancoFechaHasta')?.addEventListener('change', _bancoFechas);
+    document.getElementById('bancoBuscar')?.addEventListener('input', _bancoFiltrarTexto);
     _bancoSuscribirLista();
     // Si el panel queda abierto pasada la medianoche, "Hoy" y "Ayer" se actualizan solos al cambiar el día.
-    setInterval(() => { const st2 = _bancoEstado(); if (st2.diaSuscrito !== _bancoDiaActivo()) _bancoSuscribirLista(); }, 60000);
+    setInterval(() => { const st2 = _bancoEstado(); const r2 = _bancoRangoActivo(); if (st2.rangoClave !== (r2 ? `${r2.desde}-${r2.hasta}` : '')) _bancoSuscribirLista(); }, 60000);
 }
 
 // ── Cobro con QR de Bancolombia en la TV ───────────────────────────────────
@@ -36667,7 +36756,7 @@ async function _bancoConciliar() {
     const st = _bancoEstado(), out = document.getElementById('bancoConcResultado'), btn = document.getElementById('bancoConcBtn');
     if (!out) return;
     const dia = st.diaSuscrito;
-    if (!dia) { out.textContent = 'Elige Hoy, Ayer o una fecha del calendario para conciliar ese día.'; return; }
+    if (!dia) { out.textContent = 'La conciliación es de un solo día: elige Hoy, Ayer o una fecha (sin «Hasta»).'; return; }
     const desdeMs = _bancoInicioMs(dia), hastaMs = _bancoInicioMs(_bancoYmdMas(dia, 1));
     const TS = firebase.firestore.Timestamp;
     if (btn) btn.disabled = true;

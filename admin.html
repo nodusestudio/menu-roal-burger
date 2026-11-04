@@ -14350,6 +14350,7 @@
                                                     <button type="button" class="date-preset-btn" data-date-preset="ayer">Ayer</button>
                                                     <button type="button" class="date-preset-btn" data-date-preset="semana">Esta semana</button>
                                                     <button type="button" class="date-preset-btn" data-date-preset="mes">Este mes</button>
+<button type="button" class="date-preset-btn" data-date-preset="mesant">Mes pasado</button>
                                                 </div>
                                                 <div class="cierre-drp-row">
                                                     <span class="cierre-drp-lbl">Inicio</span>
@@ -14400,6 +14401,7 @@
                                                 <button type="button" class="date-preset-btn" data-date-preset="ayer">Ayer</button>
                                                 <button type="button" class="date-preset-btn" data-date-preset="semana">Esta semana</button>
                                                 <button type="button" class="date-preset-btn" data-date-preset="mes">Este mes</button>
+<button type="button" class="date-preset-btn" data-date-preset="mesant">Mes pasado</button>
                                             </div>
                                             <input type="date" id="ticketsDateFrom" aria-label="Fecha desde">
                                             <input type="date" id="ticketsDateTo" aria-label="Fecha hasta">
@@ -14454,6 +14456,7 @@
                                             <button type="button" class="date-preset-btn" data-date-preset="ayer">Ayer</button>
                                             <button type="button" class="date-preset-btn" data-date-preset="semana">Esta semana</button>
                                             <button type="button" class="date-preset-btn" data-date-preset="mes">Este mes</button>
+<button type="button" class="date-preset-btn" data-date-preset="mesant">Mes pasado</button>
                                         </div>
                                         <label style="font-size:0.78rem;color:var(--admin-muted);">Desde</label>
                                         <input type="date" id="gastosDesde" aria-label="Gastos desde">
@@ -15603,24 +15606,38 @@
                     </div>
                     <div class="card-body">
                         <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 14px;line-height:1.5;">
-                            Cada pago recibido de Bancolombia queda registrado aquí. La voz que agradece al cliente la dice el programa de Windows instalado en cada computador; el navegador no habla. Con 🗑️ eliminas un registro y con 🧹 los de prueba.
+                            Cada pago recibido de Bancolombia queda registrado aquí. Con 🗑️ eliminas un registro y con 🧹 los de prueba.
                         </p>
-                        <div id="bancoVigilancia" role="alert" hidden style="margin:0 0 14px;padding:10px 14px;border-radius:12px;background:rgba(198,40,40,.18);border:1px solid rgba(255,156,156,.5);color:#ffb4b4;font-weight:700;font-size:0.88rem;line-height:1.4;"></div>
-                        <strong>🔊 Voz por computador</strong>
-                        <p style="font-size:0.78rem;color:var(--admin-muted);margin:4px 0 6px;">Aquí silencias o activas la voz de cada computador. El del negocio y este pueden ser distintos.</p>
-                        <div id="bancoEquiposInline" style="margin-bottom:18px;"></div>
-                        <strong>Pagos recibidos</strong>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0;">
                             <button type="button" class="section-action-btn primary" data-banco-filtro="hoy">Hoy</button>
                             <button type="button" class="section-action-btn" data-banco-filtro="ayer">Ayer</button>
-                            <input type="date" id="bancoFecha" aria-label="Elegir una fecha" style="padding:7px 10px;border-radius:10px;border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;">
+                            <button type="button" class="section-action-btn" data-banco-filtro="7d">7 días</button>
+                            <button type="button" class="section-action-btn" data-banco-filtro="mes">Este mes</button>
+                            <button type="button" class="section-action-btn" data-banco-filtro="mesant">Mes pasado</button>
                             <button type="button" class="section-action-btn" data-banco-filtro="todos">Últimos 100</button>
                         </div>
+                        <div class="rango-fechas" style="margin:0 0 8px">
+                            <label>Desde <input type="date" id="bancoFecha" class="admin-input" aria-label="Elegir una fecha (o el inicio del rango)"></label>
+                            <label>Hasta <input type="date" id="bancoFechaHasta" class="admin-input" aria-label="Fin del rango (opcional)"></label>
+                        </div>
+                        <input type="search" id="bancoBuscar" class="metrics-search" placeholder="Buscar por nombre o monto — desde 3 letras" autocomplete="off" style="width:100%;max-width:420px;margin:2px 0 10px">
                         <p id="bancoResumen" style="margin:6px 0 4px;font-weight:700;"></p>
                         <p id="bancoCobrosResumen" style="margin:0 0 8px;font-size:0.85rem;color:var(--admin-muted);"></p>
                         <div style="margin:8px 0 6px;"><button type="button" class="section-action-btn" id="bancoConcBtn" title="Compara lo que entró al banco ese día con los pedidos cobrados como Bancolombia en el POS">⚖️ Conciliar este día con los pedidos</button></div>
                         <div id="bancoConcResultado" style="font-size:0.88rem;margin-bottom:12px;"></div>
                         <div id="bancoLista" style="margin-top:8px;"><p style="font-size:0.85rem;color:var(--admin-muted);">Todavía no hay pagos.</p></div>
+                    </div>
+                </article>
+                <article class="admin-card">
+                    <div class="card-head"><h2>🔊 Voz y estado</h2></div>
+                    <div class="card-body">
+                        <p style="font-size:0.82rem;color:var(--admin-muted);margin:0 0 14px;line-height:1.5;">
+                            La voz que agradece al cliente la dice el programa de Windows instalado en cada computador; el navegador no habla.
+                        </p>
+                        <div id="bancoVigilancia" role="alert" hidden style="margin:0 0 14px;padding:10px 14px;border-radius:12px;background:rgba(198,40,40,.18);border:1px solid rgba(255,156,156,.5);color:#ffb4b4;font-weight:700;font-size:0.88rem;line-height:1.4;"></div>
+                        <strong>🔊 Voz por computador</strong>
+                        <p style="font-size:0.78rem;color:var(--admin-muted);margin:4px 0 6px;">Aquí silencias o activas la voz de cada computador. El del negocio y este pueden ser distintos.</p>
+                        <div id="bancoEquiposInline" style="margin-bottom:18px;"></div>
                     </div>
                 </article>
             </div>
