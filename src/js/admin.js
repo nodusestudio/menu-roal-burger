@@ -551,6 +551,7 @@ const PosCart = {
         const item = internalOrderItems.find((i) => i.itemKey === itemKey);
         // Código del día recién canjeado en esta caja: quitar la línea devuelve el cupo.
         if (item?.codigoDiaCanjeId) _posRevertirCodigoDia(item.codigoDiaCanjeId);
+        if (item?.cuponFidelizacionCodigo && !item.cuponLigado) _posRevertirCuponFid(item.cuponFidelizacionCodigo);
         internalOrderItems = internalOrderItems.filter((i) => i.itemKey !== itemKey && i.parentKey !== itemKey);
     },
 
@@ -5200,6 +5201,7 @@ function renderPosPromocionesPanel(grid) {
     // El cliente en el local dice el código de las historias de Instagram; el servidor lo valida
     // con las mismas reglas del menú web y consume el cupo (canjearCodigoDiaCaja).
     wrap.appendChild(_posBuildCodigoDiaSection());
+    wrap.appendChild(_posBuildCuponFidSection());
     hasAny = true;
 
     // ── 2. DESCUENTOS ────────────────────────────────────────────────────────
@@ -5544,6 +5546,118 @@ function _posBuildCodigoDiaSection() {
         }
     });
     return section;
+}
+
+// ── POS: cupón personal de fidelización (ROAL-ANA-K7M2) ─────────────────────────────────────────────────
+// El cupón lo emite el panel (Feedback → Reactivar / Cumpleaños). Aquí la caja lo canjea en una transacción (un solo uso,
+// con vigencia) y agrega al ticket el regalo: si el cupón trae producto, va gratis como cortesía (🎁) valorado a precio de menú;
+// si no, queda una línea informativa en $0 y el cajero agrega el regalo. El código viaja en orderOptions del pedido (traza
+// cupón → pedido). Quitar la línea del ticket devuelve el cupón.
+function _posBuildCuponFidSection() {
+    const section = document.createElement('div');
+    section.className = 'pos-cupon-code-section pos-codigo-dia-section';
+    section.innerHTML = `
+        <h4 class="pos-cupon-code-title">🎟️ Cupón personal del cliente</h4>
+        <p class="pos-codigo-dia-hoy">El código que le mandaste por WhatsApp (cumpleaños, te extrañamos…).</p>
+        <div class="pos-codigo-dia-grid">
+            <input type="text" class="pos-cupon-code-input" id="posCuponFidInput" maxlength="24" placeholder="ROAL-ANA-K7M2"
+                   autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" aria-label="Cupón personal">
+            <button type="button" class="pos-cupon-validate-btn" id="posCuponFidBtn">Aplicar</button>
+        </div>
+        <div id="posCuponFidResult"></div>`;
+    const input = section.querySelector('#posCuponFidInput');
+    const btn = section.querySelector('#posCuponFidBtn');
+    const result = section.querySelector('#posCuponFidResult');
+    const pintar = (ok, titulo, sub) => {
+        result.innerHTML = `<div class="pos-cupon-result pos-cupon-result--${ok ? 'ok' : 'err'}"><span class="pos-cupon-result-title">${escapeHtml(titulo)}</span>${sub ? `<span class="pos-cupon-result-sub">${escapeHtml(sub)}</span>` : ''}</div>`;
+    };
+    input.addEventListener('input', () => { input.value = input.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); result.innerHTML = ''; });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') btn.click(); });
+    btn.addEventListener('click', async () => {
+        const codigo = input.value.trim().toUpperCase();
+        if (codigo.length < 8) { pintar(false, 'Escribe el código completo del cupón'); input.focus(); return; }
+        btn.disabled = true;
+        btn.textContent = 'Validando…';
+        result.innerHTML = '';
+        try {
+            const k = await _posCanjearCuponFid(codigo);
+            input.value = '';
+            pintar(true, `✅ Cupón de ${k.nombre || 'cliente'} aplicado`, k.productoId ? `${k.productoNombre || 'Regalo'} agregado gratis al ticket. Si quitas la línea, el cupón se devuelve.` : `${k.beneficio}: agrega el regalo con el botón 🎁 de la línea del producto.`);
+            showNotice('✅ Cupón personal aplicado', 'ok');
+        } catch (err) {
+            const denegado = err && (err.code === 'permission-denied' || /permission/i.test(String(err.message || '')));
+            pintar(false, `❌ ${denegado ? 'Solo la caja (administrador) puede aplicar cupones personales' : (err.message || 'No se pudo aplicar el cupón')}`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Aplicar';
+        }
+    });
+    return section;
+}
+
+async function _posCanjearCuponFid(codigo) {
+    if (internalOrderItems.some((i) => i.cuponFidelizacionCodigo === codigo)) throw new Error('Ese cupón ya está en el ticket.');
+    const ref = firebaseDb.collection('cupones_fidelizacion').doc(codigo);
+    const k = await firebaseDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error(`No encuentro el cupón ${codigo}. Revisa que esté bien escrito.`);
+        const x = snap.data() || {};
+        if (x.estado === 'canjeado') throw new Error(`El cupón ${codigo} ya fue canjeado${x.canjeadoPedido ? ` (pedido ${x.canjeadoPedido})` : ''}.`);
+        if (_tsMs(x.venceAt) < Date.now()) throw new Error(`El cupón ${codigo} está vencido.`);
+        tx.update(ref, { estado: 'canjeado', canjeadoAt: firebase.firestore.FieldValue.serverTimestamp(), canjeadoVia: 'pos' });
+        return x;
+    });
+    const prod = k.productoId ? productsState.find((p) => p.id === k.productoId) : null;
+    const precio = prod ? Number(prod.precio || 0) : 0;
+    const etiqueta = `CUPÓN ${codigo} — ${String(k.beneficio || '').slice(0, 80)}`;
+    internalOrderItems.push({
+        itemKey: `cupon-fid-${codigo}`,
+        productId: prod ? prod.id : 'cupon-fidelizacion',
+        productName: prod ? prod.nombre : `🎟️ Cupón: ${k.beneficio || 'regalo'}`,
+        categoryName: prod ? (prod.categoria || 'Sin categoria') : 'CUPONES EXCLUSIVOS',
+        quantity: 1,
+        unitPrice: 0,
+        originalUnitPrice: prod ? precio : null,
+        subtotal: 0,
+        note: prod ? '' : String(k.beneficio || ''),
+        optionLabel: prod ? '' : String(k.beneficio || ''),
+        promoLabel: etiqueta,
+        ...(prod ? { cortesia: true, cortesiaPrecio: precio } : {}),
+        cuponFidelizacionCodigo: codigo,
+        origOrderOptions: { cuponFidelizacionCodigo: codigo, cuponFidelizacionMotivo: String(k.motivo || '') },
+        parentKey: null
+    });
+    renderPosOrderItems();
+    renderPosTotals();
+    renderPosBottomBar();
+    return k;
+}
+
+// Quitar la línea (o vaciar el pedido) antes de guardar: el cupón vuelve a estar activo. Si ya quedó ligado a un pedido, no se toca.
+function _posRevertirCuponFid(codigo) {
+    if (!codigo || !firebaseDb) return;
+    const ref = firebaseDb.collection('cupones_fidelizacion').doc(codigo);
+    firebaseDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const x = snap.exists ? snap.data() : null;
+        if (!x || x.estado !== 'canjeado' || x.canjeadoPedido) return;
+        const del = firebase.firestore.FieldValue.delete();
+        tx.update(ref, { estado: 'activo', canjeadoAt: del, canjeadoVia: del });
+    }).then(() => showNotice(`Cupón ${codigo} devuelto: sigue activo.`, 'ok'))
+        .catch((err) => { console.error('revertir cupón fidelización:', err); showNotice(`No se pudo devolver el cupón ${codigo}. Reactívalo en Feedback → Cupones.`, 'error'); });
+}
+
+function _posLiberarCuponesFid() {
+    internalOrderItems.filter((i) => i.cuponFidelizacionCodigo).forEach((i) => _posRevertirCuponFid(i.cuponFidelizacionCodigo));
+}
+
+// Pedido guardado: deja en el cupón el código del pedido (traza cupón → pedido) y marca el canje como ligado.
+function _posLigarCuponesFid(orderCode) {
+    internalOrderItems.filter((i) => i.cuponFidelizacionCodigo).forEach((i) => {
+        firebaseDb.collection('cupones_fidelizacion').doc(i.cuponFidelizacionCodigo).update({ canjeadoPedido: String(orderCode || ''), canjeadoPedidoAt: firebase.firestore.FieldValue.serverTimestamp() })
+            .catch((err) => console.warn('ligar cupón a pedido:', err.code || err.message));
+        i.cuponLigado = true;
+    });
 }
 
 function _codigoDiaHoyKeyAdmin(ms = Date.now()) {
@@ -8536,6 +8650,7 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
 
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
         _editingOrderData = null;
+        _posLigarCuponesFid(orderCode);
 
         // Domicilio: el mensaje de confirmación para el cliente queda en el portapapeles de una vez
         // (si se pierde, se vuelve a copiar desde el menú ☰ del ticket → ✅ Confirmación).
@@ -8807,6 +8922,7 @@ async function saveOrderItemsEdit() {
             ...infoFields
         });
 
+        _posLigarCuponesFid(order?.code || orderId);
         _editingItemsOnlyOrderId = null;
         posTicketConfig = null;
         renderOrders();
@@ -11832,7 +11948,7 @@ function _fbCumpleClick(e) {
     }
     const codigo = _fidNuevoCodigo(cliente.customerName);
     const copiado = copyTextToClipboard(_cumpleMensaje(cliente, codigo, 7));
-    _fidGuardarEnvio(cliente, 'cumple', { codigo, beneficio: _cumpleRegalo, dias: 7 });
+    _fidGuardarEnvio(cliente, 'cumple', { codigo, beneficio: _cumpleRegalo, dias: 7, productoId: _fidCfg.cumpleProductoId });
     cliente.cumpleSaludoAnio = anio;
     cliente.cumpleSaludoAt = firebase.firestore.Timestamp.now();
     firebaseDb.collection(CLIENTS_COLLECTION).doc(id).update({ cumpleSaludoAnio: anio, cumpleSaludoAt: cliente.cumpleSaludoAt })
@@ -11855,7 +11971,7 @@ function _fbCumpleClick(e) {
 const FB_TIPOS_FID = ['cumple', 'reactivar', 'cupones', 'metas'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
-    reactivarOferta: 'una bebida gratis con tu pedido', reactivarDias: 21, vigenciaDias: 3,
+    reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
     metaMensajes: 30, metaReactivados: 8, metaCanjes: 6, metaVentas: 500000, margenPct: 35, costoRegalo: 3000
 };
 let _fidCfg = { ...FID_CFG_DEF };
@@ -11877,6 +11993,7 @@ async function _fidCargarCfg() {
         const num = (v, def) => (Number.isFinite(Number(v)) && String(v) !== '' ? Number(v) : def);
         _fidCfg = {
             reactivarOferta: String(x.reactivarOferta || FID_CFG_DEF.reactivarOferta),
+            reactivarProductoId: String(x.reactivarProductoId || ''), cumpleProductoId: String(x.cumpleProductoId || ''),
             reactivarDias: num(x.reactivarDias, FID_CFG_DEF.reactivarDias), vigenciaDias: num(x.vigenciaDias, FID_CFG_DEF.vigenciaDias),
             metaMensajes: num(x.metaMensajes, FID_CFG_DEF.metaMensajes), metaReactivados: num(x.metaReactivados, FID_CFG_DEF.metaReactivados),
             metaCanjes: num(x.metaCanjes, FID_CFG_DEF.metaCanjes), metaVentas: num(x.metaVentas, FID_CFG_DEF.metaVentas),
@@ -11902,7 +12019,7 @@ function _fidNuevoCodigo(nombre) {
 }
 
 // Guarda el mensaje enviado y, si lleva cupón, el cupón. Va en segundo plano: el copiado ya se hizo en el mismo clic.
-function _fidGuardarEnvio(cliente, motivo, { codigo = '', beneficio = '', dias = 0 } = {}) {
+function _fidGuardarEnvio(cliente, motivo, { codigo = '', beneficio = '', dias = 0, productoId = '' } = {}) {
     const ahora = firebase.firestore.Timestamp.now();
     const telefono = String(cliente.customerPhoneDigits || cliente.customerPhone || '').replace(/\D/g, '');
     const base = { clientId: cliente.id || '', telefono, nombre: cliente.customerName || '', motivo };
@@ -11910,7 +12027,8 @@ function _fidGuardarEnvio(cliente, motivo, { codigo = '', beneficio = '', dias =
     _fidEnvios = [..._fidEnvios, { id: `local-${Date.now()}`, ...envio }];
     const escrituras = [firebaseDb.collection('fidelizacion_envios').add(envio)];
     if (codigo) {
-        const cupon = { ...base, codigo, beneficio, creadoAt: ahora, venceAt: firebase.firestore.Timestamp.fromMillis(ahora.toMillis() + dias * 86400000), estado: 'activo' };
+        const prod = productoId ? productsState.find((p) => p.id === productoId) : null;
+        const cupon = { ...base, codigo, beneficio, productoId: prod ? prod.id : '', productoNombre: prod ? String(prod.nombre || '') : '', creadoAt: ahora, venceAt: firebase.firestore.Timestamp.fromMillis(ahora.toMillis() + dias * 86400000), estado: 'activo' };
         _fidCupones = [..._fidCupones, { id: codigo, ...cupon }];
         escrituras.push(firebaseDb.collection('cupones_fidelizacion').doc(codigo).set(cupon));
     }
@@ -11977,6 +12095,11 @@ function _fidMensajeReactivar(c, codigo, dias) {
     return `¡Hola${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! 🍔 Hace rato no te vemos por ROAL BURGER y te extrañamos. Para tu próximo pedido te damos ${_fidCfg.reactivarOferta}. Tu código personal: ${codigo} (válido ${dias} días). Escríbenos y te lo dejamos listo 🙌`;
 }
 
+function _fidOpcionesProducto(sel) {
+    const prods = (productsState || []).filter((p) => p && p.id && p.nombre).slice().sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    return `<option value="">— Sin producto (solo texto: el cajero lo agrega con 🎁) —</option>${prods.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === sel ? ' selected' : ''}>${escapeHtml(p.nombre)}</option>`).join('')}`;
+}
+
 function _fidKpi(cls, val, lbl) { return `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`; }
 
 function _fbRenderFid(body) {
@@ -12023,6 +12146,8 @@ function _fbRenderFid(body) {
             </div>
             <div style="margin-top:12px;display:grid;gap:8px">
                 <label class="admin-hint">Oferta del mensaje («te damos <em>oferta</em>»)<input type="text" id="fidOferta" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.reactivarOferta)}"></label>
+                <label class="admin-hint">Producto regalo (el POS lo agrega gratis al aplicar el cupón)<select id="fidProductoReactivar" class="admin-input">${_fidOpcionesProducto(_fidCfg.reactivarProductoId)}</select></label>
+                <label class="admin-hint">Producto regalo de cumpleaños<select id="fidProductoCumple" class="admin-input">${_fidOpcionesProducto(_fidCfg.cumpleProductoId)}</select></label>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
                     <label class="admin-hint">Días sin pedir<input type="number" id="fidDias" class="admin-input" min="7" max="120" style="width:100px" value="${Number(_fidCfg.reactivarDias) || 21}"></label>
                     <label class="admin-hint">Vigencia del cupón (días)<input type="number" id="fidVigencia" class="admin-input" min="1" max="30" style="width:100px" value="${Number(_fidCfg.vigenciaDias) || 3}"></label>
@@ -12143,7 +12268,7 @@ function _fidClick(e) {
     if (t.closest('[data-fid-guardar-cfg]')) {
         const oferta = String(document.getElementById('fidOferta')?.value || '').trim();
         if (!oferta) { showNotice('Escribe la oferta del mensaje.', 'error'); return true; }
-        guardar({ reactivarOferta: oferta, reactivarDias: Math.max(7, Number(document.getElementById('fidDias')?.value) || 21), vigenciaDias: Math.max(1, Number(document.getElementById('fidVigencia')?.value) || 3) }, 'Configuración guardada.');
+        guardar({ reactivarOferta: oferta, reactivarProductoId: String(document.getElementById('fidProductoReactivar')?.value || ''), cumpleProductoId: String(document.getElementById('fidProductoCumple')?.value || ''), reactivarDias: Math.max(7, Number(document.getElementById('fidDias')?.value) || 21), vigenciaDias: Math.max(1, Number(document.getElementById('fidVigencia')?.value) || 3) }, 'Configuración guardada.');
         return true;
     }
     if (t.closest('[data-fid-guardar-metas]')) {
@@ -12160,7 +12285,7 @@ function _fidClick(e) {
         const codigo = _fidNuevoCodigo(cliente.customerName);
         // El copiado va PRIMERO (el navegador solo deja escribir al portapapeles durante el clic); el registro sigue en segundo plano.
         const copiado = copyTextToClipboard(_fidMensajeReactivar(cliente, codigo, dias));
-        _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias });
+        _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias, productoId: _fidCfg.reactivarProductoId });
         copiado.then((ok) => showNotice(ok ? `Mensaje con cupón listo para ${cliente.customerName}.` : 'No se pudo copiar el mensaje. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
         renderMetricasFeedback();
         return true;
@@ -21366,6 +21491,7 @@ if (openCreateInternalOrderBtn) {
     openCreateInternalOrderBtn.addEventListener('click', () => {
         // Siempre empezar un pedido en blanco — nunca reanudar uno anterior sin terminar
         posTicketConfig = null;
+        _posLiberarCuponesFid();
         internalOrderItems = [];
         openInternalOrderModal();
     });
@@ -21422,6 +21548,7 @@ document.getElementById('posCartCustomizeBtn')?.addEventListener('click', () => 
 document.getElementById('posClearCartBtn')?.addEventListener('click', async () => {
     if (!internalOrderItems.length && !posTicketConfig) return;
     if (!(await showConfirmModal({ icon: '🗑', title: '¿Vaciar el pedido actual?', confirmText: 'Vaciar' }))) return;
+    _posLiberarCuponesFid();
     internalOrderItems = [];
     posTicketConfig = null;
     _posEditPrefill = null;
