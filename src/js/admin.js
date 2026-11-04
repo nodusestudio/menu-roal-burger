@@ -10569,6 +10569,8 @@ applyInnerTabs(document.querySelector('[data-tab-panel="cuponpana"]'), 'cuponpan
     { id: 'campanas', icon: '🎟️', label: 'Campañas', idx: [0] },
     { id: 'temporadas', icon: '🚦', label: 'Temporadas', idx: [1] }
 ]);
+// Costos y recetas: buscador inteligente sobre las filas de platos, insumos, recetas y productos de cualquier vista.
+attachRowSearch(document.getElementById('costosBody'), 'tr.cs-row', 'Buscar plato, insumo o receta');
 // Finanzas y Pagos: una sección a la vez.
 applyInnerTabs(document.querySelector('[data-tab-panel="finanzas"]'), 'finanzas', [
     { id: 'costos', icon: '💰', label: 'Costos fijos', idx: [0] },
