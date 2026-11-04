@@ -11081,6 +11081,7 @@ let _fbResponses = [];
 let _fbReqActive = [];
 let _fbReqArchived = [];
 let _fbFilter = 'todos';
+let _fbTab = 'seguimiento'; // pestaña interna visible: seguimiento | metricas | respuestas | descargas
 let _fbArchOrders = []; // pedidos ya archivados al cerrar caja (para el seguimiento por día)
 
 function _fbDetach() {
@@ -11285,7 +11286,30 @@ function renderMetricasFeedback() {
             </div>
         </div>`).join('');
 
-    body.innerHTML = `
+    // Una sola sección visible a la vez (mismo modelo de pestañas internas que Configuración).
+    const tab = ['seguimiento', 'metricas', 'respuestas', 'descargas'].includes(_fbTab) ? _fbTab : 'seguimiento';
+    const TABS = [['seguimiento', '📅', 'Seguimiento'], ['metricas', '📊', 'Métricas'], ['respuestas', '💬', 'Respuestas'], ['descargas', '⬇️', 'Descargas']];
+    const nav = `<article class="admin-card menu-section-card" style="padding-bottom:0">
+        <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Feedback">
+            ${TABS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${tab === id ? ' active' : ''}" data-fb-tab="${id}" role="tab" aria-selected="${tab === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
+        </nav>
+    </article>`;
+    const secSeguimiento = `
+        <article class="admin-card">
+            <div class="met-section-title">📅 Día por día — a quién se le pidió feedback <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· solo pedidos con 2×1 · incluye los ya archivados</small></div>
+            <div id="fbSeguimiento">${_fbSeguimientoHtml()}</div>
+        </article>`;
+    const secDescargas = `
+        <article class="admin-card">
+            <div class="met-section-title">⬇️ Descargas</div>
+            <p class="admin-hint" style="margin:0 0 10px">Informe con cifras y lectura automática, y todas las respuestas en Excel.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="section-action-btn" data-fb-action="copiar">📋 Copiar informe de mejoras</button>
+                <button type="button" class="section-action-btn" data-fb-action="informe">⬇️ Descargar informe (.md)</button>
+                <button type="button" class="section-action-btn" data-fb-action="csv">⬇️ Descargar respuestas (.csv)</button>
+            </div>
+        </article>`;
+    const secMetricas = `
         <article class="admin-card">
             <div class="met-section-title">⭐ Feedback de clientes <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en vivo</small></div>
             <div class="met-kpi-row">
@@ -11295,15 +11319,6 @@ function renderMetricasFeedback() {
                 ${kpi('met-kpi-card--green', `${_fbPct(positivas, total)}%`, 'Satisfacción (Brutal + Muy buena)')}
                 ${kpi('', nf(sugs.length), 'Sugerencias escritas')}
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-                <button type="button" class="section-action-btn" data-fb-action="copiar">📋 Copiar informe de mejoras</button>
-                <button type="button" class="section-action-btn" data-fb-action="informe">⬇️ Descargar informe (.md)</button>
-                <button type="button" class="section-action-btn" data-fb-action="csv">⬇️ Descargar respuestas (.csv)</button>
-            </div>
-        </article>
-        <article class="admin-card">
-            <div class="met-section-title">📅 Día por día — a quién se le pidió feedback <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· solo pedidos con 2×1 · incluye los ya archivados</small></div>
-            <div id="fbSeguimiento">${_fbSeguimientoHtml()}</div>
         </article>
         <article class="admin-card">
             <div class="met-section-title">Análisis de respuestas</div>
@@ -11315,7 +11330,8 @@ function renderMetricasFeedback() {
                 <div class="met-analytics-card"><div class="met-analytics-title">% satisfechos según cómo se enteraron</div><div id="fbCruceChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">% satisfechos según tengan la app</div><div id="fbCruceAppChart"></div></div>
             </div>
-        </article>
+        </article>`;
+    const secRespuestas = `
         <article class="admin-card">
             <div class="met-section-title">💡 Sugerencias de productos y mejoras <small style="font-size:0.72rem;opacity:0.55;font-weight:400">· ${nf(sugs.length)}</small></div>
             <div class="metrics-users-list">${sugRows || '<p class="met-empty-note">Aún no hay sugerencias.</p>'}</div>
@@ -11328,12 +11344,15 @@ function renderMetricasFeedback() {
             </select>
             <div class="metrics-users-list">${listRows || '<p class="met-empty-note">Aún no hay respuestas.</p>'}</div>
         </article>`;
-    _renderBarChart('fbQ1Chart', chartData('q1', FB_Q1), '#ff7a1a');
-    _renderBarChart('fbQ2Chart', chartData('q2', FB_Q2), '#a78bfa');
-    _renderBarChart('fbQ3Chart', chartData('q3', FB_Q3), '#60a5fa');
-    _renderBarChart('fbDayChart', dayData, '#34d399');
-    _renderBarChart('fbCruceChart', cruce, '#4ade80');
-    _renderBarChart('fbCruceAppChart', cruceApp, '#fbbf24');
+    body.innerHTML = nav + ({ seguimiento: secSeguimiento, metricas: secMetricas, respuestas: secRespuestas, descargas: secDescargas })[tab];
+    if (tab === 'metricas') {
+        _renderBarChart('fbQ1Chart', chartData('q1', FB_Q1), '#ff7a1a');
+        _renderBarChart('fbQ2Chart', chartData('q2', FB_Q2), '#a78bfa');
+        _renderBarChart('fbQ3Chart', chartData('q3', FB_Q3), '#60a5fa');
+        _renderBarChart('fbDayChart', dayData, '#34d399');
+        _renderBarChart('fbCruceChart', cruce, '#4ade80');
+        _renderBarChart('fbCruceAppChart', cruceApp, '#fbbf24');
+    }
 
     if (!body.dataset.fbBound) {
         body.dataset.fbBound = '1';
@@ -11341,6 +11360,8 @@ function renderMetricasFeedback() {
             if (e.target && e.target.id === 'fbFilter') { _fbFilter = e.target.value; renderMetricasFeedback(); }
         });
         body.addEventListener('click', async (e) => {
+            const tabBtn = e.target.closest('[data-fb-tab]');
+            if (tabBtn) { _fbTab = tabBtn.dataset.fbTab; renderMetricasFeedback(); return; }
             const phoneBtn = e.target.closest('[data-fb-phone]');
             if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.fbPhone); return; }
             const seg = e.target.closest('[data-fb-copy], [data-fb-recopy]');
