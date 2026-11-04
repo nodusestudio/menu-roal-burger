@@ -630,7 +630,9 @@ let _cuponCreatingType = null; // null | 'selector' | 'descuento' | '2x1' | 'com
 // ── Reporte "📊 Canjes" de la pestaña Cupones — SOLO LECTURA ──
 let _cuponesCanjesRaw = null;           // [{ couponTitle, redeemedMs }] de codigos_cupon status:'used'
 let _cuponesCanjesLoadedAt = 0;
-let _cuponesCanjesPeriod = 'all';       // all | month | week | today
+let _cuponesCanjesPeriod = 'all';       // en desuso: el rango lo da rangoMs('canjes')
+let _cuponesCanjesQ = '';               // buscador de cupón en Canjes
+let _cuponesVista = 'lista';            // pestaña interna de Cupones: lista | canjes
 const _CUPONES_CANJES_TTL_MS = 60 * 1000;
 
 // ── Bluetooth printer state ──
@@ -10562,6 +10564,11 @@ attachRowSearch(document.getElementById('gastosInformesBody'), 'tbody tr', 'Busc
 attachRowSearch(document.getElementById('libroCierresList'), 'tr', 'Buscar cierre por fecha o cajero', document.getElementById('libroCierresList')?.closest('.caja-ledger-wrap'));
 attachRowSearch(document.getElementById('lcBody'), 'tr', 'Buscar movimiento', document.getElementById('lcBody')?.closest('.caja-ledger-wrap'));
 attachRowSearch(document.getElementById('cajaDiariaBody'), 'tr', 'Buscar en la caja del día', document.getElementById('cajaDiariaBody')?.closest('.caja-ledger-wrap'));
+// Fuera del Menú: campañas y temporadas en pestañas (el editor, tarjeta oculta, sigue apareciendo al abrirse).
+applyInnerTabs(document.querySelector('[data-tab-panel="cuponpana"]'), 'cuponpana', [
+    { id: 'campanas', icon: '🎟️', label: 'Campañas', idx: [0] },
+    { id: 'temporadas', icon: '🚦', label: 'Temporadas', idx: [1] }
+]);
 // Finanzas y Pagos: una sección a la vez.
 applyInnerTabs(document.querySelector('[data-tab-panel="finanzas"]'), 'finanzas', [
     { id: 'costos', icon: '💰', label: 'Costos fijos', idx: [0] },
@@ -10595,6 +10602,7 @@ onRango('pos', () => renderMetricsPos(), 'todo');
 onRango('prod', () => renderMetricasProductos(), 'todo');
 onRango('sabe', () => renderMetricasSabe(), 'todo');
 onRango('fb', () => renderMetricasFeedback(), 'todo');
+onRango('canjes', () => renderCuponesCanjes(), 'todo');
 
 function _renderBarChart(containerId, data, color) {
     const el = document.getElementById(containerId);
@@ -11042,6 +11050,9 @@ function renderMetricasSabe() {
 // El reparto (sueldos / reserva) es un % editable que se guarda en configuracion/finanzas_festival.
 let _sqFinCfg = { sueldosPct: 30, reservaPct: 20 };
 let _sqFinCfgLoaded = false;
+// Guardado por separado: guardadosS (sueldos) y guardadosR (reserva). `guardados` es el formato anterior (un solo check = ambos).
+let _sqFinGS = {};
+let _sqFinGR = {};
 let _sqFinGuardados = {}; // días ya apartados: { "2026-10-30": true } (configuracion/finanzas_festival.guardados)
 let _sqFinDiasData = [];
 const SQ_BURGERS_POR_RECETA = 2;
@@ -11055,7 +11066,7 @@ async function _sqFinCargar() {
             const d = await firebaseDb.collection(CONFIG_COLLECTION).doc('finanzas_festival').get();
             if (d.exists) {
                 const x = d.data() || {};
-                _sqFinCfg = { sueldosPct: Number.isFinite(Number(x.sueldosPct)) ? Number(x.sueldosPct) : 30, reservaPct: Number.isFinite(Number(x.reservaPct)) ? Number(x.reservaPct) : 20 }; _sqFinGuardados = x.guardados && typeof x.guardados === 'object' ? { ...x.guardados } : {};
+                _sqFinCfg = { sueldosPct: Number.isFinite(Number(x.sueldosPct)) ? Number(x.sueldosPct) : 30, reservaPct: Number.isFinite(Number(x.reservaPct)) ? Number(x.reservaPct) : 20 }; _sqFinGuardados = x.guardados && typeof x.guardados === 'object' ? { ...x.guardados } : {}; _sqFinGS = x.guardadosS && typeof x.guardadosS === 'object' ? { ...x.guardadosS } : {}; _sqFinGR = x.guardadosR && typeof x.guardadosR === 'object' ? { ...x.guardadosR } : {};
             }
             _sqFinCfgLoaded = true;
         }
@@ -11082,17 +11093,24 @@ function _sqFinCostoBurger() {
 function _sqFinReparto(dias) {
     const s = Math.max(0, Number(_sqFinCfg.sueldosPct) || 0), r = Math.max(0, Number(_sqFinCfg.reservaPct) || 0);
     const resto = Math.max(0, 100 - s - r);
-    let acum = 0, vs = 0, vr = 0, vd = 0, guardado = 0, pendiente = 0, diasPend = 0;
+    let acum = 0, vs = 0, vr = 0, vd = 0, guardado = 0, pendiente = 0, diasPend = 0, gS = 0, gR = 0, pS = 0, pR = 0;
     const filas = dias.map((d) => {
         const base = Math.max(0, d.util);
         const fs = Math.round(base * s / 100), fr = Math.round(base * r / 100), fd = Math.round(base * resto / 100);
         const aGuardar = fs + fr;
         acum += aGuardar; vs += fs; vr += fr; vd += fd;
-        const ok = _sqFinGuardados[d.key] === true;
-        if (ok) guardado += aGuardar; else if (aGuardar > 0) { pendiente += aGuardar; diasPend += 1; }
-        return { ...d, fs, fr, fd, aGuardar, acum, ok };
+        // Cada parte tiene su check; un día marcado con el formato anterior cuenta como ambas guardadas.
+        const legacy = _sqFinGuardados[d.key] === true;
+        const okS = _sqFinGS[d.key] !== undefined ? _sqFinGS[d.key] === true : legacy;
+        const okR = _sqFinGR[d.key] !== undefined ? _sqFinGR[d.key] === true : legacy;
+        if (okS) gS += fs; else pS += fs;
+        if (okR) gR += fr; else pR += fr;
+        const ok = (fs <= 0 || okS) && (fr <= 0 || okR);
+        if (!ok && aGuardar > 0) diasPend += 1;
+        return { ...d, fs, fr, fd, aGuardar, acum, ok, okS, okR };
     });
-    return { s, r, resto, filas, vs, vr, vd, total: vs + vr, guardado, pendiente, diasPend };
+    guardado = gS + gR; pendiente = pS + pR;
+    return { s, r, resto, filas, vs, vr, vd, total: vs + vr, guardado, pendiente, diasPend, gS, gR, pS, pR };
 }
 
 function _sqFinDiasHtml(rp, hoyKey, ayerKey) {
@@ -11110,26 +11128,29 @@ function _sqFinDiasHtml(rp, hoyKey, ayerKey) {
             <td>${m(f.ventas)}</td>
             <td>${m(f.util)}</td>
             <td>${m(f.fs)}</td>
+            <td class="chk"><input type="checkbox" data-sqfin-dia="${escapeHtml(f.key)}" data-sqfin-tipo="s" ${f.okS ? 'checked' : ''} ${f.fs > 0 ? '' : 'disabled'} aria-label="Ya guardé los sueldos del ${escapeHtml(f.key)}"></td>
             <td>${m(f.fr)}</td>
+            <td class="chk"><input type="checkbox" data-sqfin-dia="${escapeHtml(f.key)}" data-sqfin-tipo="r" ${f.okR ? 'checked' : ''} ${f.fr > 0 ? '' : 'disabled'} aria-label="Ya guardé la reserva del ${escapeHtml(f.key)}"></td>
             <td class="guardar">${m(f.aGuardar)}</td>
             <td>${m(f.acum)}</td>
-            <td class="chk"><input type="checkbox" data-sqfin-dia="${escapeHtml(f.key)}" ${f.ok ? 'checked' : ''} ${f.aGuardar > 0 ? '' : 'disabled'} aria-label="Ya guardé el ${escapeHtml(f.key)}"></td>
         </tr>`).join('');
     const tot = rp.filas.reduce((a, f) => ({ b: a.b + f.burgers, v: a.v + f.ventas, u: a.u + f.util }), { b: 0, v: 0, u: 0 });
     return `
         <div class="met-kpi-row">
-            ${kpi('met-kpi-card--green', m(rp.guardado), 'Ya guardado')}
-            ${kpi('met-kpi-card--hi', m(rp.pendiente), `Pendiente por guardar${rp.diasPend ? ` (${rp.diasPend} día${rp.diasPend === 1 ? '' : 's'})` : ''}`)}
-            ${kpi('met-kpi-card--purple', m(rp.total), 'Total a guardar (sueldos + reserva)')}
+            ${kpi('met-kpi-card--green', m(rp.gS), 'Sueldos ya guardados')}
+            ${kpi('met-kpi-card--hi', m(rp.pS), 'Sueldos pendientes')}
+            ${kpi('met-kpi-card--green', m(rp.gR), 'Reserva ya guardada')}
+            ${kpi('met-kpi-card--hi', m(rp.pR), 'Reserva pendiente')}
+            ${kpi('met-kpi-card--purple', m(rp.total), `Total a guardar${rp.diasPend ? ` · ${rp.diasPend} día${rp.diasPend === 1 ? '' : 's'} con algo pendiente` : ''}`)}
         </div>
         <div class="sqfin-wrap">
             <table class="sqfin-tbl">
-                <thead><tr><th>Día</th><th>Hamb.</th><th>Ventas</th><th>Utilidad</th><th>Sueldos (${rp.s}%)</th><th>Reserva (${rp.r}%)</th><th>A guardar</th><th>Acumulado</th><th>Guardado</th></tr></thead>
+                <thead><tr><th>Día</th><th>Hamb.</th><th>Ventas</th><th>Utilidad</th><th>Sueldos (${rp.s}%)</th><th>Guardado</th><th>Reserva (${rp.r}%)</th><th>Guardada</th><th>A guardar</th><th>Acumulado</th></tr></thead>
                 <tbody>${filas}</tbody>
-                <tfoot><tr><td>Total</td><td>${nf(tot.b)}</td><td>${m(tot.v)}</td><td>${m(tot.u)}</td><td>${m(rp.vs)}</td><td>${m(rp.vr)}</td><td class="guardar">${m(rp.total)}</td><td></td><td></td></tr></tfoot>
+                <tfoot><tr><td>Total</td><td>${nf(tot.b)}</td><td>${m(tot.v)}</td><td>${m(tot.u)}</td><td>${m(rp.vs)}</td><td></td><td>${m(rp.vr)}</td><td></td><td class="guardar">${m(rp.total)}</td><td></td></tr></tfoot>
             </table>
         </div>
-        <p class="met-empty-note" style="margin-top:10px;font-size:0.76rem;opacity:0.75">Marca "Guardado" en cada día que ya apartaste: queda registrado y el "Pendiente" baja. El día de hoy es parcial (sigue sumando mientras se vende). Los días sin utilidad no piden guardar nada.</p>`;
+        <p class="met-empty-note" style="margin-top:10px;font-size:0.76rem;opacity:0.75">Marca la casilla de Sueldos y la de Reserva de cada día cuando ya la apartaste: cada una queda registrada por separado y su "Pendiente" baja. El día de hoy es parcial (sigue sumando mientras se vende). Los días sin utilidad no piden guardar nada.</p>`;
 }
 
 function renderMetricasSqFin() {
@@ -11233,12 +11254,23 @@ function renderMetricasSqFin() {
         const cb = ev.target.closest('[data-sqfin-dia]');
         if (!cb) return;
         const dia = cb.dataset.sqfinDia, marcado = cb.checked;
-        _sqFinGuardados = { ..._sqFinGuardados, [dia]: marcado };
+        const esS = cb.dataset.sqfinTipo === 's';
+        const campo = esS ? 'guardadosS' : 'guardadosR';
+        const poner = (v) => { if (esS) _sqFinGS = { ..._sqFinGS, [dia]: v }; else _sqFinGR = { ..._sqFinGR, [dia]: v }; };
+        // Al tocar una casilla por primera vez en un día del formato anterior, la otra parte conserva lo que ya valía.
+        const otraEsS = !esS;
+        const otraMapa = otraEsS ? _sqFinGS : _sqFinGR;
+        const extra = {};
+        if (otraMapa[dia] === undefined && _sqFinGuardados[dia] === true) {
+            extra[otraEsS ? 'guardadosS' : 'guardadosR'] = { [dia]: true };
+            if (otraEsS) _sqFinGS = { ..._sqFinGS, [dia]: true }; else _sqFinGR = { ..._sqFinGR, [dia]: true };
+        }
+        poner(marcado);
         pintarDias();
         try {
-            await firebaseDb.collection(CONFIG_COLLECTION).doc('finanzas_festival').set({ guardados: { [dia]: marcado }, actualizadoAt: firestoreNow() }, { merge: true });
+            await firebaseDb.collection(CONFIG_COLLECTION).doc('finanzas_festival').set({ ...extra, [campo]: { [dia]: marcado }, actualizadoAt: firestoreNow() }, { merge: true });
         } catch (e) {
-            _sqFinGuardados = { ..._sqFinGuardados, [dia]: !marcado };
+            poner(!marcado);
             pintarDias();
             showNotice(`No se pudo guardar la marca del ${dia}: ${e.message || 'error'}`, 'error');
         }
@@ -19510,39 +19542,32 @@ async function _loadCuponesCanjes({ force = false } = {}) {
 }
 
 function _buildCuponesCanjesSectionHTML() {
-    const periods = [
-        { k: 'all', l: 'Todo' }, { k: 'month', l: 'Este mes' },
-        { k: 'week', l: 'Esta semana' }, { k: 'today', l: 'Hoy' },
-    ];
     return `
-        <div class="cupones-canjes-section" style="margin-top:24px;">
+        <div class="cupones-canjes-section" style="margin-top:8px;">
             <div class="met-section-title">📊 Canjes</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px;">
-                ${periods.map((p) => `<button type="button" class="prod-period-btn cupones-canjes-period-btn${p.k === _cuponesCanjesPeriod ? ' active' : ''}" data-canjes-period="${p.k}">${p.l}</button>`).join('')}
-            </div>
+            <div class="rango-bar" data-rango-bar="canjes" style="margin:10px 0 12px;">${rangoBarHtml('canjes')}</div>
+            ${searchBoxHtml('canjesBuscar', 'Buscar cupón', _cuponesCanjesQ)}
             <div id="cuponesCanjesBody"></div>
         </div>`;
 }
 
 // Agrupa por couponTitle los canjes (status:'used') del período elegido y pinta la tabla.
 async function renderCuponesCanjes(period) {
-    if (period !== undefined) _cuponesCanjesPeriod = period;
     const body = document.getElementById('cuponesCanjesBody');
     if (!body) return;
-    document.querySelectorAll('.cupones-canjes-period-btn').forEach((b) =>
-        b.classList.toggle('active', b.dataset.canjesPeriod === _cuponesCanjesPeriod));
 
     body.innerHTML = '<p class="admin-hint" style="text-align:center;padding:12px 0;">Cargando…</p>';
     const rows = await _loadCuponesCanjes();
     const bodyNow = document.getElementById('cuponesCanjesBody');
     if (!bodyNow) return; // el panel se re-renderizó mientras cargaba
 
-    const cutoff = _metricsPeriodStart(_cuponesCanjesPeriod);
-    const cutoffMs = cutoff ? cutoff.getTime() : 0;
+    // Selector de fechas estándar ('canjes') y buscador de cupón (desde 3 letras).
+    const rangoC = rangoMs('canjes');
     const counts = new Map();
     let total = 0;
     for (const r of rows) {
-        if (cutoffMs && !(r.redeemedMs >= cutoffMs)) continue;
+        if (!(r.redeemedMs >= rangoC.desde && r.redeemedMs < rangoC.hasta)) continue;
+        if (!smartMatch(_cuponesCanjesQ, r.couponTitle)) continue;
         counts.set(r.couponTitle, (counts.get(r.couponTitle) || 0) + 1);
         total++;
     }
@@ -19592,14 +19617,23 @@ function renderCuponesUnified() {
         ? allCoupons.map(_buildUnifiedCouponCardHTML).join('')
         : '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin cupones aún. Usa el botón de arriba para crear uno.</p>';
 
+    const sinForm = !isFormOpen && _cuponCreatingType === null;
+    if (!sinForm) _cuponesVista = 'lista';
+    const vistaNav = sinForm ? `<nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Cupones" style="margin-bottom:12px">
+            <button type="button" class="menu-inner-tab${_cuponesVista === 'lista' ? ' active' : ''}" data-cup-vista="lista" role="tab"><span class="menu-inner-tab-icon">🎟️</span><span>Cupones</span></button>
+            <button type="button" class="menu-inner-tab${_cuponesVista === 'canjes' ? ' active' : ''}" data-cup-vista="canjes" role="tab"><span class="menu-inner-tab-icon">📊</span><span>Canjes</span></button>
+        </nav>` : '';
     container.innerHTML = `
         <div>
-            ${topHTML}
+            ${vistaNav}
+            ${(!sinForm || _cuponesVista === 'lista') ? `${topHTML}
             <div class="promo-admin-list" id="cuponesUnifiedList" style="margin-top:18px;">
                 ${listHTML}
-            </div>
-            ${(!isFormOpen && _cuponCreatingType === null) ? _buildCuponesCanjesSectionHTML() : ''}
+            </div>` : ''}
+            ${(sinForm && _cuponesVista === 'canjes') ? _buildCuponesCanjesSectionHTML() : ''}
         </div>`;
+    container.querySelectorAll('[data-cup-vista]').forEach((b) => b.addEventListener('click', () => { _cuponesVista = b.dataset.cupVista; renderCuponesUnified(); }));
+    document.getElementById('canjesBuscar')?.addEventListener('input', (e) => { _cuponesCanjesQ = e.target.value; renderCuponesCanjes(); });
 
     // ── Add button
     document.getElementById('addCuponBtn')?.addEventListener('click', () => {
@@ -19609,10 +19643,7 @@ function renderCuponesUnified() {
 
     // ── 📊 Canjes (solo lectura) — no interfiere con el flujo de crear/editar cupones
     if (document.getElementById('cuponesCanjesBody')) {
-        container.querySelectorAll('.cupones-canjes-period-btn').forEach((btn) => {
-            btn.addEventListener('click', () => renderCuponesCanjes(btn.dataset.canjesPeriod));
-        });
-        renderCuponesCanjes(_cuponesCanjesPeriod);
+        renderCuponesCanjes();
     }
 
     // ── Type selector
