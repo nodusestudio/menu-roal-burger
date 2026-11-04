@@ -3316,6 +3316,18 @@
             background: rgba(255,122,26,0.18); border-color: rgba(255,122,26,0.4);
             color: #ffb07a;
         }
+        /* ── Selector de fechas estándar (applyRango / rangoBarHtml): hoy, ayer, mes, todo o rango ── */
+        .rango-btn {
+            padding: 5px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.55);
+            font-family: 'Space Grotesk', sans-serif; font-size: 0.76rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.6px; cursor: pointer; transition: all 0.15s;
+        }
+        .rango-btn.active, .rango-btn:hover { background: rgba(255,122,26,0.18); border-color: rgba(255,122,26,0.4); color: #ffb07a; }
+        .rango-bar .prod-period-bar { margin-bottom: 0; }
+        .rango-fechas { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+        .rango-fechas label { font-size: 0.78rem; opacity: 0.8; display: flex; align-items: center; gap: 6px; }
+        .rango-fechas input[type="date"] { max-width: 170px; }
         /* ── Tabla del reporte "📊 Canjes" (pestaña Cupones) ── */
         .cupones-canjes-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
         .cupones-canjes-table th {
@@ -15381,12 +15393,7 @@
                         </div>
                     </article>
                     <article class="admin-card">
-                        <div class="prod-period-bar">
-                            <button class="prod-period-btn active" data-prod-period="all">Todo</button>
-                            <button class="prod-period-btn" data-prod-period="month">Este mes</button>
-                            <button class="prod-period-btn" data-prod-period="week">Esta semana</button>
-                            <button class="prod-period-btn" data-prod-period="today">Hoy</button>
-                        </div>
+                        <div class="rango-bar" data-rango-bar="prod" style="margin-bottom:14px"></div>
                         <div id="prodMetricsRanking"></div>
                     </article>
                 </div>

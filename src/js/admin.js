@@ -10329,7 +10329,8 @@ async function _saveProductInline(productId, categoryId) {
 
 let _metricsUsersFiltered = [];
 let _metricsPosFiltered = [];
-let _prodMetricsPeriod = 'all';
+let _prodMetricsPeriod = 'all'; // en desuso: el período lo da rangoMs('prod')
+let _prodQ = ''; // texto del buscador de productos
 
 // cerrarCaja() archiva (copia + borra) cada pedido pagado a ORDERS_ARCHIVE_COLLECTION al
 // cerrar el día — así que ordersState por sí solo deja de representar casi toda la
@@ -10448,11 +10449,104 @@ function applyInnerTabs(container, key, defs) {
     container.insertBefore(host, arts[0]);
     pintar();
 }
+// ── REGLAS DE LA INTERFAZ (ver memoria feedback_reglas_interfaz_admin) ──────────────────────────────
+// 1) Secciones largas → pestañas internas (applyInnerTabs), nunca todo apilado hacia abajo.
+// 2) Toda sección que muestre MOVIMIENTOS (ventas, pedidos, pagos, respuestas…) lleva el selector de fechas estándar
+//    (rangoBarHtml): Hoy · Ayer · 7 días · Este mes · Mes pasado · Todo · 📅 rango «desde – hasta». Se filtra con rangoMs(key).
+// 3) Toda lista de personas/productos lleva buscador inteligente (smartMatch): ignora tildes/mayúsculas y filtra desde 3 letras.
+const _rangoSel = {};
+const _rangoCb = {};
+const RANGO_PRESETS = [['hoy', 'Hoy'], ['ayer', 'Ayer'], ['7d', '7 días'], ['mes', 'Este mes'], ['mesant', 'Mes pasado'], ['todo', 'Todo'], ['rango', '📅 Fechas']];
+function rangoState(key, def = 'todo') {
+    if (!_rangoSel[key]) _rangoSel[key] = { preset: def, desde: '', hasta: '' };
+    return _rangoSel[key];
+}
+// Rango en ms (día de Bogotá, UTC-5 fijo): { desde, hasta } con hasta exclusivo; un movimiento entra si desde <= ts < hasta.
+function rangoMs(key) {
+    const s = rangoState(key);
+    const DAY = 86400000;
+    const dia = (k) => Date.parse(`${k}T00:00:00-05:00`);
+    const hoy = _sqDayKey(Date.now());
+    const t0 = dia(hoy);
+    const inicioMes = dia(`${hoy.slice(0, 8)}01`);
+    switch (s.preset) {
+        case 'hoy': return { desde: t0, hasta: t0 + DAY };
+        case 'ayer': return { desde: t0 - DAY, hasta: t0 };
+        case '7d': return { desde: t0 - 6 * DAY, hasta: t0 + DAY };
+        case 'mes': return { desde: inicioMes, hasta: t0 + DAY };
+        case 'mesant': {
+            const [y, m] = hoy.split('-').map(Number);
+            const prev = m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, '0')}-01`;
+            return { desde: dia(prev), hasta: inicioMes };
+        }
+        case 'rango': return { desde: s.desde ? dia(s.desde) : 0, hasta: s.hasta ? dia(s.hasta) + DAY : Infinity };
+        default: return { desde: 0, hasta: Infinity };
+    }
+}
+function rangoLabel(key) {
+    const s = rangoState(key);
+    if (s.preset === 'rango') return `${s.desde || '…'} → ${s.hasta || '…'}`;
+    const p = RANGO_PRESETS.find((x) => x[0] === s.preset);
+    return p ? p[1].toLowerCase() : 'todo';
+}
+function rangoEnRango(key, ts) {
+    const r = rangoMs(key);
+    return ts >= r.desde && ts < r.hasta;
+}
+function rangoBarHtml(key) {
+    const s = rangoState(key);
+    return `<div class="prod-period-bar">${RANGO_PRESETS.map(([k, l]) => `<button type="button" class="rango-btn${s.preset === k ? ' active' : ''}" data-rango-key="${key}" data-rango-set="${k}">${l}</button>`).join('')}</div>`
+        + (s.preset === 'rango' ? `<div class="rango-fechas"><label>Desde <input type="date" class="admin-input" data-rango-key="${key}" data-rango-fecha="desde" value="${s.desde}"></label><label>Hasta <input type="date" class="admin-input" data-rango-key="${key}" data-rango-fecha="hasta" value="${s.hasta}"></label></div>` : '');
+}
+// Tarjeta con el selector (para secciones que se pintan con innerHTML). onRango(key, cb) registra qué repintar al cambiar.
+function rangoSelectorHtml(key) {
+    return `<article class="admin-card rango-host"><div class="rango-bar" data-rango-bar="${key}">${rangoBarHtml(key)}</div></article>`;
+}
+function onRango(key, cb, def) {
+    _rangoCb[key] = cb;
+    rangoState(key, def);
+    document.querySelectorAll(`[data-rango-bar="${key}"]`).forEach((el) => { el.innerHTML = rangoBarHtml(key); });
+}
+function _rangoRefresh(key) {
+    document.querySelectorAll(`[data-rango-bar="${key}"]`).forEach((el) => { el.innerHTML = rangoBarHtml(key); });
+    if (typeof _rangoCb[key] === 'function') _rangoCb[key]();
+}
+document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rango-set]');
+    if (!b) return;
+    rangoState(b.dataset.rangoKey).preset = b.dataset.rangoSet;
+    _rangoRefresh(b.dataset.rangoKey);
+});
+document.addEventListener('change', (e) => {
+    const i = e.target.closest ? e.target.closest('[data-rango-fecha]') : null;
+    if (!i) return;
+    const s = rangoState(i.dataset.rangoKey);
+    s[i.dataset.rangoFecha] = i.value;
+    s.preset = 'rango';
+    _rangoRefresh(i.dataset.rangoKey);
+});
+// Buscador inteligente: sin tildes ni mayúsculas, todas las palabras deben aparecer; con menos de 3 letras no filtra.
+const _normBusca = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function smartMatch(query, ...campos) {
+    const q = _normBusca(query).trim();
+    if (q.length < 3) return true;
+    const pajar = _normBusca(campos.join(' '));
+    return q.split(/\s+/).every((tok) => pajar.includes(tok));
+}
+function searchBoxHtml(id, placeholder, value = '') {
+    return `<input type="search" id="${id}" class="metrics-search" placeholder="${escapeHtml(placeholder)} — desde 3 letras" value="${escapeHtml(value)}" autocomplete="off" style="width:100%;max-width:420px;margin:2px 0 10px">`;
+}
+
 // Paneles de Métricas con HTML fijo (se arman una sola vez al cargar).
+// Selector de fechas del POS: tarjeta sin grupo (siempre visible) al inicio del panel.
+(() => {
+    const pos = document.getElementById('metricsPanelPos');
+    if (pos && !pos.querySelector('[data-rango-bar="pos"]')) pos.insertAdjacentHTML('afterbegin', rangoSelectorHtml('pos'));
+})();
 applyInnerTabs(document.getElementById('metricsPanelPos'), 'pos', [
-    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0, 1] },
-    { id: 'analisis', icon: '📈', label: 'Análisis', idx: [2] },
-    { id: 'clientes', icon: '👥', label: 'Clientes', idx: [3] }
+    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [1, 2] },
+    { id: 'analisis', icon: '📈', label: 'Análisis', idx: [3] },
+    { id: 'clientes', icon: '👥', label: 'Clientes', idx: [4] }
 ]);
 applyInnerTabs(document.getElementById('metricsPanelApp'), 'app', [
     { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0] },
@@ -10460,7 +10554,11 @@ applyInnerTabs(document.getElementById('metricsPanelApp'), 'app', [
     { id: 'clientes', icon: '👥', label: 'Clientes y compra', idx: [2, 3] },
     { id: 'usuarios', icon: '📋', label: 'Usuarios', idx: [4] }
 ]);
-// Productos queda en una sola vista: sus filtros (Todo / Este mes / Esta semana / Hoy) están en la tarjeta del ranking y mueven también el resumen.
+// Productos queda en una sola vista: su selector de fechas está en la tarjeta del ranking y mueve también el resumen.
+onRango('pos', () => renderMetricsPos(), 'todo');
+onRango('prod', () => renderMetricasProductos(), 'todo');
+onRango('sabe', () => renderMetricasSabe(), 'todo');
+onRango('fb', () => renderMetricasFeedback(), 'todo');
 
 function _renderBarChart(containerId, data, color) {
     const el = document.getElementById(containerId);
@@ -10621,17 +10719,17 @@ function _sqHour(ts) { return Number(new Date(ts).toLocaleString('en-GB', { time
 // Periodo de la pestaña: 'todo' (desde el inicio del festival), 'hoy' (día en curso) o 'ultimo' (el día anterior).
 // Bogotá no tiene horario de verano: un día = 24 h exactas desde sus 00:00 (-05:00).
 let _sqPeriodo = 'todo';
-function _sqRango(periodo) {
-    if (periodo === 'todo') return { key: null, desde: SQ_INICIO_MS, hasta: Infinity };
-    const key = _sqDayKey(periodo === 'hoy' ? Date.now() : Date.now() - 86400000);
-    const desde = Date.parse(`${key}T00:00:00-05:00`);
-    return { key, desde: Math.max(desde, SQ_INICIO_MS), hasta: desde + 86400000 };
+function _sqRango() {
+    // El rango sale del selector de fechas estándar ('sabe'); nunca antes del inicio del festival.
+    const r = rangoMs('sabe');
+    return { desde: Math.max(r.desde, SQ_INICIO_MS), hasta: r.hasta };
 }
 
 function _sqCompute(periodo = 'todo') {
     const byId = new Map();
     [..._sqArchived, ..._sqActive].forEach((o) => byId.set(o.id, o));
-    const rango = _sqRango(periodo);
+    // 'todo' = todo el festival (lo usa Finanzas); cualquier otro valor sigue el selector de fechas de Sabe a Quindío.
+    const rango = periodo === 'todo' ? { desde: SQ_INICIO_MS, hasta: Infinity } : _sqRango();
     const festival = [...byId.values()].filter((o) => { const ts = _orderTs(o) || 0; return !(o.voided || o.anulado) && ts >= rango.desde && ts < rango.hasta; });
 
     const prev = new Set();
@@ -10682,14 +10780,14 @@ function _sqCompute(periodo = 'todo') {
 function renderMetricasSabe() {
     const body = document.getElementById('sqBody');
     if (!body) return;
-    const periodo = _sqPeriodo;
-    const rango = _sqRango(periodo);
+    const periodo = rangoState('sabe').preset === 'todo' ? 'todo' : 'rango';
+    const rango = _sqRango();
     const { festival, rows, customers, sinRegistro, mesaSinCliente, historyReady } = _sqCompute(periodo);
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const fechaLarga = (k) => new Date(`${k}T12:00:00-05:00`).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long' });
-    const subtitulo = periodo === 'todo' ? 'en vivo desde el 30 de octubre' : `${periodo === 'hoy' ? 'día en curso' : 'último día'}, ${fechaLarga(rango.key)}`;
-    const ambito = periodo === 'todo' ? 'del festival' : periodo === 'hoy' ? 'de hoy' : 'del último día';
-    const selector = `<article class="admin-card"><div class="prod-period-bar">${[['ultimo', 'Último día'], ['hoy', 'Día en curso'], ['todo', 'Todo completo']].map(([k, l]) => `<button type="button" class="prod-period-btn${k === periodo ? ' active' : ''}" data-sq-periodo="${k}">${l}</button>`).join('')}</div></article>`;
+    const subtitulo = periodo === 'todo' ? 'en vivo desde el 30 de octubre' : rangoLabel('sabe');
+    const ambito = periodo === 'todo' ? 'del festival' : `(${rangoLabel('sabe')})`;
+    const selector = rangoSelectorHtml('sabe');
     const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
 
     const orders = rows.length;
@@ -10715,7 +10813,10 @@ function renderMetricasSabe() {
             const k = _sqDayKey(SQ_INICIO_MS + i * 86400000 + 3600000);
             if (k <= hoyKey) dayMap.set(k, 0);
         }
-    } else dayMap.set(rango.key, 0);
+    } else {
+        const d1 = Math.min(rango.hasta, Date.now() + 86400000);
+        for (let t = rango.desde; t < d1 && dayMap.size < 62; t += 86400000) dayMap.set(_sqDayKey(t + 3600000), 0);
+    }
     rows.forEach((r) => { const k = _sqDayKey(r.ts); dayMap.set(k, (dayMap.get(k) || 0) + r.units); });
     const dayData = [...dayMap.entries()].sort().map(([k, v]) => ({ label: k.slice(5), val: v }));
     const diasTranscurridos = Math.max(1, dayData.length);
@@ -10897,12 +10998,6 @@ function renderMetricasSabe() {
     renderMetricasSqFin();
 }
 
-document.getElementById('sqBody')?.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-sq-periodo]');
-    if (!b || b.dataset.sqPeriodo === _sqPeriodo) return;
-    _sqPeriodo = b.dataset.sqPeriodo;
-    renderMetricasSabe();
-});
 
 // ── Métricas: Finanzas de Sabe a Quindío (ventas, costo, utilidad y reparto de la utilidad) ──────────
 // Ventas y unidades salen de los mismos pedidos que la pestaña Sabe a Quindío. El costo sale de Costos y
@@ -11135,6 +11230,8 @@ let _fbResponses = [];
 let _fbReqActive = [];
 let _fbReqArchived = [];
 let _fbFilter = 'todos';
+let _fbRespListRef = null; // repinta la lista de respuestas (la define renderMetricasFeedback)
+let _fbQ = { seg: '', resp: '' }; // textos de los buscadores de Feedback
 let _fbTab = 'seguimiento'; // pestaña interna visible: seguimiento | metricas | respuestas | descargas
 let _fbArchOrders = []; // pedidos ya archivados al cerrar caja (para el seguimiento por día)
 
@@ -11235,6 +11332,11 @@ function _fbCsv(rows) {
 
 // Seguimiento por día: todo pedido con 2×1 ya despachado (activo o archivado) con su estado de feedback:
 // 'respondio' (llenó la encuesta), 'enviado' (se copió el mensaje, sin respuesta aún), 'sin_enviar' o 'sin_telefono'.
+// Respuestas dentro del rango del selector de fechas ('fb').
+function _fbRows() {
+    return _fbResponses.filter((r) => (r.ts ? rangoEnRango('fb', r.ts) : rangoState('fb').preset === 'todo'));
+}
+
 function _fbSeguimiento() {
     const byId = new Map();
     [..._fbArchOrders, ...ordersState].forEach((o) => { if (o.id) byId.set(o.id, o); }); // el activo gana
@@ -11244,7 +11346,7 @@ function _fbSeguimiento() {
     byId.forEach((o) => {
         if (!isOrderClosed(o) || o.anulado === true || o.voided === true || !orderHas2x1ForFeedback(o)) return;
         const t = _tsMs(o.enviadoAt) || _tsMs(o.entregadoAt) || _tsMs(o.deliveredAt) || _tsMs(o.createdAt);
-        if (!t || t < FB_INICIO_MS) return;
+        if (!t || t < FB_INICIO_MS || !rangoEnRango('fb', t)) return;
         const phone = String(o.customerPhoneDigits || o.customerPhone || '').replace(/\D/g, '');
         let estado = 'sin_enviar';
         if (o.feedbackAnsweredAt || respondidos.has(o.id)) estado = 'respondio';
@@ -11259,8 +11361,10 @@ function _fbSeguimiento() {
 }
 
 function _fbSeguimientoHtml() {
-    const dias = _fbSeguimiento();
-    if (!dias.length) return '<p class="met-empty-note">Aún no hay pedidos con 2×1 despachados.</p>';
+    const dias = _fbSeguimiento()
+        .map((d) => ({ ...d, items: d.items.filter((x) => smartMatch(_fbQ.seg, getOrderDisplayCustomerName(x.order), x.order.code, x.phone)) }))
+        .filter((d) => d.items.length);
+    if (!dias.length) return '<p class="met-empty-note">No hay pedidos con 2×1 en estas fechas (o ninguno coincide con la búsqueda).</p>';
     const BADGE = {
         respondio: ['✅ Respondió', '#34d399'],
         enviado: ['📨 Enviado, sin respuesta', '#fbbf24'],
@@ -11295,9 +11399,12 @@ function _fbSeguimientoHtml() {
 function renderMetricasFeedback() {
     const body = document.getElementById('fbBody');
     if (!body) return;
-    const rows = _fbResponses;
+    const rows = _fbRows();
     const total = rows.length;
-    const solicitudes = new Set([..._fbReqActive, ..._fbReqArchived]).size;
+    // Con un rango, las solicitudes son las del seguimiento dentro del rango (enviadas o ya respondidas).
+    const solicitudes = rangoState('fb').preset === 'todo'
+        ? new Set([..._fbReqActive, ..._fbReqArchived]).size
+        : _fbSeguimiento().reduce((n, d) => n + d.items.filter((x) => x.estado === 'enviado' || x.estado === 'respondio').length, 0);
     const positivas = rows.filter(_fbPositiva).length;
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
@@ -11330,8 +11437,9 @@ function renderMetricasFeedback() {
             </div>
         </div>`).join('');
 
-    const filtered = _fbFilter === 'todos' ? rows : rows.filter((r) => r.q1 === _fbFilter);
-    const listRows = filtered.slice(0, 80).map((r) => `
+    const _fbRespListHtml = () => {
+        const filtered = rows.filter((r) => (_fbFilter === 'todos' || r.q1 === _fbFilter) && smartMatch(_fbQ.resp, r.name, r.phone, r.orderCode, r.q4));
+        const html = filtered.slice(0, 80).map((r) => `
         <div class="met-user-row-v2">
             <div class="met-avatar">${FB_Q1[r.q1]?.[0] || '❔'}</div>
             <div class="met-user-info-v2">
@@ -11339,6 +11447,9 @@ function renderMetricasFeedback() {
                 <div class="met-user-meta-v2">${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · Se enteró por ${escapeHtml(FB_Q2[r.q2]?.[1] || r.q2)} · App: ${escapeHtml(FB_Q3[r.q3]?.[1] || r.q3)} · ${escapeHtml(fmt(r.ts))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}</div>
             </div>
         </div>`).join('');
+        return `<p class="met-empty-note" style="text-align:left;margin:0 0 6px">${nf(filtered.length)} respuesta${filtered.length === 1 ? '' : 's'}</p>${html || '<p class="met-empty-note">No hay respuestas con esos filtros.</p>'}`;
+    };
+    _fbRespListRef = _fbRespListHtml;
 
     // Una sola sección visible a la vez (mismo modelo de pestañas internas que Configuración).
     const tab = ['seguimiento', 'metricas', 'respuestas', 'descargas'].includes(_fbTab) ? _fbTab : 'seguimiento';
@@ -11351,6 +11462,7 @@ function renderMetricasFeedback() {
     const secSeguimiento = `
         <article class="admin-card">
             <div class="met-section-title">📅 Día por día — a quién se le pidió feedback <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· solo pedidos con 2×1 · incluye los ya archivados</small></div>
+            ${searchBoxHtml('fbSegQ', 'Buscar cliente, teléfono o pedido', _fbQ.seg)}
             <div id="fbSeguimiento">${_fbSeguimientoHtml()}</div>
         </article>`;
     const secDescargas = `
@@ -11391,14 +11503,15 @@ function renderMetricasFeedback() {
             <div class="metrics-users-list">${sugRows || '<p class="met-empty-note">Aún no hay sugerencias.</p>'}</div>
         </article>
         <article class="admin-card">
-            <div class="met-section-title">Respuestas de cada cliente <small style="font-size:0.72rem;opacity:0.55;font-weight:400">· ${nf(filtered.length)}</small></div>
+            <div class="met-section-title">Respuestas de cada cliente</div>
+            ${searchBoxHtml('fbRespQ', 'Buscar por nombre, teléfono, pedido o comentario', _fbQ.resp)}
             <select id="fbFilter" class="admin-input" style="margin:6px 0 10px;max-width:260px" aria-label="Filtrar por sabor y calidad">
                 <option value="todos"${_fbFilter === 'todos' ? ' selected' : ''}>Todas</option>
                 ${Object.keys(FB_Q1).map((k) => `<option value="${k}"${_fbFilter === k ? ' selected' : ''}>${FB_Q1[k][0]} ${FB_Q1[k][1]}</option>`).join('')}
             </select>
-            <div class="metrics-users-list">${listRows || '<p class="met-empty-note">Aún no hay respuestas.</p>'}</div>
+            <div class="metrics-users-list" id="fbRespLista">${_fbRespListHtml()}</div>
         </article>`;
-    body.innerHTML = nav + ({ seguimiento: secSeguimiento, metricas: secMetricas, respuestas: secRespuestas, descargas: secDescargas })[tab];
+    body.innerHTML = nav + rangoSelectorHtml('fb') + ({ seguimiento: secSeguimiento, metricas: secMetricas, respuestas: secRespuestas, descargas: secDescargas })[tab];
     if (tab === 'metricas') {
         _renderBarChart('fbQ1Chart', chartData('q1', FB_Q1), '#ff7a1a');
         _renderBarChart('fbQ2Chart', chartData('q2', FB_Q2), '#a78bfa');
@@ -11412,6 +11525,11 @@ function renderMetricasFeedback() {
         body.dataset.fbBound = '1';
         body.addEventListener('change', (e) => {
             if (e.target && e.target.id === 'fbFilter') { _fbFilter = e.target.value; renderMetricasFeedback(); }
+        });
+        // Buscadores: solo se repinta la lista (no toda la pestaña) para no perder el foco del teclado.
+        body.addEventListener('input', (e) => {
+            if (e.target.id === 'fbSegQ') { _fbQ.seg = e.target.value; const c = document.getElementById('fbSeguimiento'); if (c) c.innerHTML = _fbSeguimientoHtml(); }
+            else if (e.target.id === 'fbRespQ') { _fbQ.resp = e.target.value; const c = document.getElementById('fbRespLista'); if (c && _fbRespListRef) c.innerHTML = _fbRespListRef(); }
         });
         body.addEventListener('click', async (e) => {
             const tabBtn = e.target.closest('[data-fb-tab]');
@@ -11430,8 +11548,10 @@ function renderMetricasFeedback() {
             }
             const btn = e.target.closest('[data-fb-action]');
             if (!btn) return;
-            const nowRows = _fbResponses;
-            const reqs = new Set([..._fbReqActive, ..._fbReqArchived]).size;
+            const nowRows = _fbRows();
+            const reqs = rangoState('fb').preset === 'todo'
+                ? new Set([..._fbReqActive, ..._fbReqArchived]).size
+                : _fbSeguimiento().reduce((n, d) => n + d.items.filter((x) => x.estado === 'enviado' || x.estado === 'respondio').length, 0);
             const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
             if (btn.dataset.fbAction === 'csv') downloadExportFile(`feedback-roal-${stamp}.csv`, _fbCsv(nowRows), 'text/csv;charset=utf-8');
             else if (btn.dataset.fbAction === 'informe') downloadExportFile(`informe-feedback-roal-${stamp}.md`, _fbBuildReport(nowRows, reqs), 'text/markdown;charset=utf-8');
@@ -11444,9 +11564,13 @@ function renderMetricasProductos(period) {
     if (period !== undefined) _prodMetricsPeriod = period;
     const ranking = document.getElementById('prodMetricsRanking');
     if (!ranking) return;
+    if (!document.getElementById('prodSearch')) {
+        ranking.insertAdjacentHTML('beforebegin', searchBoxHtml('prodSearch', 'Buscar producto'));
+        document.getElementById('prodSearch').addEventListener('input', (e) => { _prodQ = e.target.value; renderMetricasProductos(); });
+    }
 
-    // Límite temporal según período (helper compartido con el reporte de Canjes)
-    const cutoff = _metricsPeriodStart(_prodMetricsPeriod);
+    // Rango de fechas del selector estándar (Hoy, Ayer, mes, fechas…)
+    const rangoProd = rangoMs('prod');
 
     // Agregar por producto
     const map = new Map();
@@ -11459,7 +11583,7 @@ function renderMetricasProductos(period) {
         const ts = order.createdAt
             ? (typeof order.createdAt.toDate === 'function' ? order.createdAt.toDate() : new Date(order.createdAt))
             : null;
-        if (cutoff && ts && ts < cutoff) continue;
+        if (ts && (ts.getTime() < rangoProd.desde || ts.getTime() >= rangoProd.hasta)) continue;
 
         for (const item of (order.items || [])) {
             const name = _metricsProductKey(item.productName);
@@ -11473,20 +11597,23 @@ function renderMetricasProductos(period) {
         }
     }
 
-    const sorted = [...map.entries()]
+    const ordenados = [...map.entries()]
         .map(([name, d]) => ({ name, ...d }))
         .filter((p) => p.qty > 0)
-        .sort((a, b) => b.qty - a.qty)
-        .slice(0, 20);
+        .sort((a, b) => b.qty - a.qty);
+    const top = ordenados.slice(0, 20);
+    // Buscador inteligente: con 3+ letras filtra por nombre sobre todos los productos (los KPIs no cambian).
+    const buscando = _prodQ.trim().length >= 3;
+    const sorted = buscando ? ordenados.filter((p) => smartMatch(_prodQ, p.name)).slice(0, 100) : top;
 
     // KPIs
-    const totalUnits = sorted.reduce((s, p) => s + p.qty, 0);
-    const totalRev   = sorted.reduce((s, p) => s + p.revenue, 0);
+    const totalUnits = top.reduce((s, p) => s + p.qty, 0);
+    const totalRev   = top.reduce((s, p) => s + p.revenue, 0);
     const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
     setKpi('prodMetricUnits',    totalUnits.toLocaleString('es-CO'));
     setKpi('prodMetricRevenue',  formatMoney(totalRev));
     setKpi('prodMetricDistinct', map.size.toLocaleString('es-CO'));
-    setKpi('prodMetricStar',     sorted.length ? sorted[0].name : '—');
+    setKpi('prodMetricStar',     top.length ? top[0].name : '—');
 
     if (!sorted.length) {
         ranking.innerHTML = '<p class="prod-rank-empty">Sin pedidos en este período.</p>';
@@ -11652,11 +11779,14 @@ function renderMetricsPos() {
     // Solo ventas reales: excluye anulados/voided y pedidos que nunca llegaron a pagarse (mismo
     // criterio que renderCajaDiaria) -- sin esto, "Ingresos"/"Ticket promedio" del POS incluían
     // pedidos anulados o todavia pendientes de cobro.
-    const posOrders  = _metricsOrdersOrFallback().filter(o =>
+    const posOrdersAll = _metricsOrdersOrFallback().filter(o =>
         (o.isAdminOrder || o.source === 'admin_pos')
         && !o.voided && !o.anulado
         && o.paymentMethod && o.paymentMethod !== 'pendiente'
     );
+    // Selector de fechas estándar: resumen y gráficos siguen el rango; las tarjetas fijas Hoy/Semana/Mes usan todos.
+    const rangoPos = rangoMs('pos');
+    const posOrders = posOrdersAll.filter((o) => { const ts = _orderTs(o); return ts ? (ts >= rangoPos.desde && ts < rangoPos.hasta) : rangoState('pos').preset === 'todo'; });
     const posClients = (clientsState || []).slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
     const totalRev   = posOrders.reduce((s, o) => s + Number(o.total || 0), 0);
@@ -11672,9 +11802,9 @@ function renderMetricsPos() {
     set('posKpiMax',     formatMoney(maxTicket));
 
     // Períodos
-    const pT = _periodStats(posOrders, 'today');
-    const pW = _periodStats(posOrders, 'week');
-    const pM = _periodStats(posOrders, 'month');
+    const pT = _periodStats(posOrdersAll, 'today');
+    const pW = _periodStats(posOrdersAll, 'week');
+    const pM = _periodStats(posOrdersAll, 'month');
     set('posPeriodTodayRev',  formatMoney(pT.revenue)); set('posPeriodTodayOrds',  `${pT.count} pedido${pT.count!==1?'s':''}`);
     set('posPeriodWeekRev',   formatMoney(pW.revenue)); set('posPeriodWeekOrds',   `${pW.count} pedido${pW.count!==1?'s':''}`);
     set('posPeriodMonthRev',  formatMoney(pM.revenue)); set('posPeriodMonthOrds',  `${pM.count} pedido${pM.count!==1?'s':''}`);
@@ -21594,29 +21724,18 @@ document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => 
 });
 
 // Buscador de usuarios en métricas
+// (buscador inteligente: sin tildes/mayúsculas, filtra desde 3 letras o dígitos, por nombre o teléfono)
+document.getElementById('metricsUserSearch')?.setAttribute('placeholder', 'Buscar por nombre o teléfono — desde 3 letras');
 document.getElementById('metricsUserSearch')?.addEventListener('input', (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    if (!q) {
-        _renderMetricsUserRows(_metricsUsersFiltered);
-        return;
-    }
-    const filtered = _metricsUsersFiltered.filter((u) => {
-        const name = String(u.customerName || '').toLowerCase();
-        const phone = String(u.customerPhone || '');
-        return name.includes(q) || phone.includes(q);
-    });
-    _renderMetricsUserRows(filtered);
+    const q = e.target.value;
+    _renderMetricsUserRows(_metricsUsersFiltered.filter((u) => smartMatch(q, u.customerName, u.customerPhone)));
 });
 
 // Buscador de clientes POS en métricas
+document.getElementById('metricsPosSrch')?.setAttribute('placeholder', 'Buscar por nombre o teléfono — desde 3 letras');
 document.getElementById('metricsPosSrch')?.addEventListener('input', (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    const filtered = q ? _metricsPosFiltered.filter((u) => {
-        const name = String(u.customerName || '').toLowerCase();
-        const phone = String(u.customerPhone || '');
-        return name.includes(q) || phone.includes(q);
-    }) : _metricsPosFiltered;
-    _renderMetricsPosRows(filtered);
+    const q = e.target.value;
+    _renderMetricsPosRows(_metricsPosFiltered.filter((u) => smartMatch(q, u.customerName, u.customerPhone)));
 });
 
 // Tabs de métricas (POS / APP / Productos)
