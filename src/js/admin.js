@@ -2531,6 +2531,7 @@ function setupAccordion() {
         mensajes: ['mensajes'],
         chatroal: ['chatroal'],
         metricas: ['metricas'],
+        feedback: ['feedback'],
         finanzas: ['finanzas'],
         costos: ['costos'],
         banco: ['banco'],
@@ -2540,7 +2541,7 @@ function setupAccordion() {
         tv: ['tv']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', finanzas:'Finanzas', costos:'Costos y recetas', banco:'Pagos Bancolombia', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes', tv:'Modo TV' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', feedback:'Feedback', finanzas:'Finanzas', costos:'Costos y recetas', banco:'Pagos Bancolombia', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes', tv:'Modo TV' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -2584,6 +2585,9 @@ function setupAccordion() {
         if (target === 'finanzas') {
             _ensureFinanzasLoaded();
         }
+
+        // Feedback: escucha en vivo solo mientras la sección está abierta.
+        try { if (target === 'feedback') _fbAttach(); else _fbDetach(); } catch (_) { /* aún no inicializado */ }
 
         if (target === 'costos') {
             _ensureCostosLoaded();
@@ -3313,25 +3317,32 @@ const _feedbackSending = new Set();
 // (ordersState se rehace con fetchOrders(), así que marcar solo el objeto en memoria no basta.)
 const _feedbackMarcadosLocal = new Set();
 
+// Dos mensajes manuales: Sabe a Quindío (pedido con 2×1) y fidelización (cualquier otro pedido). Ambos llevan el link
+// /encuesta?orderId=…; el servidor decide el cuestionario según los ítems del pedido (functions/feedbackTipo.js).
 function buildFeedbackMessage(order) {
+    if (feedbackTipoOrden(order) === 'general') {
+        const nombre = String(order.customerName || '').trim().split(/\s+/)[0];
+        return `¡Hola${nombre ? ` ${nombre}` : ''}! 🍔 Gracias por pedir en ROAL BURGER. ¿Nos regalas 30 segundos para contarnos qué tal te fue con tu pedido? Tu opinión nos ayuda a mejorar 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}\n\n🎂 Y si quieres, déjanos tu cumpleaños en la encuesta para sorprenderte.`;
+    }
     return `¡Hola! ¿Qué tal? 🍔 Esperamos que hayas disfrutado tu Burger Trifásica. Es un producto nuevo y tu opinión nos ayuda a mejorarla. ¿Nos regalas 30 segundos para contarnos qué tal te pareció? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}\n\n📸 Y si quieres, déjanos tu comentario sobre el producto en nuestro Instagram: ${FEEDBACK_INSTAGRAM_URL}\n\n🏆 La Trifásica compite en Sabe a Quindío: ¡vota por nosotros! 👉 ${FEEDBACK_VOTE_URL}`;
 }
 
-// Hasta el 9 de nov. el cuestionario es solo para quien compró el 2×1 Aquí, digo: el pedido puede traer
-// otros productos, pero debe tener al menos un ítem 2×1 (si no, no entra al feedback).
+// Tipo de encuesta del pedido: 'quindio' si trae al menos un ítem 2×1 (el pedido puede traer otros productos);
+// 'general' (fidelización) para todos los demás. Mismo criterio que el servidor (functions/feedbackTipo.js).
 function orderHas2x1ForFeedback(order) {
     return Array.isArray(order?.items) && order.items.some((item) => _sqItemEs2x1(item));
 }
+function feedbackTipoOrden(order) { return orderHas2x1ForFeedback(order) ? 'quindio' : 'general'; }
+const FEEDBACK_MAX_AGE_TIPO = { quindio: 24 * 60 * 60 * 1000, general: 7 * 24 * 60 * 60 * 1000 }; // fidelización: hasta 7 días
 
 function getPendingFeedbackOrders() {
     const now = Date.now();
     return ordersState.filter((order) => {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
-        if (!orderHas2x1ForFeedback(order)) return false;
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
-        return sentMs > 0 && now - sentMs >= FEEDBACK_DELAY_MS && now - sentMs <= FEEDBACK_MAX_AGE_MS;
+        return sentMs > 0 && now - sentMs >= FEEDBACK_DELAY_MS && now - sentMs <= FEEDBACK_MAX_AGE_TIPO[feedbackTipoOrden(order)];
     }).sort((a, b) => (_tsMs(a.enviadoAt || a.deliveredAt) - _tsMs(b.enviadoAt || b.deliveredAt)));
 }
 
@@ -3360,9 +3371,9 @@ function renderFeedbackPending() {
     host.innerHTML = pending.map((order) => {
         const phone = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '');
         return `<div class="feedback-pending-row">
-            <span class="feedback-pending-ico" aria-hidden="true">⭐</span>
+            <span class="feedback-pending-ico" aria-hidden="true">${feedbackTipoOrden(order) === 'general' ? '💛' : '⭐'}</span>
             <div class="feedback-pending-info">
-                <strong>Feedback pendiente</strong>
+                <strong>${feedbackTipoOrden(order) === 'general' ? 'Fidelización pendiente' : 'Feedback pendiente'}</strong>
                 <span>${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)} · <button type="button" class="feedback-pending-phone" data-feedback-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button></span>
             </div>
             <button type="button" class="feedback-pending-btn" data-feedback-send="${escapeHtml(order.id)}">Copiar mensaje</button>
@@ -3404,12 +3415,12 @@ async function sendFeedbackRequest(orderId, btn, orderOverride) {
         _feedbackMarcadosLocal.add(orderId);
         order.feedbackRequestedAt = new Date();
         marcado = true;
-        showNotice(`Mensaje de feedback listo para ${nombre}.`, 'ok');
+        showNotice(`Mensaje de ${feedbackTipoOrden(order) === 'general' ? 'fidelización' : 'feedback'} listo para ${nombre}.`, 'ok');
         // Marca de hora del cliente (no serverTimestamp): así el valor local es real desde el primer momento y no
         // "null" hasta que el servidor responda.
         let confirmado = false;
         const avisoLento = setTimeout(() => { if (!confirmado) showNotice(`El guardado de ${nombre} tarda más de lo normal. Si recargas la página antes de que termine, este pedido volverá a salir en la lista.`, 'info'); }, 20000);
-        updateOrder(orderId, { feedbackRequestedAt: firebase.firestore.Timestamp.now() })
+        updateOrder(orderId, { feedbackRequestedAt: firebase.firestore.Timestamp.now(), feedbackTipo: feedbackTipoOrden(order) })
             .then(() => { confirmado = true; })
             .catch((error) => {
                 confirmado = true;
@@ -11294,6 +11305,8 @@ function renderMetricasSqFin() {
 const FB_INICIO_MS = Date.parse('2026-10-01T00:00:00-05:00');
 const FB_Q1 = { brutal: ['🔥', 'Brutal 10/10'], muy_buena: ['😋', 'Muy buena'], normalita: ['😐', 'Normalita'], no_convencio: ['😕', 'No me convenció'] };
 const FB_Q2 = { instagram: ['📸', 'Instagram'], whatsapp: ['💬', 'WhatsApp'], amigo: ['🤝', 'Amigo'], web: ['🌐', 'Web'] };
+const FB_Q2_GEN = { excelente: ['🌟', 'Excelente'], bien: ['👍', 'Bien'], mejorable: ['🤏', 'Se puede mejorar'], mal: ['👎', 'Mal'] };
+const FB_Q3_GEN = { seguro: ['🙌', 'Seguro que vuelve'], tal_vez: ['🤔', 'Tal vez'], no: ['😬', 'Creo que no'] };
 const FB_Q3 = { si: ['✅', 'Sí instaló la app'], no: ['❌', 'No la instaló'], no_sabia: ['🤔', 'No sabía'] };
 let _fbUnsubs = [];
 let _fbResponses = [];
@@ -11301,9 +11314,17 @@ let _fbReqActive = [];
 let _fbReqArchived = [];
 let _fbFilter = 'todos';
 let _fbRespListRef = null; // repinta la lista de respuestas (la define renderMetricasFeedback)
+let _fbTipo = 'quindio'; // cuestionario que se está viendo: 'quindio' (pedidos con 2×1) o 'general' (fidelización)
 let _fbQ = { seg: '', resp: '' }; // textos de los buscadores de Feedback
 let _fbTab = 'seguimiento'; // pestaña interna visible: seguimiento | metricas | respuestas | descargas
 let _fbArchOrders = []; // pedidos ya archivados al cerrar caja (para el seguimiento por día)
+
+// Mapas y títulos del cuestionario visible (Sabe a Quindío o fidelización).
+function _fbMaps() {
+    return _fbTipo === 'general'
+        ? { q2: FB_Q2_GEN, q3: FB_Q3_GEN, t2: 'Servicio y entrega', t3: 'Volverían a pedir', c2: '¿Qué tal el servicio y la entrega?', c3: '¿Volverían a pedir?', x2: '% satisfechos con el sabor según el servicio', x3: '% satisfechos con el sabor según si volverían', col2: 'servicio_entrega', col3: 'volveria_a_pedir' }
+        : { q2: FB_Q2, q3: FB_Q3, t2: 'Cómo se enteraron de la promo', t3: 'Instalación de la app', c2: '¿Por dónde se enteraron de la promo?', c3: '¿Instalaron la app?', x2: '% satisfechos según cómo se enteraron', x3: '% satisfechos según tengan la app', col2: 'como_se_entero', col3: 'app_instalada' };
+}
 
 function _fbDetach() {
     _fbUnsubs.forEach((u) => { try { u(); } catch (_) {} });
@@ -11321,7 +11342,7 @@ function _fbAttach() {
                 const x = d.data();
                 return {
                     id: d.id, orderCode: String(x.orderCode || ''), name: String(x.customerName || ''), phone: String(x.customerPhone || ''),
-                    q1: x.q1, q2: x.q2, q3: x.q3, q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
+                    tipo: x.tipo === 'general' ? 'general' : 'quindio', cumple: String(x.cumple || ''), q1: x.q1, q2: x.q2, q3: x.q3, q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
                 };
             });
             renderMetricasFeedback();
@@ -11352,7 +11373,7 @@ function _fbCount(rows, key, labels) {
 function _fbBuildReport(rows, solicitudes) {
     const total = rows.length;
     const fecha = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric' });
-    const lines = [`# Informe de feedback · ROAL BURGER`, `Generado el ${fecha}`, ''];
+    const lines = [`# Informe de feedback · ROAL BURGER · ${_fbTipo === 'general' ? 'Fidelización' : 'Sabe a Quindío'}`, `Generado el ${fecha}`, ''];
     if (!total) return `${lines.join('\n')}\nAún no hay respuestas.\n`;
     const positivas = rows.filter(_fbPositiva).length;
     lines.push('## Resumen',
@@ -11364,24 +11385,34 @@ function _fbBuildReport(rows, solicitudes) {
         _fbCount(rows, key, labels).forEach((c) => lines.push(`- ${labels[c.val][1]}: ${c.n} (${_fbPct(c.n, total)}%)`));
         lines.push('');
     };
+    const M = _fbMaps();
+    const general = _fbTipo === 'general';
     bloque('Sabor y calidad', 'q1', FB_Q1);
-    bloque('Cómo se enteraron de la promo', 'q2', FB_Q2);
-    bloque('Instalación de la app', 'q3', FB_Q3);
+    bloque(M.t2, 'q2', M.q2);
+    bloque(M.t3, 'q3', M.q3);
 
-    lines.push('## Satisfacción por canal de origen');
-    Object.keys(FB_Q2).forEach((k) => {
+    lines.push(general ? '## Satisfacción con el sabor según el servicio' : '## Satisfacción por canal de origen');
+    Object.keys(M.q2).forEach((k) => {
         const g = rows.filter((r) => r.q2 === k);
-        if (g.length) lines.push(`- ${FB_Q2[k][1]}: ${g.length} respuestas, ${_fbPct(g.filter(_fbPositiva).length, g.length)}% satisfechos`);
+        if (g.length) lines.push(`- ${M.q2[k][1]}: ${g.length} respuestas, ${_fbPct(g.filter(_fbPositiva).length, g.length)}% satisfechos`);
     });
     lines.push('');
 
     const obs = [];
     const noApp = rows.filter((r) => r.q3 !== 'si').length;
-    if (_fbPct(noApp, total) >= 50) obs.push(`El ${_fbPct(noApp, total)}% no tiene la app instalada (${_fbPct(rows.filter((r) => r.q3 === 'no_sabia').length, total)}% ni sabía que existía): conviene invitar a instalarla en el ticket y en el mensaje de WhatsApp.`);
+    if (general) {
+        const mal = rows.filter((r) => r.q2 === 'mejorable' || r.q2 === 'mal').length;
+        if (_fbPct(mal, total) >= 20) obs.push(`El ${_fbPct(mal, total)}% calificó el servicio/entrega como mejorable o malo: revisar tiempos y trato en esos pedidos.`);
+        const vuelve = rows.filter((r) => r.q3 === 'seguro').length;
+        obs.push(`${_fbPct(vuelve, total)}% dice que seguro vuelve a pedir; ${_fbPct(rows.filter((r) => r.q3 === 'no').length, total)}% cree que no.`);
+        const cumples = rows.filter((r) => r.cumple).length;
+        if (cumples) obs.push(`${cumples} cliente${cumples === 1 ? '' : 's'} dejó su cumpleaños para sorprenderlo.`);
+    }
+    if (!general && _fbPct(noApp, total) >= 50) obs.push(`El ${_fbPct(noApp, total)}% no tiene la app instalada (${_fbPct(rows.filter((r) => r.q3 === 'no_sabia').length, total)}% ni sabía que existía): conviene invitar a instalarla en el ticket y en el mensaje de WhatsApp.`);
     const negativas = rows.filter((r) => r.q1 === 'normalita' || r.q1 === 'no_convencio').length;
     if (_fbPct(negativas, total) >= 20) obs.push(`El ${_fbPct(negativas, total)}% calificó el sabor/calidad como normal o malo: revisar receta, punto de cocción y tiempos de entrega de esos pedidos.`);
     const top2 = _fbCount(rows, 'q2', FB_Q2).sort((a, b) => b.n - a.n)[0];
-    if (top2 && top2.n) obs.push(`El canal que más trae clientes es ${FB_Q2[top2.val][1]} (${_fbPct(top2.n, total)}%): reforzar ahí la inversión.`);
+    if (_fbTipo !== 'general' && top2 && top2.n) obs.push(`El canal que más trae clientes es ${FB_Q2[top2.val][1]} (${_fbPct(top2.n, total)}%): reforzar ahí la inversión.`);
     if (_fbPct(positivas, total) >= 80) obs.push(`La satisfacción es alta (${_fbPct(positivas, total)}%): usar testimonios reales en redes.`);
     lines.push('## Lectura automática', ...(obs.length ? obs.map((o) => `- ${o}`) : ['- Aún no hay una señal clara; se necesitan más respuestas.']), '');
 
@@ -11392,10 +11423,11 @@ function _fbBuildReport(rows, solicitudes) {
 
 function _fbCsv(rows) {
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const head = ['fecha', 'pedido', 'cliente', 'telefono', 'sabor_calidad', 'como_se_entero', 'app_instalada', 'sugerencia'];
+    const M = _fbMaps();
+    const head = ['fecha', 'pedido', 'cliente', 'telefono', 'sabor_calidad', M.col2, M.col3, 'sugerencia', ...(_fbTipo === 'general' ? ['cumpleanos'] : [])];
     const body = rows.map((r) => [
         r.ts ? new Date(r.ts).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '', r.orderCode, r.name, r.phone,
-        FB_Q1[r.q1]?.[1] || r.q1, FB_Q2[r.q2]?.[1] || r.q2, FB_Q3[r.q3]?.[1] || r.q3, r.q4
+        FB_Q1[r.q1]?.[1] || r.q1, M.q2[r.q2]?.[1] || r.q2, M.q3[r.q3]?.[1] || r.q3, r.q4, ...(_fbTipo === 'general' ? [r.cumple] : [])
     ].map(cell).join(','));
     return `﻿${[head.map(cell).join(','), ...body].join('\r\n')}`;
 }
@@ -11404,7 +11436,7 @@ function _fbCsv(rows) {
 // 'respondio' (llenó la encuesta), 'enviado' (se copió el mensaje, sin respuesta aún), 'sin_enviar' o 'sin_telefono'.
 // Respuestas dentro del rango del selector de fechas ('fb').
 function _fbRows() {
-    return _fbResponses.filter((r) => (r.ts ? rangoEnRango('fb', r.ts) : rangoState('fb').preset === 'todo'));
+    return _fbResponses.filter((r) => r.tipo === _fbTipo && (r.ts ? rangoEnRango('fb', r.ts) : rangoState('fb').preset === 'todo'));
 }
 
 function _fbSeguimiento() {
@@ -11414,7 +11446,7 @@ function _fbSeguimiento() {
     const solicitados = new Set([..._fbReqActive, ..._fbReqArchived]);
     const dias = new Map();
     byId.forEach((o) => {
-        if (!isOrderClosed(o) || o.anulado === true || o.voided === true || !orderHas2x1ForFeedback(o)) return;
+        if (!isOrderClosed(o) || o.anulado === true || o.voided === true || feedbackTipoOrden(o) !== _fbTipo) return;
         const t = _tsMs(o.enviadoAt) || _tsMs(o.entregadoAt) || _tsMs(o.deliveredAt) || _tsMs(o.createdAt);
         if (!t || t < FB_INICIO_MS || !rangoEnRango('fb', t)) return;
         const phone = String(o.customerPhoneDigits || o.customerPhone || '').replace(/\D/g, '');
@@ -11434,7 +11466,7 @@ function _fbSeguimientoHtml() {
     const dias = _fbSeguimiento()
         .map((d) => ({ ...d, items: d.items.filter((x) => smartMatch(_fbQ.seg, getOrderDisplayCustomerName(x.order), x.order.code, x.phone)) }))
         .filter((d) => d.items.length);
-    if (!dias.length) return '<p class="met-empty-note">No hay pedidos con 2×1 en estas fechas (o ninguno coincide con la búsqueda).</p>';
+    if (!dias.length) return '<p class="met-empty-note">No hay pedidos en estas fechas (o ninguno coincide con la búsqueda).</p>';
     const BADGE = {
         respondio: ['✅ Respondió', '#34d399'],
         enviado: ['📨 Enviado, sin respuesta', '#fbbf24'],
@@ -11466,15 +11498,46 @@ function _fbSeguimientoHtml() {
     }).join('');
 }
 
+// ¿Volvieron a pedir? Para cada pedido despachado del cuestionario visible (dentro del rango de fechas): si el mismo teléfono
+// hizo otro pedido pagado en los 14 días siguientes. Se compara quien recibió el mensaje contra quien no (referencia
+// aproximada, no un experimento): solo cuentan los pedidos con 14 días o más, para que todos tuvieran el mismo tiempo.
+function _fbRecompra() {
+    const ahora = Date.now();
+    const VENTANA = 14 * 86400000;
+    const todos = new Map();
+    [..._fbArchOrders, ...ordersState].forEach((o) => { if (o.id) todos.set(o.id, o); });
+    const porTel = new Map();
+    todos.forEach((o) => {
+        if (o.anulado === true || o.voided === true || !o.paymentMethod || o.paymentMethod === 'pendiente') return;
+        const k = _sqPhoneKey(o.customerPhoneDigits || o.customerPhone);
+        const ts = _orderTs(o);
+        if (!k || !ts) return;
+        if (!porTel.has(k)) porTel.set(k, []);
+        porTel.get(k).push({ id: o.id, ts, total: Number(o.total || 0) });
+    });
+    porTel.forEach((arr) => arr.sort((a, b) => a.ts - b.ts));
+    const grupos = { con: { n: 0, volvio: 0, ventas: 0 }, sin: { n: 0, volvio: 0, ventas: 0 } };
+    let enCurso = 0;
+    _fbSeguimiento().forEach((d) => d.items.forEach(({ order, estado, t }) => {
+        if (estado === 'sin_telefono') return;
+        if (ahora - t < VENTANA) { enCurso += 1; return; }
+        const k = _sqPhoneKey(order.customerPhoneDigits || order.customerPhone);
+        const g = (estado === 'enviado' || estado === 'respondio') ? grupos.con : grupos.sin;
+        g.n += 1;
+        const vuelta = (porTel.get(k) || []).find((v) => v.id !== order.id && v.ts > t + 3600000 && v.ts <= t + VENTANA);
+        if (vuelta) { g.volvio += 1; g.ventas += vuelta.total; }
+    }));
+    return { ...grupos, enCurso };
+}
+
 function renderMetricasFeedback() {
     const body = document.getElementById('fbBody');
     if (!body) return;
+    const M = _fbMaps();
     const rows = _fbRows();
     const total = rows.length;
-    // Con un rango, las solicitudes son las del seguimiento dentro del rango (enviadas o ya respondidas).
-    const solicitudes = rangoState('fb').preset === 'todo'
-        ? new Set([..._fbReqActive, ..._fbReqArchived]).size
-        : _fbSeguimiento().reduce((n, d) => n + d.items.filter((x) => x.estado === 'enviado' || x.estado === 'respondio').length, 0);
+    // Solicitudes = pedidos del cuestionario visible, dentro del rango, a los que ya se les envió (o respondieron).
+    const solicitudes = _fbSeguimiento().reduce((n, d) => n + d.items.filter((x) => x.estado === 'enviado' || x.estado === 'respondio').length, 0);
     const positivas = rows.filter(_fbPositiva).length;
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
@@ -11487,14 +11550,14 @@ function renderMetricasFeedback() {
     const dayData = [...dayMap.entries()].sort().map(([k, v]) => ({ label: k.slice(5), val: v }));
 
     // Cruce: satisfacción según cómo se enteraron
-    const cruce = Object.keys(FB_Q2).map((k) => {
+    const cruce = Object.keys(M.q2).map((k) => {
         const g = rows.filter((r) => r.q2 === k);
-        return { label: `${FB_Q2[k][0]} ${FB_Q2[k][1]} (${g.length})`, val: _fbPct(g.filter(_fbPositiva).length, g.length) };
+        return { label: `${M.q2[k][0]} ${M.q2[k][1]} (${g.length})`, val: _fbPct(g.filter(_fbPositiva).length, g.length) };
     });
     // Cruce: satisfacción según tenga o no la app
-    const cruceApp = Object.keys(FB_Q3).map((k) => {
+    const cruceApp = Object.keys(M.q3).map((k) => {
         const g = rows.filter((r) => r.q3 === k);
-        return { label: `${FB_Q3[k][0]} ${FB_Q3[k][1]} (${g.length})`, val: _fbPct(g.filter(_fbPositiva).length, g.length) };
+        return { label: `${M.q3[k][0]} ${M.q3[k][1]} (${g.length})`, val: _fbPct(g.filter(_fbPositiva).length, g.length) };
     });
 
     const sugs = rows.filter((r) => r.q4);
@@ -11514,7 +11577,7 @@ function renderMetricasFeedback() {
             <div class="met-avatar">${FB_Q1[r.q1]?.[0] || '❔'}</div>
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(FB_Q1[r.q1]?.[1] || r.q1)}</div>
-                <div class="met-user-meta-v2">${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · Se enteró por ${escapeHtml(FB_Q2[r.q2]?.[1] || r.q2)} · App: ${escapeHtml(FB_Q3[r.q3]?.[1] || r.q3)} · ${escapeHtml(fmt(r.ts))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}</div>
+                <div class="met-user-meta-v2">${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${_fbTipo === 'general' ? 'Servicio' : 'Se enteró por'} ${escapeHtml(M.q2[r.q2]?.[1] || r.q2)} · ${_fbTipo === 'general' ? 'Volvería' : 'App'}: ${escapeHtml(M.q3[r.q3]?.[1] || r.q3)}${r.cumple ? ` · 🎂 ${escapeHtml(r.cumple)}` : ''} · ${escapeHtml(fmt(r.ts))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}</div>
             </div>
         </div>`).join('');
         return `<p class="met-empty-note" style="text-align:left;margin:0 0 6px">${nf(filtered.length)} respuesta${filtered.length === 1 ? '' : 's'}</p>${html || '<p class="met-empty-note">No hay respuestas con esos filtros.</p>'}`;
@@ -11524,7 +11587,14 @@ function renderMetricasFeedback() {
     // Una sola sección visible a la vez (mismo modelo de pestañas internas que Configuración).
     const tab = ['seguimiento', 'metricas', 'respuestas', 'descargas'].includes(_fbTab) ? _fbTab : 'seguimiento';
     const TABS = [['seguimiento', '📅', 'Seguimiento'], ['metricas', '📊', 'Métricas'], ['respuestas', '💬', 'Respuestas'], ['descargas', '⬇️', 'Descargas']];
-    const nav = `<article class="admin-card menu-section-card" style="padding-bottom:0">
+    const TIPOS = [['quindio', '🏆', 'Sabe a Quindío'], ['general', '💛', 'Fidelización']];
+    const navTipo = `<article class="admin-card menu-section-card" style="padding-bottom:0">
+        <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Tipo de feedback">
+            ${TIPOS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
+        </nav>
+        <p class="admin-hint" style="margin:6px 0 10px">${_fbTipo === 'general' ? 'Encuesta para quienes NO pidieron el 2×1: sabor, servicio, si volverían y su cumpleaños. El aviso sale en Recepción de Pedidos como «Fidelización pendiente».' : 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).'}</p>
+    </article>`;
+    const nav = navTipo + `<article class="admin-card menu-section-card" style="padding-bottom:0">
         <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Feedback">
             ${TABS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${tab === id ? ' active' : ''}" data-fb-tab="${id}" role="tab" aria-selected="${tab === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
         </nav>
@@ -11545,7 +11615,19 @@ function renderMetricasFeedback() {
                 <button type="button" class="section-action-btn" data-fb-action="csv">⬇️ Descargar respuestas (.csv)</button>
             </div>
         </article>`;
+    const rc = _fbRecompra();
+    const pctRc = (g) => (g.n ? `${Math.round((g.volvio / g.n) * 100)}%` : '—');
     const secMetricas = `
+        <article class="admin-card">
+            <div class="met-section-title">🔁 ¿Volvieron a pedir? <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en los 14 días siguientes, solo pedidos con 14 días o más</small></div>
+            <div class="met-kpi-row">
+                ${kpi('met-kpi-card--green', pctRc(rc.con), `Con mensaje (${nf(rc.con.volvio)} de ${nf(rc.con.n)})`)}
+                ${kpi('', pctRc(rc.sin), `Sin mensaje (${nf(rc.sin.volvio)} de ${nf(rc.sin.n)})`)}
+                ${kpi('met-kpi-card--hi', formatMoney(rc.con.ventas), 'Ventas de esa recompra (con mensaje)')}
+                ${kpi('', nf(rc.enCurso), 'Aún sin medir (menos de 14 días)')}
+            </div>
+            <p class="met-empty-note" style="margin-top:8px;font-size:0.76rem;opacity:0.75">Compara a quienes recibieron el mensaje con quienes no. Sirve como referencia, no es una prueba exacta: con pocos pedidos la diferencia puede ser casualidad.</p>
+        </article>
         <article class="admin-card">
             <div class="met-section-title">⭐ Feedback de clientes <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en vivo</small></div>
             <div class="met-kpi-row">
@@ -11560,11 +11642,11 @@ function renderMetricasFeedback() {
             <div class="met-section-title">Análisis de respuestas</div>
             <div class="met-analytics-grid">
                 <div class="met-analytics-card"><div class="met-analytics-title">¿Qué tal el sabor y la calidad?</div><div id="fbQ1Chart"></div></div>
-                <div class="met-analytics-card"><div class="met-analytics-title">¿Por dónde se enteraron de la promo?</div><div id="fbQ2Chart"></div></div>
-                <div class="met-analytics-card"><div class="met-analytics-title">¿Instalaron la app?</div><div id="fbQ3Chart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">${M.c2}</div><div id="fbQ2Chart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">${M.c3}</div><div id="fbQ3Chart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">Respuestas por día</div><div id="fbDayChart"></div></div>
-                <div class="met-analytics-card"><div class="met-analytics-title">% satisfechos según cómo se enteraron</div><div id="fbCruceChart"></div></div>
-                <div class="met-analytics-card"><div class="met-analytics-title">% satisfechos según tengan la app</div><div id="fbCruceAppChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">${M.x2}</div><div id="fbCruceChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">${M.x3}</div><div id="fbCruceAppChart"></div></div>
             </div>
         </article>`;
     const secRespuestas = `
@@ -11584,8 +11666,8 @@ function renderMetricasFeedback() {
     body.innerHTML = nav + rangoSelectorHtml('fb') + ({ seguimiento: secSeguimiento, metricas: secMetricas, respuestas: secRespuestas, descargas: secDescargas })[tab];
     if (tab === 'metricas') {
         _renderBarChart('fbQ1Chart', chartData('q1', FB_Q1), '#ff7a1a');
-        _renderBarChart('fbQ2Chart', chartData('q2', FB_Q2), '#a78bfa');
-        _renderBarChart('fbQ3Chart', chartData('q3', FB_Q3), '#60a5fa');
+        _renderBarChart('fbQ2Chart', chartData('q2', M.q2), '#a78bfa');
+        _renderBarChart('fbQ3Chart', chartData('q3', M.q3), '#60a5fa');
         _renderBarChart('fbDayChart', dayData, '#34d399');
         _renderBarChart('fbCruceChart', cruce, '#4ade80');
         _renderBarChart('fbCruceAppChart', cruceApp, '#fbbf24');
@@ -11604,6 +11686,8 @@ function renderMetricasFeedback() {
         body.addEventListener('click', async (e) => {
             const tabBtn = e.target.closest('[data-fb-tab]');
             if (tabBtn) { _fbTab = tabBtn.dataset.fbTab; renderMetricasFeedback(); return; }
+            const tipoBtn = e.target.closest('[data-fb-tipo]');
+            if (tipoBtn) { _fbTipo = tipoBtn.dataset.fbTipo === 'general' ? 'general' : 'quindio'; _fbQ = { seg: '', resp: '' }; renderMetricasFeedback(); return; }
             const phoneBtn = e.target.closest('[data-fb-phone]');
             if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.fbPhone); return; }
             const seg = e.target.closest('[data-fb-copy], [data-fb-recopy]');
@@ -11619,12 +11703,10 @@ function renderMetricasFeedback() {
             const btn = e.target.closest('[data-fb-action]');
             if (!btn) return;
             const nowRows = _fbRows();
-            const reqs = rangoState('fb').preset === 'todo'
-                ? new Set([..._fbReqActive, ..._fbReqArchived]).size
-                : _fbSeguimiento().reduce((n, d) => n + d.items.filter((x) => x.estado === 'enviado' || x.estado === 'respondio').length, 0);
+            const reqs = _fbSeguimiento().reduce((n, d) => n + d.items.filter((x) => x.estado === 'enviado' || x.estado === 'respondio').length, 0);
             const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
-            if (btn.dataset.fbAction === 'csv') downloadExportFile(`feedback-roal-${stamp}.csv`, _fbCsv(nowRows), 'text/csv;charset=utf-8');
-            else if (btn.dataset.fbAction === 'informe') downloadExportFile(`informe-feedback-roal-${stamp}.md`, _fbBuildReport(nowRows, reqs), 'text/markdown;charset=utf-8');
+            if (btn.dataset.fbAction === 'csv') downloadExportFile(`feedback-roal-${_fbTipo}-${stamp}.csv`, _fbCsv(nowRows), 'text/csv;charset=utf-8');
+            else if (btn.dataset.fbAction === 'informe') downloadExportFile(`informe-feedback-roal-${_fbTipo}-${stamp}.md`, _fbBuildReport(nowRows, reqs), 'text/markdown;charset=utf-8');
             else await copyTextToClipboard(_fbBuildReport(nowRows, reqs));
         });
     }
@@ -21820,7 +21902,6 @@ document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
         if (tab === 'productos') { _traficoDetach(); renderMetricasProductos(); }
         if (tab === 'sabe')      { _traficoDetach(); _sqAttach(); return; }
         if (tab === 'sqfin')     { _traficoDetach(); _sqAttach(); _sqFinCargar(); return; }
-        if (tab === 'feedback')  { _traficoDetach(); _fbAttach(); return; }
         _ensureMetricsOrdersLoaded();
         if (tab === 'app' || tab === 'pos') _ensureMetricsClientsLoaded();
     });
@@ -26971,6 +27052,7 @@ function _getFeedbackPendingForClose() {
     const now = Date.now();
     return ordersState.filter((order) => {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
+        // Al cerrar caja solo se exige el feedback de Sabe a Quindío (2×1); la fidelización se atiende desde la sección Feedback.
         if (!orderHas2x1ForFeedback(order)) return false;
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;

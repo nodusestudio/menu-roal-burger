@@ -14,7 +14,8 @@ const FUNCTIONS_BASE = IS_LOCAL
 const orderId = String(new URLSearchParams(location.search).get('orderId') || '').trim();
 const app = document.getElementById('encuestaApp');
 
-const PREGUNTAS = [
+// Dos cuestionarios: el servidor decide cuál según el pedido (con 2×1 → Quindío; si no → fidelización general).
+const PREGUNTAS_QUINDIO = [
     {
         key: 'q1', titulo: '¿Qué tal estuvo el sabor y la calidad de tu Burger Trifásica?',
         opciones: [['brutal', '🔥', 'Brutal 10/10'], ['muy_buena', '😋', 'Muy buena'], ['normalita', '😐', 'Normalita'], ['no_convencio', '😕', 'No me convenció']]
@@ -28,7 +29,23 @@ const PREGUNTAS = [
         opciones: [['si', '✅', 'Sí'], ['no', '❌', 'No'], ['no_sabia', '🤔', 'No sabía']]
     }
 ];
-const TOTAL_PASOS = PREGUNTAS.length + 1; // 3 de un clic + sugerencia
+const PREGUNTAS_GENERAL = [
+    {
+        key: 'q1', titulo: '¿Qué tal estuvo el sabor y la calidad de tu pedido?',
+        opciones: [['brutal', '🔥', 'Brutal 10/10'], ['muy_buena', '😋', 'Muy buena'], ['normalita', '😐', 'Normalita'], ['no_convencio', '😕', 'No me convenció']]
+    },
+    {
+        key: 'q2', titulo: '¿Y el servicio y la entrega?',
+        opciones: [['excelente', '🌟', 'Excelente'], ['bien', '👍', 'Bien'], ['mejorable', '🤏', 'Se puede mejorar'], ['mal', '👎', 'Mal']]
+    },
+    {
+        key: 'q3', titulo: '¿Volverías a pedir con nosotros?',
+        opciones: [['seguro', '🙌', 'Seguro que sí'], ['tal_vez', '🤔', 'Tal vez'], ['no', '😬', 'Creo que no']]
+    }
+];
+let tipo = 'quindio';
+let PREGUNTAS = PREGUNTAS_QUINDIO;
+let TOTAL_PASOS = PREGUNTAS.length + 1; // 3 de un clic + sugerencia
 
 const respuestas = {};
 let paso = 0;
@@ -97,20 +114,34 @@ function pintarPaso() {
         return;
     }
 
+    const general = tipo === 'general';
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const [cm, cd] = String(respuestas.cumple || '').split('-');
     pintar(`<div class="en-paso">
         ${progreso()}
         <p class="en-kicker">Pregunta ${TOTAL_PASOS} de ${TOTAL_PASOS} · opcional</p>
-        <h1 class="en-h">¿Qué le mejorarías a la Trifásica?</h1>
-        <p class="en-sub">Y si quieres, cuéntanos qué otro producto te gustaría ver en promo.</p>
+        <h1 class="en-h">${general ? '¿Qué te gustaría que agregáramos o mejoráramos?' : '¿Qué le mejorarías a la Trifásica?'}</h1>
+        <p class="en-sub">${general ? 'Un producto, un sabor, el servicio… lo que quieras.' : 'Y si quieres, cuéntanos qué otro producto te gustaría ver en promo.'}</p>
         <textarea class="en-texto" id="enSugerencia" maxlength="500" placeholder="Escribe aquí (puedes dejarlo vacío)" aria-label="Sugerencias"></textarea>
+        ${general ? `<p class="en-sub" style="margin-top:14px">🎂 ¿Cuándo es tu cumpleaños? Queremos sorprenderte (opcional).</p>
+        <div style="display:flex;gap:8px;justify-content:center;margin-bottom:6px">
+            <select id="enCumpleDia" class="en-texto" style="width:auto;min-height:0;padding:10px 12px" aria-label="Día de cumpleaños"><option value="">Día</option>${Array.from({ length: 31 }, (_, i) => `<option value="${String(i + 1).padStart(2, '0')}"${cd === String(i + 1).padStart(2, '0') ? ' selected' : ''}>${i + 1}</option>`).join('')}</select>
+            <select id="enCumpleMes" class="en-texto" style="width:auto;min-height:0;padding:10px 12px" aria-label="Mes de cumpleaños"><option value="">Mes</option>${meses.map((m, i) => `<option value="${String(i + 1).padStart(2, '0')}"${cm === String(i + 1).padStart(2, '0') ? ' selected' : ''}>${m}</option>`).join('')}</select>
+        </div>` : ''}
         <div id="enError"></div>
         <button type="button" class="en-btn" id="enEnviar">Enviar mi opinión 🍔</button>
         <button type="button" class="en-atras" id="enAtras">← Volver</button>
     </div>`);
     const area = document.getElementById('enSugerencia');
     area.value = respuestas.q4 || '';
-    document.getElementById('enAtras').addEventListener('click', () => { respuestas.q4 = area.value; paso -= 1; pintarPaso(); });
-    document.getElementById('enEnviar').addEventListener('click', () => enviar(area.value));
+    // Cumpleaños: solo cuenta si eligió día Y mes.
+    const leerCumple = () => {
+        const d = document.getElementById('enCumpleDia')?.value || '';
+        const m = document.getElementById('enCumpleMes')?.value || '';
+        return d && m ? `${m}-${d}` : '';
+    };
+    document.getElementById('enAtras').addEventListener('click', () => { respuestas.q4 = area.value; respuestas.cumple = leerCumple(); paso -= 1; pintarPaso(); });
+    document.getElementById('enEnviar').addEventListener('click', () => { respuestas.cumple = leerCumple(); enviar(area.value); });
 }
 
 async function enviar(sugerencia) {
@@ -135,7 +166,7 @@ function celebrar() {
     pintar(`<div class="en-centro en-celebra">
         <div class="en-emoji pop" aria-hidden="true">🎉</div>
         <h1 class="en-h">¡Gracias!</h1>
-        <p class="en-sub">Tu opinión nos ayuda a mejorar la Trifásica. ¡Nos vemos pronto!</p>
+        <p class="en-sub">${tipo === 'general' ? 'Tu opinión nos ayuda a mejorar cada pedido. ¡Nos vemos pronto!' : 'Tu opinión nos ayuda a mejorar la Trifásica. ¡Nos vemos pronto!'}</p>
         <a class="en-btn" href="https://roalburger.com/">Volver al menú</a>
     </div>`);
     const colores = ['#FF6B00', '#F5EBDD', '#FF9A3C', '#34d399', '#ffffff'];
@@ -160,6 +191,9 @@ async function iniciar() {
         const st = await callFunction('getOrderFeedbackStatus', { orderId });
         if (st.state === 'answered') return estadoMensaje('🙌', '¡Ya nos contaste!', 'Esta encuesta ya fue respondida. ¡Gracias por tu opinión!');
         if (st.state !== 'ok') return estadoMensaje('🍔', 'Encuesta no disponible', 'Este link no está activo. Si crees que es un error, escríbenos por WhatsApp.');
+        tipo = st.tipo === 'general' ? 'general' : 'quindio';
+        PREGUNTAS = tipo === 'general' ? PREGUNTAS_GENERAL : PREGUNTAS_QUINDIO;
+        TOTAL_PASOS = PREGUNTAS.length + 1;
         pintarPaso();
     } catch (e) {
         pintar(`<div class="en-centro">

@@ -2188,9 +2188,8 @@ exports._adjustLoyaltyPointsTransaction = adjustLoyaltyPointsTransaction;
 // Programa de puntos SUSPENDIDO (no visible ni activo): la encuesta NO regala puntos. Para reactivar el premio,
 // poner aquí la cantidad (y volver a mostrar el aviso en src/js/encuesta.js).
 const FEEDBACK_REWARD_POINTS = 0;
-const FEEDBACK_Q1 = ['brutal', 'muy_buena', 'normalita', 'no_convencio'];
-const FEEDBACK_Q2 = ['instagram', 'whatsapp', 'amigo', 'web'];
-const FEEDBACK_Q3 = ['si', 'no', 'no_sabia'];
+// Dos cuestionarios (functions/feedbackTipo.js): 'quindio' (pedido con 2×1) y 'general' (fidelización, cualquier otro pedido).
+const feedbackTipo = require('./feedbackTipo');
 
 async function findOrderForFeedback(db, orderId) {
     for (const col of ['pedidos', 'pedidos_archivados']) {
@@ -2221,7 +2220,7 @@ exports.getOrderFeedbackStatus = onCall(
         if (!order || !closed || !order.feedbackRequestedAt) return { state: 'unavailable' };
         if (order.feedbackAnsweredAt) return { state: 'answered' };
         const firstName = String(order.customerName || '').trim().split(/\s+/)[0] || '';
-        return { state: 'ok', firstName };
+        return { state: 'ok', firstName, tipo: feedbackTipo.feedbackTipoDePedido(order) };
     }
 );
 
@@ -2229,14 +2228,6 @@ exports.submitOrderFeedback = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
     async (request) => {
         const orderId = cleanFeedbackOrderId(request.data?.orderId);
-        const q1 = String(request.data?.q1 || '');
-        const q2 = String(request.data?.q2 || '');
-        const q3 = String(request.data?.q3 || '');
-        const q4 = String(request.data?.q4 || '').trim().slice(0, 500);
-        if (!FEEDBACK_Q1.includes(q1) || !FEEDBACK_Q2.includes(q2) || !FEEDBACK_Q3.includes(q3)) {
-            throw new HttpsError('invalid-argument', 'Responde las 3 primeras preguntas.');
-        }
-
         const db = getFirestore();
         const found = await findOrderForFeedback(db, orderId);
         if (!found) throw new HttpsError('not-found', 'No encontramos ese pedido.');
@@ -2248,6 +2239,11 @@ exports.submitOrderFeedback = onCall(
             if (!closed || !order.feedbackRequestedAt) {
                 throw new HttpsError('failed-precondition', 'Esta encuesta no está disponible.');
             }
+            // El cuestionario lo decide el servidor según los ítems del pedido (2×1 → Quindío; si no, fidelización).
+            const tipo = feedbackTipo.feedbackTipoDePedido(order);
+            const valid = feedbackTipo.validarRespuestasFeedback(tipo, request.data || {});
+            if (!valid.ok) throw new HttpsError('invalid-argument', valid.error);
+            const { q1, q2, q3, q4, cumple } = valid.value;
             const feedbackRef = db.collection('encuestas_pedido').doc(orderId);
             if (order.feedbackAnsweredAt || (await tx.get(feedbackRef)).exists) {
                 throw new HttpsError('already-exists', 'Ya respondiste esta encuesta. ¡Gracias!');
@@ -2256,6 +2252,9 @@ exports.submitOrderFeedback = onCall(
             const phoneDigits = String(order.customerPhoneDigits || '').replace(/\D/g, '');
             const clientId = phoneDigits.length >= 10 ? buildClientId(phoneDigits) : '';
             const points = clientId ? FEEDBACK_REWARD_POINTS : 0;
+            // El cumpleaños solo se guarda en la ficha si el cliente ya existe (no se crean fichas vacías).
+            const clientRef = clientId ? db.collection(CLIENTS_COLLECTION).doc(clientId) : null;
+            const clientExists = cumple && clientRef ? (await tx.get(clientRef)).exists : false;
 
             tx.set(feedbackRef, {
                 orderId,
@@ -2263,10 +2262,13 @@ exports.submitOrderFeedback = onCall(
                 clientId,
                 customerName: String(order.customerName || ''),
                 customerPhone: phoneDigits,
+                tipo,
                 q1, q2, q3, q4,
+                cumple,
                 pointsAwarded: points,
                 createdAt: FieldValue.serverTimestamp()
             });
+            if (clientExists) tx.set(clientRef, { fechaCumple: cumple }, { merge: true });
             if (points > 0) {
                 tx.set(db.collection(CLIENTS_COLLECTION).doc(clientId), {
                     puntosDisponibles: FieldValue.increment(points),

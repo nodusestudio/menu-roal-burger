@@ -4274,6 +4274,7 @@
         body.mesero-mode .sales-day-banner-data,
         body.mesero-mode #cajaChicaBtn { display: none !important; }
         body.mesero-mode [data-accordion-target="asistente"], body.mesero-mode [data-tab-panel="asistente"] { display: none !important; }
+        body.mesero-mode [data-accordion-target="feedback"], body.mesero-mode [data-tab-panel="feedback"] { display: none !important; }
         body.mesero-mode .mesero-not-owner .ticket-copy-btn { pointer-events: none !important; }
         /* Cobrar/Cambiar mesa/Imprimir siguen ocultos incluso en pedidos propios del mesero */
         body.mesero-mode .ticket-cobrar-btn,
@@ -13929,6 +13930,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="mensajes"><span class="nav-icon">💬</span><span>Mensajes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="chatroal"><span class="nav-icon">📲</span><span>Chat Roal</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="metricas"><span class="nav-icon">📈</span><span>Metricas</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="feedback"><span class="nav-icon">⭐</span><span>Feedback</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="asistente"><span class="nav-icon">🤖</span><span>Asistente</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="finanzas"><span class="nav-icon">💰</span><span>Finanzas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="banco"><span class="nav-icon">💸</span><span>Pagos Bancolombia</span></button>
@@ -15167,7 +15169,6 @@
                         <button type="button" class="metrics-tab-btn" data-metrics-tab="productos" role="tab">Productos</button>
                         <button type="button" class="metrics-tab-btn" data-metrics-tab="sabe" role="tab">🏆 Sabe a Quindío</button>
                         <button type="button" class="metrics-tab-btn" data-metrics-tab="sqfin" role="tab">💰 Finanzas</button>
-                        <button type="button" class="metrics-tab-btn" data-metrics-tab="feedback" role="tab">⭐ Feedback</button>
                     </nav>
                     <button type="button" class="section-save-btn" data-section-save="metricas">Actualizar</button>
                 </div>
@@ -15410,11 +15411,11 @@
                 <div class="metrics-panel" id="metricsPanelSqfin">
                     <div id="sqFinBody"><p class="met-empty-note">Cargando…</p></div>
                 </div>
+            </div>
 
-                <!-- PESTAÑA: FEEDBACK (encuesta /encuesta) — la pinta renderMetricasFeedback() -->
-                <div class="metrics-panel" id="metricsPanelFeedback">
-                    <div id="fbBody"><p class="met-empty-note">Cargando…</p></div>
-                </div>
+            <!-- FEEDBACK: encuesta de Sabe a Quindío (pedidos con 2×1) y de fidelización (los demás pedidos) — la pinta renderMetricasFeedback() -->
+            <div class="admin-tab-panel" data-tab-panel="feedback">
+                <div id="fbBody"><p class="met-empty-note">Cargando…</p></div>
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="asistente">
