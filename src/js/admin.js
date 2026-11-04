@@ -12127,6 +12127,25 @@ function _fidMetasSemana(offset) {
     return { desde, hasta, mensajes, cuponesEmitidos, canjes, respuestas, reactivados, ventas, costoRegalos, ganancia };
 }
 
+// Línea base con los datos reales del negocio (para fijar metas que tengan sentido): cuántos clientes vuelven, cada cuánto
+// y cuánto se vende por semana. Los pedidos salen de los activos + archivados desde el 1 de octubre.
+function _fidLineaBase() {
+    const clientes = (clientsState || []).filter((c) => c.totalOrders > 0 && _sqPhoneKey(c.customerPhoneDigits || c.customerPhone));
+    const repiten = clientes.filter((c) => c.totalOrders >= 2).length;
+    const porTel = _fbPedidosPorTel();
+    const gaps = [];
+    let pedidos = 0; let ventas = 0; let primero = Infinity;
+    porTel.forEach((arr) => {
+        for (let i = 1; i < arr.length; i += 1) gaps.push((arr[i].ts - arr[i - 1].ts) / 86400000);
+        arr.forEach((o) => { pedidos += 1; ventas += o.total; if (o.ts < primero) primero = o.ts; });
+    });
+    gaps.sort((a, b) => a - b);
+    const mediana = gaps.length ? gaps[Math.floor(gaps.length / 2)] : null;
+    const semanas = Number.isFinite(primero) ? Math.max(1, (Date.now() - primero) / (7 * 86400000)) : 0;
+    const sinVolver30 = clientes.filter((c) => c.totalOrders === 1 && (Date.now() - _tsMs(c.lastOrderAt)) / 86400000 > 30).length;
+    return { clientes: clientes.length, repiten, pctRepiten: clientes.length ? Math.round((repiten / clientes.length) * 100) : 0, mediana, pedidosSemana: semanas ? pedidos / semanas : 0, ventasSemana: semanas ? ventas / semanas : 0, semanas, sinVolver30 };
+}
+
 function _fidSemaforo(real, meta) {
     if (!meta) return ['', '—'];
     const pct = Math.round((real / meta) * 100);
@@ -12280,6 +12299,26 @@ function _fidReferidosHtml() {
     </article>`;
 }
 
+function _fidLineaBaseHtml() {
+    const b = _fidLineaBase();
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const sug = b.clientes ? Math.max(1, Math.round(b.sinVolver30 * 0.1)) : 0;
+    return `<article class="admin-card">
+        <div class="met-section-title">📐 Línea base <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· con tus datos reales, para fijar metas que se puedan cumplir</small></div>
+        <div class="met-kpi-row">
+            ${_fidKpi('met-kpi-card--hi', nf(b.clientes), 'Clientes con pedidos')}
+            ${_fidKpi('met-kpi-card--green', `${b.pctRepiten}%`, `Han pedido 2 veces o más (${nf(b.repiten)})`)}
+            ${_fidKpi('', b.mediana == null ? '—' : `${Math.round(b.mediana)} días`, 'Tiempo típico entre pedidos')}
+            ${_fidKpi('', nf(b.sinVolver30), 'Pidieron 1 vez y llevan +30 días sin volver')}
+        </div>
+        <div class="met-kpi-row" style="margin-top:10px">
+            ${_fidKpi('', nf(Math.round(b.pedidosSemana)), 'Pedidos por semana (promedio)')}
+            ${_fidKpi('met-kpi-card--purple', formatMoney(Math.round(b.ventasSemana)), 'Ventas por semana (promedio)')}
+        </div>
+        <p class="met-empty-note" style="margin-top:8px;font-size:0.78rem">${b.sinVolver30 ? `Para empezar, una meta realista sería recuperar ~${nf(sug)} cliente${sug === 1 ? '' : 's'} por semana (10% de los que pidieron una vez y no volvieron). ` : ''}El tiempo entre pedidos y las ventas por semana se calculan con los pedidos desde el 1 de octubre; ajústalos cuando haya más historia. Fija «Días sin pedir» en Reactivar cerca del doble del tiempo típico entre pedidos.</p>
+    </article>`;
+}
+
 function _fidKpi(cls, val, lbl) { return `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`; }
 
 function _fbRenderFid(body) {
@@ -12416,6 +12455,7 @@ function _fbRenderFid(body) {
             ${w0 ? `<p class="met-empty-note" style="margin-top:8px;font-size:0.78rem">Semana pasada: ${nf(w0.mensajes)} mensajes · ${nf(w0.reactivados)} volvieron · ${nf(w0.canjes)} canjes · ${escapeHtml(formatMoney(w0.ventas))} en ventas.</p>` : ''}
             <p class="met-empty-note" style="margin-top:8px;font-size:0.76rem;opacity:.75">«Volvieron» = clientes que pidieron esta semana dentro de los 14 días siguientes a un mensaje, cupón, saludo de cumpleaños o solicitud de feedback. Es atribución aproximada: parte de esos clientes habría vuelto igual.</p>
         </article>
+        ${_fidLineaBaseHtml()}
         <article class="admin-card">
             <div class="met-section-title">⚙️ Metas y supuestos de la semana</div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
