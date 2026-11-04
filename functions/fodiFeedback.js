@@ -25,11 +25,31 @@ function distribucion(filas, clave, etiquetas) {
 }
 
 async function feedbackClientes(db, args = {}) {
-    const parte = ['resumen', 'respuestas', 'sugerencias', 'pendientes'].includes(args.parte) ? args.parte : 'resumen';
+    const parte = ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos'].includes(args.parte) ? args.parte : 'resumen';
     // 'quindio' = pedidos con 2×1; 'general' = fidelización (cualquier otro pedido). El tipo lo da el pedido.
     const tipo = args.tipo === 'general' ? 'general' : 'quindio';
     const E2 = tipo === 'general' ? ETIQ_Q2_GEN : ETIQ_Q2;
     const E3 = tipo === 'general' ? ETIQ_Q3_GEN : ETIQ_Q3;
+
+    if (parte === 'cumpleanos') {
+        // Próximos cumpleaños (día y mes que dejó el cliente en su perfil o en la encuesta de fidelización).
+        const hoyKey = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+        const [y, mo, da] = hoyKey.split('-').map(Number);
+        const hoy = Date.UTC(y, mo - 1, da);
+        const bis = (yy) => (yy % 4 === 0 && yy % 100 !== 0) || yy % 400 === 0;
+        const faltan = (mmdd) => {
+            const m = Number(mmdd.slice(0, 2)); const d = Number(mmdd.slice(3, 5));
+            const en = (yy) => Date.UTC(yy, m - 1, (m === 2 && d === 29 && !bis(yy)) ? 28 : d);
+            let t = en(y); if (t < hoy) t = en(y + 1);
+            return Math.round((t - hoy) / 86400000);
+        };
+        const dias = Math.min(366, Math.max(0, Number(args.dias) || 30));
+        const snap = await db.collection('clientes').where('fechaCumple', '>', '').get();
+        const lista = snap.docs.map((d) => ({ x: d.data() })).filter(({ x }) => /^\d{2}-\d{2}$/.test(String(x.fechaCumple || '')))
+            .map(({ x }) => ({ cliente: x.customerName || 'Cliente', telefono: enmascarar(x.customerPhoneDigits), cumple: x.fechaCumple, en_dias: faltan(x.fechaCumple), saludado_este_anio: Number(x.cumpleSaludoAnio) === y }))
+            .filter((c) => c.en_dias <= dias).sort((a, b) => a.en_dias - b.en_dias);
+        return { clientes_con_cumpleanos: snap.size, en_los_proximos_dias: dias, total: lista.length, cumpleanos: lista.slice(0, 40), nota: 'Fecha en formato MM-DD. El saludo se copia desde Feedback → Cumpleaños.' };
+    }
 
     if (parte === 'pendientes') {
         const ahora = Date.now();
@@ -85,7 +105,7 @@ async function feedbackClientes(db, args = {}) {
 const TOOL = {
     name: 'feedback_clientes',
     description: 'FEEDBACK de clientes (encuesta que se manda por WhatsApp 2 h después de entregar): parte "resumen" = respuestas, tasa de respuesta, satisfacción, sabor/calidad, cómo se enteraron, app instalada y satisfacción por canal; "respuestas" = las últimas respuestas cliente por cliente; "sugerencias" = lo que escribieron en la pregunta abierta; "pendientes" = pedidos entregados a los que aún no se les pidió feedback. Úsala para "¿qué opinan los clientes?", "¿qué piden?", "¿quién falta por encuestar?" y para armar el informe de mejoras del festival (cruza con ventas y da acciones concretas).',
-    input_schema: { type: 'object', properties: { parte: { type: 'string', enum: ['resumen', 'respuestas', 'sugerencias', 'pendientes'] }, tipo: { type: 'string', enum: ['quindio', 'general'], description: 'quindio = encuesta de pedidos con 2×1 (Sabe a Quindío); general = fidelización (pedidos sin 2×1). Por defecto quindio.' } } }
+    input_schema: { type: 'object', properties: { parte: { type: 'string', enum: ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos'] }, dias: { type: 'number', description: 'Solo para cumpleanos: cuántos días hacia adelante (por defecto 30).' }, tipo: { type: 'string', enum: ['quindio', 'general'], description: 'quindio = encuesta de pedidos con 2×1 (Sabe a Quindío); general = fidelización (pedidos sin 2×1). Por defecto quindio.' } } }
 };
 
 module.exports = { feedbackClientes, TOOL };

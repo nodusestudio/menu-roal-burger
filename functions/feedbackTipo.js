@@ -49,6 +49,8 @@ function normalizarCumple(value) {
 function validarRespuestasFeedback(tipo, data) {
     const cuest = CUESTIONARIOS[tipo];
     if (!cuest) return { ok: false, error: 'Esta encuesta no está disponible.' };
+    // Consentimiento obligatorio: sin la casilla marcada no se recibe la opinión (queda como respaldo del negocio).
+    if (!data || data.consentimiento !== true) return { ok: false, error: 'Marca la casilla de autorización para enviar tu opinión.' };
     const q1 = String((data && data.q1) || '');
     const q2 = String((data && data.q2) || '');
     const q3 = String((data && data.q3) || '');
@@ -61,7 +63,9 @@ function validarRespuestasFeedback(tipo, data) {
         cumple = normalizarCumple(data && data.cumple);
         if (cumple === null) return { ok: false, error: 'La fecha de cumpleaños no es válida.' };
     }
-    return { ok: true, value: { q1, q2, q3, q4, cumple } };
+    return { ok: true, value: { q1, q2, q3, q4, cumple, consentimiento: true } };
 }
 
-module.exports = { CUESTIONARIOS, feedbackTipoDePedido, itemEs2x1, normalizarCumple, validarRespuestasFeedback };
+const CONSENTIMIENTO_VERSION = '2026-11-04';
+
+module.exports = { CONSENTIMIENTO_VERSION, CUESTIONARIOS, feedbackTipoDePedido, itemEs2x1, normalizarCumple, validarRespuestasFeedback };

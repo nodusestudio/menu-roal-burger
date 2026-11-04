@@ -128,6 +128,10 @@ function pintarPaso() {
             <select id="enCumpleDia" class="en-texto" style="width:auto;min-height:0;padding:10px 12px" aria-label="Día de cumpleaños"><option value="">Día</option>${Array.from({ length: 31 }, (_, i) => `<option value="${String(i + 1).padStart(2, '0')}"${cd === String(i + 1).padStart(2, '0') ? ' selected' : ''}>${i + 1}</option>`).join('')}</select>
             <select id="enCumpleMes" class="en-texto" style="width:auto;min-height:0;padding:10px 12px" aria-label="Mes de cumpleaños"><option value="">Mes</option>${meses.map((m, i) => `<option value="${String(i + 1).padStart(2, '0')}"${cm === String(i + 1).padStart(2, '0') ? ' selected' : ''}>${m}</option>`).join('')}</select>
         </div>` : ''}
+        <label class="en-consent" style="display:flex;gap:10px;align-items:flex-start;text-align:left;margin:14px 0 4px;font-size:0.88rem;line-height:1.4">
+            <input type="checkbox" id="enConsent" style="margin-top:3px;flex:none" ${respuestas.consentimiento ? 'checked' : ''}>
+            <span>Autorizo a ROAL BURGER a guardar mis respuestas y mis datos (nombre y teléfono) y a escribirme por WhatsApp con encuestas, novedades y beneficios. Puedo retirar esta autorización cuando quiera escribiéndoles. <strong>(obligatorio)</strong></span>
+        </label>
         <div id="enError"></div>
         <button type="button" class="en-btn" id="enEnviar">Enviar mi opinión 🍔</button>
         <button type="button" class="en-atras" id="enAtras">← Volver</button>
@@ -140,8 +144,16 @@ function pintarPaso() {
         const m = document.getElementById('enCumpleMes')?.value || '';
         return d && m ? `${m}-${d}` : '';
     };
-    document.getElementById('enAtras').addEventListener('click', () => { respuestas.q4 = area.value; respuestas.cumple = leerCumple(); paso -= 1; pintarPaso(); });
-    document.getElementById('enEnviar').addEventListener('click', () => { respuestas.cumple = leerCumple(); enviar(area.value); });
+    document.getElementById('enAtras').addEventListener('click', () => { respuestas.q4 = area.value; respuestas.cumple = leerCumple(); respuestas.consentimiento = document.getElementById('enConsent').checked; paso -= 1; pintarPaso(); });
+    document.getElementById('enEnviar').addEventListener('click', () => {
+        respuestas.cumple = leerCumple();
+        respuestas.consentimiento = document.getElementById('enConsent').checked;
+        if (!respuestas.consentimiento) {
+            document.getElementById('enError').innerHTML = '<p class="en-error" role="alert">Marca la casilla de autorización para poder enviar tu opinión.</p>';
+            return;
+        }
+        enviar(area.value);
+    });
 }
 
 async function enviar(sugerencia) {

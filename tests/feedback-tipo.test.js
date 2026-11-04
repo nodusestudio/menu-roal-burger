@@ -31,24 +31,33 @@ test('cumpleaños: vacío vale, fechas imposibles no', () => {
 });
 
 test('validación del cuestionario de Quindío', () => {
-    const ok = validarRespuestasFeedback('quindio', { q1: 'brutal', q2: 'instagram', q3: 'si', q4: ' más salsa ' });
+    const ok = validarRespuestasFeedback('quindio', { q1: 'brutal', q2: 'instagram', q3: 'si', q4: ' más salsa ', consentimiento: true });
     assert.equal(ok.ok, true);
     assert.equal(ok.value.q4, 'más salsa');
     assert.equal(ok.value.cumple, '');
-    assert.equal(validarRespuestasFeedback('quindio', { q1: 'brutal', q2: 'excelente', q3: 'si' }).ok, false);
+    assert.equal(validarRespuestasFeedback('quindio', { q1: 'brutal', q2: 'excelente', q3: 'si', consentimiento: true }).ok, false);
 });
 
 test('validación del cuestionario general (servicio, volvería y cumpleaños)', () => {
-    const ok = validarRespuestasFeedback('general', { q1: 'muy_buena', q2: 'bien', q3: 'seguro', cumple: '07-21' });
+    const ok = validarRespuestasFeedback('general', { q1: 'muy_buena', q2: 'bien', q3: 'seguro', cumple: '07-21', consentimiento: true });
     assert.equal(ok.ok, true);
     assert.equal(ok.value.cumple, '07-21');
-    assert.equal(validarRespuestasFeedback('general', { q1: 'muy_buena', q2: 'instagram', q3: 'seguro' }).ok, false);
-    assert.equal(validarRespuestasFeedback('general', { q1: 'muy_buena', q2: 'bien', q3: 'seguro', cumple: '02-31' }).ok, false);
+    assert.equal(validarRespuestasFeedback('general', { q1: 'muy_buena', q2: 'instagram', q3: 'seguro', consentimiento: true }).ok, false);
+    assert.equal(validarRespuestasFeedback('general', { q1: 'muy_buena', q2: 'bien', q3: 'seguro', cumple: '02-31', consentimiento: true }).ok, false);
     assert.equal(validarRespuestasFeedback('otro', {}).ok, false);
 });
 
 test('el cumpleaños se ignora en la encuesta de Quindío', () => {
-    const r = validarRespuestasFeedback('quindio', { q1: 'brutal', q2: 'web', q3: 'no', cumple: '07-21' });
+    const r = validarRespuestasFeedback('quindio', { q1: 'brutal', q2: 'web', q3: 'no', cumple: '07-21', consentimiento: true });
     assert.equal(r.ok, true);
     assert.equal(r.value.cumple, '');
+});
+
+test('sin consentimiento no se recibe la opinión (ninguno de los dos cuestionarios)', () => {
+    const base = { q1: 'brutal', q2: 'instagram', q3: 'si' };
+    assert.equal(validarRespuestasFeedback('quindio', base).ok, false);
+    assert.equal(validarRespuestasFeedback('quindio', { ...base, consentimiento: false }).ok, false);
+    assert.equal(validarRespuestasFeedback('quindio', { ...base, consentimiento: 'true' }).ok, false);
+    assert.equal(validarRespuestasFeedback('general', { q1: 'brutal', q2: 'bien', q3: 'seguro' }).ok, false);
+    assert.equal(validarRespuestasFeedback('quindio', { ...base, consentimiento: true }).value.consentimiento, true);
 });

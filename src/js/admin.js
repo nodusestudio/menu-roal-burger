@@ -3823,6 +3823,10 @@ async function fetchClients({ force = false } = {}) {
                 totalSpent: Number(raw.totalSpent || 0),
                 puntosDisponibles: Number(raw.puntosDisponibles || 0),
                 puntosAcumuladosTotal: Number(raw.puntosAcumuladosTotal || 0),
+                fechaCumple: String(raw.fechaCumple || ''),
+                cumpleSaludoAnio: Number(raw.cumpleSaludoAnio || 0),
+                cumpleSaludoAt: raw.cumpleSaludoAt || null,
+                marketingConsentAccepted: raw.marketingConsentAccepted === true,
                 lastOrderAt: raw.lastOrderAt || raw.updatedAt || raw.createdAt || null,
                 createdAt: raw.createdAt || null,
                 updatedAt: raw.updatedAt || null,
@@ -11501,9 +11505,8 @@ function _fbSeguimientoHtml() {
 // ¿Volvieron a pedir? Para cada pedido despachado del cuestionario visible (dentro del rango de fechas): si el mismo teléfono
 // hizo otro pedido pagado en los 14 días siguientes. Se compara quien recibió el mensaje contra quien no (referencia
 // aproximada, no un experimento): solo cuentan los pedidos con 14 días o más, para que todos tuvieran el mismo tiempo.
-function _fbRecompra() {
-    const ahora = Date.now();
-    const VENTANA = 14 * 86400000;
+// Pedidos pagados (activos + archivados) agrupados por teléfono, del más viejo al más nuevo.
+function _fbPedidosPorTel() {
     const todos = new Map();
     [..._fbArchOrders, ...ordersState].forEach((o) => { if (o.id) todos.set(o.id, o); });
     const porTel = new Map();
@@ -11516,6 +11519,13 @@ function _fbRecompra() {
         porTel.get(k).push({ id: o.id, ts, total: Number(o.total || 0) });
     });
     porTel.forEach((arr) => arr.sort((a, b) => a.ts - b.ts));
+    return porTel;
+}
+
+function _fbRecompra() {
+    const ahora = Date.now();
+    const VENTANA = 14 * 86400000;
+    const porTel = _fbPedidosPorTel();
     const grupos = { con: { n: 0, volvio: 0, ventas: 0 }, sin: { n: 0, volvio: 0, ventas: 0 } };
     let enCurso = 0;
     _fbSeguimiento().forEach((d) => d.items.forEach(({ order, estado, t }) => {
@@ -11533,6 +11543,7 @@ function _fbRecompra() {
 function renderMetricasFeedback() {
     const body = document.getElementById('fbBody');
     if (!body) return;
+    if (_fbTipo === 'cumple') { _fbRenderCumple(body); _fbBind(body); return; }
     const M = _fbMaps();
     const rows = _fbRows();
     const total = rows.length;
@@ -11587,13 +11598,7 @@ function renderMetricasFeedback() {
     // Una sola sección visible a la vez (mismo modelo de pestañas internas que Configuración).
     const tab = ['seguimiento', 'metricas', 'respuestas', 'descargas'].includes(_fbTab) ? _fbTab : 'seguimiento';
     const TABS = [['seguimiento', '📅', 'Seguimiento'], ['metricas', '📊', 'Métricas'], ['respuestas', '💬', 'Respuestas'], ['descargas', '⬇️', 'Descargas']];
-    const TIPOS = [['quindio', '🏆', 'Sabe a Quindío'], ['general', '💛', 'Fidelización']];
-    const navTipo = `<article class="admin-card menu-section-card" style="padding-bottom:0">
-        <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Tipo de feedback">
-            ${TIPOS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
-        </nav>
-        <p class="admin-hint" style="margin:6px 0 10px">${_fbTipo === 'general' ? 'Encuesta para quienes NO pidieron el 2×1: sabor, servicio, si volverían y su cumpleaños. El aviso sale en Recepción de Pedidos como «Fidelización pendiente».' : 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).'}</p>
-    </article>`;
+    const navTipo = _fbNavTipoHtml(`<p class="admin-hint" style="margin:6px 0 10px">${_fbTipo === 'general' ? 'Encuesta para quienes NO pidieron el 2×1: sabor, servicio, si volverían y su cumpleaños. El aviso sale en Recepción de Pedidos como «Fidelización pendiente».' : 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).'}</p>`);
     const nav = navTipo + `<article class="admin-card menu-section-card" style="padding-bottom:0">
         <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Feedback">
             ${TABS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${tab === id ? ' active' : ''}" data-fb-tab="${id}" role="tab" aria-selected="${tab === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
@@ -11673,6 +11678,158 @@ function renderMetricasFeedback() {
         _renderBarChart('fbCruceAppChart', cruceApp, '#fbbf24');
     }
 
+    _fbBind(body);
+}
+
+// ── Feedback · 🎂 Cumpleaños (aviso manual) ─────────────────────────────────────────────────────────────
+// El cliente deja su cumpleaños (día y mes) en su perfil o al contestar la encuesta de fidelización. Aquí salen los de hoy
+// y los próximos para copiar el saludo y mandarlo por WhatsApp. Cada saludo queda marcado en la ficha del cliente
+// (cumpleSaludoAnio / cumpleSaludoAt) para no repetirlo y para medir si ese cliente volvió a pedir después.
+const CUMPLE_REGALO_DEFECTO = 'te regalamos unas papas con tu pedido de hoy';
+let _cumpleRegalo = CUMPLE_REGALO_DEFECTO;
+let _cumpleRegaloCargado = false;
+let _cumpleVentana = 7; // días hacia adelante: 0 = solo hoy, 1 = mañana, 7, 30 o 366 = todos
+let _cumpleQ = '';
+
+function _fbNavTipoHtml(extra = '') {
+    const TIPOS = [['quindio', '🏆', 'Sabe a Quindío'], ['general', '💛', 'Fidelización'], ['cumple', '🎂', 'Cumpleaños']];
+    return `<article class="admin-card menu-section-card" style="padding-bottom:0">
+        <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Tipo de feedback">
+            ${TIPOS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
+        </nav>
+        ${extra}
+    </article>`;
+}
+
+// Días que faltan para el próximo cumpleaños (0 = hoy). El 29 de febrero se celebra el 28 en años no bisiestos.
+function _cumpleDiasFaltan(mmdd) {
+    const m = Number(String(mmdd).slice(0, 2));
+    const d = Number(String(mmdd).slice(3, 5));
+    if (!m || !d) return null;
+    const [y, mo, da] = _sqDayKey(Date.now()).split('-').map(Number);
+    const hoy = Date.UTC(y, mo - 1, da);
+    const bisiesto = (yy) => (yy % 4 === 0 && yy % 100 !== 0) || yy % 400 === 0;
+    const en = (yy) => Date.UTC(yy, m - 1, (m === 2 && d === 29 && !bisiesto(yy)) ? 28 : d);
+    let t = en(y);
+    if (t < hoy) t = en(y + 1);
+    return Math.round((t - hoy) / 86400000);
+}
+
+function _cumpleFechaLarga(mmdd) {
+    const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    return `${Number(String(mmdd).slice(3, 5))} de ${meses[Number(String(mmdd).slice(0, 2)) - 1] || ''}`;
+}
+
+function _cumpleMensaje(c) {
+    const nombre = String(c.customerName || '').trim().split(/\s+/)[0];
+    return `¡Feliz cumpleaños${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! 🎂🎉 En ROAL BURGER queremos celebrarlo contigo: ${_cumpleRegalo}. Respóndenos este mensaje y te lo dejamos listo 🍔`;
+}
+
+async function _fbCumpleCargarConfig() {
+    if (_cumpleRegaloCargado || !firebaseDb) return;
+    _cumpleRegaloCargado = true;
+    try {
+        const d = await firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').get();
+        const t = d.exists ? String((d.data() || {}).cumpleRegalo || '').trim() : '';
+        if (t) { _cumpleRegalo = t; if (_fbTipo === 'cumple') renderMetricasFeedback(); }
+    } catch (e) { console.warn('[Feedback] config de cumpleaños:', e.code || e.message); }
+}
+
+function _fbRenderCumple(body) {
+    _fbCumpleCargarConfig();
+    fetchClients().then(() => { if (_fbTipo === 'cumple' && !document.getElementById('cumpleLista')) renderMetricasFeedback(); }).catch(() => {});
+    const anio = Number(_sqDayKey(Date.now()).slice(0, 4));
+    const conCumple = (clientsState || []).filter((c) => /^\d{2}-\d{2}$/.test(c.fechaCumple));
+    const filas = conCumple
+        .map((c) => ({ c, dias: _cumpleDiasFaltan(c.fechaCumple) }))
+        .filter((x) => x.dias !== null && x.dias <= _cumpleVentana && smartMatch(_cumpleQ, x.c.customerName, x.c.customerPhone))
+        .sort((a, b) => a.dias - b.dias);
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    // Medición: de los saludados, cuántos pidieron en los 7 días siguientes y cuánto vendieron.
+    const porTel = _fbPedidosPorTel();
+    let saludados = 0; let volvieron = 0; let ventas = 0;
+    conCumple.forEach((c) => {
+        const t = _tsMs(c.cumpleSaludoAt);
+        if (!t || c.cumpleSaludoAnio !== anio) return;
+        saludados += 1;
+        const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
+        const v = (porTel.get(k) || []).find((o) => o.ts > t && o.ts <= t + 7 * 86400000);
+        if (v) { volvieron += 1; ventas += v.total; }
+    });
+    const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
+    const chips = [[0, 'Hoy'], [1, 'Mañana'], [7, '7 días'], [30, '30 días'], [366, 'Todos']]
+        .map(([n, l]) => `<button type="button" class="rango-btn${_cumpleVentana === n ? ' active' : ''}" data-cumple-ventana="${n}">${l}</button>`).join('');
+    const rows = filas.map(({ c, dias }) => {
+        const saludado = c.cumpleSaludoAnio === anio;
+        const badge = dias === 0 ? '🎉 Hoy' : (dias === 1 ? 'Mañana' : `En ${dias} días`);
+        const phone = String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '');
+        return `<div class="met-user-row-v2">
+            <div class="met-avatar">🎂</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(c.customerName)} · ${escapeHtml(_cumpleFechaLarga(c.fechaCumple))}</div>
+                <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <strong>${badge}</strong>${saludado ? ' · <span style="color:#34d399;font-weight:700">✅ Saludado</span>' : ''}</div>
+            </div>
+            ${phone ? (saludado
+                ? `<button type="button" class="ghost-button" style="padding:6px 10px" data-cumple-recopy="${escapeHtml(c.id)}">Volver a copiar</button>`
+                : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">Copiar saludo</button>`) : ''}
+        </div>`;
+    }).join('');
+    body.innerHTML = _fbNavTipoHtml('<p class="admin-hint" style="margin:6px 0 10px">Clientes que dejaron su cumpleaños (en su perfil o en la encuesta de fidelización). Copia el saludo y mándalo por WhatsApp.</p>') + `
+        <article class="admin-card">
+            <div class="met-section-title">🎂 Cumpleaños</div>
+            <div class="met-kpi-row">
+                ${kpi('met-kpi-card--hi', nf(conCumple.length), 'Clientes con cumpleaños')}
+                ${kpi('', nf(saludados), `Saludados en ${anio}`)}
+                ${kpi('met-kpi-card--green', `${saludados ? Math.round((volvieron / saludados) * 100) : 0}%`, `Pidieron en los 7 días siguientes (${nf(volvieron)})`)}
+                ${kpi('met-kpi-card--purple', formatMoney(ventas), 'Ventas de ese pedido')}
+            </div>
+            <div style="margin-top:12px"><label class="admin-hint" for="cumpleRegalo" style="display:block;margin-bottom:4px">Regalo que dice el saludo («…queremos celebrarlo contigo: <em>regalo</em>»)</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="cumpleRegalo" class="admin-input" style="flex:1;min-width:220px" maxlength="120" value="${escapeHtml(_cumpleRegalo)}"><button type="button" class="section-action-btn" data-cumple-guardar-regalo>Guardar</button></div></div>
+        </article>
+        <article class="admin-card">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${chips}</div>
+            ${searchBoxHtml('cumpleQ', 'Buscar cliente o teléfono', _cumpleQ)}
+            <div class="metrics-users-list" id="cumpleLista">${rows || '<p class="met-empty-note">No hay cumpleaños en ese período (o nadie ha dejado el suyo todavía).</p>'}</div>
+        </article>`;
+}
+
+// Clics de la pestaña Cumpleaños (se llama desde el listener delegado de #fbBody).
+function _fbCumpleClick(e) {
+    const ventana = e.target.closest('[data-cumple-ventana]');
+    if (ventana) { _cumpleVentana = Number(ventana.dataset.cumpleVentana); renderMetricasFeedback(); return true; }
+    if (e.target.closest('[data-cumple-guardar-regalo]')) {
+        const v = String(document.getElementById('cumpleRegalo')?.value || '').trim();
+        if (!v) { showNotice('Escribe el regalo del saludo.', 'error'); return true; }
+        _cumpleRegalo = v;
+        firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').set({ cumpleRegalo: v, actualizadoAt: firestoreNow() }, { merge: true })
+            .then(() => showNotice('Regalo guardado.', 'ok'))
+            .catch((err) => showNotice(`No se pudo guardar: ${err.message || 'error'}`, 'error'));
+        return true;
+    }
+    const btn = e.target.closest('[data-cumple-copy], [data-cumple-recopy]');
+    if (!btn) return false;
+    const id = btn.dataset.cumpleCopy || btn.dataset.cumpleRecopy;
+    const cliente = (clientsState || []).find((c) => c.id === id);
+    if (!cliente) return true;
+    // El copiado va PRIMERO (el navegador solo deja escribir al portapapeles durante el clic); el guardado sigue en segundo plano.
+    const copiado = copyTextToClipboard(_cumpleMensaje(cliente));
+    if (btn.dataset.cumpleRecopy) { renderMetricasFeedback(); return true; }
+    const anio = Number(_sqDayKey(Date.now()).slice(0, 4));
+    cliente.cumpleSaludoAnio = anio;
+    cliente.cumpleSaludoAt = firebase.firestore.Timestamp.now();
+    firebaseDb.collection(CLIENTS_COLLECTION).doc(id).update({ cumpleSaludoAnio: anio, cumpleSaludoAt: cliente.cumpleSaludoAt })
+        .catch((err) => {
+            cliente.cumpleSaludoAnio = 0; cliente.cumpleSaludoAt = null;
+            showNotice(`No se pudo marcar el saludo de ${cliente.customerName}: ${err.message || 'error'}`, 'error');
+            renderMetricasFeedback();
+        });
+    copiado.then((ok) => showNotice(ok ? `Saludo de cumpleaños listo para ${cliente.customerName}.` : 'No se pudo copiar el saludo. Usa «Volver a copiar».', ok ? 'ok' : 'error'));
+    renderMetricasFeedback();
+    return true;
+}
+
+// Eventos de la sección Feedback (delegados en #fbBody; se enlazan una sola vez).
+function _fbBind(body) {
     if (!body.dataset.fbBound) {
         body.dataset.fbBound = '1';
         body.addEventListener('change', (e) => {
@@ -11680,6 +11837,7 @@ function renderMetricasFeedback() {
         });
         // Buscadores: solo se repinta la lista (no toda la pestaña) para no perder el foco del teclado.
         body.addEventListener('input', (e) => {
+            if (e.target.id === 'cumpleQ') { _cumpleQ = e.target.value; const c = document.getElementById('cumpleLista'); if (c) { const keep = _cumpleQ; renderMetricasFeedback(); const inp = document.getElementById('cumpleQ'); if (inp) { inp.focus(); inp.setSelectionRange(keep.length, keep.length); } } return; }
             if (e.target.id === 'fbSegQ') { _fbQ.seg = e.target.value; const c = document.getElementById('fbSeguimiento'); if (c) c.innerHTML = _fbSeguimientoHtml(); }
             else if (e.target.id === 'fbRespQ') { _fbQ.resp = e.target.value; const c = document.getElementById('fbRespLista'); if (c && _fbRespListRef) c.innerHTML = _fbRespListRef(); }
         });
@@ -11687,7 +11845,8 @@ function renderMetricasFeedback() {
             const tabBtn = e.target.closest('[data-fb-tab]');
             if (tabBtn) { _fbTab = tabBtn.dataset.fbTab; renderMetricasFeedback(); return; }
             const tipoBtn = e.target.closest('[data-fb-tipo]');
-            if (tipoBtn) { _fbTipo = tipoBtn.dataset.fbTipo === 'general' ? 'general' : 'quindio'; _fbQ = { seg: '', resp: '' }; renderMetricasFeedback(); return; }
+            if (tipoBtn) { _fbTipo = ['general', 'cumple'].includes(tipoBtn.dataset.fbTipo) ? tipoBtn.dataset.fbTipo : 'quindio'; _fbQ = { seg: '', resp: '' }; renderMetricasFeedback(); return; }
+            if (_fbCumpleClick(e)) return;
             const phoneBtn = e.target.closest('[data-fb-phone]');
             if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.fbPhone); return; }
             const seg = e.target.closest('[data-fb-copy], [data-fb-recopy]');

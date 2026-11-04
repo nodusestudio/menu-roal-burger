@@ -537,6 +537,7 @@ function normalizeCustomerProfile(raw = {}, fallbackId = '') {
         hasPassword: Boolean(raw.hasPassword) || Boolean(raw.passwordHash),
         privacyConsentAccepted: Boolean(raw.privacyConsentAccepted),
         marketingConsentAccepted: Boolean(raw.marketingConsentAccepted),
+        fechaCumple: String(raw.fechaCumple || ''),
         consentAcceptedAt: raw.consentAcceptedAt || null,
         consentVersion: String(raw.consentVersion || '').trim(),
         totalOrders: Number(raw.totalOrders || 0),
@@ -2386,7 +2387,9 @@ async function saveCustomerProfile(profileInput = {}) {
             // marketing (ej. submitCustomerNewPassword) no deben mandar nada aqui, para que el
             // servidor sepa que no hay que tocar el valor ya guardado (ver hasOwnProperty en
             // customerRegisterOrUpdateProfile).
-            acceptedMarketing: profileInput.acceptedMarketing
+            acceptedMarketing: profileInput.acceptedMarketing,
+            // Solo viaja cuando el formulario lo muestra (undefined = el servidor conserva el guardado).
+            fechaCumple: profileInput.fechaCumple
         });
     } catch (error) {
         const wrapped = new Error(error?.message || 'No se pudo guardar el perfil.');
@@ -2643,6 +2646,14 @@ function _buildRegProfileStepHTML(profile = {}, saveLabel = 'Crear cuenta', isEd
         </div>
         <div id="customerPinFieldsWrap" hidden>${pinFieldsMarkup}</div>
         ` : pinFieldsMarkup}
+        <div class="support-field">
+            <label for="customerBirthDay">🎂 Tu cumpleaños (opcional)</label>
+            <div style="display:flex;gap:8px">
+                <select id="customerBirthDay" aria-label="Día de tu cumpleaños"><option value="">Día</option>${Array.from({ length: 31 }, (_, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}"${String(profile.fechaCumple || '').slice(3, 5) === v ? ' selected' : ''}>${i + 1}</option>`; }).join('')}</select>
+                <select id="customerBirthMonth" aria-label="Mes de tu cumpleaños"><option value="">Mes</option>${['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'].map((m, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}"${String(profile.fechaCumple || '').slice(0, 2) === v ? ' selected' : ''}>${m}</option>`; }).join('')}</select>
+            </div>
+            <p class="support-field-hint">Para sorprenderte en tu día. Solo guardamos día y mes.</p>
+        </div>
         <div class="support-consent-box">
             <button type="button" class="support-secondary-btn" id="customerReviewConsentButton">Ver autorización de tratamiento de datos</button>
             <p class="support-field-hint" id="customerConsentStatus">${hasConsent ? 'Esta autorización ya fue registrada en tu perfil.' : 'Marca la casilla para aceptar la autorización y continuar.'}</p>
@@ -2799,6 +2810,8 @@ function _mountRegProfileStep() {
     customerRegisterUI.consentStatus      = stepContent.querySelector('#customerConsentStatus');
     customerRegisterUI.consent            = stepContent.querySelector('#customerDataConsent');
     customerRegisterUI.marketingConsent   = stepContent.querySelector('#customerMarketingConsent');
+    customerRegisterUI.birthDay           = stepContent.querySelector('#customerBirthDay');
+    customerRegisterUI.birthMonth         = stepContent.querySelector('#customerBirthMonth');
     customerRegisterUI.save               = stepContent.querySelector('#customerRegisterSave');
     customerRegisterUI.savedAddressesList = stepContent.querySelector('#customerRegisterSavedAddressesList');
     customerRegisterUI.addAddressButton   = stepContent.querySelector('#customerRegisterAddAddress');
@@ -3974,6 +3987,10 @@ async function submitCustomerProfileForm() {
     // Casilla independiente y opcional -- ya no se deriva de acceptedDataPolicy (antes ambas
     // viajaban juntas, obligando a aceptar publicidad para poder simplemente guardar el perfil).
     const acceptedMarketing = Boolean(formUI.marketingConsent?.checked);
+    // Cumpleaños: solo cuenta si eligió día Y mes ('' = sin cumpleaños; si el formulario no lo trae, no se toca).
+    const fechaCumple = formUI.birthDay && formUI.birthMonth
+        ? (formUI.birthDay.value && formUI.birthMonth.value ? `${formUI.birthMonth.value}-${formUI.birthDay.value}` : '')
+        : undefined;
 
     formUI.feedback.textContent = '';
 
@@ -3986,7 +4003,8 @@ async function submitCustomerProfileForm() {
             pin: pinValue,
             confirmPin: confirmPinValue,
             acceptedDataPolicy,
-            acceptedMarketing
+            acceptedMarketing,
+            fechaCumple
         });
 
         setActiveCustomerProfile(profile);

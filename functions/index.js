@@ -1070,6 +1070,7 @@ function sanitizeClientProfileForClient(clientId, data = {}, hasPassword = false
         hasPassword,
         privacyConsentAccepted: Boolean(data.privacyConsentAccepted),
         marketingConsentAccepted: Boolean(data.marketingConsentAccepted),
+        fechaCumple: String(data.fechaCumple || ''),
         consentAcceptedAt: data.consentAcceptedAt || null,
         consentVersion: String(data.consentVersion || '').trim(),
         totalOrders: Number(data.totalOrders || 0),
@@ -1203,6 +1204,10 @@ exports.customerRegisterOrUpdateProfile = onCall(
         // (el cliente lo destildo a proposito, debe poder optar por salir).
         const marketingConsentProvided = Object.prototype.hasOwnProperty.call(request.data || {}, 'acceptedMarketing');
         const acceptedMarketing = Boolean(request.data?.acceptedMarketing);
+        // Cumpleaños opcional "MM-DD": si no viene el campo se conserva el guardado; vacío = lo quitó.
+        const cumpleProvided = Object.prototype.hasOwnProperty.call(request.data || {}, 'fechaCumple') && request.data.fechaCumple !== undefined;
+        const cumpleNormalizado = cumpleProvided ? feedbackTipo.normalizarCumple(request.data.fechaCumple) : '';
+        if (cumpleNormalizado === null) throw new HttpsError('invalid-argument', 'La fecha de cumpleaños no es válida.');
 
         const db = getFirestore();
         const clientId = buildClientId(phoneDigits);
@@ -1322,6 +1327,7 @@ exports.customerRegisterOrUpdateProfile = onCall(
             savedAddresses,
             privacyConsentAccepted: acceptedDataPolicy || Boolean(previous.privacyConsentAccepted),
             marketingConsentAccepted: marketingConsentProvided ? acceptedMarketing : Boolean(previous.marketingConsentAccepted),
+            fechaCumple: cumpleProvided ? cumpleNormalizado : String(previous.fechaCumple || ''),
             consentAcceptedAt: previous.consentAcceptedAt || FieldValue.serverTimestamp(),
             // Mismo valor que CUSTOMER_CONSENT_VERSION en src/js/script-v2.js -- se duplica aqui
             // porque las Cloud Functions no comparten modulo con el cliente.
@@ -2254,7 +2260,7 @@ exports.submitOrderFeedback = onCall(
             const points = clientId ? FEEDBACK_REWARD_POINTS : 0;
             // El cumpleaños solo se guarda en la ficha si el cliente ya existe (no se crean fichas vacías).
             const clientRef = clientId ? db.collection(CLIENTS_COLLECTION).doc(clientId) : null;
-            const clientExists = cumple && clientRef ? (await tx.get(clientRef)).exists : false;
+            const clientExists = clientRef ? (await tx.get(clientRef)).exists : false;
 
             tx.set(feedbackRef, {
                 orderId,
@@ -2265,10 +2271,21 @@ exports.submitOrderFeedback = onCall(
                 tipo,
                 q1, q2, q3, q4,
                 cumple,
+                // Respaldo del consentimiento dado al contestar (obligatorio): quién, cuándo y con qué texto.
+                consentimiento: true,
+                consentimientoVersion: feedbackTipo.CONSENTIMIENTO_VERSION,
                 pointsAwarded: points,
                 createdAt: FieldValue.serverTimestamp()
             });
-            if (clientExists) tx.set(clientRef, { fechaCumple: cumple }, { merge: true });
+            // Si ya tiene ficha: queda registrado el consentimiento de marketing (dado en la encuesta) y su cumpleaños, si lo dejó.
+            if (clientExists) {
+                tx.set(clientRef, {
+                    marketingConsentAccepted: true,
+                    marketingConsentVia: 'encuesta',
+                    marketingConsentAt: FieldValue.serverTimestamp(),
+                    ...(cumple ? { fechaCumple: cumple } : {})
+                }, { merge: true });
+            }
             if (points > 0) {
                 tx.set(db.collection(CLIENTS_COLLECTION).doc(clientId), {
                     puntosDisponibles: FieldValue.increment(points),
