@@ -5599,6 +5599,23 @@ async function _posCanjearCuponFid(codigo) {
     if (internalOrderItems.some((i) => i.cuponFidelizacionCodigo === codigo)) throw new Error('Ese cupón ya está en el ticket.');
     const ref = firebaseDb.collection('cupones_fidelizacion').doc(codigo);
     await _fidCargarCfg();
+    // Invitación de referido: solo vale para un cliente nuevo. El dato que tenemos es el celular: el del ticket no puede ser el de
+    // quien invitó ni el de alguien que ya haya pedido (ficha de cliente con pedidos, pedidos del día o invitación ya usada).
+    const previo = (await ref.get()).data() || {};
+    let amigoTelefono = '';
+    if (previo.motivo === 'referido') {
+        amigoTelefono = String(posTicketConfig?.customerPhone || '').replace(/\D/g, '');
+        const clave = _sqPhoneKey(amigoTelefono);
+        if (!clave) throw new Error('Para validar que es un cliente nuevo, primero pon el celular del cliente en el ticket (botón ✎ Info).');
+        if (clave === _sqPhoneKey(previo.referidorTelefono)) throw new Error('Quien invita no puede usar su propia invitación: tiene que ser un amigo.');
+        await fetchClients().catch(() => {});
+        const ficha = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === clave);
+        const pedidosHoy = (ordersState || []).filter((o) => _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) === clave && o.anulado !== true && o.voided !== true);
+        const yaUsoInvitacion = _fidCupones.some((c) => c.motivo === 'referido' && c.estado === 'canjeado' && _sqPhoneKey(c.amigoTelefono) === clave);
+        if ((ficha && ficha.totalOrders > 0) || pedidosHoy.length || yaUsoInvitacion) {
+            throw new Error('Ese celular ya ha pedido antes en ROAL BURGER: la invitación es solo para clientes nuevos.');
+        }
+    }
     const k = await firebaseDb.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         if (!snap.exists) throw new Error(`No encuentro el cupón ${codigo}. Revisa que esté bien escrito.`);
@@ -5607,6 +5624,7 @@ async function _posCanjearCuponFid(codigo) {
         if (_tsMs(x.venceAt) < Date.now()) throw new Error(`El cupón ${codigo} está vencido.`);
         const cambios = { estado: 'canjeado', canjeadoAt: firebase.firestore.FieldValue.serverTimestamp(), canjeadoVia: 'pos' };
         // Invitación de referido: al canjearla, queda lista la recompensa de quien invitó (se envía desde Feedback → Referidos).
+        if (x.motivo === 'referido') cambios.amigoTelefono = amigoTelefono;
         if (x.motivo === 'referido' && x.referidoPor) {
             const rCodigo = _fidNuevoCodigo(x.referidorNombre);
             const ahora = firebase.firestore.Timestamp.now();
@@ -5663,7 +5681,7 @@ function _posRevertirCuponFid(codigo) {
             const rSnap = await tx.get(rRef);
             if (rSnap.exists && !rSnap.data().enviadoAt && rSnap.data().estado === 'activo') tx.delete(rRef);
         }
-        tx.update(ref, { estado: 'activo', canjeadoAt: del, canjeadoVia: del, recompensaCodigo: del });
+        tx.update(ref, { estado: 'activo', canjeadoAt: del, canjeadoVia: del, recompensaCodigo: del, amigoTelefono: del });
     }).then(() => showNotice(`Cupón ${codigo} devuelto: sigue activo.`, 'ok'))
         .catch((err) => { console.error('revertir cupón fidelización:', err); showNotice(`No se pudo devolver el cupón ${codigo}. Reactívalo en Feedback → Cupones.`, 'error'); });
 }
@@ -11993,7 +12011,7 @@ const FB_TIPOS_FID = ['cumple', 'reactivar', 'atender', 'referidos', 'cupones', 
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
-    disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: '',
+    disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: 'https://share.google/hLdBW1HL0Qmt6PXxM',
     referidoAmigo: 'una bebida gratis en tu primer pedido', referidoRecompensa: 'unas papas gratis en tu próximo pedido', referidoAmigoProductoId: '', referidoRecompensaProductoId: '',
     metaMensajes: 30, metaReactivados: 8, metaCanjes: 6, metaVentas: 500000, margenPct: 35, costoRegalo: 3000
 };
@@ -12017,7 +12035,7 @@ async function _fidCargarCfg() {
         _fidCfg = {
             reactivarOferta: String(x.reactivarOferta || FID_CFG_DEF.reactivarOferta),
             reactivarProductoId: String(x.reactivarProductoId || ''), cumpleProductoId: String(x.cumpleProductoId || ''),
-            disculpaOferta: String(x.disculpaOferta || FID_CFG_DEF.disculpaOferta), disculpaProductoId: String(x.disculpaProductoId || ''), googleResenaUrl: String(x.googleResenaUrl || ''),
+            disculpaOferta: String(x.disculpaOferta || FID_CFG_DEF.disculpaOferta), disculpaProductoId: String(x.disculpaProductoId || ''), googleResenaUrl: String(x.googleResenaUrl || FID_CFG_DEF.googleResenaUrl),
             referidoAmigo: String(x.referidoAmigo || FID_CFG_DEF.referidoAmigo), referidoRecompensa: String(x.referidoRecompensa || FID_CFG_DEF.referidoRecompensa),
             referidoAmigoProductoId: String(x.referidoAmigoProductoId || ''), referidoRecompensaProductoId: String(x.referidoRecompensaProductoId || ''),
             reactivarDias: num(x.reactivarDias, FID_CFG_DEF.reactivarDias), vigenciaDias: num(x.vigenciaDias, FID_CFG_DEF.vigenciaDias),
