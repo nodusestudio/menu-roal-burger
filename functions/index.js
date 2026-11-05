@@ -379,7 +379,7 @@ exports.bancoAviso = onRequest(
             await db.collection('avisos_banco').doc(id).create({
                 nombre: pago.nombre, monto: pago.monto, prueba: !!prueba,
                 frase: banco.frasePago(pago.nombre, pago.monto), creadoEn: FieldValue.serverTimestamp(),
-                ...(manual ? { silencioso: true, cobroId: manual.id } : {}),
+                ...(manual ? (manual.esperaNombre ? { cobroId: manual.id } : { silencioso: true, cobroId: manual.id }) : {}),
                 ...(Number(correoMs) > 0 ? { correoMs: Number(correoMs) } : {})
             });
         } catch (err) {

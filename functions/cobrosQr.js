@@ -72,10 +72,22 @@ async function buscarManualPendiente(db, monto, ahora = Date.now()) {
     }
 }
 
+/** Un pedido de mesa se guarda a nombre de la mesa ("Mesa 5"): ese NO es el nombre de quien paga. */
+function esNombreDeMesa(cliente) {
+    return /^\s*mesa(?![a-záéíóúñ])/i.test(String(cliente || ''));
+}
+
 /** Marca el cobro manual como verificado por el banco (llegó el correo). */
 async function enlazarManual(db, cobro, pago, ahora = Date.now()) {
     try {
         const { FieldValue } = require('firebase-admin/firestore');
+        if (cobro.esperaNombre) {
+            // Cobro de mesa: la TV aún no tenía nombre; ahora se pone el de quien hizo la transferencia.
+            const { nombreCorto } = require('./bancoAviso');
+            const tvRef = db.collection(TV_COBRO[0]).doc(TV_COBRO[1]);
+            const tv = await tvRef.get();
+            if (tv.exists && tv.data().cobroId === cobro.id) await tvRef.update({ pagador: nombreCorto(pago.nombre), actualizado: FieldValue.serverTimestamp() });
+        }
         await db.collection(COBROS).doc(cobro.id).update({ pagoId: pago.id, pagador: pago.nombre, verificadoBanco: true, verificadoEn: FieldValue.serverTimestamp(), retrasoBancoSeg: Math.max(0, Math.round((ahora - Number(cobro.pagadoMs || ahora)) / 1000)) });
         return { enlazado: true, cobroId: cobro.id, manual: true };
     } catch (err) {
@@ -99,20 +111,23 @@ async function confirmarManual(db, cobroId, uid, ahora = Date.now()) {
         const x = d.data();
         if (x.estado !== 'abierto') { cobro = x; return false; }
         const creadoMs = x.creadoEn && x.creadoEn.toMillis ? x.creadoEn.toMillis() : ahora;
-        tx.update(ref, { estado: 'pagado', manual: true, pagadoEn: FieldValue.serverTimestamp(), pagadoMs: ahora, esperaSeg: Math.max(0, Math.round((ahora - creadoMs) / 1000)), confirmadoPor: uid || '' });
+        tx.update(ref, { estado: 'pagado', manual: true, ...(esNombreDeMesa(x.cliente) ? { esperaNombre: true } : {}), pagadoEn: FieldValue.serverTimestamp(), pagadoMs: ahora, esperaSeg: Math.max(0, Math.round((ahora - creadoMs) / 1000)), confirmadoPor: uid || '' });
         cobro = x;
         return true;
     });
     if (!abierto) return { ok: false, estado: cobro ? cobro.estado : 'inexistente' };
-    const cliente = String(cobro.cliente || '').trim();
+    // Mesa: no se dice "Mesa 5". La voz y la TV esperan a que llegue el aviso del banco con el nombre de quien transfirió.
+    const esMesa = esNombreDeMesa(cobro.cliente);
+    const cliente = esMesa ? '' : String(cobro.cliente || '').trim();
     const total = Number(cobro.total) || 0;
     const tvRef = db.collection(TV_COBRO[0]).doc(TV_COBRO[1]);
     const tv = await tvRef.get();
     if (tv.exists && tv.data().cobroId === cobroId) {
         await tvRef.update({ estado: 'pagado', pagador: nombreCorto(cliente), pagadoMs: ahora, total, parcial: !!cobro.parcial, pedidoTotal: Number(cobro.pedidoTotal) || total, actualizado: FieldValue.serverTimestamp() });
     }
+    if (esMesa) return { ok: true, estado: 'pagado', esperaNombre: true };
     await db.collection('anuncios_caja').doc(cobroId).set({ nombre: cliente || 'Cliente', monto: total, frase: frasePago(cliente, total), cobroId, creadoEn: FieldValue.serverTimestamp(), prueba: false });
     return { ok: true, estado: 'pagado' };
 }
 
-module.exports = { COBROS, elegirCobro, enlazarPago, elegirManualPendiente, buscarManualPendiente, enlazarManual, confirmarManual };
+module.exports = { esNombreDeMesa, COBROS, elegirCobro, enlazarPago, elegirManualPendiente, buscarManualPendiente, enlazarManual, confirmarManual };

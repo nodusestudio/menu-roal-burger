@@ -95,3 +95,12 @@ test('vigilancia: avisa una vez, repite cada hora y avisa cuando se recupera', (
     assert.strictEqual(ok.accion, 'recuperado');
     assert.strictEqual(V.decidir(ok.estado, { alerta: false, pendientes: [], monto: 0 }, AHORA + min(25)).accion, null);
 });
+
+test('mesa: "Mesa 5" no es el nombre de quien paga (la voz espera al nombre del banco)', () => {
+    assert.strictEqual(Cob.esNombreDeMesa('Mesa 5'), true);
+    assert.strictEqual(Cob.esNombreDeMesa('  mesa 12'), true);
+    assert.strictEqual(Cob.esNombreDeMesa('Mesa'), true);
+    assert.strictEqual(Cob.esNombreDeMesa('Johan Rojas'), false);
+    assert.strictEqual(Cob.esNombreDeMesa('Mesalina Pérez'), false);
+    assert.strictEqual(Cob.esNombreDeMesa(''), false);
+});
