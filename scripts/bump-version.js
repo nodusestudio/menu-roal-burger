@@ -115,12 +115,16 @@ fs.writeFileSync(cuponHtmlPath, cuponHtml, 'utf8');
 console.log(`[bump] cupon.html   → cupon.js?v=${stamp}  firebase-config.js?v=${stamp}`);
 
 // ── 5. encuesta.html — ?v= en encuesta.js y firebase-config.js (encuesta de feedback) ─────────
-const encuestaHtmlPath = path.join(ROOT, 'encuesta.html');
-let encuestaHtml = fs.readFileSync(encuestaHtmlPath, 'utf8');
-encuestaHtml = encuestaHtml.replace(/encuesta\.js(\?v=[\w-]+)?(?=")/g, `encuesta.js?v=${stamp}`);
-encuestaHtml = encuestaHtml.replace(/firebase-config\.js(\?v=[\w-]+)?(?=")/g, `firebase-config.js?v=${stamp}`);
-fs.writeFileSync(encuestaHtmlPath, encuestaHtml, 'utf8');
-console.log(`[bump] encuesta.html → encuesta.js?v=${stamp}  firebase-config.js?v=${stamp}`);
+// encuesta.html (Sabe a Quindío, vista previa de la Trifásica) y opinion.html (fidelización, vista previa con el logo): mismo script.
+for (const nombre of ['encuesta.html', 'opinion.html']) {
+    const htmlPath = path.join(ROOT, nombre);
+    if (!fs.existsSync(htmlPath)) continue;
+    let html = fs.readFileSync(htmlPath, 'utf8');
+    html = html.replace(/encuesta\.js(\?v=[\w-]+)?(?=")/g, `encuesta.js?v=${stamp}`);
+    html = html.replace(/firebase-config\.js(\?v=[\w-]+)?(?=")/g, `firebase-config.js?v=${stamp}`);
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    console.log(`[bump] ${nombre} → encuesta.js?v=${stamp}  firebase-config.js?v=${stamp}`);
+}
 
 // ── 6. tv.html — ?v= en tv.js y firebase-config.js (pantalla de TV del local) ─────────────────
 const tvHtmlPath = path.join(ROOT, 'tv.html');

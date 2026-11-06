@@ -3310,6 +3310,8 @@ function _checkDeliveryAlerts() {
 const FEEDBACK_DELAY_MS = 2 * 60 * 60 * 1000;
 const FEEDBACK_MAX_AGE_MS = 24 * 60 * 60 * 1000; // más viejo que esto ya no se pide (evita alertas rezagadas)
 const FEEDBACK_SURVEY_URL = 'https://roalburger.com/encuesta';
+// Fidelización (pedidos sin 2×1): misma encuesta pero en otra dirección, para que WhatsApp muestre el logo y no la carátula de la Trifásica.
+const FEEDBACK_OPINION_URL = 'https://roalburger.com/opinion';
 const FEEDBACK_INSTAGRAM_URL = 'https://www.instagram.com/roalburger';
 const FEEDBACK_VOTE_URL = 'https://sabeaquindio.com/';
 let _feedbackPendingSig = null;
@@ -3323,7 +3325,7 @@ const _feedbackMarcadosLocal = new Set();
 function buildFeedbackMessage(order) {
     if (feedbackTipoOrden(order) === 'general') {
         const nombre = String(order.customerName || '').trim().split(/\s+/)[0];
-        return `¡Hola${nombre ? ` ${nombre}` : ''}! 🍔 Gracias por pedir en ROAL BURGER. ¿Nos regalas 30 segundos para contarnos qué tal te fue con tu pedido? Tu opinión nos ayuda a mejorar 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}\n\n🎂 Y si quieres, déjanos tu cumpleaños en la encuesta para sorprenderte.`;
+        return `¡Hola${nombre ? ` ${nombre}` : ''}! 🍔 Gracias por pedir en ROAL BURGER. ¿Nos regalas 30 segundos para contarnos qué tal te fue con tu pedido? Tu opinión nos ayuda a mejorar 👉 ${FEEDBACK_OPINION_URL}?orderId=${encodeURIComponent(order.id)}\n\n🎂 Y si quieres, déjanos tu cumpleaños en la encuesta para sorprenderte.`;
     }
     return `¡Hola! ¿Qué tal? 🍔 Esperamos que hayas disfrutado tu Burger Trifásica. Es un producto nuevo y tu opinión nos ayuda a mejorarla. ¿Nos regalas 30 segundos para contarnos qué tal te pareció? 👉 ${FEEDBACK_SURVEY_URL}?orderId=${encodeURIComponent(order.id)}\n\n📸 Y si quieres, déjanos tu comentario sobre el producto en nuestro Instagram: ${FEEDBACK_INSTAGRAM_URL}\n\n🏆 La Trifásica compite en Sabe a Quindío: ¡vota por nosotros! 👉 ${FEEDBACK_VOTE_URL}`;
 }
