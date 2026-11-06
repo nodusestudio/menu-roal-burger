@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261106-1410">
+    <link rel="stylesheet" href="style.css?v=20261106-1416">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -13885,6 +13885,33 @@
         @media (min-width: 769px) {
             .ticket-panel.ticket-alto { position: relative !important; top: auto !important; }
         }
+        /* Ticket de Recepción compacto en pantalla (escritorio): que quepa completo sin bajar. Solo pantalla:
+           la impresión usa su propio CSS. Cliente en 2 columnas, filas y márgenes más cortos. */
+        @media screen and (min-width: 769px) {
+            #orderTicketPanel .ticket-paper-wrap { gap: 6px; }
+            #orderTicketPanel .ticket-paper { padding: 10px 12px 8px; border-radius: 14px; }
+            #orderTicketPanel .ticket-brand { gap: 1px; padding-bottom: 5px; }
+            #orderTicketPanel .ticket-brand-name { font-size: 1.05rem; letter-spacing: 1px; line-height: 1.1; }
+            #orderTicketPanel .ticket-brand-copy,
+            #orderTicketPanel .ticket-order-meta { font-size: 0.68rem; line-height: 1.25; }
+            #orderTicketPanel .ticket-section { gap: 2px; padding-top: 5px; }
+            #orderTicketPanel .ticket-section-title { font-size: 0.62rem; letter-spacing: 0.8px; line-height: 1.2; }
+            #orderTicketPanel .ticket-customer-card { grid-template-columns: 1fr 1fr; gap: 1px 14px; padding: 1px 0 0; }
+            #orderTicketPanel .ticket-customer-card > :nth-child(-n+2) { align-self: center; }
+            #orderTicketPanel .ticket-customer-row { font-size: 0.76rem; line-height: 1.25; gap: 6px; }
+            #orderTicketPanel .ticket-copy-btn-name { font-size: 0.95rem; line-height: 1.2; }
+            #orderTicketPanel .ticket-editpago-link { padding: 3px 6px; font-size: 0.72rem; margin: 0; }
+            #orderTicketPanel .ticket-address-block { gap: 1px; padding: 0; }
+            #orderTicketPanel .ticket-address-text { font-size: 0.78rem; line-height: 1.25; }
+            #orderTicketPanel .ticket-table th { font-size: 0.62rem; padding: 2px 0; }
+            #orderTicketPanel .ticket-table td { font-size: 0.78rem; padding: 3px 0; line-height: 1.25; }
+            #orderTicketPanel .ticket-line-meta { margin-top: 0; font-size: 0.68rem; line-height: 1.2; }
+            #orderTicketPanel .ticket-total { gap: 2px; padding-top: 5px; }
+            #orderTicketPanel .ticket-summary-line { font-size: 0.78rem; line-height: 1.25; }
+            #orderTicketPanel .ticket-total-row.is-grand-total { font-size: 1rem; padding-top: 4px; margin-top: 2px; }
+            #orderTicketPanel .ticket-promo-banner { margin: 2px 0; padding: 3px 6px; }
+            #orderTicketPanel .ticket-footer-copy { margin-top: 3px; padding-top: 4px; font-size: 0.62rem; line-height: 1.25; }
+        }
     </style>
 </head>
 <body class="admin-loading">
@@ -16943,17 +16970,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261106-1410"></script>
+    <script defer src="firebase-config.js?v=20261106-1416"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261106-1410"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261106-1416"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1410"></script>
-    <script defer src="admin.js?v=20261106-1410"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1416"></script>
+    <script defer src="admin.js?v=20261106-1416"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

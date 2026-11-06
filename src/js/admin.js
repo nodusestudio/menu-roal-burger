@@ -38032,7 +38032,13 @@ document.getElementById('pfQrTvBtn')?.addEventListener('click', _cqIniciar);
 (function _admTicketAlto() {
     const panel = document.getElementById('orderTicketPanel');
     if (!panel) return;
-    const revisar = () => panel.classList.toggle('ticket-alto', panel.offsetHeight > window.innerHeight - 24);
+    // Con histéresis (60 px): si el alto anda justo en el límite, la clase no parpadea y no mueve la página mientras se desplaza.
+    const revisar = () => {
+        const limite = window.innerHeight - 24;
+        const alto = panel.classList.contains('ticket-alto');
+        if (!alto && panel.offsetHeight > limite) panel.classList.add('ticket-alto');
+        else if (alto && panel.offsetHeight < limite - 60) panel.classList.remove('ticket-alto');
+    };
     if (window.ResizeObserver) new ResizeObserver(revisar).observe(panel);
     window.addEventListener('resize', revisar);
     setInterval(revisar, 1500); // red de seguridad: el ticket cambia de alto al cargar un pedido, y no todos los navegadores avisan
