@@ -14243,6 +14243,7 @@ function buildThermalTicketMarkup(order, options = {}) {
         { icon: '➕', label: 'Agregar productos', action: 'edit-items' },
         { icon: '✏️', label: 'Editar un producto', action: 'edit-items' },
         { icon: '👤', label: 'Editar nombre del cliente', action: 'edit-field', field: 'customerName' },
+        { icon: '🔁', label: 'Cambiar cliente', action: 'cambiar_cliente' },
         { icon: '📞', label: 'Editar teléfono', action: 'edit-field', field: 'customerPhone' },
         ...(order.orderType === 'domicilio'
             ? [{ icon: '📍', label: 'Editar dirección', action: 'edit-field', field: 'deliveryAddress' }]
@@ -14466,7 +14467,6 @@ function buildThermalTicketMarkup(order, options = {}) {
                         ${(!printMode && (isPlaceholderCustomerName(String(order.customerName || '').trim()) || /^(pedido (para llevar|a domicilio|en mesa|admin)|mesa \d+)$/i.test(String(order.customerName || '').trim())))
                             ? buildTicketEditFieldButton(order, 'customerName', 'Sin nombre', _locked, { className: 'ticket-copy-btn-name ticket-name-vacio' })
                             : buildTicketEditFieldButton(order, 'customerName', getOrderDisplayCustomerName(order), printMode || _locked, { className: 'ticket-copy-btn-name' })}
-                        ${(printMode || _locked) ? '' : `<button type="button" class="ticket-editpago-link" data-order-ticket-action="cambiar_cliente" data-order-id="${escapeHtml(order.id)}">🔁 Cambiar cliente</button>`}
                         <div class="ticket-customer-row">
                             <span>Telefono</span>
                             ${buildTicketEditFieldButton(order, 'customerPhone', order.customerPhone || 'No registrado', printMode || _locked, { className: 'ticket-copy-btn-inline' })}
