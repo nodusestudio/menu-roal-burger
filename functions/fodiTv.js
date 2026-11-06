@@ -64,7 +64,7 @@ async function pantallaTv(db, ahora = Date.now()) {
             id: p.id, categoria: norm(p.categoria), destacado: p.es_destacado === true, es2x1,
             nombre, etiqueta: etiqueta || null, festival: esFestival,
             muestra: es2x1 ? '2×1' : (precio > 0 ? fmt(precio) : 'sin precio'),
-            sin_ingredientes: !String(p.descripcion || '').trim()
+            sin_ingredientes: !String(p.ingredientes || p.descripcion || '').trim()
         });
     }
 

@@ -52,6 +52,14 @@ test('pausar / reanudar / desactivar / activar', async () => {
     assert.ok((await proponerCatalogo(db, { accion: 'pausar', entidad: 'producto', nombre: 'inexistente' })).error);
 });
 
+test('ingredientes de un producto (lista para «Quitar» del POS)', async () => {
+    const r = await proponerCatalogo(db, { accion: 'ingredientes', entidad: 'producto', nombre: 'caracas', ingredientes: 'carne;  queso, tomate, lechuga' });
+    assert.deepStrictEqual(r.accion.payload, { ingredientes: 'carne, queso, tomate, lechuga' });
+    assert.strictEqual(r.accion.id, 'productos0');
+    assert.ok((await proponerCatalogo(db, { accion: 'ingredientes', entidad: 'producto', nombre: 'caracas', ingredientes: ' ' })).error);
+    assert.ok((await proponerCatalogo(db, { accion: 'ingredientes', entidad: 'combo', nombre: 'Combo Papuda', ingredientes: 'papas, queso' })).error);
+});
+
 test('describir y foto de un producto', async () => {
     const d = await proponerCatalogo(db, { accion: 'describir', entidad: 'producto', nombre: 'caracas', descripcion: 'Carne, queso y tocineta.' });
     assert.deepStrictEqual(d.accion.payload, { descripcion: 'Carne, queso y tocineta.' }); assert.strictEqual(d.accion.id, 'productos0');

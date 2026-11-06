@@ -160,7 +160,9 @@
                 es2x1: es2x1,
                 festival: esFestival,
                 etiqueta: etiqueta,
-                ingredientes: parseIngredientes(p.descripcion),
+                ingredientes: (typeof p.ingredientes === 'string' && p.ingredientes.trim())
+                    ? p.ingredientes.split(/[\n,;]+/).map(function (t) { t = t.trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : ''; }).filter(Boolean).slice(0, 8)
+                    : parseIngredientes(p.descripcion),
                 img: resolverImg((es2x1 && p.promo2x1 && p.promo2x1.image_url) || img),
                 imgBase: resolverImg(img),
                 orden: Number.isFinite(Number(p.order)) ? Number(p.order) : 9999,

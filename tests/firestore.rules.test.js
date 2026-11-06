@@ -213,6 +213,14 @@ test('k) admin sigue pudiendo crear/editar/borrar pedidos sin cambios', async ()
     await assertFails(adminDb.collection('pedidos').doc('pedido-vacio').set({
         items: [], total: 0, customerName: 'X', source: 'admin_pos'
     }));
+    // Pedido 100% de cortesía: total 0 pero con cortesiaCount > 0 — permitido (el POS lo permite).
+    await assertSucceeds(adminDb.collection('pedidos').doc('pedido-cortesia').set({
+        items: [{ a: 1 }], total: 0, cortesiaCount: 1, customerName: 'Cortesía', source: 'admin_pos'
+    }));
+    // Con ítems y total 0 pero SIN cortesía — sigue bloqueado.
+    await assertFails(adminDb.collection('pedidos').doc('pedido-gratis').set({
+        items: [{ a: 1 }], total: 0, customerName: 'Gratis', source: 'admin_pos'
+    }));
 });
 
 test('l) SEGURIDAD: mismo cierre de impersonacion en meseros/{token} y mesero_sesiones', async () => {

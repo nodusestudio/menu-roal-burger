@@ -310,6 +310,7 @@ const createProductCategorySelect = document.getElementById('createProductCatego
 const createProductStateSelect = document.getElementById('createProductState');
 const createProductFeaturedSelect = document.getElementById('createProductFeatured');
 const createProductDescriptionInput = document.getElementById('createProductDescription');
+const createProductIngredientesInput = document.getElementById('createProductIngredientes');
 const createProductImageFileInput = document.getElementById('createProductImageFile');
 const productCreateSaveBtn = document.getElementById('productCreateSaveBtn');
 const productCreateFeedback = document.getElementById('productCreateFeedback');
@@ -324,6 +325,7 @@ const editProductCategorySelect = document.getElementById('editProductCategory')
 const editProductStateSelect = document.getElementById('editProductState');
 const editProductFeaturedSelect = document.getElementById('editProductFeatured');
 const editProductDescriptionInput = document.getElementById('editProductDescription');
+const editProductIngredientesInput = document.getElementById('editProductIngredientes');
 const editProductImageFileInput = document.getElementById('editProductImageFile');
 const productEditSaveBtn = document.getElementById('productEditSaveBtn');
 
@@ -767,11 +769,27 @@ function _posSinChecklist(titleHtml, ings, textoSin, onDone) {
     });
 }
 
+// Lista de ingredientes del producto: la que el admin escribió (campo "Ingredientes") y, si no hay, la que se deduce
+// de la descripción.
+function posIngredientesDeProducto(prod) {
+    if (!prod) return [];
+    const explicita = String(prod.ingredientes || '').split(/[\n,;]+/).map((t) => t.trim()).filter(Boolean);
+    if (explicita.length) {
+        const out = [];
+        explicita.forEach((t) => {
+            const v = t.charAt(0).toUpperCase() + t.slice(1);
+            if (!out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
+        });
+        return out.slice(0, 24);
+    }
+    return posParseIngredientes(prod.descripcion || prod.description || '');
+}
+
 function posIngredientesDeItem(item) {
     if (!item || item.isComboEspecial || item.codigoDiaCanjeId) return [];
     const base = String(item.productId || '').split('::')[0];
     const prod = productsState.find((p) => p.id === base);
-    return prod ? posParseIngredientes(prod.descripcion || prod.description || '') : [];
+    return posIngredientesDeProducto(prod);
 }
 
 function posSetOrderExtras(note, salsas) {
@@ -856,13 +874,13 @@ function _posUpgradeSinRefresh() {
     const btn = document.getElementById('posUpgradeSinBtn');
     if (!btn) return;
     const prod = _posUpgradePending ? productsState.find((p) => p.id === String(_posUpgradePending.productId || '').split('::')[0]) : null;
-    btn.hidden = !(prod && posParseIngredientes(prod.descripcion || '').length);
+    btn.hidden = !(prod && posIngredientesDeProducto(prod).length);
 }
 
 document.getElementById('posUpgradeSinBtn')?.addEventListener('click', () => {
     if (!_posUpgradePending) return;
     const prod = productsState.find((p) => p.id === String(_posUpgradePending.productId || '').split('::')[0]);
-    const ings = prod ? posParseIngredientes(prod.descripcion || '') : [];
+    const ings = prod ? posIngredientesDeProducto(prod) : [];
     if (!ings.length) return;
     const ta = document.getElementById('posUpgradeComment');
     const partes = String(ta?.value || '').split(/\s*\|\s*/).map((p) => p.trim()).filter(Boolean);
@@ -3264,6 +3282,7 @@ function normalizeProduct(raw) {
         image_url: raw.image_url || 'logo.png',
         order: raw.order != null ? Number(raw.order) : undefined,
         descripcion: raw.descripcion || '',
+        ingredientes: typeof raw.ingredientes === 'string' ? raw.ingredientes : '',
         visible_pos: raw.visible_pos !== false,
         acompanantes: raw.acompanantes || null,
         promo2x1: raw.promo2x1 || { activo: false, image_url: '', incremento: false },
@@ -9566,6 +9585,7 @@ function closeProductCreateModal() {
     productCreateModal.setAttribute('aria-hidden', 'true');
     productCreateForm.reset();
     if (createProductDescriptionInput) createProductDescriptionInput.value = '';
+    if (createProductIngredientesInput) createProductIngredientesInput.value = '';
     hideModalFeedback(productCreateFeedback);
 
     if (productCreateSaveBtn) {
@@ -9707,6 +9727,7 @@ function openProductEditModal(product, categoryId) {
     editProductStateSelect.value = product.estado === 'paused' ? 'paused' : 'active';
     editProductFeaturedSelect.value = product.es_destacado ? 'true' : 'false';
     if (editProductDescriptionInput) editProductDescriptionInput.value = product.descripcion || '';
+    if (editProductIngredientesInput) editProductIngredientesInput.value = product.ingredientes || '';
 
     // Resetear estado de imagen y mostrar la actual
     _editProductImgUrl      = '';
@@ -24436,6 +24457,7 @@ if (productCreateForm) {
         const estado = createProductStateSelect?.value === 'paused' ? 'paused' : 'active';
         const esDestacado = createProductFeaturedSelect?.value === 'true';
         const descripcion = String(createProductDescriptionInput?.value || '').trim();
+        const ingredientes = String(createProductIngredientesInput?.value || '').trim();
         const hasImageFile = (createProductImageFileInput?.files?.length ?? 0) > 0;
 
         if (!categoriesState.length) {
@@ -24497,6 +24519,7 @@ if (productCreateForm) {
                 estado,
                 es_destacado: esDestacado,
                 descripcion,
+                ingredientes,
                 image_url: finalImageUrl,
                 source: 'admin_panel',
                 created_at: firestoreNow(),
@@ -24538,6 +24561,7 @@ if (productEditForm) {
         const estado = editProductStateSelect?.value === 'paused' ? 'paused' : 'active';
         const esDestacado = editProductFeaturedSelect?.value === 'true';
         const descripcion = String(editProductDescriptionInput?.value || '').trim();
+        const ingredientes = String(editProductIngredientesInput?.value || '').trim();
         const hasImageFile = (editProductImageFileInput?.files?.length ?? 0) > 0;
 
         const acompActivo = editProductAcompActivo ? editProductAcompActivo.checked : false;
@@ -24586,6 +24610,7 @@ if (productEditForm) {
                 estado,
                 es_destacado: esDestacado,
                 descripcion,
+                ingredientes,
                 image_url: finalImageUrl,
                 acompanantes,
                 promo2x1: {
@@ -36297,7 +36322,7 @@ async function _fodiCatalogoEjecutar(a) {
             const fotoUrl = P.conFoto ? await _fodiSubirFotoProducto(P.nombre) : buildDefaultProductImage(P.nombre, cat.name);
             await firebaseDb.collection('productos').doc(id).set({
                 id, nombre: P.nombre, precio: P.precio, categoria: cat.name, estado: P.estado === 'paused' ? 'paused' : 'active', es_destacado: false,
-                descripcion: P.descripcion || '', image_url: fotoUrl, source: 'fodi', created_at: firestoreNow(), updated_at: firestoreNow()
+                descripcion: P.descripcion || '', ingredientes: P.ingredientes || '', image_url: fotoUrl, source: 'fodi', created_at: firestoreNow(), updated_at: firestoreNow()
             });
             if (P.platoId) { try { await _costosGuardar(COSTOS_COLS.platos, P.platoId, { productoMenuId: id }); } catch (_) { /* el enlace se puede hacer luego en Costos */ } }
             await reloadDataAndRender();

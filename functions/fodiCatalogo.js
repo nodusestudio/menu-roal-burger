@@ -8,13 +8,13 @@ const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : NaN; }
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 const ENTIDADES = ['insumo', 'receta', 'plato', 'producto', 'combo'];
-const ACCIONES = ['crear', 'pausar', 'reanudar', 'desactivar', 'activar', 'describir', 'foto', 'precio'];
+const ACCIONES = ['crear', 'pausar', 'reanudar', 'desactivar', 'activar', 'describir', 'ingredientes', 'foto', 'precio'];
 const COL = { insumo: 'costos_insumos', receta: 'costos_recetas', plato: 'costos_platos', producto: 'productos', combo: 'combospacks' };
 const ROTULO = { insumo: 'insumo', receta: 'receta', plato: 'plato de costos', producto: 'producto del menú', combo: 'combo' };
 
 const TOOL = {
     name: 'gestionar_catalogo',
-    description: 'CREA o CAMBIA el catálogo; NO ejecuta: el administrador confirma con un botón. entidad: insumo (ingrediente de costos), receta, plato (plato de costos, aún no vendido), producto (lo que se VENDE en menú/POS: así se agrega al menú) o combo. accion: crear (con los datos de la entidad); pausar/reanudar (producto o combo: salen/vuelven del menú); desactivar/activar (además POS; plato: activo en costos); precio (producto, combo o plato; en combo es su valor); describir (solo producto); foto (solo producto: usa la imagen adjunta en ESTE mensaje; al crear, con_foto=true). Receta/plato: sus insumos o recetas deben existir (si faltan, créalos antes). Si falta un dato obligatorio, pídelo; no inventes precios ni cantidades.',
+    description: 'CREA o CAMBIA el catálogo; NO ejecuta: el administrador confirma con un botón. entidad: insumo (ingrediente de costos), receta, plato (plato de costos, aún no vendido), producto (lo que se VENDE en menú/POS: así se agrega al menú) o combo. accion: crear (con los datos de la entidad); pausar/reanudar (producto o combo: salen/vuelven del menú); desactivar/activar (además POS; plato: activo en costos); precio (producto, combo o plato; en combo es su valor); describir (solo producto: texto de la descripción); ingredientes (solo producto: la lista que sale en «Quitar» del POS); foto (solo producto: usa la imagen adjunta en ESTE mensaje; al crear, con_foto=true). Receta/plato: sus insumos o recetas deben existir (si faltan, créalos antes). Si falta un dato obligatorio, pídelo; no inventes precios ni cantidades.',
     input_schema: {
         type: 'object',
         properties: {
@@ -35,6 +35,7 @@ const TOOL = {
             precio: { type: 'number', description: 'Plato, producto o combo: precio de venta en pesos (obligatorio con accion "precio").' },
             categoria: { type: 'string', description: 'Solo producto: categoría del menú (debe existir).' },
             descripcion: { type: 'string', description: 'Producto: descripción corta (máx. 700 caracteres). Obligatoria con accion "describir"; opcional al crear.' },
+            ingredientes: { type: 'string', description: 'Producto: lista de ingredientes separados por coma (ej. "carne, queso, tomate, lechuga"). Obligatoria con accion "ingredientes"; opcional al crear. Es lo que el cajero marca para quitar en el POS.' },
             con_foto: { type: 'boolean', description: 'Solo producto al crear: true para usar como foto la imagen adjunta en este mensaje.' },
             vender_pausado: { type: 'boolean', description: 'Solo producto: true para crearlo pausado (no visible aún).' },
             plato_costos: { type: 'string', description: 'Solo producto: nombre del plato de costos al que se enlaza (opcional).' },
@@ -119,7 +120,7 @@ async function crear(db, a, ctx) {
         }
         if (a.con_foto === true && !ctx.tieneImagen) return { error: 'No hay imagen adjunta en este mensaje. Pídele al administrador que la adjunte (📎) y vuelve a llamar.' };
         const estado = a.vender_pausado === true ? 'paused' : 'active';
-        return { payload: { nombre, precio, categoria: catNombre, descripcion: String(a.descripcion || '').trim().slice(0, 700), estado, platoId, conFoto: a.con_foto === true },
+        return { payload: { nombre, precio, categoria: catNombre, descripcion: String(a.descripcion || '').trim().slice(0, 700), ingredientes: String(a.ingredientes || '').trim().slice(0, 400), estado, platoId, conFoto: a.con_foto === true },
             resumen: [`Categoría: ${catNombre}`, `Precio: $${precio}`, estado === 'paused' ? 'Se crea PAUSADO (no se ve en el menú).' : 'Visible en el menú al crearlo.', ...(a.descripcion ? [`Descripción: ${String(a.descripcion).trim().slice(0, 300)}`] : []), ...(a.con_foto === true ? ['Con la foto adjunta.'] : ['Sin foto (usa la imagen por defecto).']), ...(platoNombre ? [`Enlazado al plato de costos "${platoNombre}".`] : [])] };
     }
     // combo
@@ -155,6 +156,11 @@ async function editarProducto(db, a, ctx) {
     const r = resolver(await leer(db, COL.producto), a.nombre, 'nombre', ROTULO.producto);
     if (r.error) return r;
     const x = r.item;
+    if (a.accion === 'ingredientes') {
+        const ing = String(a.ingredientes || '').split(/[\n,;]+/).map((t) => t.trim()).filter(Boolean).join(', ').slice(0, 400);
+        if (ing.length < 3) return { error: 'Falta la lista de ingredientes (separados por coma).' };
+        return { id: x.id, nombre: String(x.nombre), payload: { ingredientes: ing }, resumen: [`Ingredientes nuevos: ${ing}`, ...(x.ingredientes ? [`Antes: ${String(x.ingredientes).slice(0, 120)}`] : [])] };
+    }
     if (a.accion === 'describir') {
         const d = String(a.descripcion || '').trim().slice(0, 700);
         if (d.length < 3) return { error: 'Falta la descripción (mínimo 3 letras).' };
@@ -178,7 +184,7 @@ async function cambiarPrecio(db, a) {
 async function proponerCatalogo(db, args = {}, ctx = {}) {
     if (!ACCIONES.includes(args.accion)) return { error: `accion debe ser una de: ${ACCIONES.join(', ')}.` };
     if (!ENTIDADES.includes(args.entidad)) return { error: `entidad debe ser una de: ${ENTIDADES.join(', ')}.` };
-    const r = args.accion === 'crear' ? await crear(db, args, ctx) : args.accion === 'precio' ? await cambiarPrecio(db, args) : (args.accion === 'describir' || args.accion === 'foto') ? await editarProducto(db, args, ctx) : await cambiarEstado(db, args);
+    const r = args.accion === 'crear' ? await crear(db, args, ctx) : args.accion === 'precio' ? await cambiarPrecio(db, args) : (args.accion === 'describir' || args.accion === 'ingredientes' || args.accion === 'foto') ? await editarProducto(db, args, ctx) : await cambiarEstado(db, args);
     if (r.error) return { error: r.error };
     return { ok: true, accion: { tipo: 'catalogo', operacion: args.accion, entidad: args.entidad, nombre: r.nombre || String(args.nombre).trim(), id: r.id || null, payload: r.payload, resumen: r.resumen || [] } };
 }
