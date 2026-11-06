@@ -8072,7 +8072,7 @@ function renderPosOrderItems() {
         const _tieneIng = posIngredientesDeItem(item).length > 0;
         const _hasSin = !!item.sinText || /(^|\s|\|)(sin\s|poca salsa)/i.test(item.note || '');
         const sinBtnHTML = _tieneIng
-            ? `<button type="button" class="pos-item-sin-btn${_hasSin ? ' has-sin' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Quitar ingredientes">➖</button>`
+            ? `<button type="button" class="pos-item-sin-btn${_hasSin ? ' has-sin' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Quitar ingredientes">🚫 Sin</button>`
             : '';
         return `<div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
             <div class="pos-item-name">

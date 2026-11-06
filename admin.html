@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261106-1811">
+    <link rel="stylesheet" href="style.css?v=20261106-1819">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -7423,8 +7423,11 @@
         .pos-order-extra-btns { display: flex; gap: 8px; margin-bottom: 8px; }
         .pos-extra-btn { flex: 1; padding: 8px 6px; border-radius: 10px; font-size: 0.82rem; font-weight: 600; cursor: pointer; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.22); color: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .pos-extra-btn.has-val { background: rgba(255,122,26,0.22); border-color: #ff7a1a; }
-        .pos-upgrade-comment-row { display: flex; gap: 8px; align-items: stretch; margin-bottom: 8px; }
-        .pos-upgrade-comment-row .pos-upgrade-comment { flex: 1; min-width: 0; margin-bottom: 0; }
+        .pos-upgrade-comment-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-bottom: 8px; }
+        .pos-upgrade-comment-row .pos-upgrade-comment { flex: 1 1 150px; min-width: 0; margin-bottom: 0; }
+        .pos-upgrade-comment-row .pos-sin-mini-btn { flex: 1 1 auto; padding: 6px 10px; }
+        /* Celular/tablet: la burbuja flotante de FODI tapaba el total y los botones del carrito abierto */
+        @media (max-width: 768px) { body.pos-is-open:has(#posCartDrawer:not([hidden])) #fodiFlot { display: none !important; } }
         .pos-sin-mini-btn { flex-shrink: 0; padding: 0 10px; border-radius: 10px; font-size: 0.78rem; font-weight: 700; cursor: pointer; background: rgba(255,122,26,0.18); border: 1px solid rgba(255,122,26,0.7); color: #ffb27a; }
         .pos-salsas-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
         .pos-salsa-chip { padding: 5px 10px; border-radius: 999px; font-size: 0.78rem; cursor: pointer; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); color: inherit; }
@@ -17001,17 +17004,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261106-1811"></script>
+    <script defer src="firebase-config.js?v=20261106-1819"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261106-1811"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261106-1819"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1811"></script>
-    <script defer src="admin.js?v=20261106-1811"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1819"></script>
+    <script defer src="admin.js?v=20261106-1819"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
