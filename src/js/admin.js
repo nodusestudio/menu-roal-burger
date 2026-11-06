@@ -690,66 +690,80 @@ function posSinTexto(terms) {
 }
 
 // Checklist común (hoja del producto y línea del carrito). Entrega los términos elegidos en minúscula
-// (ver posSinTexto): ingredientes sueltos o en grupo (vegetales/salsas), "poca salsa" y cada salsa de la casa
-// una por una (sin / con).
+// (ver posSinTexto). Ingredientes sueltos + "Sin vegetales" arriba; las salsas van aparte en UN solo bloque:
+// [Con salsas] [Poca salsa] [Sin salsas] y, al elegir con/sin, aparece la lista de cuáles.
 function _posSinChecklist(titleHtml, ings, textoSin, onDone) {
     const low = String(textoSin || '').toLowerCase();
-    const g = posSinGrupos(ings);
-    const pre = (ing) => low.includes(`sin ${ing.toLowerCase()}`)
-        || (/sin vegetales/.test(low) && g.veg.includes(ing)) || (/sin salsas/.test(low) && g.sal.includes(ing));
-    const grp = (key, label, arr) => arr.length >= (key === 'sal' ? 1 : 2)
-        ? `<label class="pos-sin-opt pos-sin-grp"><input type="checkbox" data-g="${key}"${arr.every(pre) ? ' checked' : ''}><span>${label}</span></label>` : '';
-    const pocaHtml = `<label class="pos-sin-opt pos-sin-grp"><input type="checkbox" data-poca="1"${/poca salsa/.test(low) ? ' checked' : ''}><span>💧 Poca salsa</span></label>`;
+    // Las salsas del producto se manejan en el bloque de salsas, no como casillas sueltas (evitaba repetirlas 3 veces).
+    const sinSalsas = ings.filter((i) => !POS_SAL_RE.test(i));
+    const vegs = sinSalsas.filter((i) => POS_VEG_RE.test(i));
+    const pre = (ing) => low.includes(`sin ${ing.toLowerCase()}`) || (/sin vegetales/.test(low) && vegs.includes(ing));
+    const vegHtml = vegs.length >= 2
+        ? `<label class="pos-sin-opt pos-sin-grp"><input type="checkbox" data-g="veg"${vegs.every(pre) ? ' checked' : ''}><span>🥬 Sin vegetales</span></label>` : '';
     const sLabel = (s) => `${s.name} (${s.tipo})`;
-    // Estado de cada salsa de la casa: 0 = sin indicar · 1 = sin · 2 = con
-    const sEstado = POS_SALSAS.map((s) => (low.includes(`sin ${sLabel(s).toLowerCase()}`) ? 1 : low.includes(`con ${sLabel(s).toLowerCase()}`) ? 2 : 0));
-    const sChip = (s, i) => {
-        const st = sEstado[i];
-        const txt = st === 1 ? `✖ Sin ${sLabel(s)}` : st === 2 ? `✔ Con ${sLabel(s)}` : sLabel(s);
-        return `<button type="button" class="pos-salsa-chip pos-sin-salsa${st === 1 ? ' off' : st === 2 ? ' on' : ''}" data-s="${i}">${escapeHtml(txt)}</button>`;
+    // Estado inicial de salsas a partir del texto ya escrito
+    let modo = /poca salsa/.test(low) ? 'poca' : '';
+    const picks = new Set();
+    POS_SALSAS.forEach((s, i) => {
+        if (low.includes(`sin ${sLabel(s).toLowerCase()}`)) { modo = 'sin'; picks.add(i); }
+        else if (low.includes(`con ${sLabel(s).toLowerCase()}`)) { modo = modo || 'con'; picks.add(i); }
+    });
+    if (!modo && /sin salsas/.test(low)) modo = 'sin';
+    const salHtml = () => {
+        const btn = (m, txt) => `<button type="button" class="pos-sal-mode${modo === m ? ' on-' + m : ''}" data-m="${m}">${txt}</button>`;
+        const chips = (modo === 'con' || modo === 'sin')
+            ? `<div class="pos-salsas-label" style="font-size:0.74rem;opacity:.8;margin-top:8px;">${modo === 'sin' ? '¿Cuáles quitar? (si no marcas ninguna, se quitan todas)' : '¿Cuáles lleva?'}</div>`
+              + `<div class="pos-salsas-chips" style="margin:6px 0 0;">${POS_SALSAS.map((s, i) => `<button type="button" class="pos-salsa-chip pos-sal-pick${picks.has(i) ? (modo === 'sin' ? ' off' : ' on') : ''}" data-s="${i}">${escapeHtml(sLabel(s))}</button>`).join('')}</div>`
+            : '';
+        return `<div class="pos-salsas-label" style="font-size:0.78rem;font-weight:700;margin-top:10px;">🥫 Salsas</div>`
+            + `<div class="pos-sal-modes">${btn('con', 'Con salsas')}${btn('poca', '💧 Poca salsa')}${btn('sin', 'Sin salsas')}</div>${chips}`;
     };
-    const body = `<div class="pos-sin-list">${grp('veg', '🥬 Sin vegetales', g.veg)}${grp('sal', '🥫 Sin salsas', g.sal)}${pocaHtml}`
-        + ings.map((ing, i) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${i}"${pre(ing) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('') + '</div>'
-        + `<div class="pos-salsas-label" style="font-size:0.74rem;opacity:.75;">Salsas una por una (toca: sin → con → nada)</div><div class="pos-salsas-chips pos-sin-salsas">${POS_SALSAS.map(sChip).join('')}</div>`;
+    const body = `<div class="pos-sin-list">${vegHtml}`
+        + sinSalsas.map((ing) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${ings.indexOf(ing)}"${pre(ing) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('')
+        + `</div><div class="pos-sal-block">${salHtml()}</div>`;
     const modal = _posFloatModal('posSinModal', titleHtml, body, (m) => {
         const marcados = new Set([...m.querySelectorAll('input[data-i]')].filter((c) => c.checked).map((c) => Number(c.dataset.i)));
         const terms = [];
         const usados = new Set();
-        [['veg', 'vegetales', g.veg], ['sal', 'salsas', g.sal]].forEach(([k, word, arr]) => {
-            if (arr.length >= (k === 'sal' ? 1 : 2) && arr.every((ing) => marcados.has(ings.indexOf(ing)))) {
-                terms.push(word);
-                arr.forEach((ing) => usados.add(ings.indexOf(ing)));
-            }
-        });
-        ings.forEach((ing, i) => { if (marcados.has(i) && !usados.has(i)) terms.push(ing.toLowerCase()); });
-        if (m.querySelector('input[data-poca]')?.checked) terms.push('~poca salsa');
-        POS_SALSAS.forEach((s, i) => {
-            if (sEstado[i] === 1) terms.push(sLabel(s).toLowerCase());
-            else if (sEstado[i] === 2) terms.push(`+${sLabel(s).toLowerCase()}`);
-        });
+        if (vegs.length >= 2 && vegs.every((ing) => marcados.has(ings.indexOf(ing)))) {
+            terms.push('vegetales');
+            vegs.forEach((ing) => usados.add(ings.indexOf(ing)));
+        }
+        sinSalsas.forEach((ing) => { const i = ings.indexOf(ing); if (marcados.has(i) && !usados.has(i)) terms.push(ing.toLowerCase()); });
+        if (modo === 'poca') terms.push('~poca salsa');
+        else if (modo === 'sin') {
+            if (!picks.size || picks.size === POS_SALSAS.length) terms.push('salsas');
+            else POS_SALSAS.forEach((s, i) => { if (picks.has(i)) terms.push(sLabel(s).toLowerCase()); });
+        } else if (modo === 'con') {
+            POS_SALSAS.forEach((s, i) => { if (picks.has(i)) terms.push(`+${sLabel(s).toLowerCase()}`); });
+        }
         onDone(terms);
     }, 'Listo');
-    // Los atajos marcan/desmarcan sus ingredientes; y se encienden solos si se marcan todos a mano.
-    const sync = () => modal.querySelectorAll('input[data-g]').forEach((gb) => {
-        const arr = gb.dataset.g === 'veg' ? g.veg : g.sal;
-        gb.checked = arr.every((ing) => modal.querySelector(`input[data-i="${ings.indexOf(ing)}"]`)?.checked);
-    });
+    // "Sin vegetales" marca/desmarca todos los vegetales; y se enciende solo si se marcan todos a mano.
     modal.querySelector('.pos-sin-list').addEventListener('change', (e) => {
         const t = e.target;
-        if (t.dataset.g) {
-            (t.dataset.g === 'veg' ? g.veg : g.sal).forEach((ing) => {
-                const c = modal.querySelector(`input[data-i="${ings.indexOf(ing)}"]`);
-                if (c) c.checked = t.checked;
-            });
-        } else if (t.dataset.i !== undefined) sync();
+        const caja = (ing) => modal.querySelector(`input[data-i="${ings.indexOf(ing)}"]`);
+        if (t.dataset.g) vegs.forEach((ing) => { const c = caja(ing); if (c) c.checked = t.checked; });
+        else if (t.dataset.i !== undefined) {
+            const gb = modal.querySelector('input[data-g]');
+            if (gb) gb.checked = vegs.every((ing) => caja(ing)?.checked);
+        }
     });
-    const sBox = modal.querySelector('.pos-sin-salsas');
-    sBox.addEventListener('click', (e) => {
-        const b = e.target.closest('.pos-sin-salsa');
-        if (!b) return;
-        const i = Number(b.dataset.s);
-        sEstado[i] = (sEstado[i] + 1) % 3;
-        sBox.innerHTML = POS_SALSAS.map(sChip).join('');
+    const blk = modal.querySelector('.pos-sal-block');
+    blk.addEventListener('click', (e) => {
+        const mb = e.target.closest('.pos-sal-mode');
+        if (mb) {
+            modo = modo === mb.dataset.m ? '' : mb.dataset.m;
+            if (modo === 'poca' || !modo) picks.clear();
+            blk.innerHTML = salHtml();
+            return;
+        }
+        const pb = e.target.closest('.pos-sal-pick');
+        if (pb) {
+            const i = Number(pb.dataset.s);
+            if (picks.has(i)) picks.delete(i); else picks.add(i);
+            blk.innerHTML = salHtml();
+        }
     });
 }
 
@@ -18095,7 +18109,7 @@ function buildKitchenTicketHtml(order) {
     const childrenOf = (key) => items.filter((item) => item.parentItemKey === key);
 
     const products = topItems.map((item) => {
-        const details = [item.categoryName, item.optionLabel]
+        const details = [item.categoryName, item.optionLabel !== item.note ? item.optionLabel : '']
             .filter(Boolean)
             .map((p) => `<div class="k-detail">${escapeHtml(p)}</div>`)
             .join('');
@@ -38043,6 +38057,30 @@ document.getElementById('pfQrTvBtn')?.addEventListener('click', _cqIniciar);
     window.addEventListener('resize', revisar);
     setInterval(revisar, 1500); // red de seguridad: el ticket cambia de alto al cargar un pedido, y no todos los navegadores avisan
     revisar();
+})();
+
+// ── Rueda del mouse: red de seguridad ──
+// Si el navegador no desplaza nada con la rueda (zona "muerta"), se desplaza la página a mano. Solo actúa cuando
+// ninguna lista interna ni la página se movieron tras el evento, así el desplazamiento normal queda intacto.
+(function _admRuedaRespaldo() {
+    // Cualquier scroll (de la página o de una lista interna) se anota: si ocurrió tras la rueda, el navegador sí respondió.
+    let ultimoScroll = 0;
+    window.addEventListener('scroll', () => { ultimoScroll = Date.now(); }, { passive: true, capture: true });
+    window.addEventListener('wheel', (e) => {
+        if (e.ctrlKey || e.defaultPrevented || !e.deltaY) return;
+        const se = document.scrollingElement || document.documentElement;
+        const max = se.scrollHeight - window.innerHeight;
+        if (max <= 1) return;
+        const antes = se.scrollTop;
+        if (e.deltaY > 0 ? antes >= max - 1 : antes <= 0) return;
+        const t0 = Date.now();
+        const delta = e.deltaMode === 1 ? e.deltaY * 40 : (e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY);
+        setTimeout(() => {
+            if (ultimoScroll >= t0) return; // el navegador desplazó algo: todo bien
+            se.scrollTop = antes + delta;
+            try { window.__ruedaRespaldo = (window.__ruedaRespaldo || 0) + 1; } catch (_) { /* sin window */ }
+        }, 300);
+    }, { passive: true, capture: true });
 })();
 
 // SYNC:conciliacion-banco:inicio
