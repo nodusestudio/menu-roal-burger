@@ -675,30 +675,102 @@ function posSetOrderExtras(note, salsas) {
     renderPosOrderExtras();
 }
 
+// Botones del pie del carrito: "💬 Comentario" y "🥫 Salsas" (cada uno abre una ventana flotante al centro).
 function renderPosOrderExtras() {
-    const noteEl = document.getElementById('posOrderNote');
-    if (noteEl && document.activeElement !== noteEl && noteEl.value !== posOrderNote) noteEl.value = posOrderNote;
-    const box = document.getElementById('posSalsasBox');
-    const chips = document.getElementById('posSalsasChips');
-    if (!box || !chips) return;
-    const tipo = (typeof posTicketConfig !== 'undefined' && posTicketConfig?.orderType) || (typeof _posEditPrefill !== 'undefined' && _posEditPrefill?.orderType) || '';
-    box.hidden = tipo === 'mesa';
-    chips.innerHTML = POS_SALSAS.map((s) => `<button type="button" class="pos-salsa-chip${posSalsas.includes(s.name) ? ' on' : ''}" data-salsa="${escapeHtml(s.name)}">${escapeHtml(s.name)} <small>(${escapeHtml(s.tipo)})</small></button>`).join('')
-        + `<button type="button" class="pos-salsa-chip${posSalsas.includes(POS_SALSAS_AZAR) ? ' on' : ''}" data-salsa="${POS_SALSAS_AZAR}">🎲 ${POS_SALSAS_AZAR}</button>`;
+    const noteBtn = document.getElementById('posOrderNoteBtn');
+    if (noteBtn) {
+        const n = posOrderNote.trim();
+        noteBtn.classList.toggle('has-val', !!n);
+        noteBtn.textContent = n ? `💬 ${n.length > 22 ? n.slice(0, 21) + '…' : n}` : '💬 Agregar comentario';
+        noteBtn.title = n || 'Comentario para todo el ticket';
+    }
+    const salBtn = document.getElementById('posSalsasBtn');
+    if (salBtn) {
+        const tipo = (typeof posTicketConfig !== 'undefined' && posTicketConfig?.orderType) || (typeof _posEditPrefill !== 'undefined' && _posEditPrefill?.orderType) || '';
+        salBtn.hidden = tipo === 'mesa';
+        const t = posSalsasTexto();
+        salBtn.classList.toggle('has-val', !!t);
+        salBtn.textContent = t ? `🥫 ${t.length > 22 ? t.slice(0, 21) + '…' : t}` : '🥫 Salsas';
+        salBtn.title = t || 'Elegir salsas para llevar';
+    }
 }
 
-document.getElementById('posOrderNote')?.addEventListener('input', (e) => { posOrderNote = e.target.value; });
-document.getElementById('posSalsasChips')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.pos-salsa-chip');
+// Ventana flotante centrada (reusa el estilo del modal de nota por producto).
+function _posFloatModal(id, titleHtml, bodyHtml, onSave, saveLabel = 'Guardar') {
+    document.getElementById(id)?.remove();
+    const modal = document.createElement('div');
+    modal.id = id;
+    modal.className = 'pos-note-modal-overlay';
+    modal.innerHTML = `<div class="pos-note-modal-box">
+        <p class="pos-note-modal-title">${titleHtml}</p>
+        ${bodyHtml}
+        <div class="pos-note-modal-actions">
+            <button type="button" class="pos-note-cancel-btn">Cancelar</button>
+            <button type="button" class="pos-note-save-btn">${saveLabel}</button>
+        </div></div>`;
+    modal.querySelector('.pos-note-cancel-btn').addEventListener('click', () => modal.remove());
+    modal.querySelector('.pos-note-save-btn').addEventListener('click', () => { if (onSave(modal) !== false) modal.remove(); });
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    return modal;
+}
+
+function openPosOrderNoteModal() {
+    const modal = _posFloatModal('posOrderNoteModal', 'Comentario del <strong>ticket</strong> (todo el pedido)',
+        `<textarea class="pos-note-modal-input" maxlength="400" placeholder="Ej: todos los productos sin tomate…">${escapeHtml(posOrderNote)}</textarea>`,
+        (m) => { posOrderNote = m.querySelector('textarea').value.trim(); renderPosOrderExtras(); });
+    modal.querySelector('textarea').focus();
+}
+
+function openPosSalsasModal() {
+    let sel = posSalsas.slice();
+    const chipsHtml = () => POS_SALSAS.map((s) => `<button type="button" class="pos-salsa-chip${sel.includes(s.name) ? ' on' : ''}" data-salsa="${escapeHtml(s.name)}">${escapeHtml(s.name)} <small>(${escapeHtml(s.tipo)})</small></button>`).join('')
+        + `<button type="button" class="pos-salsa-chip${sel.includes(POS_SALSAS_AZAR) ? ' on' : ''}" data-salsa="${POS_SALSAS_AZAR}">🎲 ${POS_SALSAS_AZAR}</button>`;
+    const modal = _posFloatModal('posSalsasModal', 'Salsas para <strong>llevar</strong>',
+        `<div class="pos-salsas-chips">${chipsHtml()}</div>`,
+        () => { posSalsas = sel.slice(); renderPosOrderExtras(); }, 'Listo');
+    const box = modal.querySelector('.pos-salsas-chips');
+    box.addEventListener('click', (e) => {
+        const btn = e.target.closest('.pos-salsa-chip');
+        if (!btn) return;
+        const name = btn.dataset.salsa;
+        if (name === POS_SALSAS_AZAR) sel = sel.includes(name) ? [] : [name];
+        else {
+            const otras = sel.filter((s) => s !== POS_SALSAS_AZAR);
+            sel = otras.includes(name) ? otras.filter((s) => s !== name) : [...otras, name];
+        }
+        box.innerHTML = chipsHtml();
+    });
+}
+
+document.getElementById('posOrderNoteBtn')?.addEventListener('click', openPosOrderNoteModal);
+document.getElementById('posSalsasBtn')?.addEventListener('click', openPosSalsasModal);
+
+// Checklist de ingredientes para la hoja "¿Cómo lo quieres?": escribe "Sin tomate, sin maíz" dentro del comentario.
+function _posUpgradeSinRefresh() {
+    const btn = document.getElementById('posUpgradeSinBtn');
     if (!btn) return;
-    const name = btn.dataset.salsa;
-    if (name === POS_SALSAS_AZAR) {
-        posSalsas = posSalsas.includes(name) ? [] : [name];
-    } else {
-        const sin = posSalsas.filter((s) => s !== POS_SALSAS_AZAR);
-        posSalsas = sin.includes(name) ? sin.filter((s) => s !== name) : [...sin, name];
-    }
-    renderPosOrderExtras();
+    const prod = _posUpgradePending ? productsState.find((p) => p.id === String(_posUpgradePending.productId || '').split('::')[0]) : null;
+    btn.hidden = !(prod && posParseIngredientes(prod.descripcion || '').length);
+}
+
+document.getElementById('posUpgradeSinBtn')?.addEventListener('click', () => {
+    if (!_posUpgradePending) return;
+    const prod = productsState.find((p) => p.id === String(_posUpgradePending.productId || '').split('::')[0]);
+    const ings = prod ? posParseIngredientes(prod.descripcion || '') : [];
+    if (!ings.length) return;
+    const ta = document.getElementById('posUpgradeComment');
+    const partes = String(ta?.value || '').split(/\s*\|\s*/).map((p) => p.trim()).filter(Boolean);
+    const esSin = (p) => /^sin\s/i.test(p) && ings.some((ing) => p.toLowerCase().includes(`sin ${ing.toLowerCase()}`));
+    const actual = partes.find(esSin) || '';
+    _posFloatModal('posSinModal', `Quitar de <strong>${escapeHtml(_posUpgradePending.productName || '')}</strong>`,
+        `<div class="pos-sin-list">${ings.map((ing, i) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${i}"${actual.toLowerCase().includes(`sin ${ing.toLowerCase()}`) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('')}</div>`,
+        (m) => {
+            const el = [...m.querySelectorAll('input[type=checkbox]')].filter((c) => c.checked).map((c) => ings[Number(c.dataset.i)].toLowerCase());
+            const resto = partes.filter((p) => !esSin(p));
+            if (el.length) resto.push(`Sin ${el.join(', sin ')}`);
+            if (ta) ta.value = resto.join(' | ');
+        }, 'Listo');
 });
 
 // Texto que se guarda en el pedido: '' si no se indicó nada.
@@ -7885,7 +7957,7 @@ function renderPosOrderItems() {
         const _tieneIng = posIngredientesDeItem(item).length > 0;
         const _hasSin = !!item.sinText || /(^|\s|\|)sin\s/i.test(item.note || '');
         const sinBtnHTML = _tieneIng
-            ? `<button type="button" class="pos-item-sin-btn${_hasSin ? ' has-sin' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Quitar ingredientes">➖ Quitar</button>`
+            ? `<button type="button" class="pos-item-sin-btn${_hasSin ? ' has-sin' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Quitar ingredientes">➖</button>`
             : '';
         return `<div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
             <div class="pos-item-name">
@@ -8089,6 +8161,7 @@ function _setPosUpgradeAddBtnState(enabled) {
 
 function openPosUpgradeSheet(productId, productName, productPrice, promoOpts) {
     _posUpgradePending = { productId, productName, productPrice, extras: [], qty: 1, ...(promoOpts ? { promoOpts } : {}) };
+    _posUpgradeSinRefresh();
     const overlay = document.getElementById('posUpgradeOverlay');
     if (!overlay) return;
     const commentInput = document.getElementById('posUpgradeComment');
