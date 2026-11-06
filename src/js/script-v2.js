@@ -1212,6 +1212,11 @@ function getCheckoutDeliveryFee(fulfillmentType) {
 
 // El incremento de empaque aplica cuando el pedido es para recoger o a domicilio, no
 // cuando es para comer en el local — mismo criterio que usa el POS del admin (orderType).
+// Aviso corto y directo para el cliente: el +$2.000 de la promo 2×1 es EMPAQUE, no el domicilio.
+function promo2x1EmpaqueNotaHtml() {
+    return `<p class="promo-2x1-empaque">📦 Para llevar o domicilio se suma <strong>${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de EMPAQUE</strong>. <strong>Eso no es el domicilio:</strong> el domicilio se cobra aparte y depende de tu dirección.</p>`;
+}
+
 function getCheckoutPromo2x1IncrementoFee(fulfillmentType) {
     const type = getCheckoutFulfillmentType(fulfillmentType);
     if (type !== 'pickup' && type !== 'delivery') return 0;
@@ -1771,6 +1776,16 @@ function showOrderConfirmScreen(orderData = {}) {
     const pointsDiscountAmount = Number(orderData.pointsDiscountAmount || 0);
     if (ocPointsDiscountRow) ocPointsDiscountRow.style.display = pointsDiscountAmount > 0 ? '' : 'none';
     if (ocPointsDiscountValue) ocPointsDiscountValue.textContent = fmt(pointsDiscountAmount);
+
+    // Subtotal + domicilio − puntos no cuadraba con el total cuando había empaque de la promo 2×1: el cliente creía que
+    // esos $2.000 eran el domicilio. Se muestra como su propia línea, con la aclaración.
+    const _empaque = Math.max(0, total - subtotal - deliveryFee + pointsDiscountAmount);
+    const ocPackRow = document.getElementById('ocPackagingRow');
+    const ocPackVal = document.getElementById('ocPackagingValue');
+    const ocPackNote = document.getElementById('ocPackagingNote');
+    if (ocPackRow) ocPackRow.style.display = _empaque > 0 ? '' : 'none';
+    if (ocPackVal) ocPackVal.textContent = fmt(_empaque);
+    if (ocPackNote) ocPackNote.style.display = _empaque > 0 ? '' : 'none';
 
     const ocTotal = document.getElementById('ocTotal');
     if (ocTotal) ocTotal.textContent = fmt(total);
@@ -4895,7 +4910,7 @@ function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
     }
 
     if (normalized.promo2x1Incremento) {
-        parts.push(`Empaque 2×1 (llevar/domicilio): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
+        parts.push(`Empaque 2×1 (llevar/domicilio, no es el domicilio): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
     }
 
     return parts.join(' | ');
@@ -5265,7 +5280,7 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
     }
 
     if (normalized.promo2x1Incremento) {
-        optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} si es para llevar o domicilio`;
+        optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de EMPAQUE si es para llevar o domicilio (el domicilio se cobra aparte)`;
     }
 
     if (normalized.recommendedDiscount && normalized.discountRate > 0) {
@@ -5336,7 +5351,7 @@ function buildCartCheckoutMessage(customerInfo = {}) {
     const domicilioLine = fulfillmentType === 'delivery'
         ? (customerInfo.deliveryFeePending ? '\nDomicilio: Por confirmar (asesor contactará)' : `\nDomicilio: ${formatCurrency(deliveryFee)}`)
         : '';
-    const incrementoLine = incrementoFee > 0 ? `\nEmpaque 2×1: ${formatCurrency(incrementoFee)}` : '';
+    const incrementoLine = incrementoFee > 0 ? `\n📦 Empaque 2×1 (no es el domicilio): ${formatCurrency(incrementoFee)}` : '';
     const totalDisplay = fulfillmentType === 'delivery' && customerInfo.deliveryFeePending
         ? `${formatCurrency(getCartTotalAmount() + incrementoFee - pointsDiscountAmount)} + domicilio por confirmar`
         : formatCurrency(orderTotal);
@@ -6520,6 +6535,11 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.pointsDiscountValue.textContent = formatCurrency(pointsDiscountAmount);
     }
 
+    const _empaqueVisible = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
+    if (checkoutInfoUI.packagingRow) checkoutInfoUI.packagingRow.hidden = _empaqueVisible <= 0;
+    if (checkoutInfoUI.packagingValue) checkoutInfoUI.packagingValue.textContent = formatCurrency(_empaqueVisible);
+    if (checkoutInfoUI.packagingNote) checkoutInfoUI.packagingNote.hidden = _empaqueVisible <= 0;
+
     if (checkoutInfoUI.orderTotalValue) {
         const incrementoFeeForDisplay = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
         let displayTotal;
@@ -6695,9 +6715,14 @@ function openCheckoutInfoModal() {
             </div>
             <div class="customer-profile-summary customer-profile-summary-grid checkout-summary-grid">
                 <div id="checkoutDeliveryFeeRow" hidden>
-                    <span>Costo de envío</span>
+                    <span>Costo de envío (domicilio)</span>
                     <strong id="checkoutDeliveryFeeValue">${formatCurrency(checkoutDeliveryFeeAmount)}</strong>
                 </div>
+                <div id="checkoutPackagingRow" hidden>
+                    <span>📦 Empaque (promo 2×1)</span>
+                    <strong id="checkoutPackagingValue">${formatCurrency(0)}</strong>
+                </div>
+                <div id="checkoutPackagingNote" class="checkout-packaging-note" hidden>El empaque <strong>no es el domicilio</strong>. El domicilio se cobra aparte y depende de tu dirección.</div>
                 <div id="checkoutDiscountRow" hidden>
                     <span>Descuento</span>
                     <strong id="checkoutDiscountValue">${formatCurrency(getCheckoutDiscountAmount())}</strong>
@@ -6747,6 +6772,9 @@ function openCheckoutInfoModal() {
         requestQuoteButton: modal.querySelector('#checkoutRequestQuoteButton'),
         deliveryFeeRow: modal.querySelector('#checkoutDeliveryFeeRow'),
         deliveryFeeValue: modal.querySelector('#checkoutDeliveryFeeValue'),
+        packagingRow: modal.querySelector('#checkoutPackagingRow'),
+        packagingValue: modal.querySelector('#checkoutPackagingValue'),
+        packagingNote: modal.querySelector('#checkoutPackagingNote'),
         barrioWarning: modal.querySelector('#checkoutBarrioWarning'),
         barrioWarningText: modal.querySelector('#checkoutBarrioWarningText'),
         salirARecibir: modal.querySelector('#checkoutSalirARecibir'),
@@ -7187,7 +7215,7 @@ function renderCartUI() {
         if (normalizeOrderOptions(item.orderOptions).promo2x1Incremento) {
             const incrementoBadge = document.createElement('span');
             incrementoBadge.className = 'cart-item-promo-badge cart-item-increment-badge';
-            incrementoBadge.textContent = `📦 +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} si es para llevar o domicilio`;
+            incrementoBadge.textContent = `📦 +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de EMPAQUE si es para llevar o domicilio. No es el domicilio: ese se cobra aparte.`;
             info.appendChild(incrementoBadge);
         }
 
@@ -11151,6 +11179,7 @@ function render2x1Cards() {
                 <div class="home-rec-body">
                     <strong class="home-rec-name"></strong>
                     <p class="promo-2x1-desc"></p>
+                    ${(promo.incremento === true || product.promo2x1?.incremento === true) ? promo2x1EmpaqueNotaHtml() : ''}
                     <button class="home-rec-btn promo-btn-order" type="button">Redimir cupón 🎟️</button>
                 </div>
             </div>`;
@@ -11225,6 +11254,7 @@ function render2x1Cards() {
                                 <span class="home-rec-price">$${unitPrice.toLocaleString('es-CO')}</span>
                             </div>
                         </div>
+                        ${product.promo2x1?.incremento === true ? promo2x1EmpaqueNotaHtml() : ''}
                         <button class="home-rec-btn promo-btn-order" type="button">Redimir cupón 🎟️</button>
                     </div>
                 </div>`;
