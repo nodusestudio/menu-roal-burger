@@ -659,7 +659,66 @@ function posParseIngredientes(texto) {
             if (!salida.includes(it)) salida.push(it);
         });
     });
-    return salida.slice(0, 14);
+    // "Vegetales frescos" / "verduras" no sirve para quitar: se abre en los vegetales reales (tomate, lechuga).
+    const abierta = [];
+    salida.forEach((it) => {
+        const partes = /^(vegetales|verduras|hortalizas|ensalada)(\s+(frescos?|frescas?|de la huerta))?$/i.test(it) ? ['Tomate', 'Lechuga'] : [it];
+        partes.forEach((p) => { if (!abierta.some((x) => x.toLowerCase() === p.toLowerCase())) abierta.push(p); });
+    });
+    return abierta.slice(0, 16);
+}
+
+// Grupos para los atajos "Sin vegetales" / "Sin salsas".
+const POS_VEG_RE = /^(tomate|lechuga|cebolla|pepino|pepinillo|repollo|zanahoria|pimient|piment|r[uú]cula|espinaca|apio)/i;
+const POS_SAL_RE = /salsa|mayonesa|mostaza|ketchup|k[eé]tchup|t[aá]rtara|bbq|barbacoa|aderezo|ali[nñ]o/i;
+function posSinGrupos(ings) {
+    return { veg: ings.filter((i) => POS_VEG_RE.test(i)), sal: ings.filter((i) => POS_SAL_RE.test(i)) };
+}
+// ¿Este tramo de una nota es un "Sin ..." generado por el checklist?
+function posEsSegmentoSin(p, ings) {
+    const s = String(p || '').trim().toLowerCase();
+    return /^sin\s/.test(s) && (/^sin (vegetales|salsas)/.test(s) || ings.some((ing) => s.includes(`sin ${ing.toLowerCase()}`)));
+}
+
+// Checklist común (hoja del producto y línea del carrito). Entrega los términos elegidos en minúscula:
+// ['vegetales', 'maíz'] → "Sin vegetales, sin maíz".
+function _posSinChecklist(titleHtml, ings, textoSin, onDone) {
+    const low = String(textoSin || '').toLowerCase();
+    const g = posSinGrupos(ings);
+    const pre = (ing) => low.includes(`sin ${ing.toLowerCase()}`)
+        || (/sin vegetales/.test(low) && g.veg.includes(ing)) || (/sin salsas/.test(low) && g.sal.includes(ing));
+    const grp = (key, label, arr) => arr.length >= (key === 'sal' ? 1 : 2)
+        ? `<label class="pos-sin-opt pos-sin-grp"><input type="checkbox" data-g="${key}"${arr.every(pre) ? ' checked' : ''}><span>${label}</span></label>` : '';
+    const body = `<div class="pos-sin-list">${grp('veg', '🥬 Sin vegetales', g.veg)}${grp('sal', '🥫 Sin salsas', g.sal)}`
+        + ings.map((ing, i) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${i}"${pre(ing) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('') + '</div>';
+    const modal = _posFloatModal('posSinModal', titleHtml, body, (m) => {
+        const marcados = new Set([...m.querySelectorAll('input[data-i]')].filter((c) => c.checked).map((c) => Number(c.dataset.i)));
+        const terms = [];
+        const usados = new Set();
+        [['veg', 'vegetales', g.veg], ['sal', 'salsas', g.sal]].forEach(([k, word, arr]) => {
+            if (arr.length >= (k === 'sal' ? 1 : 2) && arr.every((ing) => marcados.has(ings.indexOf(ing)))) {
+                terms.push(word);
+                arr.forEach((ing) => usados.add(ings.indexOf(ing)));
+            }
+        });
+        ings.forEach((ing, i) => { if (marcados.has(i) && !usados.has(i)) terms.push(ing.toLowerCase()); });
+        onDone(terms);
+    }, 'Listo');
+    // Los atajos marcan/desmarcan sus ingredientes; y se encienden solos si se marcan todos a mano.
+    const boxes = (sel) => [...modal.querySelectorAll(sel)];
+    const sync = () => boxes('input[data-g]').forEach((gb) => {
+        const arr = gb.dataset.g === 'veg' ? g.veg : g.sal;
+        gb.checked = arr.every((ing) => modal.querySelector(`input[data-i="${ings.indexOf(ing)}"]`)?.checked);
+    });
+    modal.querySelector('.pos-sin-list').addEventListener('change', (e) => {
+        const t = e.target;
+        if (t.dataset.g) {
+            (t.dataset.g === 'veg' ? g.veg : g.sal).forEach((ing) => {
+                const c = modal.querySelector(`input[data-i="${ings.indexOf(ing)}"]`);
+                if (c) c.checked = t.checked;
+            });
+        } else sync();
+    });
 }
 
 function posIngredientesDeItem(item) {
@@ -688,10 +747,10 @@ function renderPosOrderExtras() {
     if (salBtn) {
         const tipo = (typeof posTicketConfig !== 'undefined' && posTicketConfig?.orderType) || (typeof _posEditPrefill !== 'undefined' && _posEditPrefill?.orderType) || '';
         salBtn.hidden = tipo === 'mesa';
-        const t = posSalsasTexto();
+        const t = posSalsas.join(', ');
         salBtn.classList.toggle('has-val', !!t);
         salBtn.textContent = t ? `🥫 ${t.length > 22 ? t.slice(0, 21) + '…' : t}` : '🥫 Salsas';
-        salBtn.title = t || 'Elegir salsas para llevar';
+        salBtn.title = posSalsasTexto() || 'Elegir salsas para llevar';
     }
 }
 
@@ -761,21 +820,23 @@ document.getElementById('posUpgradeSinBtn')?.addEventListener('click', () => {
     if (!ings.length) return;
     const ta = document.getElementById('posUpgradeComment');
     const partes = String(ta?.value || '').split(/\s*\|\s*/).map((p) => p.trim()).filter(Boolean);
-    const esSin = (p) => /^sin\s/i.test(p) && ings.some((ing) => p.toLowerCase().includes(`sin ${ing.toLowerCase()}`));
+    const esSin = (p) => posEsSegmentoSin(p, ings);
     const actual = partes.find(esSin) || '';
-    _posFloatModal('posSinModal', `Quitar de <strong>${escapeHtml(_posUpgradePending.productName || '')}</strong>`,
-        `<div class="pos-sin-list">${ings.map((ing, i) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${i}"${actual.toLowerCase().includes(`sin ${ing.toLowerCase()}`) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('')}</div>`,
-        (m) => {
-            const el = [...m.querySelectorAll('input[type=checkbox]')].filter((c) => c.checked).map((c) => ings[Number(c.dataset.i)].toLowerCase());
-            const resto = partes.filter((p) => !esSin(p));
-            if (el.length) resto.push(`Sin ${el.join(', sin ')}`);
-            if (ta) ta.value = resto.join(' | ');
-        }, 'Listo');
+    _posSinChecklist(`Quitar de <strong>${escapeHtml(_posUpgradePending.productName || '')}</strong>`, ings, actual, (terms) => {
+        const resto = partes.filter((p) => !esSin(p));
+        if (terms.length) resto.push(`Sin ${terms.join(', sin ')}`);
+        if (ta) ta.value = resto.join(' | ');
+    });
 });
 
 // Texto que se guarda en el pedido: '' si no se indicó nada.
+// Siempre con el tipo entre paréntesis ("La Catira (ajo)") por si no se conoce el nombre de la salsa.
 function posSalsasTexto(list = posSalsas) {
-    return Array.isArray(list) && list.length ? list.join(', ') : '';
+    if (!Array.isArray(list) || !list.length) return '';
+    return list.map((n) => {
+        const s = POS_SALSAS.find((x) => x.name === n);
+        return s ? `${s.name} (${s.tipo})` : n;
+    }).join(', ');
 }
 
 let menuUpgradesConfig = null;
@@ -7795,40 +7856,17 @@ function _openPosSinModal(item) {
     if (existing) existing.remove();
     const ings = posIngredientesDeItem(item);
     if (!ings.length) return;
-    const noteLow = String(item.note || '').toLowerCase();
-    const marcado = (ing) => noteLow.includes(`sin ${ing.toLowerCase()}`);
-    const modal = document.createElement('div');
-    modal.id = 'posSinModal';
-    modal.className = 'pos-note-modal-overlay';
-    modal.innerHTML = `
-        <div class="pos-note-modal-box">
-            <p class="pos-note-modal-title">Quitar de <strong>${escapeHtml(item.productName)}</strong></p>
-            <div class="pos-sin-list">
-                ${ings.map((ing, i) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${i}"${marcado(ing) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('')}
-            </div>
-            <div class="pos-note-modal-actions">
-                <button type="button" class="pos-note-cancel-btn">Cancelar</button>
-                <button type="button" class="pos-note-save-btn">Listo</button>
-            </div>
-        </div>`;
-    modal.querySelector('.pos-note-cancel-btn').addEventListener('click', () => modal.remove());
-    modal.querySelector('.pos-note-save-btn').addEventListener('click', () => {
-        // Los "sin X" ya presentes que no están en la lista de ingredientes (escritos a mano) se respetan.
-        const elegidos = [...modal.querySelectorAll('input[type=checkbox]')].filter((c) => c.checked).map((c) => ings[Number(c.dataset.i)]);
+    _posSinChecklist(`Quitar de <strong>${escapeHtml(item.productName)}</strong>`, ings, item.note, (terms) => {
         // Pedido cargado desde Firestore: el tramo "Sin ..." ya viene dentro de la nota; se reconoce para
         // reemplazarlo (no duplicarlo) y no se toca el resto de la nota.
         if (!item.sinText) {
-            const previo = String(item.note || '').split(' | ').map((p) => p.trim())
-                .find((p) => /^sin\s/i.test(p) && ings.some((ing) => p.toLowerCase().includes(`sin ${ing.toLowerCase()}`)));
+            const previo = String(item.note || '').split(' | ').map((p) => p.trim()).find((p) => posEsSegmentoSin(p, ings));
             if (previo) item.sinText = previo;
         }
-        PosCart.setSinIngredientes(item.itemKey, elegidos);
-        modal.remove();
+        PosCart.setSinIngredientes(item.itemKey, terms);
         renderPosOrderItems();
         renderPosTotals();
     });
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
-    document.body.appendChild(modal);
 }
 
 function _openPosNoteModal(item, itemKey, container) {
