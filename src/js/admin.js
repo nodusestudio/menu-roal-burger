@@ -8594,6 +8594,7 @@ function _renderPosUpgradeBebidaSabores(bebida, presentacion, onBack = renderPos
 // abre directo la pantalla de productos del POS, sin pasar por el modal de "tipo de pedido".
 function startPosOrderForMesa(mesaNumber) {
     internalOrderItems = [];
+    posSetOrderExtras('', []);
     posTicketConfig = { orderType: 'mesa', mesaNumber, customerName: '', customerPhone: '', deliveryAddress: '', deliveryFee: null };
     const labelEl = document.getElementById('posActiveTicketLabel');
     if (labelEl) labelEl.textContent = `Mesa ${mesaNumber}`;
@@ -13436,6 +13437,7 @@ function _repeatOrderInPos(pastItems) {
     }
 
     internalOrderItems = [];
+    posSetOrderExtras('', []);
     posTicketConfig = null;
     const repeatBatchId = Date.now();
 
@@ -22118,6 +22120,7 @@ if (openCreateInternalOrderBtn) {
         posTicketConfig = null;
         _posLiberarCuponesFid();
         internalOrderItems = [];
+        posSetOrderExtras('', []);
         openInternalOrderModal();
     });
 }
@@ -22175,6 +22178,7 @@ document.getElementById('posClearCartBtn')?.addEventListener('click', async () =
     if (!(await showConfirmModal({ icon: '🗑', title: '¿Vaciar el pedido actual?', confirmText: 'Vaciar' }))) return;
     _posLiberarCuponesFid();
     internalOrderItems = [];
+    posSetOrderExtras('', []);
     posTicketConfig = null;
     _posEditPrefill = null;
     renderPosOrderItems();
@@ -23208,6 +23212,7 @@ document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
     const type = btn.dataset.quickType;
     posTicketConfig = null;
     internalOrderItems = [];
+    posSetOrderExtras('', []);
     if (!internalOrderModal?.classList.contains('is-open')) {
         openInternalOrderModal();
     } else {
@@ -38066,6 +38071,9 @@ document.getElementById('pfQrTvBtn')?.addEventListener('click', _cqIniciar);
     window.addEventListener('scroll', () => { ultimoScroll = Date.now(); }, { passive: true, capture: true });
     window.addEventListener('wheel', (e) => {
         if (e.ctrlKey || e.defaultPrevented || !e.deltaY) return;
+        // No tocar ventanas/paneles encima de la página ni páginas con el scroll bloqueado a propósito.
+        if (e.target && e.target.closest && e.target.closest('[class*="modal"],[class*="overlay"],[role="dialog"],#fodiFlot')) return;
+        if ([document.body, document.documentElement].some((el) => getComputedStyle(el).overflowY === 'hidden')) return;
         const se = document.scrollingElement || document.documentElement;
         const max = se.scrollHeight - window.innerHeight;
         if (max <= 1) return;
