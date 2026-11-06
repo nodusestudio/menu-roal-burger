@@ -3800,6 +3800,7 @@ async function fetchCategories() {
 }
 
 async function fetchProducts() {
+    _posCatalogoTs = Date.now();
     const snapshot = await firebaseDb.collection('productos').get();
     productsState = snapshot.docs
         .map((doc) => normalizeProduct({ id: doc.id, ...doc.data() }))
@@ -8687,6 +8688,55 @@ function openInternalOrderModal() {
     internalOrderModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('pos-is-open');
     document.body.style.overflow = 'hidden';
+    _posRefrescarCatalogo();
+}
+
+// ── Contadores del cliente (totalOrders / totalSpent) ───────────────────────────────────────────────
+// Se suman al CREAR el pedido (_upsertClientStatsFromPosOrder / checkout web). Estas funciones los mantienen al día
+// cuando ese pedido cambia después: se edita su total, se reasigna a otro cliente, se anula o se elimina.
+// Nunca crean el cliente ni bajan de 0, y un fallo no frena la operación del pedido.
+function _pedidoContado(order) {
+    return !!order && order.status !== 'en_espera' && !order.anulado && !!order.customerPhoneDigits
+        && Array.isArray(order.items) && order.items.length > 0 && getOrderDisplayTotal(order) > 0;
+}
+
+async function _ajustarStatsCliente(phoneDigits, dOrders, dSpent) {
+    const digits = normalizePhoneDigits(phoneDigits);
+    if (!digits || (!dOrders && !dSpent) || !firebaseDb) return;
+    const ref = firebaseDb.collection(CLIENTS_COLLECTION).doc(`phone_${digits}`);
+    try {
+        await firebaseDb.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            if (!snap.exists) return;
+            const p = snap.data();
+            tx.update(ref, {
+                totalOrders: Math.max(0, Number(p.totalOrders || 0) + dOrders),
+                totalSpent: Math.max(0, Number(p.totalSpent || 0) + dSpent),
+                updatedAt: firestoreNow()
+            });
+        });
+        const c = clientsState.find((x) => x.id === `phone_${digits}`);
+        if (c) { c.totalOrders = Math.max(0, Number(c.totalOrders || 0) + dOrders); c.totalSpent = Math.max(0, Number(c.totalSpent || 0) + dSpent); }
+    } catch (err) {
+        console.warn('[ADMIN] No se pudo ajustar las estadisticas del cliente:', err.code || err.message);
+    }
+}
+
+// Catálogo del POS: si lleva más de 3 minutos sin refrescarse, se vuelve a leer al abrir el POS (un precio cambiado
+// desde otro equipo no se veía y el POS cobraba/facturaba con el precio viejo).
+let _posCatalogoTs = Date.now();
+async function _posRefrescarCatalogo() {
+    if (Date.now() - _posCatalogoTs < 180000 || !firebaseDb) return;
+    _posCatalogoTs = Date.now();
+    try {
+        await Promise.all([fetchCategories(), fetchProducts(), fetchBebidas(), fetchAcompanantes(), fetchCombosPack(),
+            fetchCatalogoVisibilidad(), fetchPromos(), fetchCombosEspeciales(), fetchPromos2x1(), fetchMenuUpgradesConfig()]);
+        const sheet = document.getElementById('posUpgradeOverlay');
+        const sheetAbierta = sheet && !sheet.hidden && sheet.style.display !== 'none';
+        if (!sheetAbierta && internalOrderModal?.classList.contains('is-open')) { renderPosCategoriesPanel(); renderPosProductsPanel(); }
+    } catch (err) {
+        console.warn('[ADMIN] No se pudo refrescar el catalogo del POS:', err.code || err.message);
+    }
 }
 
 // Refleja en el perfil del cliente (colección "clientes") los pedidos creados desde el
@@ -8708,7 +8758,7 @@ async function _upsertClientStatsFromPosOrder(orderDoc) {
             const snap = await transaction.get(clientRef);
             const previous = snap.exists ? snap.data() : {};
             transaction.set(clientRef, {
-                customerName: String(orderDoc.customerName || previous.customerName || '').trim(),
+                customerName: String((esNombreGenerico(orderDoc.customerName) ? (previous.customerName || orderDoc.customerName) : orderDoc.customerName) || '').trim(),
                 customerPhone: String(orderDoc.customerPhone || previous.customerPhone || '').trim(),
                 customerPhoneDigits: phoneDigits,
                 address: newAddress || previous.address || 'Sin direccion registrada',
@@ -9043,7 +9093,13 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
             orderDoc.meseroName = `${_meseroSession.nombre} ${_meseroSession.apellido}`.trim();
         }
 
+        const _prevParaStats = (isEditing && !_wasEnEspera) ? ordersState.find((o) => o.id === orderId) : null;
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
+        if (_pedidoContado(_prevParaStats)) {
+            const _antes = getOrderDisplayTotal(_prevParaStats), _ahora = Number(orderDoc.total || 0);
+            if (_prevParaStats.customerPhoneDigits === orderDoc.customerPhoneDigits) _ajustarStatsCliente(orderDoc.customerPhoneDigits, 0, _ahora - _antes);
+            else { _ajustarStatsCliente(_prevParaStats.customerPhoneDigits, -1, -_antes); _upsertClientStatsFromPosOrder(orderDoc); }
+        }
         _editingOrderData = null;
         _posLigarCuponesFid(orderCode);
 
@@ -9055,7 +9111,7 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
 
         // Solo al crear (no en cada edición, igual que el checkout público) para no
         // inflar el contador de visitas cada vez que se corrige un pedido ya guardado.
-        if (!isEditing) {
+        if (!isEditing || _wasEnEspera) {
             // Sin releer toda la colección de clientes por cada pedido: se actualiza el caché local (el refresco
             // completo lo hace fetchClients() por TTL)
             _upsertClientStatsFromPosOrder(orderDoc).then(() => {
@@ -9320,6 +9376,10 @@ async function saveOrderItemsEdit() {
             salsasLlevar: posSalsas.slice(),
             ...infoFields
         });
+        if (_pedidoContado(order)) {
+            const _delta = total - getOrderDisplayTotal(order);
+            if (_delta) _ajustarStatsCliente(order.customerPhoneDigits, 0, _delta);
+        }
 
         _posLigarCuponesFid(order?.code || orderId);
         _editingItemsOnlyOrderId = null;
@@ -13503,7 +13563,14 @@ function _repeatOrderInPos(pastItems) {
         });
     });
 
+    // Se cargan con el precio del pedido anterior; si el catálogo ya cambió, se avisa para que el cajero decida.
+    const _distintos = internalOrderItems.filter((i) => {
+        const base = String(i.productId || '').split('::')[0];
+        const prod = productsState.find((p) => p.id === base);
+        return prod && !(Array.isArray(prod.variantes) && prod.variantes.length) && Number(prod.precio) > 0 && Number(prod.precio) !== Number(i.unitPrice);
+    });
     openInternalOrderModal();
+    if (_distintos.length) { showNotice(`Ojo: ${_distintos.slice(0, 3).map((i) => i.productName).join(', ')}${_distintos.length > 3 ? '…' : ''} cambió de precio en el menú; se cargó con el precio del pedido anterior.`, 'warn'); return; }
     showNotice(`${pastItems.length} producto${pastItems.length !== 1 ? 's' : ''} cargado${pastItems.length !== 1 ? 's' : ''} en POS.`, 'success');
 }
 
@@ -17379,6 +17446,13 @@ async function _occApplyClient(order, client) {
             updates.deliveryAddress = client.address || '';
         }
         await updateOrder(order.id, updates);
+        if (_pedidoContado(order) && order.customerPhoneDigits !== updates.customerPhoneDigits) {
+            const _t = getOrderDisplayTotal(order);
+            _ajustarStatsCliente(order.customerPhoneDigits, -1, -_t);
+            _ajustarStatsCliente(updates.customerPhoneDigits, 1, _t);
+        } else if (!order.customerPhoneDigits && updates.customerPhoneDigits && order.status !== 'en_espera' && !order.anulado && getOrderDisplayTotal(order) > 0) {
+            _ajustarStatsCliente(updates.customerPhoneDigits, 1, getOrderDisplayTotal(order));
+        }
         closeChangeClientModal();
         showNotice(`Cliente cambiado a ${client.customerName}.`, 'ok');
     } catch (error) {
@@ -17573,21 +17647,25 @@ async function updateOrder(orderId, updates) {
 }
 
 async function deleteOrder(orderId) {
+    const _prev = ordersState.find((o) => o.id === orderId) || (typeof _ticketsData !== 'undefined' ? _ticketsData.find((o) => o.id === orderId) : null);
     // delete() no falla si el doc no existe, así que basta con pedirlo en ambas
     // colecciones — solo hará efecto en la que realmente tenga el pedido.
     await Promise.all([
         firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).delete(),
         firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).doc(orderId).delete()
     ]);
+    if (_pedidoContado(_prev)) _ajustarStatsCliente(_prev.customerPhoneDigits, -1, -getOrderDisplayTotal(_prev));
 }
 
 async function anularOrder(orderId) {
+    const _prev = ordersState.find((o) => o.id === orderId);
     await updateOrder(orderId, {
         anulado: true,
         anuladoAt: firestoreNow(),
         status: 'entregado',
         deliveredAt: firestoreNow()
     });
+    if (_pedidoContado(_prev)) _ajustarStatsCliente(_prev.customerPhoneDigits, -1, -getOrderDisplayTotal(_prev));
 }
 
 function renderBtPrinterStatus(status, deviceName) {
