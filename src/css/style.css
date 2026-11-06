@@ -9404,12 +9404,3 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
     border: 1px solid rgba(255, 255, 255, 0.28);
     color: inherit;
 }
-.checkout-packaging-note {
-    grid-column: 1 / -1;
-    padding: 6px 9px;
-    font-size: 0.78rem;
-    line-height: 1.35;
-    border-radius: 10px;
-    background: rgba(255, 179, 71, 0.14);
-    border: 1px dashed rgba(255, 179, 71, 0.55);
-}

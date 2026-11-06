@@ -1782,10 +1782,8 @@ function showOrderConfirmScreen(orderData = {}) {
     const _empaque = Math.max(0, total - subtotal - deliveryFee + pointsDiscountAmount);
     const ocPackRow = document.getElementById('ocPackagingRow');
     const ocPackVal = document.getElementById('ocPackagingValue');
-    const ocPackNote = document.getElementById('ocPackagingNote');
     if (ocPackRow) ocPackRow.style.display = _empaque > 0 ? '' : 'none';
     if (ocPackVal) ocPackVal.textContent = fmt(_empaque);
-    if (ocPackNote) ocPackNote.style.display = _empaque > 0 ? '' : 'none';
 
     const ocTotal = document.getElementById('ocTotal');
     if (ocTotal) ocTotal.textContent = fmt(total);
@@ -4910,7 +4908,7 @@ function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
     }
 
     if (normalized.promo2x1Incremento) {
-        parts.push(`Empaque 2×1 (llevar/domicilio, no es el domicilio): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
+        parts.push(`Empaque 2×1 (llevar/domicilio): +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)}`);
     }
 
     return parts.join(' | ');
@@ -5280,7 +5278,7 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
     }
 
     if (normalized.promo2x1Incremento) {
-        optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de EMPAQUE si es para llevar o domicilio (el domicilio se cobra aparte)`;
+        optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de empaque si es para llevar o domicilio`;
     }
 
     if (normalized.recommendedDiscount && normalized.discountRate > 0) {
@@ -6538,7 +6536,6 @@ function updateCheckoutInfoModalState() {
     const _empaqueVisible = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
     if (checkoutInfoUI.packagingRow) checkoutInfoUI.packagingRow.hidden = _empaqueVisible <= 0;
     if (checkoutInfoUI.packagingValue) checkoutInfoUI.packagingValue.textContent = formatCurrency(_empaqueVisible);
-    if (checkoutInfoUI.packagingNote) checkoutInfoUI.packagingNote.hidden = _empaqueVisible <= 0;
 
     if (checkoutInfoUI.orderTotalValue) {
         const incrementoFeeForDisplay = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
@@ -6719,10 +6716,9 @@ function openCheckoutInfoModal() {
                     <strong id="checkoutDeliveryFeeValue">${formatCurrency(checkoutDeliveryFeeAmount)}</strong>
                 </div>
                 <div id="checkoutPackagingRow" hidden>
-                    <span>📦 Empaque (promo 2×1)</span>
+                    <span>📦 Empaque (no es el domicilio)</span>
                     <strong id="checkoutPackagingValue">${formatCurrency(0)}</strong>
                 </div>
-                <div id="checkoutPackagingNote" class="checkout-packaging-note" hidden>El empaque <strong>no es el domicilio</strong>. El domicilio se cobra aparte y depende de tu dirección.</div>
                 <div id="checkoutDiscountRow" hidden>
                     <span>Descuento</span>
                     <strong id="checkoutDiscountValue">${formatCurrency(getCheckoutDiscountAmount())}</strong>
@@ -6774,7 +6770,6 @@ function openCheckoutInfoModal() {
         deliveryFeeValue: modal.querySelector('#checkoutDeliveryFeeValue'),
         packagingRow: modal.querySelector('#checkoutPackagingRow'),
         packagingValue: modal.querySelector('#checkoutPackagingValue'),
-        packagingNote: modal.querySelector('#checkoutPackagingNote'),
         barrioWarning: modal.querySelector('#checkoutBarrioWarning'),
         barrioWarningText: modal.querySelector('#checkoutBarrioWarningText'),
         salirARecibir: modal.querySelector('#checkoutSalirARecibir'),
@@ -7215,7 +7210,7 @@ function renderCartUI() {
         if (normalizeOrderOptions(item.orderOptions).promo2x1Incremento) {
             const incrementoBadge = document.createElement('span');
             incrementoBadge.className = 'cart-item-promo-badge cart-item-increment-badge';
-            incrementoBadge.textContent = `📦 +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de EMPAQUE si es para llevar o domicilio. No es el domicilio: ese se cobra aparte.`;
+            incrementoBadge.textContent = `📦 +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de empaque (no es el domicilio)`;
             info.appendChild(incrementoBadge);
         }
 
