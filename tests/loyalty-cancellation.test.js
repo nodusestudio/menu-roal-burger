@@ -169,6 +169,18 @@ test('handleOrderCancellationEvent: transicion a anulado revierte (documento sig
     assert.equal(clientSnap.data().puntosDisponibles, 75);
 });
 
+test('handleOrderCancellationEvent: un pedido cobrado que se anula desde Tickets (voided) revierte una sola vez', async () => {
+    const before = { customerPhoneDigits: TEST_PHONE, pointsAwarded: true, pointsEarned: 25, voided: false };
+    const after = { ...before, voided: true };
+    const res = await _handleOrderCancellationEvent(db, TEST_ORDER_ID, before, after);
+    assert.equal(res.reversed, true);
+    assert.equal(res.reason, 'voided');
+    // si luego se anula/borra el mismo pedido, el marcador de idempotencia evita devolver dos veces
+    await _handleOrderCancellationEvent(db, TEST_ORDER_ID, after, null);
+    const clientSnap = await db.collection('clientes').doc(TEST_CLIENT_ID).get();
+    assert.equal(clientSnap.data().puntosDisponibles, 75, '100 - 25, una sola vez');
+});
+
 test('handleOrderCancellationEvent: una edición cualquiera (no borrado, no anulado) no hace nada', async () => {
     const before = { customerPhoneDigits: TEST_PHONE, pointsAwarded: true, pointsEarned: 25 };
     const after = { ...before, customerName: 'nombre nuevo' };

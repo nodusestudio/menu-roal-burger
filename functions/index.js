@@ -758,10 +758,13 @@ async function devolverCuposCodigoDia(db, orderId, orderData, motivo) {
 async function handleOrderCancellationEvent(db, orderId, before, after) {
     // Caso 1: se anuló sin borrarse (anularOrder) -- el documento sigue existiendo.
     const becameAnulado = Boolean(after && after.anulado === true && before?.anulado !== true);
+    // Caso 1b: un pedido ya cobrado/entregado se ANULA desde Tickets (voided:true, sin borrarse): la venta se devolvió,
+    // así que los puntos ganados salen y los canjeados vuelven (antes el cliente se quedaba con ellos).
+    const becameVoided = Boolean(after && after.voided === true && before?.voided !== true);
     // Caso 2: se borró de verdad (deleteOrder) -- no queda documento, hay que usar `before`.
     const wasDeleted = Boolean(before && !after);
 
-    if (!becameAnulado && !wasDeleted) return { reversed: false, reason: 'no-op' };
+    if (!becameAnulado && !becameVoided && !wasDeleted) return { reversed: false, reason: 'no-op' };
 
     // cerrarCaja() (admin.js) ARCHIVA los pedidos de la jornada haciendo, en un mismo batch,
     // set(pedidos_archivados/{id}) + delete(pedidos/{id}). Ese delete cae también acá como
@@ -775,8 +778,8 @@ async function handleOrderCancellationEvent(db, orderId, before, after) {
     }
 
     const result = await reverseLoyaltyPointsTransaction(db, orderId, after || before);
-    const canjesRevertidos = await devolverCuposCodigoDia(db, orderId, after || before, becameAnulado ? 'pedido anulado' : 'pedido borrado');
-    return { reversed: true, reason: becameAnulado ? 'anulado' : 'deleted', ...result, canjesRevertidos };
+    const canjesRevertidos = await devolverCuposCodigoDia(db, orderId, after || before, (becameAnulado || becameVoided) ? 'pedido anulado' : 'pedido borrado');
+    return { reversed: true, reason: becameAnulado ? 'anulado' : (becameVoided ? 'voided' : 'deleted'), ...result, canjesRevertidos };
 }
 
 exports.reverseLoyaltyPointsOnCancellation = onDocumentWritten(
