@@ -13087,7 +13087,9 @@ function renderMetricasProductos(period) {
         // (mismo criterio que ya usa renderCajaDiaria) -- sin esto, un pedido anulado seguía
         // sumando al ranking de "más vendidos" y a los ingresos del catálogo para siempre.
         if (order.voided || order.anulado) continue;
-        if (!order.paymentMethod || order.paymentMethod === 'pendiente') continue;
+        // isOrderPaid = el mismo criterio de Caja Diaria: un pedido web con el medio elegido pero sin cobrar ni cerrar
+        // (paymentMethod puesto por el cliente) ya no cuenta como venta en el ranking.
+        if (!isOrderPaid(order)) continue;
         const ts = order.createdAt
             ? (typeof order.createdAt.toDate === 'function' ? order.createdAt.toDate() : new Date(order.createdAt))
             : null;
