@@ -14463,7 +14463,9 @@ function buildThermalTicketMarkup(order, options = {}) {
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
                     <div class="ticket-customer-card">
-                        ${buildTicketEditFieldButton(order, 'customerName', getOrderDisplayCustomerName(order), printMode || _locked, { className: 'ticket-copy-btn-name' })}
+                        ${(!printMode && (isPlaceholderCustomerName(String(order.customerName || '').trim()) || /^(pedido (para llevar|a domicilio|en mesa|admin)|mesa \d+)$/i.test(String(order.customerName || '').trim())))
+                            ? buildTicketEditFieldButton(order, 'customerName', 'Sin nombre', _locked, { className: 'ticket-copy-btn-name ticket-name-vacio' })
+                            : buildTicketEditFieldButton(order, 'customerName', getOrderDisplayCustomerName(order), printMode || _locked, { className: 'ticket-copy-btn-name' })}
                         ${(printMode || _locked) ? '' : `<button type="button" class="ticket-editpago-link" data-order-ticket-action="cambiar_cliente" data-order-id="${escapeHtml(order.id)}">🔁 Cambiar cliente</button>`}
                         <div class="ticket-customer-row">
                             <span>Telefono</span>
@@ -14486,12 +14488,12 @@ function buildThermalTicketMarkup(order, options = {}) {
                     </div>
                 </section>
 
-                <section class="ticket-section">
+                ${(!printMode && order.orderType !== 'domicilio' && !order.barrioEspecial) ? '' : `<section class="ticket-section">
                     <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : order.orderType === 'mesa' ? (order.mesaNumber ? `Mesa ${order.mesaNumber}` : '⚠️ Sin mesa asignada') : 'Retiro en local'}</div>
                     <div class="ticket-address-block">
                         ${addressLines}
                     </div>
-                </section>
+                </section>`}
 
                 <section class="ticket-section">
                     <div class="ticket-section-title">Detalle del pedido</div>
@@ -14512,7 +14514,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                 </section>` : ''}
                 ${posSalsasTexto(order.salsasLlevar) ? `
                 <section class="ticket-section">
-                    <div class="ticket-section-title">Salsas para llevar</div>
+                    <div class="ticket-section-title">Salsas</div>
                     <div class="ticket-address-text" style="font-weight:700;">${escapeHtml(posSalsasTexto(order.salsasLlevar))}</div>
                 </section>` : ''}
 
