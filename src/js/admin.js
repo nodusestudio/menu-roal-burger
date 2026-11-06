@@ -506,7 +506,7 @@ const PosCart = {
             return null;
         }
         const next = Number(item.quantity || 0) + delta;
-        if (next < 1) return item;
+        if (next < 1 || next > 99) return item;
         item.quantity = next;
         item.subtotal = item.quantity * item.unitPrice;
         this._syncChildrenQuantity(item);
@@ -517,7 +517,7 @@ const PosCart = {
         const item = internalOrderItems.find((i) => i.itemKey === itemKey);
         if (!item) return null;
         if (item.codigoDiaCanjeId) quantity = 1;
-        item.quantity = Math.max(1, Number(quantity) || 1);
+        item.quantity = Math.min(99, Math.max(1, Math.round(Number(quantity) || 1)));
         item.subtotal = item.quantity * item.unitPrice;
         this._syncChildrenQuantity(item);
         return item;
@@ -590,11 +590,16 @@ const PosCart = {
 
     getTotals() {
         const subtotal = internalOrderItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-        const fee = (posTicketConfig?.orderType === 'domicilio' && posTicketConfig?.deliveryFee != null)
-            ? Number(posTicketConfig.deliveryFee)
+        // Al editar un pedido existente no hay posTicketConfig hasta abrir "Info": se usa el pedido que se edita para que
+        // el total que se ve sea el mismo que se guarda (domicilio, empaque 2×1 y puntos ya canjeados).
+        const cfg = posTicketConfig || _posEditPrefill || null;
+        const fee = (cfg?.orderType === 'domicilio' && cfg?.deliveryFee != null)
+            ? Number(cfg.deliveryFee)
             : 0;
-        const incremento = PosCart.getPromo2x1IncrementoFee();
-        return { subtotal, fee, incremento, total: Math.max(0, subtotal + fee + incremento) };
+        const incremento = PosCart.getPromo2x1IncrementoFee(cfg?.orderType);
+        const editado = _editingItemsOnlyOrderId ? ordersState.find((o) => o.id === _editingItemsOnlyOrderId) : null;
+        const puntos = editado ? Number(editado.pointsDiscountAmount || 0) : 0;
+        return { subtotal, fee, incremento, puntos, total: Math.max(0, subtotal + fee + incremento - puntos) };
     },
 
     // Forma en la que el carrito se guarda dentro de un pedido en Firestore.
@@ -1976,6 +1981,12 @@ function isPlaceholderCustomerName(value) {
 }
 
 // Nombre a MOSTRAR para un pedido (cae a una etiqueta por tipo cuando no hay nombre real).
+// ¿El nombre es el que el POS pone por defecto cuando no hay cliente? ("Pedido para llevar", "Mesa 3"…)
+function esNombreGenerico(nombre) {
+    const n = String(nombre || '').trim();
+    return !n || isPlaceholderCustomerName(n) || /^(pedido (para llevar|a domicilio|en mesa|admin)|mesa \d+)$/i.test(n);
+}
+
 function getOrderDisplayCustomerName(order) {
     const raw = String(order && order.customerName || '').trim();
     if (!isPlaceholderCustomerName(raw)) return raw;
@@ -8221,7 +8232,7 @@ function renderPosOrderItems() {
             const input = event.target.closest('.pos-qty-input');
             if (!input) return;
             const itemKey = input.dataset.itemKey;
-            const quantity = Math.max(1, Number(input.value || 1));
+            const quantity = Math.min(99, Math.max(1, Math.round(Number(input.value || 1))));
             if (PosCart.updateQuantity(itemKey, quantity)) {
                 updatePosItemRow(itemKey);
                 renderPosTotals();
@@ -8240,9 +8251,13 @@ function renderPosTotals() {
     const deliveryElem     = document.getElementById('posTotalDelivery');
     const incrementoRow    = document.getElementById('posTotalIncrementoRow');
     const incrementoElem   = document.getElementById('posTotalIncremento');
+    const puntosRow        = document.getElementById('posTotalPuntosRow');
+    const puntosElem       = document.getElementById('posTotalPuntos');
     const bottomTotal      = document.getElementById('posBottomTotalAmt');
-    const { subtotal, fee, incremento, total } = PosCart.getTotals();
+    const { subtotal, fee, incremento, puntos, total } = PosCart.getTotals();
 
+    if (puntosRow) puntosRow.hidden = !(puntos > 0);
+    if (puntosElem) puntosElem.textContent = `-${formatMoney(puntos)}`;
     if (subtotalElem) subtotalElem.textContent = formatMoney(subtotal);
     if (deliveryRow) deliveryRow.hidden = fee <= 0;
     if (incrementoRow) incrementoRow.hidden = incremento <= 0;
@@ -14487,8 +14502,8 @@ function buildThermalTicketMarkup(order, options = {}) {
                 <section class="ticket-section">
                     <div class="ticket-section-title">Cliente</div>
                     <div class="ticket-customer-card">
-                        ${(!printMode && (isPlaceholderCustomerName(String(order.customerName || '').trim()) || /^(pedido (para llevar|a domicilio|en mesa|admin)|mesa \d+)$/i.test(String(order.customerName || '').trim())))
-                            ? buildTicketEditFieldButton(order, 'customerName', 'Sin nombre', _locked, { className: 'ticket-copy-btn-name ticket-name-vacio' })
+                        ${esNombreGenerico(order.customerName)
+                            ? (printMode ? '' : buildTicketEditFieldButton(order, 'customerName', 'Sin nombre', _locked, { className: 'ticket-copy-btn-name ticket-name-vacio' }))
                             : buildTicketEditFieldButton(order, 'customerName', getOrderDisplayCustomerName(order), printMode || _locked, { className: 'ticket-copy-btn-name' })}
                         <div class="ticket-customer-row">
                             <span>Telefono</span>
@@ -14507,7 +14522,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                     </div>
                 </section>
 
-                ${(!printMode && order.orderType !== 'domicilio' && !order.barrioEspecial) ? '' : `<section class="ticket-section">
+                ${(order.orderType !== 'domicilio' && !order.barrioEspecial) ? '' : `<section class="ticket-section">
                     <div class="ticket-section-title">${order.orderType === 'domicilio' ? 'Direccion de entrega' : order.orderType === 'mesa' ? (order.mesaNumber ? `Mesa ${order.mesaNumber}` : '⚠️ Sin mesa asignada') : 'Retiro en local'}</div>
                     <div class="ticket-address-block">
                         ${addressLines}
@@ -17832,7 +17847,7 @@ function buildESCPOSData(order) {
 
     // ── CLIENTE ─────────────────────────────────────────────────────────────
     pb(ESC, 0x45, 0x01); wl('CLIENTE'); pb(ESC, 0x45, 0x00);
-    wl('  Nombre : ' + (order.customerName || 'N/A'));
+    if (!esNombreGenerico(order.customerName)) wl('  Nombre : ' + order.customerName);
     if (order.customerPhone) wl('  Tel    : ' + order.customerPhone);
     wl('  Tipo   : ' + getOrderTypeLabel(order));
     if (order.orderType === 'domicilio') {
@@ -17863,6 +17878,7 @@ function buildESCPOSData(order) {
         }
         const qty = String(item.quantity).padStart(2);
         wc(`  ${qty}   ${item.productName}`, formatMoney(item.subtotal));
+        if (item.cortesia) ww('> CORTESIA', '       ');
         if (item.optionLabel) ww('> ' + item.optionLabel, '       ');
         if (item.note && item.note !== item.optionLabel) {
             const isBebNota = /^\s*[\uD800-\uDFFF\u{1F300}-\u{1FFFF}]/u.test(item.note);
@@ -17882,6 +17898,12 @@ function buildESCPOSData(order) {
 
     // ── TOTALES ─────────────────────────────────────────────────────────────
     wc('  Subtotal', formatMoney(order.subtotal || 0));
+    // Mismo "Ahorro en promos" que muestra el ticket en pantalla (antes la factura impresa no lo traía).
+    const _ahorroEsc = (order.items || []).reduce((sum, it) => {
+        const o = it.originalUnitPrice != null ? Number(it.originalUnitPrice) : null;
+        return (o !== null && o > Number(it.unitPrice || 0)) ? sum + (o - Number(it.unitPrice || 0)) * Number(it.quantity || 1) : sum;
+    }, 0);
+    if (_ahorroEsc > 0) wc('  Ahorro promos', '-' + formatMoney(_ahorroEsc));
     if (Number(order.promo2x1IncrementoFee || 0) > 0) wc('  Empaque 2x1', formatMoney(Number(order.promo2x1IncrementoFee)));
     if (Number(order.pointsRedeemed || 0) > 0) wc(`  Puntos usados (${order.pointsRedeemed})`, `-${formatMoney(Number(order.pointsDiscountAmount || 0))}`);
     if (order.orderType === 'domicilio') wc('  Domicilio', formatMoney(order.deliveryFee || 0));
