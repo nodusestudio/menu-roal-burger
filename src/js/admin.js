@@ -554,7 +554,7 @@ const PosCart = {
         if (!item) return null;
         const prev = item.sinText || '';
         const partes = String(item.note || '').split(' | ').map((s) => s.trim()).filter(Boolean).filter((p) => !(prev && p === prev));
-        const sinText = sinList.length ? `Sin ${sinList.map((s) => s.toLowerCase()).join(', sin ')}` : '';
+        const sinText = posSinTexto(sinList);
         item.sinText = sinText;
         item.note = [...partes, sinText].filter(Boolean).join(' | ');
         const cut = itemKey.indexOf('::sin:');
@@ -674,14 +674,24 @@ const POS_SAL_RE = /salsa|mayonesa|mostaza|ketchup|k[eé]tchup|t[aá]rtara|bbq|b
 function posSinGrupos(ings) {
     return { veg: ings.filter((i) => POS_VEG_RE.test(i)), sal: ings.filter((i) => POS_SAL_RE.test(i)) };
 }
-// ¿Este tramo de una nota es un "Sin ..." generado por el checklist?
+// ¿Este tramo de una nota es un "Sin ..." / "Con <salsa>" / "Poca salsa" generado por el checklist?
 function posEsSegmentoSin(p, ings) {
     const s = String(p || '').trim().toLowerCase();
+    if (/^poca salsa\b/.test(s)) return true;
+    if (/^(sin|con)\s/.test(s) && POS_SALSAS.some((x) => s.includes(`${x.name.toLowerCase()} (`))) return true;
     return /^sin\s/.test(s) && (/^sin (vegetales|salsas)/.test(s) || ings.some((ing) => s.includes(`sin ${ing.toLowerCase()}`)));
 }
 
-// Checklist común (hoja del producto y línea del carrito). Entrega los términos elegidos en minúscula:
-// ['vegetales', 'maíz'] → "Sin vegetales, sin maíz".
+// Términos del checklist → texto: 'tomate' → "sin tomate"; '+la jeva (bbq)' → "con la jeva (bbq)"; '~poca salsa' → tal cual.
+function posSinTexto(terms) {
+    if (!terms.length) return '';
+    const s = terms.map((t) => (t[0] === '+' ? `con ${t.slice(1)}` : t[0] === '~' ? t.slice(1) : `sin ${t}`)).join(', ');
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Checklist común (hoja del producto y línea del carrito). Entrega los términos elegidos en minúscula
+// (ver posSinTexto): ingredientes sueltos o en grupo (vegetales/salsas), "poca salsa" y cada salsa de la casa
+// una por una (sin / con).
 function _posSinChecklist(titleHtml, ings, textoSin, onDone) {
     const low = String(textoSin || '').toLowerCase();
     const g = posSinGrupos(ings);
@@ -689,8 +699,18 @@ function _posSinChecklist(titleHtml, ings, textoSin, onDone) {
         || (/sin vegetales/.test(low) && g.veg.includes(ing)) || (/sin salsas/.test(low) && g.sal.includes(ing));
     const grp = (key, label, arr) => arr.length >= (key === 'sal' ? 1 : 2)
         ? `<label class="pos-sin-opt pos-sin-grp"><input type="checkbox" data-g="${key}"${arr.every(pre) ? ' checked' : ''}><span>${label}</span></label>` : '';
-    const body = `<div class="pos-sin-list">${grp('veg', '🥬 Sin vegetales', g.veg)}${grp('sal', '🥫 Sin salsas', g.sal)}`
-        + ings.map((ing, i) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${i}"${pre(ing) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('') + '</div>';
+    const pocaHtml = `<label class="pos-sin-opt pos-sin-grp"><input type="checkbox" data-poca="1"${/poca salsa/.test(low) ? ' checked' : ''}><span>💧 Poca salsa</span></label>`;
+    const sLabel = (s) => `${s.name} (${s.tipo})`;
+    // Estado de cada salsa de la casa: 0 = sin indicar · 1 = sin · 2 = con
+    const sEstado = POS_SALSAS.map((s) => (low.includes(`sin ${sLabel(s).toLowerCase()}`) ? 1 : low.includes(`con ${sLabel(s).toLowerCase()}`) ? 2 : 0));
+    const sChip = (s, i) => {
+        const st = sEstado[i];
+        const txt = st === 1 ? `✖ Sin ${sLabel(s)}` : st === 2 ? `✔ Con ${sLabel(s)}` : sLabel(s);
+        return `<button type="button" class="pos-salsa-chip pos-sin-salsa${st === 1 ? ' off' : st === 2 ? ' on' : ''}" data-s="${i}">${escapeHtml(txt)}</button>`;
+    };
+    const body = `<div class="pos-sin-list">${grp('veg', '🥬 Sin vegetales', g.veg)}${grp('sal', '🥫 Sin salsas', g.sal)}${pocaHtml}`
+        + ings.map((ing, i) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${i}"${pre(ing) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('') + '</div>'
+        + `<div class="pos-salsas-label" style="font-size:0.74rem;opacity:.75;">Salsas una por una (toca: sin → con → nada)</div><div class="pos-salsas-chips pos-sin-salsas">${POS_SALSAS.map(sChip).join('')}</div>`;
     const modal = _posFloatModal('posSinModal', titleHtml, body, (m) => {
         const marcados = new Set([...m.querySelectorAll('input[data-i]')].filter((c) => c.checked).map((c) => Number(c.dataset.i)));
         const terms = [];
@@ -702,11 +722,15 @@ function _posSinChecklist(titleHtml, ings, textoSin, onDone) {
             }
         });
         ings.forEach((ing, i) => { if (marcados.has(i) && !usados.has(i)) terms.push(ing.toLowerCase()); });
+        if (m.querySelector('input[data-poca]')?.checked) terms.push('~poca salsa');
+        POS_SALSAS.forEach((s, i) => {
+            if (sEstado[i] === 1) terms.push(sLabel(s).toLowerCase());
+            else if (sEstado[i] === 2) terms.push(`+${sLabel(s).toLowerCase()}`);
+        });
         onDone(terms);
     }, 'Listo');
     // Los atajos marcan/desmarcan sus ingredientes; y se encienden solos si se marcan todos a mano.
-    const boxes = (sel) => [...modal.querySelectorAll(sel)];
-    const sync = () => boxes('input[data-g]').forEach((gb) => {
+    const sync = () => modal.querySelectorAll('input[data-g]').forEach((gb) => {
         const arr = gb.dataset.g === 'veg' ? g.veg : g.sal;
         gb.checked = arr.every((ing) => modal.querySelector(`input[data-i="${ings.indexOf(ing)}"]`)?.checked);
     });
@@ -717,7 +741,15 @@ function _posSinChecklist(titleHtml, ings, textoSin, onDone) {
                 const c = modal.querySelector(`input[data-i="${ings.indexOf(ing)}"]`);
                 if (c) c.checked = t.checked;
             });
-        } else sync();
+        } else if (t.dataset.i !== undefined) sync();
+    });
+    const sBox = modal.querySelector('.pos-sin-salsas');
+    sBox.addEventListener('click', (e) => {
+        const b = e.target.closest('.pos-sin-salsa');
+        if (!b) return;
+        const i = Number(b.dataset.s);
+        sEstado[i] = (sEstado[i] + 1) % 3;
+        sBox.innerHTML = POS_SALSAS.map(sChip).join('');
     });
 }
 
@@ -824,7 +856,7 @@ document.getElementById('posUpgradeSinBtn')?.addEventListener('click', () => {
     const actual = partes.find(esSin) || '';
     _posSinChecklist(`Quitar de <strong>${escapeHtml(_posUpgradePending.productName || '')}</strong>`, ings, actual, (terms) => {
         const resto = partes.filter((p) => !esSin(p));
-        if (terms.length) resto.push(`Sin ${terms.join(', sin ')}`);
+        if (terms.length) resto.push(posSinTexto(terms));
         if (ta) ta.value = resto.join(' | ');
     });
 });
@@ -7993,7 +8025,7 @@ function renderPosOrderItems() {
             + (item.optionLabelOrig ? `<span class="pos-item-note">${escapeHtml(item.optionLabelOrig)}</span>` : '')
             + (item.promoLabel && item.sinText ? `<span class="pos-item-note">${escapeHtml(item.sinText)}</span>` : '');
         const _tieneIng = posIngredientesDeItem(item).length > 0;
-        const _hasSin = !!item.sinText || /(^|\s|\|)sin\s/i.test(item.note || '');
+        const _hasSin = !!item.sinText || /(^|\s|\|)(sin\s|poca salsa)/i.test(item.note || '');
         const sinBtnHTML = _tieneIng
             ? `<button type="button" class="pos-item-sin-btn${_hasSin ? ' has-sin' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Quitar ingredientes">➖</button>`
             : '';
