@@ -14405,7 +14405,7 @@ function buildThermalTicketMarkup(order, options = {}) {
     } else if (_ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente' && _ticketPaymentMethod !== 'split') {
         // Medio elegido por el cliente pero aún sin cobrar: se muestra definido, NO como pagado.
         _ticketPaymentRows = `
-                    <div class="ticket-summary-line ticket-total-row${_orderPaid ? ' ticket-paid-row' : ''}">
+                    <div class="ticket-summary-line ticket-total-row ticket-pay-dup${_orderPaid ? ' ticket-paid-row' : ''}">
                         <span>${_orderPaid ? '✓ Pagado' : 'Por cobrar'}</span>
                         <strong>${escapeHtml(paymentMethod)}</strong>
                     </div>`;
@@ -14475,11 +14475,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                             <span>Tipo</span>
                             <span>${escapeHtml(getOrderTypeLabel(order))}</span>
                         </div>
-                        ${printMode ? '' : `<div class="ticket-customer-row">
-                            <span>Estado</span>
-                            <span class="state-pill ${escapeHtml(statusMeta.className)}">${escapeHtml(statusMeta.label)}</span>
-                        </div>`}
-                        <div class="ticket-customer-row">
+                        <div class="ticket-customer-row ticket-pago-row">
                             <span>Pago</span>
                             <span>${(!printMode && _ticketPaymentMethod && _ticketPaymentMethod !== 'pendiente')
                                 ? `<button type="button" class="ticket-copy-btn ticket-copy-btn-inline" data-order-ticket-action="editar_pago" data-order-id="${escapeHtml(order.id)}" title="Tocar para cambiar el método de pago">${escapeHtml(paymentMethod)}</button>`

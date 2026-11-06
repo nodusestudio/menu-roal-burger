@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261106-1507">
+    <link rel="stylesheet" href="style.css?v=20261106-1545">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -13908,6 +13908,15 @@
             #orderTicketPanel .ticket-customer-row > span:first-child { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--ticket-muted); }
             #orderTicketPanel .ticket-customer-row > span:last-child,
             #orderTicketPanel .ticket-customer-row > .ticket-copy-btn { text-align: left; max-width: 100%; justify-self: start; }
+            /* Pago: una sola línea a todo el ancho ("Bancolombia/breve ✓ Pagado"); el estado ya lo muestra la tarjeta, no se repite acá */
+            #orderTicketPanel .ticket-customer-card > .ticket-customer-row:nth-of-type(1) { grid-column: 1; }
+            #orderTicketPanel .ticket-customer-card > .ticket-customer-row:nth-of-type(2) { grid-column: 2; }
+            #orderTicketPanel .ticket-customer-card > .ticket-editpago-link { grid-column: 2; grid-row: 1; justify-self: end; }
+            #orderTicketPanel .ticket-pago-row { grid-column: 1 / -1 !important; flex-direction: row; justify-content: flex-start; align-items: baseline; gap: 8px; }
+            #orderTicketPanel .ticket-pago-row > span:last-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+            #orderTicketPanel .ticket-pago-row .ticket-line-meta { display: inline; margin: 0; color: #4ade80; font-size: 0.72rem; }
+            #orderTicketPanel .ticket-pay-dup.ticket-paid-row { display: none; }
+            #orderTicketPanel .ticket-customer-card .state-pill { display: none; }
             #orderTicketPanel .ticket-name-vacio { font-size: 0.8rem; font-weight: 400; color: var(--ticket-muted); font-style: italic; }
             #orderTicketPanel .ticket-copy-btn-name { font-size: 0.95rem; line-height: 1.2; }
             #orderTicketPanel .ticket-editpago-link { padding: 3px 6px; font-size: 0.72rem; margin: 0; }
@@ -16980,17 +16989,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261106-1507"></script>
+    <script defer src="firebase-config.js?v=20261106-1545"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261106-1507"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261106-1545"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1507"></script>
-    <script defer src="admin.js?v=20261106-1507"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1545"></script>
+    <script defer src="admin.js?v=20261106-1545"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
