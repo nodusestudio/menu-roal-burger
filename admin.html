@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261030-2207">
+    <link rel="stylesheet" href="style.css?v=20261106-1222">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -7406,6 +7406,20 @@
             font-size: 0.71rem;
             flex-shrink: 0;
         }
+        /* Quitar ingredientes + nota del ticket + salsas para llevar */
+        .pos-item-sin-btn { background: none; border: 1px solid rgba(255,255,255,0.18); color: #ffb27a; border-radius: 8px; font-size: 0.8rem; padding: 2px 7px; cursor: pointer; line-height: 1.2; }
+        .pos-item-sin-btn.has-sin { background: rgba(255,122,26,0.22); border-color: rgba(255,122,26,0.7); }
+        .pos-sin-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0 12px; max-height: 46vh; overflow-y: auto; }
+        .pos-sin-opt { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-radius: 9px; font-size: 0.82rem; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.14); cursor: pointer; color: inherit; }
+        .pos-sin-opt input { width: 17px; height: 17px; flex-shrink: 0; accent-color: #ff7a1a; }
+        .pos-sin-opt:has(input:checked) { background: rgba(255,90,60,0.2); border-color: rgba(255,90,60,0.65); text-decoration: line-through; }
+        .pos-order-extra { margin: 10px 0 4px; display: flex; flex-direction: column; gap: 8px; }
+        .pos-order-note { width: 100%; box-sizing: border-box; resize: none; min-height: 38px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.07); color: inherit; font: inherit; font-size: 0.85rem; }
+        .pos-salsas-label { font-size: 0.74rem; opacity: 0.75; margin-bottom: 4px; }
+        .pos-salsas-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .pos-salsa-chip { padding: 5px 10px; border-radius: 999px; font-size: 0.78rem; cursor: pointer; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); color: inherit; }
+        .pos-salsa-chip small { opacity: 0.65; font-size: 0.85em; }
+        .pos-salsa-chip.on { background: rgba(255,122,26,0.28); border-color: #ff7a1a; font-weight: 700; }
         .pos-extra-chip-del {
             background: none;
             border: none;
@@ -16001,6 +16015,13 @@
                 <div id="posCartTicketInfo" class="pos-cart-ticket-info" hidden></div>
                 <div class="pos-drawer-body">
                     <div id="internalOrderItemsSummary" class="pos-items-list"></div>
+                    <div class="pos-order-extra">
+                        <textarea id="posOrderNote" class="pos-order-note" rows="1" maxlength="400" placeholder="Nota del ticket (aplica a todo el pedido): ej. todo sin tomate…"></textarea>
+                        <div id="posSalsasBox" hidden>
+                            <div class="pos-salsas-label">🥫 Salsas para llevar</div>
+                            <div id="posSalsasChips" class="pos-salsas-chips"></div>
+                        </div>
+                    </div>
                     <div class="pos-totals">
                         <div class="pos-total-row">
                             <span>Subtotal</span>
@@ -16917,17 +16938,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261030-2207"></script>
+    <script defer src="firebase-config.js?v=20261106-1222"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261030-2207"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261106-1222"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261030-2207"></script>
-    <script defer src="admin.js?v=20261030-2207"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1222"></script>
+    <script defer src="admin.js?v=20261106-1222"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

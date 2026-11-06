@@ -546,6 +546,30 @@ const PosCart = {
         return item;
     },
 
+    // "Quitar ingredientes": escribe "Sin tomate, sin maíz" dentro de la nota de la línea (así sale solo en
+    // todos los tickets). La línea cambia de clave para que otra hamburguesa igual SIN quitados no se
+    // fusione con ella, y los hijos (combo/bebida) siguen colgando de la clave nueva.
+    setSinIngredientes(itemKey, sinList) {
+        const item = internalOrderItems.find((i) => i.itemKey === itemKey);
+        if (!item) return null;
+        const prev = item.sinText || '';
+        const partes = String(item.note || '').split(' | ').map((s) => s.trim()).filter(Boolean).filter((p) => !(prev && p === prev));
+        const sinText = sinList.length ? `Sin ${sinList.map((s) => s.toLowerCase()).join(', sin ')}` : '';
+        item.sinText = sinText;
+        item.note = [...partes, sinText].filter(Boolean).join(' | ');
+        const cut = itemKey.indexOf('::sin:');
+        const baseKey = cut >= 0 ? itemKey.slice(0, cut) : itemKey;
+        let newKey = sinText ? `${baseKey}::sin:${sinList.join('+')}` : baseKey;
+        if (newKey !== itemKey) {
+            let n = 2;
+            const unique = newKey;
+            while (internalOrderItems.some((i) => i !== item && i.itemKey === newKey)) newKey = `${unique}~${n++}`;
+            internalOrderItems.filter((i) => i.parentKey === itemKey).forEach((c) => { c.parentKey = newKey; });
+            item.itemKey = newKey;
+        }
+        return item;
+    },
+
     // Elimina el ítem y sus hijos (extras/acompañantes vinculados por parentKey).
     removeItem(itemKey) {
         const item = internalOrderItems.find((i) => i.itemKey === itemKey);
@@ -604,6 +628,83 @@ const PosCart = {
 };
 
 let _changeMesaOrderId = null; // ID del pedido al que se le va a cambiar la mesa
+
+// ── Nota del ticket + salsas para llevar + quitar ingredientes (POS) ─────────────────────────
+// Nombres oficiales de las salsas (etiquetas de los teteros). "Al azar" = el cliente no eligió.
+const POS_SALSAS = [
+    { name: 'La Catira', tipo: 'ajo' },
+    { name: 'La Chama', tipo: 'tártara' },
+    { name: 'La Fresa', tipo: 'rosada' },
+    { name: 'La Jeva', tipo: 'BBQ' },
+    { name: 'La Pana', tipo: 'ahumada' }
+];
+const POS_SALSAS_AZAR = 'Al azar';
+let posOrderNote = '';   // nota general del pedido (todo el ticket)
+let posSalsas = [];      // [] = sin indicar · ['Al azar'] · ['La Catira', ...]
+
+// Lista de ingredientes a partir de la descripción del producto (misma lógica que usa la TV).
+function posParseIngredientes(texto) {
+    const t = String(texto || '')
+        .replace(/[☀-➿️]|[\uD83C-\uDBFF][\uDC00-\uDFFF]/g, ',')
+        .replace(/[\r\n•·]+/g, ',')
+        .replace(/\.\s+/g, ',')
+        .replace(/[:()]/g, ',');
+    const salida = [];
+    t.split(',').forEach((parte) => {
+        parte.split(/\s+y\s+/i).forEach((raw) => {
+            let it = raw.trim().replace(/^(incluye|lleva|con|y|acompa[nñ]ado de)\s+/i, '').replace(/[.;]+$/, '').trim();
+            if (!it || it.length < 3 || it.length > 34) return;
+            if (/^(tama[nñ]o|tama[nñ]os|disponible|incluye|pan |salsas aparte|una |un |peque[nñ]a|mediana|grande|el cl[aá]sico|\d+\s*(gr|g|kg|ml|cm)\b)/i.test(it)) return;
+            it = it.charAt(0).toUpperCase() + it.slice(1);
+            if (!salida.includes(it)) salida.push(it);
+        });
+    });
+    return salida.slice(0, 14);
+}
+
+function posIngredientesDeItem(item) {
+    if (!item || item.isComboEspecial || item.codigoDiaCanjeId) return [];
+    const base = String(item.productId || '').split('::')[0];
+    const prod = productsState.find((p) => p.id === base);
+    return prod ? posParseIngredientes(prod.descripcion || prod.description || '') : [];
+}
+
+function posSetOrderExtras(note, salsas) {
+    posOrderNote = String(note || '');
+    posSalsas = Array.isArray(salsas) ? salsas.slice() : [];
+    renderPosOrderExtras();
+}
+
+function renderPosOrderExtras() {
+    const noteEl = document.getElementById('posOrderNote');
+    if (noteEl && document.activeElement !== noteEl && noteEl.value !== posOrderNote) noteEl.value = posOrderNote;
+    const box = document.getElementById('posSalsasBox');
+    const chips = document.getElementById('posSalsasChips');
+    if (!box || !chips) return;
+    const tipo = (typeof posTicketConfig !== 'undefined' && posTicketConfig?.orderType) || (typeof _posEditPrefill !== 'undefined' && _posEditPrefill?.orderType) || '';
+    box.hidden = tipo === 'mesa';
+    chips.innerHTML = POS_SALSAS.map((s) => `<button type="button" class="pos-salsa-chip${posSalsas.includes(s.name) ? ' on' : ''}" data-salsa="${escapeHtml(s.name)}">${escapeHtml(s.name)} <small>(${escapeHtml(s.tipo)})</small></button>`).join('')
+        + `<button type="button" class="pos-salsa-chip${posSalsas.includes(POS_SALSAS_AZAR) ? ' on' : ''}" data-salsa="${POS_SALSAS_AZAR}">🎲 ${POS_SALSAS_AZAR}</button>`;
+}
+
+document.getElementById('posOrderNote')?.addEventListener('input', (e) => { posOrderNote = e.target.value; });
+document.getElementById('posSalsasChips')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pos-salsa-chip');
+    if (!btn) return;
+    const name = btn.dataset.salsa;
+    if (name === POS_SALSAS_AZAR) {
+        posSalsas = posSalsas.includes(name) ? [] : [name];
+    } else {
+        const sin = posSalsas.filter((s) => s !== POS_SALSAS_AZAR);
+        posSalsas = sin.includes(name) ? sin.filter((s) => s !== name) : [...sin, name];
+    }
+    renderPosOrderExtras();
+});
+
+// Texto que se guarda en el pedido: '' si no se indicó nada.
+function posSalsasTexto(list = posSalsas) {
+    return Array.isArray(list) && list.length ? list.join(', ') : '';
+}
 
 let menuUpgradesConfig = null;
 let _posUpgradePending = null;
@@ -3206,6 +3307,9 @@ function normalizeOrder(raw) {
         meseroId: String(raw.meseroId || '').trim() || null,
         meseroName: String(raw.meseroName || '').trim() || null,
         barrioEspecial: String(raw.barrioEspecial || '').trim() || null,
+        // Nota general del ticket y salsas para llevar (POS): el ticket los lee, por eso viajan aquí.
+        orderNote: String(raw.orderNote || '').trim(),
+        salsasLlevar: Array.isArray(raw.salsasLlevar) ? raw.salsasLlevar.map(String) : [],
         salirARecibirConfirmado: raw.salirARecibirConfirmado === true,
         // Campos que el ticket / la edición de pedidos leen pero que normalizeOrder descartaba, por
         // lo que NUNCA llegaban (el ticket no mostraba el "Empaque 2×1", los puntos
@@ -7613,6 +7717,48 @@ function renderPosBottomBar() {
     }
 }
 
+// "Quitar ingredientes": panel pequeño con casillas; lo marcado sale en el ticket como "Sin X, sin Y".
+function _openPosSinModal(item) {
+    const existing = document.getElementById('posSinModal');
+    if (existing) existing.remove();
+    const ings = posIngredientesDeItem(item);
+    if (!ings.length) return;
+    const noteLow = String(item.note || '').toLowerCase();
+    const marcado = (ing) => noteLow.includes(`sin ${ing.toLowerCase()}`);
+    const modal = document.createElement('div');
+    modal.id = 'posSinModal';
+    modal.className = 'pos-note-modal-overlay';
+    modal.innerHTML = `
+        <div class="pos-note-modal-box">
+            <p class="pos-note-modal-title">Quitar de <strong>${escapeHtml(item.productName)}</strong></p>
+            <div class="pos-sin-list">
+                ${ings.map((ing, i) => `<label class="pos-sin-opt"><input type="checkbox" data-i="${i}"${marcado(ing) ? ' checked' : ''}><span>${escapeHtml(ing)}</span></label>`).join('')}
+            </div>
+            <div class="pos-note-modal-actions">
+                <button type="button" class="pos-note-cancel-btn">Cancelar</button>
+                <button type="button" class="pos-note-save-btn">Listo</button>
+            </div>
+        </div>`;
+    modal.querySelector('.pos-note-cancel-btn').addEventListener('click', () => modal.remove());
+    modal.querySelector('.pos-note-save-btn').addEventListener('click', () => {
+        // Los "sin X" ya presentes que no están en la lista de ingredientes (escritos a mano) se respetan.
+        const elegidos = [...modal.querySelectorAll('input[type=checkbox]')].filter((c) => c.checked).map((c) => ings[Number(c.dataset.i)]);
+        // Pedido cargado desde Firestore: el tramo "Sin ..." ya viene dentro de la nota; se reconoce para
+        // reemplazarlo (no duplicarlo) y no se toca el resto de la nota.
+        if (!item.sinText) {
+            const previo = String(item.note || '').split(' | ').map((p) => p.trim())
+                .find((p) => /^sin\s/i.test(p) && ings.some((ing) => p.toLowerCase().includes(`sin ${ing.toLowerCase()}`)));
+            if (previo) item.sinText = previo;
+        }
+        PosCart.setSinIngredientes(item.itemKey, elegidos);
+        modal.remove();
+        renderPosOrderItems();
+        renderPosTotals();
+    });
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+}
+
 function _openPosNoteModal(item, itemKey, container) {
     const existing = document.getElementById('posNoteModal');
     if (existing) existing.remove();
@@ -7698,6 +7844,7 @@ function updatePosItemRow(itemKey) {
 
 function renderPosOrderItems() {
     if (typeof _updatePosSaveBtnLabel === 'function') _updatePosSaveBtnLabel();
+    renderPosOrderExtras();
     const itemsContainer = document.getElementById('internalOrderItemsSummary');
     if (!itemsContainer) {
         return;
@@ -7733,13 +7880,20 @@ function renderPosOrderItems() {
             + (item.promoLabel
             ? `<span class="pos-item-promo-badge">🏷 ${escapeHtml(item.promoLabel)}</span>`
             : (item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''))
-            + (item.optionLabelOrig ? `<span class="pos-item-note">${escapeHtml(item.optionLabelOrig)}</span>` : '');
+            + (item.optionLabelOrig ? `<span class="pos-item-note">${escapeHtml(item.optionLabelOrig)}</span>` : '')
+            + (item.promoLabel && item.sinText ? `<span class="pos-item-note">${escapeHtml(item.sinText)}</span>` : '');
+        const _tieneIng = posIngredientesDeItem(item).length > 0;
+        const _hasSin = !!item.sinText || /(^|\s|\|)sin\s/i.test(item.note || '');
+        const sinBtnHTML = _tieneIng
+            ? `<button type="button" class="pos-item-sin-btn${_hasSin ? ' has-sin' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Quitar ingredientes">➖ Quitar</button>`
+            : '';
         return `<div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
             <div class="pos-item-name">
                 ${escapeHtml(item.productName)}
                 ${noteHTML}
             </div>
             <div class="pos-item-qty-price">
+                ${sinBtnHTML}
                 <button type="button" class="pos-item-cortesia-btn${item.cortesia ? ' on' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="${item.cortesia ? 'Quitar cortesía' : 'Marcar como cortesía'}">🎁</button>
                 <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
                 <div class="pos-item-qty">
@@ -7774,6 +7928,12 @@ function renderPosOrderItems() {
 
     if (itemsContainer.dataset.listenerAttached !== 'true') {
         itemsContainer.addEventListener('click', (event) => {
+            const sinBtn = event.target.closest('.pos-item-sin-btn');
+            if (sinBtn) {
+                const sinItem = internalOrderItems.find((i) => i.itemKey === sinBtn.dataset.itemKey);
+                if (sinItem) _openPosSinModal(sinItem);
+                return;
+            }
             const commentBtn = event.target.closest('.pos-item-comment-btn');
             if (commentBtn) {
                 const key = commentBtn.dataset.itemKey;
@@ -8674,6 +8834,8 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
             total: (orderType === 'domicilio' ? subtotal + deliveryFeeVal : subtotal) + promo2x1IncrementoFee,
             currency: 'COP',
             summaryMessage: '',
+            orderNote: String(posOrderNote || '').trim(),
+            salsasLlevar: orderType === 'mesa' ? [] : posSalsas.slice(),
             createdAt: isEditing ? editData.createdAt : firestoreNow(),
             updatedAt: firestoreNow()
         };
@@ -8839,6 +9001,7 @@ async function editAdminPosOrder(order) {
         openInternalOrderModal();
 
         internalOrderItems = posItems;
+        posSetOrderExtras(order.orderNote, order.salsasLlevar);
         // Se muestra ya en el encabezado y en el carrito aunque el cajero no llegue a
         // confirmar el modal de tipo/cliente que se abre abajo — antes dependía de eso
         // y mientras tanto no se veía a nombre de quién estaba el pedido que se edita.
@@ -8885,6 +9048,7 @@ function openOrderItemsEditor(order) {
         openInternalOrderModal();
 
         internalOrderItems = posItems;
+        posSetOrderExtras(order.orderNote, order.salsasLlevar);
         const editItemsLabel = `Editando productos #${order.code}${order.customerName ? ' · ' + order.customerName : ''}`;
         // Solo para pre-rellenar el modal de tipo/cliente si el cajero abre "✎ Info" durante
         // esta edición — no toca ningún otro pedido en curso (ver comentario en editAdminPosOrder).
@@ -8960,6 +9124,8 @@ async function saveOrderItemsEdit() {
             cortesiaTotal: _cortOf(internalOrderItems).total,
             cortesiaCount: _cortOf(internalOrderItems).count,
             total,
+            orderNote: String(posOrderNote || '').trim(),
+            salsasLlevar: posSalsas.slice(),
             ...infoFields
         });
 
@@ -8989,6 +9155,7 @@ function closeInternalOrderModal(processed = false) {
     if (processed || wasEditing) {
         internalOrderItems = [];
         posTicketConfig = null;
+        posSetOrderExtras('', []);
     }
 
     _editingOrderData = null;
@@ -14181,6 +14348,16 @@ function buildThermalTicketMarkup(order, options = {}) {
                         <tbody>${rows}</tbody>
                     </table>
                 </section>
+                ${order.orderNote ? `
+                <section class="ticket-section">
+                    <div class="ticket-section-title">Nota del pedido</div>
+                    <div class="ticket-address-text" style="font-weight:700;">${escapeHtml(order.orderNote)}</div>
+                </section>` : ''}
+                ${posSalsasTexto(order.salsasLlevar) ? `
+                <section class="ticket-section">
+                    <div class="ticket-section-title">Salsas para llevar</div>
+                    <div class="ticket-address-text" style="font-weight:700;">${escapeHtml(posSalsasTexto(order.salsasLlevar))}</div>
+                </section>` : ''}
 
                 <section class="ticket-total">
                     <div class="ticket-summary-line ticket-total-row">
@@ -17515,6 +17692,14 @@ function buildESCPOSData(order) {
             ww((isBebNota ? 'Beb: ' : 'Nota: ') + notaText, '       ');
         }
     }
+    if (order.orderNote) {
+        sep();
+        pb(ESC, 0x45, 0x01); ww('NOTA DEL PEDIDO: ' + order.orderNote, '  '); pb(ESC, 0x45, 0x00);
+    }
+    if (posSalsasTexto(order.salsasLlevar)) {
+        sep();
+        pb(ESC, 0x45, 0x01); ww('SALSAS: ' + posSalsasTexto(order.salsasLlevar), '  '); pb(ESC, 0x45, 0x00);
+    }
     sep2();
 
     // ── TOTALES ─────────────────────────────────────────────────────────────
@@ -17797,6 +17982,8 @@ function buildKitchenTicketHtml(order) {
                 ${customerLine}
                 ${addressLine}
                 <div class="k-products">${products}</div>
+                ${order.orderNote ? `<div class="k-note" style="margin:6px 0;padding:5px 6px;border:2px solid #000;font-weight:700;font-size:1.05em;overflow-wrap:anywhere;">⚠ NOTA DEL PEDIDO: ${escapeHtml(order.orderNote)}</div>` : ''}
+                ${posSalsasTexto(order.salsasLlevar) ? `<div style="margin:6px 0;padding:5px 6px;border:2px solid #000;font-weight:700;overflow-wrap:anywhere;">🥫 SALSAS: ${escapeHtml(posSalsasTexto(order.salsasLlevar))}</div>` : ''}
                 <div class="k-footer">— Ticket de Cocina —</div>
             </article>
         </div>`;
