@@ -13850,6 +13850,15 @@ function _waLineasPedido(order, conPrecio) {
     return filas.join('\n') || '• (sin detalle)';
 }
 
+// Nota general del pedido y salsas para llevar (POS): el cliente tiene que verlas al confirmar su pedido.
+function _waExtrasPedido(order) {
+    const l = [];
+    if (order.orderNote) l.push(`📝 *Nota del pedido:* ${order.orderNote}`);
+    const sal = posSalsasTexto(order.salsasLlevar);
+    if (sal) l.push(`🥫 *Salsas:* ${sal}`);
+    return l.length ? `\n${l.join('\n')}` : '';
+}
+
 // options.includeItems === false → omite el bloque "📋 Tu pedido" (se usa en el carrusel del
 // ticket para el botón "En preparación", donde los productos ya se confirmaron con el mensaje
 // de "Confirmación"). Por defecto incluye los productos (comportamiento histórico).
@@ -13876,7 +13885,8 @@ function buildOrderWhatsAppMessage(order, options = {}) {
         ? '¡Gracias por preferirnos! En unos 25 min ya puedes pasar por tu pedido 🥡'
         : '¡Gracias por preferirnos! Pronto estará en tu puerta 🛵';
 
-    return `${saludo}\n✅ Tu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥${itemsBlock}\n\n${_waSep()}\n${pagoLineas}\n${tiempoLine}\n\n${cierre}`;
+    const extrasBlock = _waExtrasPedido(order);
+    return `${saludo}\n✅ Tu pedido *${codigo}* ya está en preparación en nuestra cocina 🍔🔥${itemsBlock}${extrasBlock ? `\n${extrasBlock}` : ''}\n\n${_waSep()}\n${pagoLineas}\n${tiempoLine}\n\n${cierre}`;
 }
 
 // Mensaje #1 del carrusel del ticket: detalle COMPLETO del pedido (productos + notas,
@@ -13925,7 +13935,7 @@ function buildOrderConfirmationMessage(order) {
         pagoLinea = `💳 *Medio de pago:* ${getOrderPaymentLabel(order)}`;
     }
 
-    return `${saludo}\nRecibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n${_waSep()}\n📋 *TU PEDIDO*\n${lineas}\n\n${_waSep()}\n🧾 *RESUMEN*\n${resumen.join('\n')}\n\n${_waSep()}\n${entregaLinea}\n${pagoLinea}\n\n✅ ¿Está todo bien? Respóndenos *SÍ* y lo enviamos a cocina.`;
+    return `${saludo}\nRecibimos tu pedido *${codigo}*.\nAntes de mandarlo a cocina, confírmanos que todo esté correcto por favor 🙏\n\n${_waSep()}\n📋 *TU PEDIDO*\n${lineas}${_waExtrasPedido(order)}\n\n${_waSep()}\n🧾 *RESUMEN*\n${resumen.join('\n')}\n\n${_waSep()}\n${entregaLinea}\n${pagoLinea}\n\n✅ ¿Está todo bien? Respóndenos *SÍ* y lo enviamos a cocina.`;
 }
 
 // Enlace de WhatsApp: SIEMPRE api.whatsapp.com/send, nunca wa.me. La redirección de wa.me a
@@ -14132,7 +14142,7 @@ Nombre: ${customerName}
 Direccion: ${deliveryLabel}
 Telefono: ${phoneLabel}
 Pedido:
-${itemsLabel}
+${itemsLabel}${order.orderNote ? `\nNota del pedido: ${order.orderNote}` : ''}${posSalsasTexto(order.salsasLlevar) ? `\nSalsas: ${posSalsasTexto(order.salsasLlevar)}` : ''}
 ${pagoLine}
 
 Quedo atento para poder procesar tu pedido.`;
@@ -14958,6 +14968,10 @@ function createOrderCard(order) {
     const promoHeaderBadge = promoTags.length
         ? `<span class="koc-promo-2x1-badge">🏷 2×1</span>`
         : '';
+    // Nota general / salsas / "sin ..." en algún producto: un solo 📝 en la tarjeta para que no pasen desapercibidos.
+    const _tieneNotas = !!order.orderNote || (order.salsasLlevar || []).length > 0
+        || (order.items || []).some((it) => /(^|\|)\s*(sin\s|poca salsa|con la )/i.test(it.note || ''));
+    const notaBadge = _tieneNotas ? `<span class="koc-promo-2x1-badge" title="Este pedido trae notas, salsas o ingredientes por quitar">📝</span>` : '';
     const promoItemsRow = promoTags.length
         ? `<div class="koc-promo-row">${promoTags.map(t => `<span class="koc-promo-item-label">${escapeHtml(t)}</span>`).join('')}</div>`
         : '';
@@ -15027,6 +15041,7 @@ function createOrderCard(order) {
             ${getMeseroTag(order)}
             ${sinMesaBadge}
             ${promoHeaderBadge}
+            ${notaBadge}
             <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
         </div>
         ${courierChip}
@@ -25706,6 +25721,16 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate, opts = 
     const _despues = [];
     const _pedirImpresion = async (o) => { if (opts.despues) _despues.push(o); else await _promptPrintReceiptAfterCharge(o); };
     try {
+        // Otro equipo pudo cobrar este mismo pedido mientras esta ventana estaba abierta: cobrar de nuevo pisaría el medio
+        // de pago y la hora del primer cobro. Se detecta porque el paidAt cambió desde que se abrió la ventana.
+        // (Corregir un pago ya hecho —receiveOrder false— y el cobro por QR sí siguen permitidos.)
+        const _frescoEnEstado = ordersState.find((o) => o.id === order.id);
+        const _frescoPaidMs = _frescoEnEstado ? (_tsMs(_frescoEnEstado.paidAt) || 0) : 0;
+        if (receiveOrder && !opts.despues && _frescoPaidMs && _frescoPaidMs !== _pfPaidAtAlAbrir) {
+            showNotice(`El pedido #${order.code} ya fue cobrado (${getOrderPaymentLabel(_frescoEnEstado)}). Revísalo antes de cobrarlo de nuevo.`, 'error');
+            try { await reloadDataAndRender(); } catch (_) { /* se refresca solo */ }
+            return;
+        }
         const todayStr = new Date().toISOString().split('T')[0];
         const paidSinceApertura = ordersState.filter((o) => {
             if (!o.paidAt) return false;
@@ -25963,7 +25988,9 @@ function _pfEnterSplitMode() {
     _pfRenderSplitParts();
 }
 
+let _pfPaidAtAlAbrir = 0; // paidAt del pedido cuando se abrió la ventana de cobro (para detectar un cobro hecho en otro equipo)
 function openDeliveryPaymentModal(order, receiveOrder = true) {
+    _pfPaidAtAlAbrir = _tsMs(order.paidAt) || 0;
     _pfOrder = order;
     _pfReceiveOrder = receiveOrder;
     _pfSelectedMethod = null;
