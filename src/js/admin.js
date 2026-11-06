@@ -17678,7 +17678,10 @@ async function anularOrder(orderId) {
         anulado: true,
         anuladoAt: firestoreNow(),
         status: 'entregado',
-        deliveredAt: firestoreNow()
+        deliveredAt: firestoreNow(),
+        // Si el pedido ya estaba cobrado, además se marca "voided": así Caja Diaria lo revierte y el cierre no cuenta esa
+        // plata (antes un pedido cobrado y anulado seguía sumando como ingreso).
+        ...(_prev && isOrderPaid(_prev) ? { voided: true, voidedAt: firestoreNow() } : {})
     });
     if (_pedidoContado(_prev)) _ajustarStatsCliente(_prev.customerPhoneDigits, -1, -getOrderDisplayTotal(_prev));
 }
@@ -28128,7 +28131,9 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         // Archivar (no borrar) los pedidos procesados de la jornada cerrada: se copian a
         // ORDERS_ARCHIVE_COLLECTION y luego se quitan de la bandeja activa, así Tickets e
         // Historial los pueden seguir mostrando aunque la jornada ya haya cerrado.
-        const procesados = paid.filter((o) => o.status === 'entregado' || o.status === 'cancelado' || o.anulado || o.voided);
+        // Los pedidos anulados que nunca se cobraron no entran en `paid`: sin esto se quedaban para siempre en la bandeja activa.
+        const _anuladosSinCobro = ordersState.filter((o) => o.anulado === true && !paid.some((p) => p.id === o.id));
+        const procesados = [...paid.filter((o) => o.status === 'entregado' || o.status === 'cancelado' || o.anulado || o.voided), ..._anuladosSinCobro];
         if (procesados.length) {
             const CHUNK = 200; // 2 ops por pedido (set + delete); límite de batch es 500
             for (let i = 0; i < procesados.length; i += CHUNK) {
