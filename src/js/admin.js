@@ -15281,6 +15281,11 @@ function _mesaSumaActualizar(mesaOrders) {
         + `<button type="button" class="mesa-suma-limpiar" id="mesaSumaLimpiar">Limpiar</button>`;
 }
 
+// Dibujo de una mesa vista desde arriba (con sus 4 sillas) y el número adentro; el color lo da la tarjeta (libre/ocupada).
+function _mesaSvg(num) {
+    return `<svg class="mesa-svg" viewBox="0 0 64 52" width="58" height="47" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="20" y="2" width="24" height="7" rx="3.5" opacity=".45"/><rect x="20" y="43" width="24" height="7" rx="3.5" opacity=".45"/><rect x="2" y="14" width="7" height="24" rx="3.5" opacity=".45"/><rect x="55" y="14" width="7" height="24" rx="3.5" opacity=".45"/></g><rect x="12" y="11" width="40" height="30" rx="10" fill="currentColor" fill-opacity=".14" stroke="currentColor" stroke-width="1.6"/><text x="32" y="27" text-anchor="middle" dominant-baseline="central" font-size="19" font-weight="700" fill="currentColor" font-family="Oswald, sans-serif">${num}</text></svg>`;
+}
+
 function renderMesaMap(container, mesaOrders) {
     if (!container) return;
     _mesaSumaOrders = mesaOrders;
@@ -15292,17 +15297,17 @@ function renderMesaMap(container, mesaOrders) {
     container.innerHTML = RECEPTION_MESA_NUMBERS.map((num) => {
         const order = byMesa.get(num);
         if (_mesaSumaActiva) {
-            if (!order) return `<button type="button" class="mesa-map-tile is-libre is-sin-suma" disabled aria-label="Mesa ${num} libre"><span class="mesa-map-num">${num}</span><span class="mesa-map-label">Libre</span></button>`;
+            if (!order) return `<button type="button" class="mesa-map-tile is-libre is-sin-suma" disabled aria-label="Mesa ${num} libre">${_mesaSvg(num)}<span class="mesa-map-num mesa-num-oculto">${num}</span><span class="mesa-map-label">Libre</span></button>`;
             const on = _mesaSumaSel.has(num);
             return `<button type="button" class="mesa-map-tile is-ocupada is-sumable${on ? ' is-suma-on' : ''}" data-mesa-sum="${num}" aria-pressed="${on ? 'true' : 'false'}">
-                <span class="mesa-map-num">${on ? '✓ ' : ''}${num}</span>
+                ${_mesaSvg(num)}<span class="mesa-map-num mesa-num-oculto">${on ? '✓ ' : ''}${num}</span>
                 <span class="mesa-map-label">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
                 <span class="mesa-map-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
             </button>`;
         }
         if (!order) {
             return `<button type="button" class="mesa-map-tile is-libre" data-mesa-number="${num}" title="Nuevo pedido en Mesa ${num}">
-                <span class="mesa-map-num">${num}</span>
+                ${_mesaSvg(num)}<span class="mesa-map-num mesa-num-oculto">${num}</span>
                 <span class="mesa-map-label">Libre</span>
             </button>`;
         }
@@ -15316,7 +15321,7 @@ function renderMesaMap(container, mesaOrders) {
                 ${(_meseroSession || isOrderPaid(order)) ? '' : `<span class="mesa-tile-act mesa-tile-act--cobrar" role="button" tabindex="0" data-tile-act="cobrar" data-order-id="${escapeHtml(order.id)}" title="Cobrar la mesa ${num}" aria-label="Cobrar la mesa ${num}">💰</span>`}
             </span>` : '';
         return `<button type="button" class="mesa-map-tile is-ocupada${isSelected ? ' is-selected' : ''}" data-order-id="${escapeHtml(order.id)}">
-            <span class="mesa-map-num">${num}</span>
+            ${_mesaSvg(num)}<span class="mesa-map-num mesa-num-oculto">${num}</span>
             <span class="mesa-map-label">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
             <span class="mesa-map-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
             ${acciones}

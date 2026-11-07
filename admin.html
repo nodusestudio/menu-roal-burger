@@ -13561,6 +13561,11 @@
         #openCreateInternalOrderBtn { display: none !important; }
 
         /* ── Mesa ocupada: acciones directas en la tarjeta (agregar productos / cobrar) ── */
+        .mesa-num-oculto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+        .mesa-svg { width: 50px; height: 41px; flex-shrink: 0; }
+        .mesa-map-tile.is-libre .mesa-svg { color: rgba(126, 211, 148, 0.55); }
+        .mesa-map-tile.is-ocupada .mesa-svg { color: #eafff6; }
+        .mesa-map-tile.is-suma-on .mesa-svg { color: #fff; }
         .mesa-tile-actions { display: flex; gap: 6px; justify-content: center; margin-top: 4px; }
         .mesa-tile-act { min-width: 30px; min-height: 26px; padding: 0 6px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: rgba(255,255,255,0.6); display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; line-height: 1; cursor: pointer; user-select: none; opacity: 0.75; }
         .mesa-tile-act:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.22); color: #fff; opacity: 1; }
