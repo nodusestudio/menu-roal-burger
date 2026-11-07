@@ -34807,6 +34807,13 @@ document.querySelector('[data-tab-panel="cuponpana"]')?.addEventListener('click'
 
 const _meseroLinkToken = new URLSearchParams(window.location.search).get('mesero');
 if (_meseroLinkToken) {
+    // Si el mesero guarda el enlace en la pantalla de inicio, la app debe abrirse en SU enlace (con el token), no en /fodexa
+    // (que pide correo y contraseña de administrador): se cambia el manifiesto por uno que lleva el token. Ver api/mesero-manifest.js.
+    try {
+        const man = document.querySelector('link[rel="manifest"]');
+        if (man && /^[A-Za-z0-9_-]{8,80}$/.test(_meseroLinkToken)) man.setAttribute('href', `/mesero.webmanifest?t=${encodeURIComponent(_meseroLinkToken)}`);
+        document.title = 'FODEXA Mesero';
+    } catch (_) { /* sin manifiesto propio la página sigue funcionando, solo se instalaría con el inicio del admin */ }
     initMeseroMode(_meseroLinkToken);
 } else {
     initAdmin();
