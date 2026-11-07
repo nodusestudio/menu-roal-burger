@@ -974,7 +974,8 @@ let clipboardToastTimer = null;
 let activeMobileOrdersLane = '';
 let adminTitleBlinkTimer = null;
 let adminTitleBlinkState = false;
-const adminBaseTitle = document.title || 'FODEXA | Admin';
+// En modo mesero (?mesero=) el título es "FODEXA Mesero": es el nombre que sugiere el teléfono al guardar el enlace en la pantalla de inicio.
+const adminBaseTitle = new URLSearchParams(window.location.search).get('mesero') ? 'FODEXA Mesero' : (document.title || 'FODEXA | Admin');
 let metricsEventsState = {
     total: 0,
     whatsapp: 0,
