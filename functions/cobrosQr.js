@@ -125,7 +125,7 @@ async function confirmarManual(db, cobroId, uid, ahora = Date.now()) {
     if (tv.exists && tv.data().cobroId === cobroId) {
         await tvRef.update({ estado: 'pagado', pagador: nombreCorto(cliente), pagadoMs: ahora, total, parcial: !!cobro.parcial, pedidoTotal: Number(cobro.pedidoTotal) || total, actualizado: FieldValue.serverTimestamp() });
     }
-    if (esMesa) return { ok: true, estado: 'pagado', esperaNombre: true };
+    // El cajero tiene al cliente enfrente: la voz agradece DE UNA VEZ (en mesa, sin nombre; cuando llegue el correo la TV pone el nombre real).
     await db.collection('anuncios_caja').doc(cobroId).set({ nombre: cliente || 'Cliente', monto: total, frase: frasePago(cliente, total), cobroId, creadoEn: FieldValue.serverTimestamp(), prueba: false });
     return { ok: true, estado: 'pagado' };
 }
