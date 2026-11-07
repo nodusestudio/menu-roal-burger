@@ -810,7 +810,7 @@ function renderPosOrderExtras() {
     if (noteBtn) {
         const n = posOrderNote.trim();
         noteBtn.classList.toggle('has-val', !!n);
-        noteBtn.textContent = n ? `💬 ${n.length > 22 ? n.slice(0, 21) + '…' : n}` : '💬 Agregar comentario';
+        noteBtn.textContent = n ? `💬 ${n.length > 22 ? n.slice(0, 21) + '…' : n}` : '💬 Comentario';
         noteBtn.title = n || 'Comentario para todo el ticket';
     }
     const salBtn = document.getElementById('posSalsasBtn');
@@ -22876,7 +22876,7 @@ function renderPosTypeBar() {
             const activa = tipo === 'mesa' && Number(cfg.mesaNumber) === n;
             mesas += `<button type="button" class="pos-typebar-mesa${activa ? ' is-active' : ''}${ocupada ? ' is-ocupada' : ''}" data-pos-mesa="${n}" title="${ocupada ? `Mesa ${n} con cuenta abierta (#${escapeHtml(String(ocupada.code || ''))}): toca para sumarle productos` : `Mesa ${n} libre`}">${n}${ocupada ? ' ➕' : ''}</button>`;
         }
-        html += `<div class="pos-typebar-mesas">${mesas}</div><p class="pos-typebar-hint">Las mesas en naranja ya tienen cuenta: tócalas para sumarle productos a esa cuenta.</p>`;
+        html += `<div class="pos-typebar-pop"><div class="pos-typebar-mesas">${mesas}</div><p class="pos-typebar-hint">Las mesas en naranja ya tienen cuenta: tócalas para sumarle productos.</p></div>`;
     }
     bar.innerHTML = html;
     bar.hidden = false;
