@@ -14642,12 +14642,15 @@ function buildThermalTicketMarkup(order, options = {}) {
         // Las notas de bebida empiezan con 🥤 (marca — sabor): se rotulan "Bebida:" en vez de "Nota:".
         const _noteIsBeb = /^\s*🥤/u.test(item.note || '');
         const _noteText = String(item.note || '').replace(/^[\s🥤]+/u, '').trim();
-        const detailParts = [
-            isChild ? '' : item.categoryName,
-            item.cortesia ? '🎁 CORTESÍA' : '',
-            _limpiarOpcionTicket(item.optionLabel),
-            item.note && item.note !== item.optionLabel ? `${_noteIsBeb ? 'Bebida' : 'Nota'}: ${_noteIsBeb ? _noteText : item.note}` : '',
-        ].filter(Boolean);
+        // Un dato por línea (combo, bebida, sabor, notas), con guion en el papel para que se lea como lista.
+        const _guion = printMode ? '- ' : '';
+        const detailParts = _ticketDetalleLineas(item).map((d) => {
+            if (d.t === 'cat') return d.x;
+            if (d.t === 'cortesia') return '🎁 CORTESÍA';
+            if (d.t === 'beb') return `${_guion}Bebida: ${d.x}`;
+            if (d.t === 'nota') return `${_guion}${/^(sin|poca|con)\b/i.test(d.x) ? '' : 'Nota: '}${d.x}`;
+            return _guion + d.x;
+        });
 
         const priceCell = hasItemDiscount
             ? `<s style="color:#aaa;font-size:0.78em;">${escapeHtml(formatMoney(origSubtotal))}</s><br><strong>${subtotal === 0 ? 'GRATIS' : escapeHtml(formatMoney(subtotal))}</strong>`
@@ -18028,46 +18031,129 @@ async function _btDiscoverWritableChar(server) {
     return null;
 }
 
+// ── Conexión Bluetooth robusta ──────────────────────────────────────────────────────────────────────
+// Las impresoras térmicas BLE se duermen o salen de rango y cortan la conexión. Antes: un solo intento de reconexión a los 2 s
+// y, si fallaba, había que volver a "emparejar" a mano. Ahora: reintentos espaciados (en segundo plano), reconexión al volver
+// a la pestaña, un latido suave para que no se duerma, y si hay que imprimir con la conexión caída se recupera sola antes de
+// rendirse. Solo si el navegador ya no recuerda la impresora se pide emparejar, y entonces el selector muestra SOLO esa impresora.
+const _BT_PRINTER_NAME_KEY = 'roal_bt_printer_name';
+let _btReconectando = false;
+let _btImprimiendo = false;
+let _btKeepAliveTimer = null;
+const _btEsperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function _btRecordarImpresora(device) {
+    try {
+        localStorage.setItem(_BT_PRINTER_ID_KEY, device.id);
+        if (device.name) localStorage.setItem(_BT_PRINTER_NAME_KEY, device.name);
+    } catch (_) { /* ignorar */ }
+}
+
+function _btNombreGuardado() {
+    try { return localStorage.getItem(_BT_PRINTER_NAME_KEY) || ''; } catch (_) { return ''; }
+}
+
+// Conecta y deja lista la característica de escritura. Varios intentos con espera creciente.
+async function _btConectarConReintentos(device, { intentos = 4, espera = 700 } = {}) {
+    for (let i = 0; i < intentos; i++) {
+        try {
+            if (!device.gatt.connected) await device.gatt.connect();
+            const char = await _btDiscoverWritableChar(device.gatt);
+            if (char) return char;
+        } catch (_) { /* siguiente intento */ }
+        if (i < intentos - 1) await _btEsperar(espera * (i + 1));
+    }
+    return null;
+}
+
+// Latido: un byte inocuo (ESC @ = inicializar) cada 25 s mientras no se imprime, para que la impresora no corte por inactividad.
+function _btIniciarKeepAlive() {
+    _btDetenerKeepAlive();
+    _btKeepAliveTimer = setInterval(async () => {
+        if (_btImprimiendo || !_btPrinterCharacteristic || !_btPrinterDevice?.gatt?.connected) return;
+        try { await _btWriteChunk(_btPrinterCharacteristic, new Uint8Array([0x1B, 0x40])); } catch (_) { /* el evento de desconexión se encarga */ }
+    }, 25000);
+}
+function _btDetenerKeepAlive() {
+    if (_btKeepAliveTimer) { clearInterval(_btKeepAliveTimer); _btKeepAliveTimer = null; }
+}
+
+function _btMarcarConectada(device, char) {
+    _btPrinterDevice = device;
+    _btPrinterCharacteristic = char;
+    _btWireDisconnectHandler(device);
+    _btRecordarImpresora(device);
+    _btIniciarKeepAlive();
+    renderBtPrinterStatus('connected', device.name || '');
+}
+
 function _btWireDisconnectHandler(device) {
+    if (device._roalWired) return; // un solo escuchador por dispositivo (antes se sumaba uno por cada reconexión)
+    device._roalWired = true;
     device.addEventListener('gattserverdisconnected', () => {
         _btPrinterCharacteristic = null;
-        renderBtPrinterStatus('connecting');
-        setTimeout(() => {
-            _btAutoReconnect().then((ok) => {
-                if (ok) { showNotice('Impresora Bluetooth reconectada.', 'ok'); }
-                else { renderBtPrinterStatus('disconnected'); showNotice('No se pudo reconectar la impresora BT.', 'error'); }
-            });
-        }, 2000);
+        _btDetenerKeepAlive();
+        if (!_btImprimiendo) _btReconectarEnSegundoPlano();
     });
 }
 
-async function connectBluetoothPrinter() {
+// Reintenta en segundo plano con esperas crecientes (1,2 / 2,5 / 5 / 9 / 15 s). No molesta mientras lo intenta.
+async function _btReconectarEnSegundoPlano() {
+    if (_btReconectando || !_btPrinterDevice) return false;
+    _btReconectando = true;
+    renderBtPrinterStatus('connecting');
+    try {
+        for (const espera of [1200, 2500, 5000, 9000, 15000]) {
+            await _btEsperar(espera);
+            const dev = _btPrinterDevice;
+            if (!dev) return false;
+            if (dev.gatt.connected && _btPrinterCharacteristic) { renderBtPrinterStatus('connected', dev.name || ''); return true; }
+            const char = await _btConectarConReintentos(dev, { intentos: 1 });
+            if (char) { _btPrinterCharacteristic = char; _btIniciarKeepAlive(); renderBtPrinterStatus('connected', dev.name || ''); return true; }
+        }
+        renderBtPrinterStatus('disconnected');
+        showNotice('La impresora Bluetooth se desconectó. Enciéndela y se reconecta sola al imprimir.', 'warn');
+        return false;
+    } finally {
+        _btReconectando = false;
+    }
+}
+
+// Busca entre los dispositivos que el navegador ya recuerda el de la impresora guardada (por id o, si cambió, por nombre).
+async function _btRecuperarGuardada() {
+    if (_btPrinterDevice) return _btPrinterDevice;
+    if (!navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function') return null;
+    let savedId = '';
+    try { savedId = localStorage.getItem(_BT_PRINTER_ID_KEY) || ''; } catch (_) { return null; }
+    if (!savedId) return null;
+    try {
+        const devices = await navigator.bluetooth.getDevices();
+        const nombre = _btNombreGuardado();
+        return devices.find((d) => d.id === savedId) || (nombre ? devices.find((d) => d.name === nombre) : null) || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+// opts.soloGuardada: el selector muestra únicamente la impresora ya usada (un toque) en vez de todos los dispositivos.
+async function connectBluetoothPrinter(opts = {}) {
     if (!navigator.bluetooth) {
         showNotice('Web Bluetooth no esta disponible en este navegador. Usa Chrome o Brave.', 'error');
         return;
     }
+    const nombre = opts.soloGuardada ? _btNombreGuardado() : '';
     try {
         renderBtPrinterStatus('connecting');
-        const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: _BT_SERVICES,
-        });
-        const server = await device.gatt.connect();
-        const char = await _btDiscoverWritableChar(server);
-
+        const device = await navigator.bluetooth.requestDevice(nombre
+            ? { filters: [{ name: nombre }], optionalServices: _BT_SERVICES }
+            : { acceptAllDevices: true, optionalServices: _BT_SERVICES });
+        const char = await _btConectarConReintentos(device, { intentos: 3, espera: 600 });
         if (!char) {
             showNotice('Impresora conectada pero no se encontro caracteristica de escritura. Verifica que sea la impresora correcta.', 'error');
             renderBtPrinterStatus('disconnected');
             return;
         }
-        _btPrinterDevice = device;
-        _btPrinterCharacteristic = char;
-        _btWireDisconnectHandler(device);
-        // Recordar el dispositivo para reconectar solo (sin el diálogo "Buscar") la próxima
-        // vez que se abra el admin — Web Bluetooth permite reconectar a dispositivos ya
-        // autorizados sin un gesto nuevo del usuario.
-        try { localStorage.setItem(_BT_PRINTER_ID_KEY, device.id); } catch (_) { /* ignorar */ }
-        renderBtPrinterStatus('connected', device.name || '');
+        _btMarcarConectada(device, char);
         showNotice(`Impresora "${device.name || 'BT'}" conectada. Ya puedes imprimir.`, 'ok');
     } catch (err) {
         // Chrome lanza el mismo err.name "NotFoundError" tanto si el usuario cierra
@@ -18075,73 +18161,84 @@ async function connectBluetoothPrinter() {
         // Solo el primer caso debe quedar en silencio; el segundo necesita avisar.
         if (err.name === 'NotFoundError' && /adapter/i.test(err.message || '')) {
             showNotice('No se detecta Bluetooth en este dispositivo. Verifica que esté activado (o que el computador tenga adaptador Bluetooth) e intenta de nuevo.', 'error');
+        } else if (err.name === 'NotFoundError' && nombre) {
+            showNotice(`No apareció "${nombre}". Enciende la impresora o usa el botón "Buscar" junto al ticket para elegirla otra vez.`, 'warn');
         } else if (err.name !== 'NotFoundError') {
             showNotice(`Error Bluetooth: ${err.message || 'desconocido'}`, 'error');
         }
-        renderBtPrinterStatus('disconnected');
+        renderBtPrinterStatus(_btPrinterDevice?.gatt?.connected ? 'connected' : 'disconnected', _btPrinterDevice?.name || '');
     }
 }
 
-// Al abrir/recargar el admin: si el navegador soporta reconexión persistente (Chrome/Brave)
-// y ya hay una impresora autorizada de una sesión anterior, reconectar sola sin que el
-// cajero tenga que tocar "Buscar" cada vez.
+// Al abrir/recargar el admin (y al volver a la pestaña): reconectar sola a la impresora ya autorizada, sin pedir "Buscar".
 async function _btTryAutoConnectOnLoad() {
-    if (!navigator.bluetooth || typeof navigator.bluetooth.getDevices !== 'function') return;
-    let savedId = '';
-    try { savedId = localStorage.getItem(_BT_PRINTER_ID_KEY) || ''; } catch (_) { return; }
-    if (!savedId) return;
-
-    try {
-        const devices = await navigator.bluetooth.getDevices();
-        const device = devices.find((d) => d.id === savedId);
-        if (!device) return;
-
-        renderBtPrinterStatus('connecting');
-        const server = await device.gatt.connect();
-        const char = await _btDiscoverWritableChar(server);
-        if (!char) { renderBtPrinterStatus('disconnected'); return; }
-
-        _btPrinterDevice = device;
-        _btPrinterCharacteristic = char;
-        _btWireDisconnectHandler(device);
-        renderBtPrinterStatus('connected', device.name || '');
-        showNotice(`Impresora "${device.name || 'BT'}" reconectada.`, 'ok');
-    } catch (_) {
-        renderBtPrinterStatus('disconnected');
-    }
+    const device = await _btRecuperarGuardada();
+    if (!device) return;
+    renderBtPrinterStatus('connecting');
+    const char = await _btConectarConReintentos(device, { intentos: 3, espera: 800 });
+    if (!char) { _btPrinterDevice = device; _btWireDisconnectHandler(device); renderBtPrinterStatus('disconnected'); return; }
+    _btMarcarConectada(device, char);
+    showNotice(`Impresora "${device.name || 'BT'}" reconectada.`, 'ok');
 }
 
 function disconnectBluetoothPrinter() {
+    _btDetenerKeepAlive();
     try { if (_btPrinterDevice?.gatt?.connected) _btPrinterDevice.gatt.disconnect(); } catch (_) { /* ignorar */ }
     _btPrinterDevice = null;
     _btPrinterCharacteristic = null;
-    try { localStorage.removeItem(_BT_PRINTER_ID_KEY); } catch (_) { /* ignorar */ }
+    try { localStorage.removeItem(_BT_PRINTER_ID_KEY); localStorage.removeItem(_BT_PRINTER_NAME_KEY); } catch (_) { /* ignorar */ }
     renderBtPrinterStatus('disconnected');
     showNotice('Impresora Bluetooth desconectada.', 'ok');
 }
 
-async function _btAutoReconnect() {
-    if (!_btPrinterDevice) return false;
-    try {
-        const server = await _btPrinterDevice.gatt.connect();
-        const char = await _btDiscoverWritableChar(server);
-        if (char) {
-            _btPrinterCharacteristic = char;
-            renderBtPrinterStatus('connected', _btPrinterDevice.name || '');
-            return true;
-        }
-    } catch (_) { /* reconexion fallida */ }
-    return false;
-}
-
-async function _btEnsureConnected() {
+// Devuelve la característica lista para escribir, recuperándola si hace falta (reintentos + impresora recordada).
+// opts.rapido: menos intentos (para no gastar el "gesto del usuario" que necesita el selector de emparejar).
+async function _btEnsureConnected(opts = {}) {
     if (_btPrinterDevice?.gatt?.connected && _btPrinterCharacteristic) return _btPrinterCharacteristic;
+    if (!_btPrinterDevice) {
+        const guardada = await _btRecuperarGuardada();
+        if (guardada) { _btPrinterDevice = guardada; _btWireDisconnectHandler(guardada); }
+    }
     if (_btPrinterDevice) {
-        const ok = await _btAutoReconnect();
-        if (ok) return _btPrinterCharacteristic;
+        const char = await _btConectarConReintentos(_btPrinterDevice, { intentos: opts.rapido ? 2 : 3, espera: 500 });
+        if (char) { _btMarcarConectada(_btPrinterDevice, char); return char; }
     }
     return null;
 }
+
+// Envía los bytes por Bluetooth. Si la conexión se corta a mitad del ticket, reconecta y sigue desde el mismo trozo
+// (antes el ticket quedaba cortado y había que reimprimirlo).
+async function _btEnviarBytes(data) {
+    const CHUNK = 20;
+    let i = 0;
+    let reconexiones = 0;
+    _btImprimiendo = true;
+    try {
+        let char = await _btEnsureConnected();
+        if (!char) return false;
+        while (i < data.length) {
+            try {
+                await _btWriteChunk(char, data.slice(i, i + CHUNK));
+                i += CHUNK;
+                await _btEsperar(80);
+            } catch (err) {
+                if (reconexiones >= 3) throw err;
+                reconexiones++;
+                _btPrinterCharacteristic = null;
+                char = await _btConectarConReintentos(_btPrinterDevice, { intentos: 3, espera: 500 });
+                if (!char) throw err;
+                _btPrinterCharacteristic = char;
+            }
+        }
+        return true;
+    } finally {
+        _btImprimiendo = false;
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && _btPrinterDevice && !_btPrinterDevice.gatt?.connected && !_btReconectando) _btReconectarEnSegundoPlano();
+});
 
 function _escNormalize(str) {
     return String(str || '')
@@ -18155,6 +18252,36 @@ function _escNormalize(str) {
         .replace(/[—–]/g, '-')   // guion largo/corto → hyphen seguro
         .replace(/×/g, 'x')      // signo multiplicacion → x
         .replace(/[^\x20-\x7E]/g, ''); // elimina emojis y cualquier char fuera de ASCII imprimible
+}
+
+// Detalle de un producto para los tickets, UN DATO POR LÍNEA. Antes todo (combo, bebida, sabor, notas) salía en un solo párrafo
+// largo separado con " | ", que en el papel angosto quedaba amontonado y difícil de entender.
+//   tipos: cat (categoría) · cortesia · opt (parte del combo/opción) · beb (nota de bebida) · nota
+function _ticketDetalleLineas(item, { categoria = true } = {}) {
+    const out = [];
+    if (categoria && !item.parentItemKey && item.categoryName) out.push({ t: 'cat', x: String(item.categoryName).trim() });
+    if (item.cortesia) out.push({ t: 'cortesia', x: 'CORTESÍA' });
+    const opt = String(item.optionLabel || '').trim();
+    const partes = opt.split(/\s+\|\s+/).filter((p) => p && !/si es para (llevar|domicilio)/i.test(p));
+    const esPromo2x1 = partes.some((p) => /PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p));
+    partes
+        .filter((p) => !(esPromo2x1 && /^\s*solo la burger\s*$/i.test(p)))
+        .forEach((p) => {
+            if (/PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p)) { out.push({ t: 'opt', x: 'PROMOCIÓN 2×1: incluye 2 burgers por el precio de 1' }); return; }
+            // "Sin tomate, sin cebolla" / "Con La Jeva (BBQ)" / "Poca salsa" es lo que cocina NO debe pasar por alto: va como nota resaltada
+            if (/^(sin|poca|con)\b/i.test(p)) { out.push({ t: 'nota', x: p }); return; }
+            // un combo llega como "1 persona + Postobon 250ml (colombiana) ×2": cada parte en su línea
+            p.split(/\s+\+\s+/).map((q) => q.trim()).filter(Boolean).forEach((q) => out.push({ t: 'opt', x: q }));
+        });
+    const note = String(item.note || '').trim();
+    if (note && note !== opt) {
+        const esBeb = /^\s*🥤/u.test(note);
+        const limpio = note.replace(/^[\s🥤]+/u, '').trim();
+        limpio.split(/\s+\|\s+/).map((q) => q.trim()).filter(Boolean)
+            .filter((q) => !(esPromo2x1 && /^2\s*[x×]\s*1$/i.test(q))) // la marca "2×1" ya la dice la línea de la promoción
+            .forEach((q, i) => out.push({ t: esBeb && i === 0 ? 'beb' : 'nota', x: q }));
+    }
+    return out;
 }
 
 // Helpers de formato ESC/POS compartidos por buildESCPOSData y buildCierreESCPOSData:
@@ -18209,9 +18336,44 @@ function createEscPosLineBuilder(pb, COLS) {
             _emit(' '.repeat(pad) + r);
         }
     }
+    // Texto con sangría francesa: la primera línea lleva `pfx` y las siguientes quedan alineadas bajo el texto (no bajo el prefijo).
+    // El precio (right) va pegado a la derecha de la última línea si cabe; si no, en una línea propia.
+    function wh(pfx, text, right) {
+        const p = _escNormalize(pfx || '');
+        const t = _escNormalize(text);
+        const r = _escNormalize(right || '');
+        const cont = ' '.repeat(p.length);
+        const words = t.split(/\s+/).filter(Boolean);
+        const lines = [];
+        let cur = '';
+        let first = true;
+        const lp = () => (first ? p : cont);
+        const avail = () => Math.max(4, COLS - lp().length);
+        for (const w0 of words) {
+            let w = w0;
+            while (w.length > avail()) {
+                if (cur) { lines.push(lp() + cur); first = false; cur = ''; }
+                const a = avail();
+                lines.push(lp() + w.slice(0, a));
+                first = false;
+                w = w.slice(a);
+            }
+            if (!cur) cur = w;
+            else if ((cur + ' ' + w).length <= avail()) cur += ' ' + w;
+            else { lines.push(lp() + cur); first = false; cur = w; }
+        }
+        if (cur || !lines.length) lines.push(lp() + cur);
+        if (r) {
+            const last = lines[lines.length - 1];
+            if (last.length + 1 + r.length <= COLS) lines[lines.length - 1] = last + ' '.repeat(COLS - last.length - r.length) + r;
+            else lines.push(' '.repeat(Math.max(0, COLS - r.length)) + r);
+        }
+        lines.forEach(_emit);
+    }
+    function blank() { _emit(''); }
     function sep()  { _emit('-'.repeat(COLS)); }
     function sep2() { _emit('='.repeat(COLS)); }
-    return { ww, wl, wc, sep, sep2 };
+    return { ww, wl, wc, wh, blank, sep, sep2 };
 }
 
 function buildESCPOSData(order) {
@@ -18219,7 +18381,7 @@ function buildESCPOSData(order) {
     const COLS = 32;
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
-    const { ww, wl, wc, sep, sep2 } = createEscPosLineBuilder(pb, COLS);
+    const { ww, wl, wc, wh, blank, sep, sep2 } = createEscPosLineBuilder(pb, COLS);
 
     // ── ENCABEZADO ──────────────────────────────────────────────────────────
     pb(ESC, 0x40);
@@ -18261,23 +18423,25 @@ function buildESCPOSData(order) {
     // Agrupado (cantidades sumadas) y con los combos/adicionales anidados bajo su producto
     // padre — igual que el ticket de cocina — para que este ticket (el que se le entrega al
     // cliente) muestre el mismo detalle real del pedido en vez de listar cada unidad suelta.
-    for (const item of _groupOrderItemsForDisplay(order.items || [])) {
-        if (item.parentItemKey) {
-            ww(`  > ${item.quantity}x ${item.productName}`, '       ');
-            if (item.optionLabel) ww('> ' + item.optionLabel, '         ');
-            if (item.note && item.note !== item.optionLabel) ww('    ' + item.note, '         ');
-            continue;
-        }
-        const qty = String(item.quantity).padStart(2);
-        wc(`  ${qty}   ${item.productName}`, formatMoney(item.subtotal));
-        if (item.cortesia) ww('> CORTESIA', '       ');
-        if (item.optionLabel) ww('> ' + item.optionLabel, '       ');
-        if (item.note && item.note !== item.optionLabel) {
-            const isBebNota = /^\s*[\uD800-\uDFFF\u{1F300}-\u{1FFFF}]/u.test(item.note);
-            const notaText = item.note.replace(/^[\s\uD800-\uDFFF\u{1F300}-\u{1FFFF}]+/u, '').trim();
-            ww((isBebNota ? 'Beb: ' : 'Nota: ') + notaText, '       ');
-        }
-    }
+    // Cada producto es un bloque: línea del producto (cantidad, nombre y precio), sus detalles uno por línea con guion,
+    // y lo que lleva (combo, adicionales) con "+" y su precio. Una línea en blanco separa un bloque del siguiente.
+    const _grupos = _groupOrderItemsForDisplay(order.items || []);
+    _grupos.forEach((item, idx) => {
+        const esHijo = !!item.parentItemKey;
+        const precio = Number(item.subtotal) > 0 ? formatMoney(item.subtotal) : (esHijo ? 'incl.' : formatMoney(item.subtotal));
+        if (esHijo) wh('   + ', `${item.quantity}x ${item.productName}`, precio);
+        else wh(String(item.quantity).padStart(2) + 'x ', item.productName, precio);
+        _ticketDetalleLineas(item, { categoria: false }).forEach((d) => {
+            const pfx = esHijo ? '       - ' : '    - ';
+            const txt = d.t === 'cortesia' ? '*** CORTESIA ***' : d.t === 'beb' ? 'Beb: ' + d.x : d.x;
+            const resalta = d.t === 'cortesia' || /^(sin|poca|con)\b/i.test(d.x);
+            if (resalta) pb(ESC, 0x45, 0x01);
+            wh(pfx, txt);
+            if (resalta) pb(ESC, 0x45, 0x00);
+        });
+        const siguiente = _grupos[idx + 1];
+        if (siguiente && !siguiente.parentItemKey) blank();
+    });
     if (order.orderNote) {
         sep();
         pb(ESC, 0x45, 0x01); ww('NOTA DEL PEDIDO: ' + order.orderNote, '  '); pb(ESC, 0x45, 0x00);
@@ -18355,16 +18519,8 @@ async function _btWriteChunk(char, slice) {
 }
 
 async function printViaBluetoothESCPOS(order) {
-    const char = await _btEnsureConnected();
-    if (!char) return false;
-    const CHUNK = 20;
     try {
-        const data = buildESCPOSData(order);
-        for (let i = 0; i < data.length; i += CHUNK) {
-            await _btWriteChunk(char, data.slice(i, i + CHUNK));
-            await new Promise((r) => setTimeout(r, 80));
-        }
-        return true;
+        return await _btEnviarBytes(buildESCPOSData(order));
     } catch (err) {
         showNotice(`Error Bluetooth: ${err.message || 'desconocido'}. Imprimiendo por navegador…`, 'error');
         return false;
@@ -18381,31 +18537,14 @@ async function openOrderPrintTicket(orderId) {
         return;
     }
 
-    // Si ya hay una impresora emparejada en esta sesión, usarla directo.
-    if (_btPrinterDevice) {
-        const ok = await printViaBluetoothESCPOS(order);
-        if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); closeMobileTicketPanel({ clearSelection: true }); return; }
-    }
-
-    // Sin conexión activa: si el navegador soporta reconexión persistente y ya hubo una
-    // impresora BT emparejada antes, intenta reconectar en silencio (sin pedir un gesto
-    // nuevo) antes de recurrir al navegador.
-    if (!_btPrinterDevice) {
-        await _btTryAutoConnectOnLoad();
-        if (_btPrinterDevice) {
-            const ok = await printViaBluetoothESCPOS(order);
-            if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); closeMobileTicketPanel({ clearSelection: true }); return; }
+    // Bluetooth: se recupera la conexión sola (reintentos + impresora que el navegador ya recuerda). Solo si no hay forma,
+    // se abre el selector — y ese selector muestra únicamente la impresora ya usada, un toque.
+    if (navigator.bluetooth) {
+        let char = await _btEnsureConnected({ rapido: true });
+        if (!char && _btNombreGuardado()) {
+            showNotice('Buscando la impresora Bluetooth…', 'ok');
+            await connectBluetoothPrinter({ soloGuardada: true });
         }
-    }
-
-    // La reconexión silenciosa falló (ej. el navegador no soporta getDevices(), o el
-    // permiso expiró) pero hay una impresora BT guardada de una sesión anterior: en vez
-    // de saltar directo al PDF, reabre el selector de Bluetooth para volver a elegirla.
-    let _savedBtPrinterId = '';
-    try { _savedBtPrinterId = localStorage.getItem(_BT_PRINTER_ID_KEY) || ''; } catch (_) { /* ignorar */ }
-    if (!_btPrinterDevice && _savedBtPrinterId && navigator.bluetooth) {
-        showNotice('Buscando la impresora Bluetooth…', 'ok');
-        await connectBluetoothPrinter();
         if (_btPrinterDevice) {
             const ok = await printViaBluetoothESCPOS(order);
             if (ok) { showNotice('Ticket enviado a la impresora.', 'ok'); closeMobileTicketPanel({ clearSelection: true }); return; }
@@ -18901,15 +19040,18 @@ function buildKitchenTicketHtml(order) {
     const childrenOf = (key) => items.filter((item) => item.parentItemKey === key);
 
     const products = topItems.map((item) => {
-        const details = [item.categoryName, item.optionLabel !== item.note ? item.optionLabel : '']
-            .filter(Boolean)
-            .map((p) => `<div class="k-detail">${escapeHtml(p)}</div>`)
+        // Un dato por línea: el combo y la bebida en su renglón, y lo que hay que QUITAR o cuidar resaltado con ⚠.
+        const _det = _ticketDetalleLineas(item);
+        const details = _det.filter((d) => d.t === 'cat' || d.t === 'opt' || d.t === 'beb')
+            .map((d) => `<div class="k-detail">${d.t === 'beb' ? '🥤 ' : (d.t === 'opt' ? '· ' : '')}${escapeHtml(d.x)}</div>`)
             .join('');
-        const note = item.note ? `<div class="k-note">⚠ ${escapeHtml(item.note)}</div>` : '';
+        const note = _det.filter((d) => d.t === 'nota' || d.t === 'cortesia')
+            .map((d) => `<div class="k-note">⚠ ${escapeHtml(d.x)}</div>`)
+            .join('');
         const children = childrenOf(item.itemKey);
         const childrenHtml = children.length
             ? `<div class="k-sub-items">${children.map((c) => `
-                <div class="k-sub-item">↳ ${escapeHtml(String(c.quantity))}x ${escapeHtml(c.productName)}${c.optionLabel ? ` <span class="k-sub-note">— ${escapeHtml(c.optionLabel)}</span>` : ''}${c.note && c.note !== c.optionLabel ? ` <span class="k-sub-note">— ${escapeHtml(c.note)}</span>` : ''}</div>
+                <div class="k-sub-item">↳ ${escapeHtml(String(c.quantity))}x ${escapeHtml(c.productName)}${_ticketDetalleLineas(c, { categoria: false }).map((d) => ` <span class="k-sub-note">— ${escapeHtml(d.x)}</span>`).join('')}</div>
             `).join('')}</div>`
             : '';
         return `<div class="k-product">
@@ -28093,16 +28235,8 @@ function buildGastoESCPOSData(gasto) {
 }
 
 async function printGastoViaBluetooth(gasto) {
-    const char = await _btEnsureConnected();
-    if (!char) return false;
-    const data = buildGastoESCPOSData(gasto);
-    const CHUNK = 20;
     try {
-        for (let i = 0; i < data.length; i += CHUNK) {
-            await _btWriteChunk(char, data.slice(i, i + CHUNK));
-            await new Promise((r) => setTimeout(r, 80));
-        }
-        return true;
+        return await _btEnviarBytes(buildGastoESCPOSData(gasto));
     } catch (err) {
         showNotice(`Error Bluetooth: ${err.message || 'desconocido'}. Imprimiendo por navegador...`, 'error');
         return false;
@@ -28131,9 +28265,9 @@ async function printGastoTicket(gasto) {
     // comportamiento que el boton "Buscar impresora" de Configuracion). connectBluetoothPrinter()
     // ya avisa con el error+solucion concretos (Bluetooth apagado, sin adaptador, etc.) cuando
     // la conexion realmente falla.
-    let char = await _btEnsureConnected();
+    let char = await _btEnsureConnected({ rapido: true });
     if (!char) {
-        await connectBluetoothPrinter();
+        await connectBluetoothPrinter({ soloGuardada: !!_btNombreGuardado() });
         char = _btPrinterCharacteristic;
     }
 
@@ -28895,16 +29029,8 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
 }
 
 async function printCierreViaBluetooth(c, dateStr, timeStr) {
-    const char = await _btEnsureConnected();
-    if (!char) return false;
-    const data = buildCierreESCPOSData(c, dateStr, timeStr);
-    const CHUNK = 20;
     try {
-        for (let i = 0; i < data.length; i += CHUNK) {
-            await _btWriteChunk(char, data.slice(i, i + CHUNK));
-            await new Promise((r) => setTimeout(r, 80));
-        }
-        return true;
+        return await _btEnviarBytes(buildCierreESCPOSData(c, dateStr, timeStr));
     } catch (err) {
         showNotice(`Error Bluetooth: ${err.message || 'desconocido'}. Imprimiendo por navegador...`, 'error');
         return false;
@@ -28939,8 +29065,8 @@ function _printCierreBrowser(html) {
 async function _printCierreTicket(html) {
     // Asegurar conexión BT: auto-reconecta si es posible, o abre picker si no
     if (navigator.bluetooth) {
-        const char = await _btEnsureConnected();
-        if (!char) await connectBluetoothPrinter();
+        const char = await _btEnsureConnected({ rapido: true });
+        if (!char) await connectBluetoothPrinter({ soloGuardada: !!_btNombreGuardado() });
     }
     if (_btPrinterDevice && _cierrePrintData) {
         const { c, dateStr, timeStr } = _cierrePrintData;
