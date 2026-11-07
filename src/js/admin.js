@@ -37463,8 +37463,12 @@ function _asistAcciones(msg, acciones) {
         } else if (a.tipo === 'abrir_tv') {
             txt = '📺 Abrir el <b>Modo TV</b> (la pantalla del local) en otra ventana';
             btn = '📺 Abrir Modo TV';
+        } else if (a.tipo === 'cobrar_cuentas') {
+            txt = `<b>🧾 Marcar como cobradas · ${escapeHtml(a.pagador || '')}</b><br><small>${Number(a.cantidad) || 0} cuenta${Number(a.cantidad) === 1 ? '' : 's'} · <b>${dinero(a.total)}</b><br>${(a.resumen || []).map(escapeHtml).join('<br>')}</small><br><small>Al tocar el botón se abre la ventana de cobro: ahí eliges por dónde llegó la plata y confirmas.</small>`;
+            btn = '🧾 Abrir el cobro';
         } else continue;
-        const soloAbre = a.tipo === 'navegar' || a.tipo === 'abrir_tv'; // no guardan nada: sin "Descartar" ni "ya quedó guardado"
+        // no guardan nada por sí solos (navegar, abrir TV, abrir la ventana de cobro): sin "Descartar" ni "ya quedó guardado"
+        const soloAbre = a.tipo === 'navegar' || a.tipo === 'abrir_tv' || a.tipo === 'cobrar_cuentas';
         const BTN = 'cursor:pointer;border:0;border-radius:10px;padding:10px 16px;min-height:40px;font:700 .9rem system-ui,sans-serif;touch-action:manipulation;';
         card.innerHTML = `<span style="flex:1 1 100%;min-width:160px">${txt}</span>`
             + `<button type="button" data-acc="ok" style="${BTN}background:#ff6a00;color:#fff">${btn}</button>`
@@ -37544,6 +37548,16 @@ async function _asistEjecutarAccion(a) {
         return;
     }
     if (a.tipo === 'abrir_tv') { abrirModoTv(); return; }
+    if (a.tipo === 'cobrar_cuentas') {
+        // Se vuelven a leer las cuentas (pudieron cobrarse mientras tanto) y se abre la ventana de cobro de siempre: el cobro
+        // real (medio de pago, recibo en la caja de hoy) lo confirma el administrador allí, no FODI.
+        await _cxcCargar();
+        const ids = new Set(Array.isArray(a.ordenIds) ? a.ordenIds : []);
+        const ords = _cxcOrdenes.filter((o) => ids.has(o.id) && o.porCobrarEstado !== 'cobrada');
+        if (!ords.length) throw new Error('Esas cuentas ya no están pendientes.');
+        _cxcMarcarCobradas(ords);
+        return;
+    }
     if (a.tipo === 'tv_config') {
         const permitidos = ['pausada', 'segundos', 'modo', 'categorias', 'productos', 'orden', 'precio', 'ingredientes', 'etiquetas'];
         const datos = Object.fromEntries(Object.entries(a.cambios || {}).filter(([k]) => permitidos.includes(k)));

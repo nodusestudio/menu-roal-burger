@@ -1,7 +1,7 @@
 // FODI · cuentas por cobrar: antigüedad, deudor, tiempo en cobrar.   node --test tests/fodi-cuentas-por-cobrar.test.js
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { resumirCuentasPorCobrar } = require('../functions/fodiCuentasPorCobrar');
+const { resumirCuentasPorCobrar, armarPropuestaCobro } = require('../functions/fodiCuentasPorCobrar');
 
 const DIA = 86400000;
 const AHORA = Date.UTC(2026, 10, 7, 15, 0);
@@ -45,4 +45,24 @@ test('filtro por pagador (sin mayúsculas) y sin datos no revienta', () => {
     const vacio = resumirCuentasPorCobrar([], { ahoraMs: AHORA });
     assert.equal(vacio.pendientes.total, 0);
     assert.equal(vacio.cobradas.dias_promedio_en_cobrar, null);
+});
+
+test('propuesta de cobro: junta las pendientes de una persona, sin escribir nada', () => {
+    const lista = [o('a', 'Cámara de Comercio', 30000, 3), o('b', 'Cámara de Comercio', 20000, 40), o('c', 'Pedro', 12000, 10), o('d', 'Cámara de Comercio', 9000, 5, { porCobrarEstado: 'cobrada' })];
+    const r = armarPropuestaCobro(lista, { pagador: 'camara' }, AHORA);
+    assert.equal(r.ok, true);
+    assert.equal(r.accion.tipo, 'cobrar_cuentas');
+    assert.equal(r.accion.pagador, 'Cámara de Comercio');
+    assert.deepEqual(r.accion.ordenIds, ['b', 'a']); // la más vieja primero; la ya cobrada no entra
+    assert.equal(r.accion.total, 50000);
+    assert.match(r.accion.resumen[0], /hace 40 d/);
+});
+
+test('propuesta de cobro: errores claros (sin nombre, nadie, varias personas, códigos que no coinciden) y filtro por códigos', () => {
+    const lista = [o('a', 'Ana Gómez', 1000, 1), o('b', 'Ana Ruiz', 2000, 1), o('c', 'Pedro', 3000, 1)];
+    assert.ok(armarPropuestaCobro(lista, {}).error);
+    assert.ok(armarPropuestaCobro(lista, { pagador: 'zzz' }).error.includes('No hay cuentas'));
+    assert.match(armarPropuestaCobro(lista, { pagador: 'ana' }).error, /varias personas.*Ana Gómez.*Ana Ruiz/);
+    assert.deepEqual(armarPropuestaCobro([o('a', 'Ana', 1000, 1), o('b', 'Ana', 2000, 1)], { pagador: 'ana', codigos: ['B'] }).accion.ordenIds, ['b']);
+    assert.ok(armarPropuestaCobro(lista, { pagador: 'pedro', codigos: ['nope'] }).error);
 });

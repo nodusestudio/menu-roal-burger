@@ -874,9 +874,11 @@ const TOOLS = [
     },
     {
         name: 'proponer_accion',
-        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). tipo "abrir_tv" propone abrir el Modo TV (pantalla del local) en otra ventana. tipo "tv_config" propone cambiar la configuración de la pantalla de TV (pausar/reanudar, segundos por producto, qué se muestra: todo/categorías/productos/promos/destacados, orden y qué textos salen); pasa solo lo que cambia. Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
+        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). tipo "abrir_tv" propone abrir el Modo TV (pantalla del local) en otra ventana. tipo "tv_config" propone cambiar la configuración de la pantalla de TV (pausar/reanudar, segundos por producto, qué se muestra: todo/categorías/productos/promos/destacados, orden y qué textos salen); pasa solo lo que cambia. tipo "cobrar_cuentas" propone marcar como cobradas las cuentas por cobrar pendientes de una persona (pagador): el botón abre la ventana de cobro donde el administrador elige por dónde llegó la plata y confirma; antes usa cuentas_por_cobrar para ver qué debe. Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
         input_schema: { type: 'object', properties: {
-            tipo: { type: 'string', enum: ['navegar', 'precio_insumo', 'abrir_tv', 'tv_config'] },
+            tipo: { type: 'string', enum: ['navegar', 'precio_insumo', 'abrir_tv', 'tv_config', 'cobrar_cuentas'] },
+            pagador: { type: 'string', description: 'Solo con tipo "cobrar_cuentas": nombre de quien pagó (como en cuentas por cobrar, ej. "Cámara de Comercio").' },
+            codigos: { type: 'array', items: { type: 'string' }, description: 'Solo con tipo "cobrar_cuentas": códigos de pedido concretos; sin esto se proponen todas las pendientes de esa persona.' },
             tab: { type: 'string', enum: PESTANAS_NAVEGABLES, description: 'Solo con tipo "navegar".' },
             vista: { type: 'string', enum: VISTAS_COSTOS, description: 'Solo con tab "costos".' },
             nombre: { type: 'string', description: 'Solo con tipo "precio_insumo": nombre del insumo (como en la pestaña Insumos).' },
@@ -933,6 +935,7 @@ async function proponerAccion(db, args = {}) {
         const i = hallados[0];
         return { ok: true, accion: { tipo: 'precio_insumo', insumoId: i.id, nombre: String(i.nombre || ''), precioActual: Number(i.precioCompra) || 0, precioNuevo: Math.round(nuevo * 100) / 100 } };
     }
+    if (args.tipo === 'cobrar_cuentas') return require('./fodiCuentasPorCobrar').proponerCobro(db, args);
     if (args.tipo === 'abrir_tv') return { ok: true, accion: { tipo: 'abrir_tv' } };
     if (args.tipo === 'tv_config') return proponerTvConfig(db, args);
     return { error: 'tipo desconocido.' };

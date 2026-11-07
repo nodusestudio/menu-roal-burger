@@ -76,14 +76,7 @@ async function cuentasPorCobrar(db, args = {}, ahora = Date.now()) {
         if (fin < desdeMs) return { error: 'La fecha final es anterior a la inicial.' };
         hastaMs = fin + DIA_MS; rango = { desde: d, hasta: h };
     }
-    const leer = (col) => db.collection(col).where('paymentMethod', '==', 'por_cobrar').get().then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() })));
-    const [a, b] = await Promise.all([leer('pedidos'), leer('pedidos_archivados')]);
-    const mapa = new Map();
-    [...a, ...b].forEach((o) => { if (!o.anulado && !o.voided) mapa.set(o.id, o); });
-    const ordenes = [...mapa.values()].map((o) => ({
-        id: o.id, code: o.code || '', porCobrarA: o.porCobrarA || '', porCobrarEstado: o.porCobrarEstado || 'pendiente', total: totalDe(o),
-        createdAtMs: ms(o.createdAt), porCobradoAtMs: ms(o.porCobradoAt), porCobradoMetodo: o.porCobradoMetodo || '', cuentaCobroNumero: o.cuentaCobroNumero || null
-    }));
+    const ordenes = await leerOrdenesPorCobrar(db);
     const r = resumirCuentasPorCobrar(ordenes, { ahoraMs: ahora, pagador: args.pagador, desdeMs, hastaMs });
     return {
         ...(rango ? { cobradas_en_el_rango: rango } : {}),
@@ -92,4 +85,48 @@ async function cuentasPorCobrar(db, args = {}, ahora = Date.now()) {
     };
 }
 
-module.exports = { cuentasPorCobrar, resumirCuentasPorCobrar };
+const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Arma la PROPUESTA de marcar cuentas como cobradas (no escribe nada). ordenes: [{ id, code, porCobrarA, porCobrarEstado, total, createdAtMs }].
+ * args: { pagador (obligatorio), codigos (opcional: solo esos pedidos) }. Devuelve { ok, accion } o { error }.
+ */
+function armarPropuestaCobro(ordenes, args = {}, ahoraMs = Date.now()) {
+    const q = norm(args.pagador);
+    if (!q) return { error: 'Falta el nombre de quien pagó (pagador).' };
+    const codigos = Array.isArray(args.codigos) ? args.codigos.map((c) => String(c).trim().toLowerCase()).filter(Boolean) : [];
+    let hallados = ordenes.filter((o) => o.porCobrarEstado !== 'cobrada' && norm(o.porCobrarA).includes(q));
+    if (!hallados.length) return { error: `No hay cuentas por cobrar pendientes a nombre de "${args.pagador}".` };
+    const nombres = [...new Set(hallados.map((o) => String(o.porCobrarA || '').trim() || 'Sin nombre'))];
+    if (nombres.length > 1) return { error: `Hay cuentas pendientes de varias personas: ${nombres.slice(0, 8).join('; ')}. Pide al administrador que elija una.` };
+    if (codigos.length) {
+        hallados = hallados.filter((o) => codigos.includes(String(o.code || '').toLowerCase()));
+        if (!hallados.length) return { error: 'Ninguno de esos pedidos está pendiente a nombre de esa persona.' };
+    }
+    hallados.sort((a, b) => a.createdAtMs - b.createdAtMs);
+    const total = hallados.reduce((a, o) => a + o.total, 0);
+    return {
+        ok: true,
+        accion: {
+            tipo: 'cobrar_cuentas', pagador: nombres[0], ordenIds: hallados.map((o) => o.id), cantidad: hallados.length, total,
+            resumen: hallados.slice(0, 12).map((o) => `${o.code || o.id} · hace ${diasEntre(o.createdAtMs, ahoraMs)} d · $ ${Math.round(o.total).toLocaleString('es-CO')}`)
+        }
+    };
+}
+
+async function leerOrdenesPorCobrar(db) {
+    const leer = (col) => db.collection(col).where('paymentMethod', '==', 'por_cobrar').get().then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const [a, b] = await Promise.all([leer('pedidos'), leer('pedidos_archivados')]);
+    const mapa = new Map();
+    [...a, ...b].forEach((o) => { if (!o.anulado && !o.voided) mapa.set(o.id, o); });
+    return [...mapa.values()].map((o) => ({
+        id: o.id, code: o.code || '', porCobrarA: o.porCobrarA || '', porCobrarEstado: o.porCobrarEstado || 'pendiente', total: totalDe(o),
+        createdAtMs: ms(o.createdAt), porCobradoAtMs: ms(o.porCobradoAt), porCobradoMetodo: o.porCobradoMetodo || '', cuentaCobroNumero: o.cuentaCobroNumero || null
+    }));
+}
+
+async function proponerCobro(db, args = {}) {
+    return armarPropuestaCobro(await leerOrdenesPorCobrar(db), args);
+}
+
+module.exports = { cuentasPorCobrar, resumirCuentasPorCobrar, armarPropuestaCobro, proponerCobro };
