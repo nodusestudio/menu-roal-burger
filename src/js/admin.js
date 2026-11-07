@@ -5047,7 +5047,9 @@ function openPosBebidaPickerModal(bev) {
     body.style.cssText = 'padding:12px 16px;display:flex;flex-direction:column;gap:14px;';
 
     let selectedPres = bev.presentaciones.length === 1 ? bev.presentaciones[0] : null;
-    let selectedSabor = null;
+    // Varios sabores de una vez: cada toque en un sabor suma una unidad (mora ×2, mango ×1…); el − de al lado resta.
+    const cuentas = new Map();
+    const totalUnidades = () => [...cuentas.values()].reduce((a, b) => a + b, 0);
 
     // ── Presentaciones ──
     const presLabel = document.createElement('div');
@@ -5075,13 +5077,25 @@ function openPosBebidaPickerModal(bev) {
         saborChips.innerHTML = '';
         if (!selectedPres || !selectedPres.sabores.length) { saborSection.style.display = 'none'; return; }
         saborSection.style.display = '';
-        selectedPres.sabores.forEach((sabor) => {
+        const unicos = selectedPres.sabores.filter((x, i, a) => a.findIndex((y) => String(y).trim().toLowerCase() === String(x).trim().toLowerCase()) === i);
+        unicos.forEach((sabor) => {
+            const n = cuentas.get(sabor) || 0;
             const chip = document.createElement('button');
             chip.type = 'button';
-            chip.className = 'combo-sabor-chip' + (selectedSabor === sabor ? ' selected' : '');
-            chip.textContent = sabor;
-            chip.addEventListener('click', () => { selectedSabor = sabor; renderSaborChips(); });
+            chip.className = 'combo-sabor-chip' + (n > 0 ? ' selected' : '');
+            chip.textContent = n > 0 ? `${sabor} ×${n}` : sabor;
+            chip.addEventListener('click', () => { cuentas.set(sabor, n + 1); renderSaborChips(); refrescarConfirm(); });
             saborChips.appendChild(chip);
+            if (n > 0) {
+                const menos = document.createElement('button');
+                menos.type = 'button';
+                menos.className = 'combo-sabor-chip';
+                menos.style.cssText = 'min-width:36px;padding:0 10px;font-weight:800;';
+                menos.setAttribute('aria-label', `Quitar una ${sabor}`);
+                menos.textContent = '−';
+                menos.addEventListener('click', () => { if (n <= 1) cuentas.delete(sabor); else cuentas.set(sabor, n - 1); renderSaborChips(); refrescarConfirm(); });
+                saborChips.appendChild(menos);
+            }
         });
     };
 
@@ -5094,16 +5108,14 @@ function openPosBebidaPickerModal(bev) {
             chip.textContent = `${pres.nombre} — ${formatMoney(pres.precio)}`;
             chip.addEventListener('click', () => {
                 selectedPres = pres;
-                selectedSabor = null;
+                cuentas.clear();
                 renderPresChips();
                 renderSaborChips();
+                refrescarConfirm();
             });
             presChips.appendChild(chip);
         });
     };
-
-    renderPresChips();
-    renderSaborChips();
 
     body.appendChild(presChips);
     body.appendChild(saborSection);
@@ -5121,22 +5133,34 @@ function openPosBebidaPickerModal(bev) {
     confirmBtn.type = 'button';
     confirmBtn.className = 'combo-modal-confirm-btn';
     confirmBtn.textContent = 'Agregar';
+    function refrescarConfirm() {
+        const n = totalUnidades();
+        confirmBtn.textContent = n > 0 && selectedPres ? `Agregar ${n} — ${formatMoney(selectedPres.precio * n)}` : 'Agregar';
+    }
+    renderPresChips();
+    renderSaborChips();
     confirmBtn.addEventListener('click', () => {
         if (!selectedPres) {
             presChips.classList.add('combo-sabor-shake');
             presChips.addEventListener('animationend', () => presChips.classList.remove('combo-sabor-shake'), { once: true });
             return;
         }
-        if (selectedPres.sabores.length && !selectedSabor) {
+        if (selectedPres.sabores.length && totalUnidades() === 0) {
             saborChips.classList.add('combo-sabor-shake');
             saborChips.addEventListener('animationend', () => saborChips.classList.remove('combo-sabor-shake'), { once: true });
             return;
         }
         overlay.remove();
-        let itemName = bev.marca + ' ' + selectedPres.nombre;
-        if (selectedSabor) itemName += ` (${selectedSabor})`;
-        const itemId = `bebida::${bev.id}::${selectedPres.id}${selectedSabor ? '::' + selectedSabor : ''}`;
-        addProductToPosOrder(itemId, itemName, selectedPres.precio);
+        if (!selectedPres.sabores.length) {
+            addProductToPosOrder(`bebida::${bev.id}::${selectedPres.id}`, `${bev.marca} ${selectedPres.nombre}`, selectedPres.precio);
+            return;
+        }
+        // Una línea por sabor con su cantidad (se suma sobre la línea existente del mismo sabor)
+        cuentas.forEach((cant, sabor) => {
+            const itemName = `${bev.marca} ${selectedPres.nombre} (${sabor})`;
+            const itemId = `bebida::${bev.id}::${selectedPres.id}::${sabor}`;
+            for (let i = 0; i < cant; i++) addProductToPosOrder(itemId, itemName, selectedPres.precio);
+        });
     });
 
     footer.appendChild(cancelBtn);
