@@ -18300,7 +18300,7 @@ function buildCuentaCobroHtml(order, d) {
     const consumo = formatOrderDate(order.createdAt);
     const filas = _groupOrderItemsForDisplay(order.items || []).map((it) => {
         const hijo = !!it.parentItemKey;
-        const detalle = [it.cortesia ? 'Cortesía' : '', _waLimpiarOpcion(it.optionLabel), it.note && it.note !== it.optionLabel ? it.note : ''].filter(Boolean).join(' · ');
+        const detalle = [it.cortesia ? 'Cortesía' : '', _waLimpiarOpcion(it.optionLabel), it.note && it.note !== it.optionLabel ? it.note : ''].filter(Boolean).join(' · ').replace(/[\u{1F300}-\u{1FAFF}☀-➿️]/gu, '').replace(/\s{2,}/g, ' ').trim();
         const unit = Number(it.quantity) ? Number(it.subtotal || 0) / Number(it.quantity) : 0;
         return `<tr><td class="c">${esc(String(it.quantity))}</td><td>${hijo ? '+ ' : ''}${esc(it.productName || '')}${detalle ? `<small>${esc(detalle)}</small>` : ''}</td><td class="r">${esc(formatMoney(unit))}</td><td class="r">${esc(formatMoney(it.subtotal || 0))}</td></tr>`;
     }).join('');
