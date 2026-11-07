@@ -18141,11 +18141,17 @@ function renderBtPrinterStatus(status, deviceName) {
         label.textContent = 'Conectando...';
         btn.textContent = 'Cancelar';
         btn.dataset.btAction = '';
+    } else if (_btPrinterDevice && !_btForzarBuscar) {
+        // Hay una impresora recordada: no está "sin impresora", está desconectada y el sistema sigue intentando solo.
+        label.textContent = `BT: ${_btPrinterDevice.name || 'impresora'} (desconectada, reintentando)`;
+        btn.textContent = 'Reconectar';
+        btn.dataset.btAction = 'reconnect';
     } else {
         label.textContent = 'Sin impresora BT';
         btn.textContent = 'Buscar';
         btn.dataset.btAction = 'connect';
     }
+    label.title = status === 'connected' || !_btUltimoError ? '' : `Último error: ${_btUltimoError}`;
 }
 
 // Dado un GATT server ya conectado, busca entre los servicios/características conocidos
@@ -18182,7 +18188,16 @@ const _BT_PRINTER_NAME_KEY = 'roal_bt_printer_name';
 let _btReconectando = false;
 let _btImprimiendo = false;
 let _btKeepAliveTimer = null;
+let _btRetryGen = 0;          // cambia al desconectar a mano o al empezar otra tanda: corta la tanda anterior
+let _btDespertar = null;      // permite adelantar la espera entre intentos (p. ej. cuando la impresora empieza a anunciarse)
+let _btForzarBuscar = false;  // tras un "Reconectar" fallido, el botón pasa a "Buscar" (selector de emparejar)
+let _btUltimoError = '';
+let _btSinFiltro = false;     // true tras no encontrar la impresora guardada: el siguiente "Buscar" lista todos los dispositivos
+// Esperas entre intentos: unos rápidos (1,2 / 2,5 / 5 / 9 / 15 s) y después uno cada 20 s, sin parar, mientras la impresora siga recordada.
+const _BT_ESPERAS = { rapidas: [1200, 2500, 5000, 9000, 15000], larga: 20000 };
 const _btEsperar = (ms) => new Promise((r) => setTimeout(r, ms));
+// Espera que se puede cortar: si la impresora se anuncia (se encendió / volvió al alcance) se intenta ya, sin esperar el resto.
+const _btEsperarOAnuncio = (ms) => new Promise((r) => { const t = setTimeout(() => { _btDespertar = null; r(); }, ms); _btDespertar = () => { clearTimeout(t); _btDespertar = null; r(); }; });
 
 function _btRecordarImpresora(device) {
     try {
@@ -18202,10 +18217,25 @@ async function _btConectarConReintentos(device, { intentos = 4, espera = 700 } =
             if (!device.gatt.connected) await device.gatt.connect();
             const char = await _btDiscoverWritableChar(device.gatt);
             if (char) return char;
-        } catch (_) { /* siguiente intento */ }
+            _btUltimoError = 'conectó pero no encontró dónde escribir';
+        } catch (err) { _btUltimoError = `${err && err.name ? err.name + ': ' : ''}${(err && err.message) || ''}`.slice(0, 120); /* siguiente intento */ }
         if (i < intentos - 1) await _btEsperar(espera * (i + 1));
     }
     return null;
+}
+
+// Si el navegador deja "escuchar" a la impresora (watchAdvertisements), en cuanto empieza a anunciarse —se encendió o volvió
+// al alcance— se intenta conectar ya, sin esperar el siguiente reintento. Es la forma recomendada por Chrome para reconectar sola.
+function _btVigilarAnuncios(device) {
+    if (!device || device._roalWatching || typeof device.watchAdvertisements !== 'function') return;
+    device._roalWatching = true;
+    device.addEventListener('advertisementreceived', () => {
+        if (device.gatt && device.gatt.connected) return;
+        if (_btImprimiendo) return;
+        _btPrinterDevice = device;
+        if (_btReconectando) { if (_btDespertar) _btDespertar(); } else _btReconectarEnSegundoPlano();
+    });
+    device.watchAdvertisements().catch(() => { device._roalWatching = false; /* no soportado / sin permiso: quedan los reintentos */ });
 }
 
 // Latido: un byte inocuo (ESC @ = inicializar) cada 25 s mientras no se imprime, para que la impresora no corte por inactividad.
@@ -18224,8 +18254,12 @@ function _btMarcarConectada(device, char) {
     _btPrinterDevice = device;
     _btPrinterCharacteristic = char;
     _btWireDisconnectHandler(device);
+    _btVigilarAnuncios(device);
     _btRecordarImpresora(device);
     _btIniciarKeepAlive();
+    _btForzarBuscar = false;
+    _btSinFiltro = false;
+    _btUltimoError = '';
     renderBtPrinterStatus('connected', device.name || '');
 }
 
@@ -18239,26 +18273,48 @@ function _btWireDisconnectHandler(device) {
     });
 }
 
-// Reintenta en segundo plano con esperas crecientes (1,2 / 2,5 / 5 / 9 / 15 s). No molesta mientras lo intenta.
+// Reintenta en segundo plano SIN rendirse: primero unos intentos rápidos y después uno cada 20 s mientras la impresora siga
+// recordada y desconectada (se enciende más tarde, sale y vuelve al alcance, se durmió…). Antes paraba a los ~33 s y no volvía a
+// intentar hasta que alguien imprimiera. Se corta al desconectar a mano (_btRetryGen) o en cuanto conecta. Con la pestaña oculta
+// no insiste (al volver, visibilitychange lo retoma).
 async function _btReconectarEnSegundoPlano() {
     if (_btReconectando || !_btPrinterDevice) return false;
     _btReconectando = true;
+    const gen = ++_btRetryGen;
     renderBtPrinterStatus('connecting');
     try {
-        for (const espera of [1200, 2500, 5000, 9000, 15000]) {
-            await _btEsperar(espera);
+        let avisado = false;
+        for (let n = 0; ; n++) {
+            const rapido = n < _BT_ESPERAS.rapidas.length;
+            await _btEsperarOAnuncio(rapido ? _BT_ESPERAS.rapidas[n] : _BT_ESPERAS.larga);
             const dev = _btPrinterDevice;
-            if (!dev) return false;
+            if (!dev || gen !== _btRetryGen) return false;
             if (dev.gatt.connected && _btPrinterCharacteristic) { renderBtPrinterStatus('connected', dev.name || ''); return true; }
+            if (_btImprimiendo) continue; // imprimiendo: _btEnviarBytes ya se encarga de reconectar
+            if (!rapido && document.hidden) continue;
             const char = await _btConectarConReintentos(dev, { intentos: 1 });
-            if (char) { _btPrinterCharacteristic = char; _btIniciarKeepAlive(); renderBtPrinterStatus('connected', dev.name || ''); return true; }
+            if (gen !== _btRetryGen) return false;
+            if (char) { _btMarcarConectada(dev, char); return true; }
+            if (n >= _BT_ESPERAS.rapidas.length - 1) {
+                renderBtPrinterStatus('disconnected'); // la etiqueta dice que sigue intentando
+                if (!avisado) { avisado = true; showNotice('La impresora Bluetooth no responde. Enciéndela y acércala: se reconecta sola.', 'warn'); }
+            }
         }
-        renderBtPrinterStatus('disconnected');
-        showNotice('La impresora Bluetooth se desconectó. Enciéndela y se reconecta sola al imprimir.', 'warn');
-        return false;
     } finally {
         _btReconectando = false;
     }
+}
+
+// Botón "Reconectar": intenta de inmediato con la impresora ya recordada. Si no se puede, el botón pasa a "Buscar" (selector de
+// emparejar, con la impresora guardada como único filtro) para el siguiente toque — así se conserva el "gesto" que el selector exige.
+async function _btReconectarYa() {
+    if (!_btPrinterDevice) { await connectBluetoothPrinter({ soloGuardada: !!_btNombreGuardado() }); return; }
+    renderBtPrinterStatus('connecting');
+    const char = await _btConectarConReintentos(_btPrinterDevice, { intentos: 3, espera: 500 });
+    if (char) { _btMarcarConectada(_btPrinterDevice, char); showNotice(`Impresora "${_btPrinterDevice.name || 'BT'}" reconectada.`, 'ok'); return; }
+    _btForzarBuscar = true;
+    renderBtPrinterStatus('disconnected');
+    showNotice(`No se pudo reconectar${_btUltimoError ? ` (${_btUltimoError})` : ''}. Revisa que la impresora esté encendida y cerca; si sigue igual, toca "Buscar" para elegirla otra vez.`, 'warn');
 }
 
 // Busca entre los dispositivos que el navegador ya recuerda el de la impresora guardada (por id o, si cambió, por nombre).
@@ -18283,7 +18339,8 @@ async function connectBluetoothPrinter(opts = {}) {
         showNotice('Web Bluetooth no esta disponible en este navegador. Usa Chrome o Brave.', 'error');
         return;
     }
-    const nombre = opts.soloGuardada ? _btNombreGuardado() : '';
+    // Con una impresora guardada el selector muestra solo esa; si no aparece (se cambió de impresora), el siguiente "Buscar" muestra todas.
+    const nombre = opts.soloGuardada && !_btSinFiltro ? _btNombreGuardado() : '';
     try {
         renderBtPrinterStatus('connecting');
         const device = await navigator.bluetooth.requestDevice(nombre
@@ -18304,7 +18361,8 @@ async function connectBluetoothPrinter(opts = {}) {
         if (err.name === 'NotFoundError' && /adapter/i.test(err.message || '')) {
             showNotice('No se detecta Bluetooth en este dispositivo. Verifica que esté activado (o que el computador tenga adaptador Bluetooth) e intenta de nuevo.', 'error');
         } else if (err.name === 'NotFoundError' && nombre) {
-            showNotice(`No apareció "${nombre}". Enciende la impresora o usa el botón "Buscar" junto al ticket para elegirla otra vez.`, 'warn');
+            _btSinFiltro = true;
+            showNotice(`No apareció "${nombre}". Enciéndela y toca "Buscar" otra vez (esta vez se muestran todos los dispositivos, por si es otra impresora).`, 'warn');
         } else if (err.name !== 'NotFoundError') {
             showNotice(`Error Bluetooth: ${err.message || 'desconocido'}`, 'error');
         }
@@ -18315,15 +18373,30 @@ async function connectBluetoothPrinter(opts = {}) {
 // Al abrir/recargar el admin (y al volver a la pestaña): reconectar sola a la impresora ya autorizada, sin pedir "Buscar".
 async function _btTryAutoConnectOnLoad() {
     const device = await _btRecuperarGuardada();
-    if (!device) return;
+    if (!device) {
+        // Había una impresora usada antes pero el navegador no la devuelve: se dice POR QUÉ (antes quedaba "Sin impresora BT" sin explicación).
+        if (_btNombreGuardado()) {
+            const soporta = !!(navigator.bluetooth && typeof navigator.bluetooth.getDevices === 'function');
+            showNotice(soporta
+                ? `El navegador ya no recuerda la impresora "${_btNombreGuardado()}". Toca "Buscar" y elígela una vez.`
+                : 'Este navegador no recuerda la impresora entre aperturas. En Chrome o Edge activa chrome://flags/#enable-web-bluetooth-new-permissions-backend (o edge://flags) y reinicia; mientras tanto toca "Buscar" al abrir el panel.', 'warn');
+        }
+        return;
+    }
+    _btPrinterDevice = device;
+    _btWireDisconnectHandler(device);
+    _btVigilarAnuncios(device);
     renderBtPrinterStatus('connecting');
-    const char = await _btConectarConReintentos(device, { intentos: 3, espera: 800 });
-    if (!char) { _btPrinterDevice = device; _btWireDisconnectHandler(device); renderBtPrinterStatus('disconnected'); return; }
+    const char = await _btConectarConReintentos(device, { intentos: 2, espera: 800 });
+    if (!char) { _btReconectarEnSegundoPlano(); return; } // no se rinde: sigue intentando en segundo plano hasta que la impresora aparezca
     _btMarcarConectada(device, char);
     showNotice(`Impresora "${device.name || 'BT'}" reconectada.`, 'ok');
 }
 
 function disconnectBluetoothPrinter() {
+    _btRetryGen++; // corta cualquier tanda de reintentos
+    if (_btDespertar) _btDespertar();
+    _btForzarBuscar = false;
     _btDetenerKeepAlive();
     try { if (_btPrinterDevice?.gatt?.connected) _btPrinterDevice.gatt.disconnect(); } catch (_) { /* ignorar */ }
     _btPrinterDevice = null;
@@ -24863,8 +24936,11 @@ document.getElementById('ticketBtBtn')?.addEventListener('click', () => {
     const btn = document.getElementById('ticketBtBtn');
     if (btn?.dataset.btAction === 'disconnect') {
         disconnectBluetoothPrinter();
+    } else if (btn?.dataset.btAction === 'reconnect') {
+        _btReconectarYa();
     } else {
-        connectBluetoothPrinter();
+        _btForzarBuscar = false;
+        connectBluetoothPrinter({ soloGuardada: !!_btNombreGuardado() });
     }
 });
 
