@@ -688,16 +688,16 @@ async function upsertAgentClientProfile(db, customerInfo, orderInfo) {
         const previous = snapshot.exists ? snapshot.data() : {};
         const previousTotalOrders = Number(previous.totalOrders || 0);
         const previousTotalSpent = Number(previous.totalSpent || 0);
-        const resolvedAddress = String(customerInfo.address || previous.address || (
-            customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' :
-            customerInfo.fulfillmentType === 'mesa' ? 'Come en el local' : 'Sin direccion registrada'
-        )).trim();
+        // Solo direcciones reales: los rótulos "Recoge en el local" / "Sin direccion registrada" se mostraban luego
+        // como dirección de entrega del cliente. Sin dirección real no se escribe el campo (merge conserva la previa).
+        const esRotulo = (t) => /^(sin direcci[oó]n registrada|recoge en el local|come en el local|no registrado)$/i.test(String(t || '').trim());
+        const resolvedAddress = String(customerInfo.address || (esRotulo(previous.address) ? '' : previous.address) || '').trim();
 
         transaction.set(clientRef, {
             customerName: String(customerInfo.customerName || previous.customerName || '').trim(),
             customerPhone: String(customerInfo.customerPhone || previous.customerPhone || '').trim(),
             customerPhoneDigits: phoneDigits,
-            address: resolvedAddress,
+            ...(resolvedAddress && !esRotulo(resolvedAddress) ? { address: resolvedAddress } : {}),
             lastOrderCode: String(orderInfo.code || previous.lastOrderCode || '').trim(),
             lastOrderId: String(orderInfo.id || previous.lastOrderId || '').trim(),
             lastOrderTotal: Number(orderInfo.total || previous.lastOrderTotal || 0),

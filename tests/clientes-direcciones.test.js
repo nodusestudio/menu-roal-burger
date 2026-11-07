@@ -51,3 +51,10 @@ test('direcciones guardadas: acepta texto y objetos con coordenadas', () => {
     const r = normalizeClientSavedAddresses([{ address: 'Cl 1 # 2-3', latitude: 4.5, longitude: -75.6, primary: true }, 'Cr 7 # 8-9'], '');
     assert.deepEqual(r, ['Cl 1 # 2-3', 'Cr 7 # 8-9']);
 });
+
+test('enlace de WhatsApp: celular guardado sin 57 abre el chat con indicativo', () => {
+    const { buildWhatsAppUrl } = new Function(`${extraer('buildWhatsAppUrl')}\nreturn { buildWhatsAppUrl };`)();
+    assert.equal(buildWhatsAppUrl('3001234567'), 'https://api.whatsapp.com/send?phone=573001234567');
+    assert.equal(buildWhatsAppUrl('573001234567', 'Hola'), 'https://api.whatsapp.com/send?phone=573001234567&text=Hola');
+    assert.equal(buildWhatsAppUrl('6061234567'), 'https://api.whatsapp.com/send?phone=6061234567'); // fijo: no se toca
+});

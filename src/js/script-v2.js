@@ -2174,16 +2174,19 @@ async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
         createdAt: getPublicServerTimestamp()
     }).catch(() => {});
 
-    const fallbackAddress = String(customerInfo.profileAddress || customerInfo.deliveryAddress || (customerInfo.fulfillmentType === 'pickup' ? 'Recoge en el local' : customerInfo.fulfillmentType === 'mesa' ? 'Come en el local' : 'Sin direccion registrada')).trim();
-    const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || [], fallbackAddress);
-    const resolvedAddress = String(savedAddresses[0]?.address || fallbackAddress).trim();
+    // Solo direcciones reales: "Recoge en el local" / "Sin direccion registrada" son rótulos de pantalla y antes se
+    // guardaban como dirección del cliente (aparecían luego como dirección de entrega). Si no hay dirección real,
+    // no se escribe el campo y se conserva la que el cliente ya tuviera (merge).
+    const realAddress = String(customerInfo.profileAddress || customerInfo.deliveryAddress || '').trim();
+    const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || [], realAddress);
+    const resolvedAddress = String(savedAddresses[0]?.address || realAddress).trim();
 
     await clientRef.set({
         customerName: String(customerInfo.customerName || '').trim(),
         customerPhone,
         customerPhoneDigits: String(customerInfo.customerPhoneDigits || '').replace(/\D+/g, ''),
-        address: resolvedAddress,
-        savedAddresses,
+        ...(resolvedAddress ? { address: resolvedAddress } : {}),
+        ...(savedAddresses.length ? { savedAddresses } : {}),
         lastOrderCode: String(orderInfo.code || '').trim(),
         lastOrderId: String(orderInfo.id || '').trim(),
         lastOrderTotal: Number(orderInfo.total || 0),

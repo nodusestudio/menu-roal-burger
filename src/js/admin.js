@@ -8783,7 +8783,9 @@ async function _upsertClientStatsFromPosOrder(orderDoc) {
             const snap = await transaction.get(clientRef);
             const previous = snap.exists ? snap.data() : {};
             transaction.set(clientRef, {
-                customerName: String((esNombreGenerico(orderDoc.customerName) ? (previous.customerName || orderDoc.customerName) : orderDoc.customerName) || '').trim(),
+                // El nombre ya guardado del cliente manda: el que se escribe en un pedido (p. ej. quien recibe) no lo pisa.
+                // Solo se usa el del pedido si el perfil no tiene un nombre real todavía.
+                customerName: String((!esNombreGenerico(previous.customerName) ? previous.customerName : (orderDoc.customerName || previous.customerName)) || '').trim(),
                 customerPhone: String(orderDoc.customerPhone || previous.customerPhone || '').trim(),
                 customerPhoneDigits: phoneDigits,
                 // Nunca el rótulo "Sin direccion registrada" como dirección real: quedaba guardado y se ofrecía luego como dirección de entrega.
@@ -13973,7 +13975,9 @@ function buildOrderConfirmationMessage(order) {
 // los conserva. Sin texto, abre el chat vacío. SYNC: mismo formato que waMeLink en
 // functions/cuponPana.js (este archivo no se empaqueta con imports, por eso vive aquí).
 function buildWhatsAppUrl(phoneDigits, text = '') {
-    const digits = String(phoneDigits || '').replace(/\D+/g, '');
+    let digits = String(phoneDigits || '').replace(/\D+/g, '');
+    // Los celulares se guardan sin el 57 (como la web); WhatsApp necesita el indicativo para abrir el chat.
+    if (digits.length === 10 && digits.startsWith('3')) digits = `57${digits}`;
     return `https://api.whatsapp.com/send?phone=${digits}${text ? `&text=${encodeURIComponent(text)}` : ''}`;
 }
 
@@ -32475,7 +32479,7 @@ function _icmMapRow(row) {
     const fullName  = [firstName, lastName].filter(Boolean).join(' ').trim();
 
     const rawPhone = get('customerPhone');
-    const phone    = rawPhone.replace(/\D/g, '');
+    const phone    = normalizePhoneDigits(rawPhone); // sin el 57: igual que la web y el POS (si no, el importado quedaba como otro cliente)
 
     const result = {
         customerName:        fullName || '',
@@ -32512,21 +32516,40 @@ async function _icmRunImport(rows) {
         const batch = firebaseDb.batch();
         let opsInChunk = 0;
 
+        // Lo que ya existe se lee antes: re-importar un archivo no debe borrar direcciones guardadas (con coordenadas)
+        // ni dejar en blanco nombre/dirección de un cliente que ya los tenía.
+        const existentes = new Map();
+        await Promise.all(chunk.map(async (row) => {
+            try {
+                const c = _icmMapRow(row);
+                if (!c.customerName && !c.customerPhone) return;
+                const id = buildAdminClientDocumentId(c);
+                if (existentes.has(id)) return;
+                const s = await firebaseDb.collection(CLIENTS_COLLECTION).doc(id).get();
+                existentes.set(id, s.exists ? s.data() : null);
+            } catch (_) { /* si no se puede leer, se importa como antes */ }
+        }));
+
         for (const row of chunk) {
             try {
                 const client = _icmMapRow(row);
                 if (!client.customerName && !client.customerPhone) { skipped++; continue; }
                 const docId = buildAdminClientDocumentId(client);
                 const ref = firebaseDb.collection(CLIENTS_COLLECTION).doc(docId);
+                const prev = existentes.get(docId) || null;
+                const dirNueva = esRotuloDireccion(client.address) ? '' : String(client.address || '').trim();
+                const guardadasPrev = prev && Array.isArray(prev.savedAddresses) ? prev.savedAddresses : [];
+                const yaEsta = !!dirNueva && normalizeClientSavedAddresses(guardadasPrev, '').some((t) => t.toLowerCase() === dirNueva.toLowerCase());
                 const data = {
-                    customerName:        client.customerName,
+                    customerName:        client.customerName || (prev && prev.customerName) || '',
                     customerPhone:       client.customerPhone,
                     customerPhoneDigits: client.customerPhoneDigits,
-                    address:             client.address,
-                    savedAddresses:      client.address ? [client.address] : [],
                     importedAt:          firestoreNow(),
                     updatedAt:           firestoreNow(),
                 };
+                if (dirNueva) data.address = (prev && prev.address && !esRotuloDireccion(prev.address)) ? prev.address : dirNueva;
+                if (dirNueva && !yaEsta) data.savedAddresses = [...guardadasPrev, dirNueva];
+                else if (!prev && !dirNueva) data.savedAddresses = [];
                 if (client.email)  data.email = client.email;
                 if (client.notes)  data.notes = client.notes;
                 // Solo sobreescribir stats si el usuario los mapeó explícitamente
