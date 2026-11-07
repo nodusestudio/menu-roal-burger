@@ -394,6 +394,7 @@ let orderAnnouncementQueue = Promise.resolve();
 let orderBellAudioContext = null;
 let editingCategoryContextId = null;
 let activeCategoryModalId = null;
+let _clientEditNuevaDireccion = ''; // última dirección agregada en esta edición (la que se usa si la edición vino del ticket)
 let activeClientEditId = null;
 let internalOrderItems = [];
 let posSelectedCategory = null;
@@ -971,6 +972,11 @@ let metricsEventsState = {
     dailyVisitors: 0
 };
 
+// Rótulos que la web, el agente o el propio panel escriben donde va una dirección pero NO son una dirección real.
+function esRotuloDireccion(texto) {
+    return /^(sin direcci[oó]n registrada|recoge en el local|retira en el local|come en el local|comer en el local|no registrad[oa])$/i.test(String(texto || '').trim());
+}
+
 function normalizeClientSavedAddresses(rawAddresses = [], primaryAddress = '') {
     const normalizedAddresses = [];
     const seen = new Set();
@@ -978,7 +984,7 @@ function normalizeClientSavedAddresses(rawAddresses = [], primaryAddress = '') {
     const appendAddress = (value) => {
         const safeValue = String(value || '').trim();
         const normalizedKey = safeValue.toLowerCase();
-        if (!safeValue || seen.has(normalizedKey)) {
+        if (!safeValue || esRotuloDireccion(safeValue) || seen.has(normalizedKey)) {
             return;
         }
 
@@ -1952,7 +1958,11 @@ async function getNextAdminOrderCode() {
 }
 
 function normalizePhoneDigits(value) {
-    return String(value || '').replace(/\D+/g, '');
+    const digits = String(value || '').replace(/\D+/g, '');
+    // Igual que script-v2.js y functions/phoneUtils.js: sin esto el POS creaba un cliente DISTINTO (phone_57300…) al de la web
+    // (phone_300…) y se partían los puntos, el historial y las direcciones.
+    if (digits.length === 12 && digits.startsWith('57') && digits[2] === '3') return digits.slice(2);
+    return digits;
 }
 
 function buildAdminClientDocumentId(client = {}) {
@@ -4136,6 +4146,8 @@ async function fetchClients({ force = false } = {}) {
                 whatsappUser: String(raw.whatsappUser || '').trim(),
                 address: savedAddresses[0] || String(raw.address || '').trim() || 'Sin direccion registrada',
                 savedAddresses,
+                // Tal como están en Firestore (texto u objetos con latitud/longitud/principal): al guardar se reutilizan para no perder las coordenadas.
+                savedAddressesRaw: Array.isArray(raw.savedAddresses) ? raw.savedAddresses : (Array.isArray(raw.addresses) ? raw.addresses : []),
                 firstOrderAt: raw.firstOrderAt || raw.createdAt || null,
                 lastOrderCode: String(raw.lastOrderCode || '').trim(),
                 lastOrderId: String(raw.lastOrderId || '').trim(),
@@ -8774,7 +8786,8 @@ async function _upsertClientStatsFromPosOrder(orderDoc) {
                 customerName: String((esNombreGenerico(orderDoc.customerName) ? (previous.customerName || orderDoc.customerName) : orderDoc.customerName) || '').trim(),
                 customerPhone: String(orderDoc.customerPhone || previous.customerPhone || '').trim(),
                 customerPhoneDigits: phoneDigits,
-                address: newAddress || previous.address || 'Sin direccion registrada',
+                // Nunca el rótulo "Sin direccion registrada" como dirección real: quedaba guardado y se ofrecía luego como dirección de entrega.
+                address: newAddress || (esRotuloDireccion(previous.address) ? '' : (previous.address || '')),
                 lastOrderCode: String(orderDoc.code || '').trim(),
                 lastOrderId: String(orderDoc.id || '').trim(),
                 lastOrderTotal: Number(orderDoc.total || 0),
@@ -17196,6 +17209,7 @@ function closeClientEditModal() {
     hideModalFeedback(clientEditFeedback);
     _clientEditSyncOrderId = null;
     _clientEditSyncField = null;
+    _clientEditNuevaDireccion = '';
 
     if (clientEditSaveBtn) {
         clientEditSaveBtn.disabled = false;
@@ -17237,17 +17251,18 @@ function openEditClientModal(client, focusField = 'customerName') {
     if (clientEditIdInput) {
         clientEditIdInput.value = client.id;
     }
+    _clientEditNuevaDireccion = '';
     if (clientEditNameInput) {
-        clientEditNameInput.value = client.customerName;
+        clientEditNameInput.value = client.customerName === 'Cliente sin nombre' ? '' : client.customerName;
     }
     if (clientEditPhoneInput) {
-        clientEditPhoneInput.value = client.customerPhone;
+        clientEditPhoneInput.value = client.customerPhone === 'No registrado' ? '' : client.customerPhone;
     }
     if (clientEditWhatsappUserInput) {
         clientEditWhatsappUserInput.value = client.whatsappUser || '';
     }
     if (clientEditAddressInput) {
-        clientEditAddressInput.value = client.address;
+        clientEditAddressInput.value = esRotuloDireccion(client.address) ? '' : client.address;
     }
     renderClientAddrChips(client.savedAddresses || []);
     if (clientEditSaveBtn) {
@@ -17475,8 +17490,9 @@ async function _occApplyClient(order, client) {
             customerPhone: client.customerPhone,
             customerPhoneDigits: normalizePhoneDigits(client.customerPhone)
         };
-        if (order.orderType === 'domicilio') {
-            updates.deliveryAddress = client.address || '';
+        // Si el cliente nuevo no tiene dirección ("Sin direccion registrada" es solo un rótulo), el pedido conserva la suya.
+        if (order.orderType === 'domicilio' && client.address && !esRotuloDireccion(client.address)) {
+            updates.deliveryAddress = client.address;
         }
         await updateOrder(order.id, updates);
         if (_pedidoContado(order) && order.customerPhoneDigits !== updates.customerPhoneDigits) {
@@ -23006,7 +23022,7 @@ function _ptsRenderSearchResults(query) {
         const addrTexts = rawAddrs.map((a) => {
             if (!a) return '';
             return typeof a === 'string' ? a.trim() : String(a.address || a.value || a.label || '').trim();
-        }).filter(Boolean);
+        }).filter((t) => t && !esRotuloDireccion(t));
         const addrsHtml = addrTexts.length
             ? `<div class="pts-result-addrs">${addrTexts.map((t) => `<span class="pts-result-addr-chip">${escapeHtml(t)}</span>`).join('')}</div>`
             : '';
@@ -23057,7 +23073,7 @@ function _ptsFillClientAddress(client) {
         const text = typeof a === 'string'
             ? a.trim()
             : String(a.address || a.value || a.label || '').trim();
-        if (!text) return null;
+        if (!text || esRotuloDireccion(text)) return null;
         return {
             text,
             lat: Number.isFinite(Number(a.latitude))  ? Number(a.latitude)  : null,
@@ -23165,6 +23181,10 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     const activeMesaBtn = document.querySelector('#posTicketSetupModal .pts-mesa-btn.active');
     const activePickupModeBtn = document.querySelector('#posTicketSetupModal .pts-pickup-mode-btn.active');
     const resolvedType = (activeTypeBtn?.dataset?.ptsType) || _ptsSelectedType;
+    if (_ptsActiveTab === 'new' && (String(document.getElementById('ptsNewTabName')?.value || '').trim() || String(document.getElementById('ptsNewTabPhone')?.value || '').trim())) {
+        _ptsShowFeedback('Escribiste datos del cliente: toca "Guardar y seleccionar" antes de confirmar.');
+        return;
+    }
     const resolvedMesa = activeMesaBtn ? Number(activeMesaBtn.dataset.ptsMesa) : _ptsSelectedMesa;
     const resolvedPickupMode = activePickupModeBtn ? activePickupModeBtn.dataset.ptsPickupMode : _ptsSelectedPickupMode;
 
@@ -23322,7 +23342,7 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
             id: clientId,
             name: resultItem.dataset.ptsClientName || '',
             phone: resultItem.dataset.ptsClientPhone || '',
-            savedAddresses: fullClient?.savedAddresses || []
+            savedAddresses: (fullClient?.savedAddressesRaw?.length ? fullClient.savedAddressesRaw : fullClient?.savedAddresses) || []
         };
         _ptsShowSelectedClientChip(_ptsSelectedClient);
         _ptsRefreshDomicilioSection();
@@ -23516,9 +23536,15 @@ function _ptsIsAddrNew(text) {
 
 async function _ptsSaveAddrToProfile(text) {
     if (!text || !_ptsSelectedClient?.id) return;
-    const existing = Array.isArray(_ptsSelectedClient.savedAddresses) ? _ptsSelectedClient.savedAddresses : [];
+    let existing = Array.isArray(_ptsSelectedClient.savedAddresses) ? _ptsSelectedClient.savedAddresses : [];
+    try {
+        // Se parte de lo que hay guardado AHORA (otro equipo o la web pudo haber agregado direcciones con coordenadas).
+        const snap = await firebaseDb.collection(CLIENTS_COLLECTION).doc(_ptsSelectedClient.id).get();
+        if (snap.exists && Array.isArray(snap.data().savedAddresses)) existing = snap.data().savedAddresses;
+    } catch (_) { /* se usa lo que había en pantalla */ }
+    const yaEsta = existing.some((a) => String(typeof a === 'string' ? a : (a && (a.address || a.value || a.label)) || '').trim().toLowerCase() === text.trim().toLowerCase());
     const newEntry = { address: text, latitude: null, longitude: null, primary: existing.length === 0 };
-    const updatedList = [...existing, newEntry];
+    const updatedList = yaEsta ? existing : [...existing, newEntry];
     try {
         await firebaseDb.collection(CLIENTS_COLLECTION).doc(_ptsSelectedClient.id).update({
             savedAddresses: updatedList,
@@ -23560,8 +23586,14 @@ async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' 
     const prev = await ref.get().catch(() => null);
     const existe = !!(prev && prev.exists);
     // Si el cliente ya existe NO se pisan sus contadores (pedidos, gastado, creación): solo se suma la dirección
-    const previas = existe ? normalizeClientSavedAddresses(prev.data().savedAddresses || [], prev.data().address || '') : [];
-    const savedAddresses = addr && !previas.includes(addr) ? [...previas, addr] : previas;
+    // Se conservan las direcciones TAL COMO están guardadas (con coordenadas); solo se agrega la nueva si no estaba.
+    const previasRaw = existe && Array.isArray(prev.data().savedAddresses) ? prev.data().savedAddresses : [];
+    const previasTexto = normalizeClientSavedAddresses(previasRaw, existe ? (prev.data().address || '') : '');
+    const yaEstaDir = !!addr && previasTexto.some((t) => t.toLowerCase() === addr.toLowerCase());
+    const savedAddresses = addr && !yaEstaDir ? [...previasRaw, addr] : previasRaw;
+    // Si el cliente ya existía y aquí no se escribió un nombre real, se respeta el que ya tenía (antes quedaba "Cliente").
+    const nombreReal = name && !esNombreGenerico(name) && name !== 'Cliente' ? name : '';
+    if (existe && !nombreReal && prev.data().customerName) name = String(prev.data().customerName);
     // El usuario de WhatsApp es opcional: si no se escribe no se toca el que ya tuviera el cliente.
     const wa = String(whatsappUser || '').trim();
     const datos = existe
@@ -23575,7 +23607,8 @@ async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' 
     }
     fetchClients({ force: true }).catch(() => {});
 
-    _ptsSelectedClient = { name, phone, savedAddresses };
+    // Con `id`: sin él, la dirección nueva que se escribía después nunca se ofrecía guardar en el perfil.
+    _ptsSelectedClient = { id: clientId, name, phone, savedAddresses };
     _ptsShowSelectedClientChip(_ptsSelectedClient);
     _ptsRefreshDomicilioSection();
     _ptsUpdateConfirmBtn();
@@ -23610,6 +23643,12 @@ async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' 
             const qn = document.getElementById('ptsQuickName');
             if (qn) qn.value = name;
             if (!name) showNotice('Sin datos del cliente: el pedido sigue sin nombre.', 'ok');
+            return;
+        }
+
+        if (normalizePhoneDigits(phone).length < 7) {
+            showNotice('El teléfono parece incompleto. Revísalo antes de guardar el cliente.', 'warn');
+            phoneInput?.focus();
             return;
         }
 
@@ -24316,6 +24355,7 @@ document.getElementById('clientEditAddAddressBtn')?.addEventListener('click', ()
     const current = getClientAddrChips();
     if (current.some((a) => a.toLowerCase() === val.toLowerCase())) return;
     renderClientAddrChips([...current, val]);
+    _clientEditNuevaDireccion = val;
     if (input) input.value = '';
     input?.focus();
 });
@@ -24342,12 +24382,20 @@ if (clientEditForm) {
         const customerName = String(clientEditNameInput?.value || '').trim();
         const customerPhone = String(clientEditPhoneInput?.value || '').trim();
         const whatsappUser = String(clientEditWhatsappUserInput?.value || '').trim();
-        const address = String(clientEditAddressInput?.value || '').trim();
-        const savedAddresses = normalizeClientSavedAddresses(getClientAddrChips(), address);
+        const chipsActuales = getClientAddrChips();
+        const addressEscrita = String(clientEditAddressInput?.value || '').trim();
+        // Si la principal está vacía, la primera dirección agregada hace de principal (antes el campo obligatorio bloqueaba guardar).
+        const address = (addressEscrita && !esRotuloDireccion(addressEscrita)) ? addressEscrita : (chipsActuales[0] || '');
+        const savedAddresses = normalizeClientSavedAddresses(chipsActuales, address);
         const customerPhoneDigits = normalizePhoneDigits(customerPhone);
 
         if (!customerName || !customerPhone || !address) {
-            showModalFeedback(clientEditFeedback, 'Completa nombre, telefono y direccion.', 'error');
+            showModalFeedback(clientEditFeedback, 'Completa nombre, teléfono y al menos una dirección.', 'error');
+            return;
+        }
+
+        if (customerPhoneDigits.length < 7) {
+            showModalFeedback(clientEditFeedback, 'El teléfono parece incompleto. Revísalo.', 'error');
             return;
         }
 
@@ -24400,7 +24448,12 @@ if (clientEditForm) {
                 // Opcional; al crear sin usuario no se escribe el campo, al editar sí (para poder borrarlo).
                 ...(whatsappUser || oldClientId ? { whatsappUser } : {}),
                 address: savedAddresses[0] || address,
-                savedAddresses,
+                // Se reutilizan las direcciones tal como estaban guardadas (con coordenadas / principal); solo las nuevas entran como texto.
+                savedAddresses: savedAddresses.map((t) => {
+                    const crudas = Array.isArray(baseData?.savedAddresses) ? baseData.savedAddresses : [];
+                    const encontrada = crudas.find((r) => String(typeof r === 'string' ? r : (r && (r.address || r.value || r.label)) || '').trim().toLowerCase() === t.toLowerCase());
+                    return encontrada !== undefined ? encontrada : t;
+                }),
                 totalOrders: Number(baseData?.totalOrders || 0),
                 totalSpent: Number(baseData?.totalSpent || 0),
                 lastOrderCode: String(baseData?.lastOrderCode || '').trim(),
@@ -24418,7 +24471,9 @@ if (clientEditForm) {
             }
 
             if (_clientEditSyncOrderId && _clientEditSyncField) {
-                const _syncValues = { customerName, customerPhone, deliveryAddress: savedAddresses[0] || address };
+                // Si en esta edición se agregó una dirección nueva, esa es la que queda en el pedido (antes quedaba la principal vieja).
+                const _syncValues = { customerName, customerPhone, deliveryAddress: _clientEditNuevaDireccion || savedAddresses[0] || address };
+                _clientEditNuevaDireccion = '';
                 await updateOrder(_clientEditSyncOrderId, {
                     [_clientEditSyncField]: _syncValues[_clientEditSyncField],
                     ...(_clientEditSyncField === 'customerPhone' ? { customerPhoneDigits } : {})
