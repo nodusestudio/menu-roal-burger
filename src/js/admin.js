@@ -7956,6 +7956,7 @@ function _openPosNoteModal(item, itemKey, container) {
         <div class="pos-note-modal-box">
             <p class="pos-note-modal-title">Nota para <strong>${escapeHtml(item.productName)}</strong></p>
             <textarea class="pos-note-modal-input" maxlength="400" placeholder="Ej: sin cebolla, extra picante…">${escapeHtml(item.note || '')}</textarea>
+            ${posIngredientesDeItem(item).length ? '<button type="button" class="pos-note-sin-link">🚫 Quitar ingredientes</button>' : ''}
             <div class="pos-note-modal-actions">
                 <button type="button" class="pos-note-cancel-btn">Cancelar</button>
                 <button type="button" class="pos-note-save-btn">Guardar</button>
@@ -7984,6 +7985,12 @@ function _openPosNoteModal(item, itemKey, container) {
         modal.remove();
     };
 
+    modal.querySelector('.pos-note-sin-link')?.addEventListener('click', () => {
+        PosCart.setNote(itemKey, modal.querySelector('.pos-note-modal-input').value.trim());
+        modal.remove();
+        renderPosOrderItems();
+        _openPosSinModal(item);
+    });
     modal.querySelector('.pos-note-cancel-btn').addEventListener('click', () => modal.remove());
     modal.querySelector('.pos-note-save-btn').addEventListener('click', () => {
         applyNote(modal.querySelector('.pos-note-modal-input').value.trim());
@@ -8063,17 +8070,19 @@ function renderPosOrderItems() {
                 </div>
             </div>`;
         }
+        const _tieneIng = posIngredientesDeItem(item).length > 0;
+        const _hasSin = !!item.sinText || /(^|\s|\|)(sin\s|poca salsa)/i.test(item.note || '');
+        // Solo si ya hay algo que quitar, la nota se puede tocar para cambiarlo (va en su propia línea, no en la del precio).
+        const _noteTag = (_tieneIng && _hasSin)
+            ? `<span class="pos-item-note pos-item-note-sin" data-item-key="${escapeHtml(item.itemKey)}" title="Toca para cambiar lo que se quita">`
+            : '<span class="pos-item-note">';
         const noteHTML = (item.cortesia ? '<span class="pos-item-promo-badge">🎁 CORTESÍA</span>' : '')
             + (item.promoLabel
             ? `<span class="pos-item-promo-badge">🏷 ${escapeHtml(item.promoLabel)}</span>`
-            : (item.note ? `<span class="pos-item-note">${escapeHtml(item.note)}</span>` : ''))
+            : (item.note ? `${_noteTag}${escapeHtml(item.note)}</span>` : ''))
             + (item.optionLabelOrig ? `<span class="pos-item-note">${escapeHtml(item.optionLabelOrig)}</span>` : '')
-            + (item.promoLabel && item.sinText ? `<span class="pos-item-note">${escapeHtml(item.sinText)}</span>` : '');
-        const _tieneIng = posIngredientesDeItem(item).length > 0;
-        const _hasSin = !!item.sinText || /(^|\s|\|)(sin\s|poca salsa)/i.test(item.note || '');
-        const sinBtnHTML = _tieneIng
-            ? `<button type="button" class="pos-item-sin-btn${_hasSin ? ' has-sin' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Quitar ingredientes">🚫 Sin</button>`
-            : '';
+            + (item.promoLabel && item.sinText ? `${_noteTag}${escapeHtml(item.sinText)}</span>` : '');
+        const sinBtnHTML = '';
         return `<div class="pos-item-row" data-item-key="${escapeHtml(item.itemKey)}">
             <div class="pos-item-name">
                 ${escapeHtml(item.productName)}
@@ -8115,7 +8124,7 @@ function renderPosOrderItems() {
 
     if (itemsContainer.dataset.listenerAttached !== 'true') {
         itemsContainer.addEventListener('click', (event) => {
-            const sinBtn = event.target.closest('.pos-item-sin-btn');
+            const sinBtn = event.target.closest('.pos-item-sin-btn, .pos-item-note-sin');
             if (sinBtn) {
                 const sinItem = internalOrderItems.find((i) => i.itemKey === sinBtn.dataset.itemKey);
                 if (sinItem) _openPosSinModal(sinItem);

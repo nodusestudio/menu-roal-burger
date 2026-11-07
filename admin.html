@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261106-1819">
+    <link rel="stylesheet" href="style.css?v=20261106-1903">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -7407,6 +7407,8 @@
             flex-shrink: 0;
         }
         /* Quitar ingredientes + nota del ticket + salsas para llevar */
+        .pos-item-note-sin { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+        .pos-note-sin-link { margin: 6px 0 2px; padding: 6px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; background: rgba(255,122,26,0.18); border: 1px solid rgba(255,122,26,0.7); color: #ffb27a; }
         .pos-item-sin-btn { background: none; border: 1px solid rgba(255,255,255,0.18); color: #ffb27a; border-radius: 8px; font-size: 0.8rem; padding: 2px 7px; cursor: pointer; line-height: 1.2; }
         .pos-item-sin-btn.has-sin { background: rgba(255,122,26,0.22); border-color: rgba(255,122,26,0.7); }
         .pos-sin-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0 12px; max-height: 46vh; overflow-y: auto; }
@@ -17004,17 +17006,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261106-1819"></script>
+    <script defer src="firebase-config.js?v=20261106-1903"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261106-1819"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261106-1903"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1819"></script>
-    <script defer src="admin.js?v=20261106-1819"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1903"></script>
+    <script defer src="admin.js?v=20261106-1903"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
