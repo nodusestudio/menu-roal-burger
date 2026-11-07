@@ -13610,31 +13610,30 @@ function _repeatOrderInPos(pastItems) {
     posTicketConfig = null;
     const repeatBatchId = Date.now();
 
-    pastItems.forEach((item, idx) => {
-        const name     = String(item.productName || item.nombre || '').trim();
-        if (!name) return;
-        const qty      = Number(item.quantity || item.cantidad || 1);
-        const unit     = Number(item.unitPrice || item.price || 0) || (qty ? Math.round(Number(item.subtotal || 0) / qty) : 0);
-        const subtotal = unit * qty;
-        const note     = String(item.note || item.optionLabel || item.nota || '');
-        const key      = `repeat_${repeatBatchId}_${idx}`;
-
-        internalOrderItems.push({
-            itemKey: key,
-            productId: item.productId || null,
-            productName: name,
-            categoryName: item.categoryName || '',
-            quantity: qty,
-            unitPrice: unit,
-            originalUnitPrice: null,
-            subtotal,
-            note,
-            optionLabel: note,
-            promoLabel: null,
-            promo2x1: false,
-            parentKey: null
-        });
+    // Se convierte con el MISMO conversor que usa "editar pedido" (_orderItemToPosCartItem): conserva los extras de combo
+    // ligados a su producto, el combo/sabor (optionLabel), las opciones, los 2×1 con su empaque y las promos. Antes se
+    // cargaban como productos sueltos y sin marcas, y el combo o el 2×1 salían mal cobrados.
+    // No se repiten las cortesías ni lo atado a un cupón/código (serían un descuento que no corresponde la segunda vez).
+    const _esUnicaVez = (it) => it.cortesia === true
+        || Object.keys(it.orderOptions && typeof it.orderOptions === 'object' ? it.orderOptions : {}).some((k) => /cupon|coupon|codigo|fidel/i.test(k));
+    const origen = pastItems.filter((it) => String(it.productName || it.nombre || '').trim());
+    const omitidos = origen.filter(_esUnicaVez);
+    const keyMap = new Map();
+    const convertidos = origen.filter((it) => !_esUnicaVez(it)).map((it, idx) => {
+        const c = _orderItemToPosCartItem({ ...it, productName: it.productName || it.nombre, quantity: it.quantity || it.cantidad || 1 });
+        const nueva = `repeat_${repeatBatchId}_${idx}`;
+        if (it.itemKey) keyMap.set(it.itemKey, nueva);
+        c.itemKey = nueva;
+        c._padreViejo = it.parentItemKey || null;
+        if (!c.unitPrice && c.quantity) c.unitPrice = Math.round(Number(it.subtotal || 0) / c.quantity);
+        return c;
     });
+    convertidos.forEach((c) => {
+        c.parentKey = c._padreViejo ? (keyMap.get(c._padreViejo) || null) : null;
+        delete c._padreViejo;
+        if (!c.subtotal) c.subtotal = c.unitPrice * c.quantity;
+    });
+    internalOrderItems = convertidos;
 
     // Se cargan con el precio del pedido anterior; si el catálogo ya cambió, se avisa para que el cajero decida.
     const _distintos = internalOrderItems.filter((i) => {
@@ -13644,7 +13643,8 @@ function _repeatOrderInPos(pastItems) {
     });
     openInternalOrderModal();
     if (_distintos.length) { showNotice(`Ojo: ${_distintos.slice(0, 3).map((i) => i.productName).join(', ')}${_distintos.length > 3 ? '…' : ''} cambió de precio en el menú; se cargó con el precio del pedido anterior.`, 'warn'); return; }
-    showNotice(`${pastItems.length} producto${pastItems.length !== 1 ? 's' : ''} cargado${pastItems.length !== 1 ? 's' : ''} en POS.`, 'success');
+    if (omitidos.length) { showNotice(`${omitidos.length} producto${omitidos.length !== 1 ? 's' : ''} no se repiti${omitidos.length !== 1 ? 'eron' : 'ó'} (cortesía o cupón de una sola vez): ${omitidos.slice(0, 3).map((i) => i.productName || i.nombre).join(', ')}.`, 'warn'); return; }
+    showNotice(`${convertidos.length} producto${convertidos.length !== 1 ? 's' : ''} cargado${convertidos.length !== 1 ? 's' : ''} en POS.`, 'success');
 }
 
 function formatMoney(value) {
@@ -15137,8 +15137,30 @@ function createOrderCard(order) {
     return card;
 }
 
-// Mismas 8 mesas que ya usan #ptsMesaGrid y .chm-mesa-btn en el POS.
+// Cantidad de mesas del local (configuracion/config_mesas.cantidad; por defecto 8). Una sola fuente para el mapa de
+// Recepción, la barra del POS, "Personalizar ticket" y "Cambiar mesa": _aplicarCantidadMesas() reconstruye los tres.
+const MESAS_DOC_ID = 'config_mesas';
 const RECEPTION_MESA_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+function _aplicarCantidadMesas(valor) {
+    const n = Math.min(40, Math.max(1, Math.floor(Number(valor)) || 8));
+    RECEPTION_MESA_NUMBERS.length = 0;
+    for (let i = 1; i <= n; i++) RECEPTION_MESA_NUMBERS.push(i);
+    const ptsGrid = document.querySelector('#ptsMesaGrid .pts-mesa-btns');
+    if (ptsGrid) ptsGrid.innerHTML = RECEPTION_MESA_NUMBERS.map((m) => `<button type="button" class="pts-mesa-btn" data-pts-mesa="${m}">${m}</button>`).join('');
+    const chmGrid = document.querySelector('#changeMesaModal .chm-mesa-btns');
+    if (chmGrid) chmGrid.innerHTML = RECEPTION_MESA_NUMBERS.map((m) => `<button type="button" class="chm-mesa-btn" data-chm-mesa="${m}">${m}</button>`).join('');
+    try { renderPosTypeBar(); } catch (_) { /* aún no inicializado */ }
+    try { renderMesaMap(document.getElementById('ordersColumnMesa'), _mesaSumaOrders); } catch (_) { /* aún no hay pedidos */ }
+    return n;
+}
+
+async function fetchMesasConfig() {
+    try {
+        const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(MESAS_DOC_ID).get();
+        if (doc.exists && Number(doc.data().cantidad) > 0) _aplicarCantidadMesas(doc.data().cantidad);
+    } catch (_) { /* se quedan las 8 de siempre */ }
+}
 
 // Pinta el mapa de mesas de Recepción (libre/ocupada) en vez de una lista de tarjetas.
 // mesaOrders ya viene filtrado a pedidos de mesa activos (status !== 'entregado').
@@ -15204,6 +15226,26 @@ function renderMesaMap(container, mesaOrders) {
 // Sumar mesas: activar/desactivar, marcar mesas y limpiar
 document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
     const re = () => renderMesaMap(document.getElementById('ordersColumnMesa'), _mesaSumaOrders);
+    if (e.target.closest('#mesaConfigBtn')) {
+        (async () => {
+            const actual = RECEPTION_MESA_NUMBERS.length;
+            const ocupadas = (_mesaSumaOrders || []).map((o) => Number(o.mesaNumber) || 0);
+            const respuesta = await showPromptModal({ icon: '🍽️', title: '¿Cuántas mesas tiene el local?', message: 'Se actualiza el mapa de Recepción, el POS y "Cambiar mesa".', placeholder: 'Ej: 12', value: String(actual), confirmText: 'Guardar' });
+            if (respuesta === null || respuesta === undefined || String(respuesta).trim() === '') return;
+            const n = Math.floor(Number(String(respuesta).trim()));
+            if (!Number.isFinite(n) || n < 1 || n > 40) { showNotice('Escribe un número de mesas entre 1 y 40.', 'error'); return; }
+            const maxOcupada = Math.max(0, ...ocupadas);
+            if (n < maxOcupada) { showNotice(`La mesa ${maxOcupada} tiene una cuenta abierta: no se pueden dejar menos de ${maxOcupada} mesas.`, 'error'); return; }
+            try {
+                await firebaseDb.collection(CONFIG_COLLECTION).doc(MESAS_DOC_ID).set({ cantidad: n, updatedAt: firestoreNow() }, { merge: true });
+                _aplicarCantidadMesas(n);
+                showNotice(`Ahora el local tiene ${n} mesas.`, 'ok');
+            } catch (err) {
+                showNotice(`No se pudo guardar: ${err.code === 'permission-denied' ? 'solo el administrador puede cambiarlo' : (err.message || 'error')}`, 'error');
+            }
+        })();
+        return;
+    }
     if (e.target.closest('#mesaSumarBtn')) { _mesaSumaActiva = !_mesaSumaActiva; _mesaSumaSel.clear(); re(); return; }
     if (e.target.closest('#mesaSumaLimpiar')) { _mesaSumaSel.clear(); re(); return; }
     const t = e.target.closest('[data-mesa-sum]');
@@ -22394,6 +22436,7 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
         fetchMessages(),
         fetchMenuUpgradesConfig(),
         fetchHorarioConfig(),
+        fetchMesasConfig(),
         fetchPromos(),
         fetchCombosEspeciales(),
         fetchPromos2x1(),
