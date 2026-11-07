@@ -15306,8 +15306,11 @@ function _mesaSumaActualizar(mesaOrders) {
 }
 
 // Dibujo de una mesa vista desde arriba (con sus 4 sillas) y el número adentro; el color lo da la tarjeta (libre/ocupada).
+// Mesas de dos puestos (solo dos sillas); las demás se dibujan con cuatro.
+const MESAS_DOS_PUESTOS = [1, 5];
 function _mesaSvg(num) {
-    return `<svg class="mesa-svg" viewBox="0 0 64 52" width="58" height="47" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="20" y="2" width="24" height="7" rx="3.5" opacity=".45"/><rect x="20" y="43" width="24" height="7" rx="3.5" opacity=".45"/><rect x="2" y="14" width="7" height="24" rx="3.5" opacity=".45"/><rect x="55" y="14" width="7" height="24" rx="3.5" opacity=".45"/></g><rect x="12" y="11" width="40" height="30" rx="10" fill="currentColor" fill-opacity=".14" stroke="currentColor" stroke-width="1.6"/><text x="32" y="27" text-anchor="middle" dominant-baseline="central" font-size="19" font-weight="700" fill="currentColor" font-family="Oswald, sans-serif">${num}</text></svg>`;
+    const sillasLaterales = MESAS_DOS_PUESTOS.includes(Number(num)) ? '' : '<rect x="2" y="14" width="7" height="24" rx="3.5" opacity=".45"/><rect x="55" y="14" width="7" height="24" rx="3.5" opacity=".45"/>';
+    return `<svg class="mesa-svg" viewBox="0 0 64 52" width="58" height="47" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="20" y="2" width="24" height="7" rx="3.5" opacity=".45"/><rect x="20" y="43" width="24" height="7" rx="3.5" opacity=".45"/>${sillasLaterales}</g><rect x="12" y="11" width="40" height="30" rx="10" fill="currentColor" fill-opacity=".14" stroke="currentColor" stroke-width="1.6"/><text x="32" y="27" text-anchor="middle" dominant-baseline="central" font-size="19" font-weight="700" fill="currentColor" font-family="Oswald, sans-serif">${num}</text></svg>`;
 }
 
 function renderMesaMap(container, mesaOrders) {
