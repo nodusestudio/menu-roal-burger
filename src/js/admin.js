@@ -11460,9 +11460,9 @@ applyInnerTabs(document.querySelector('[data-tab-panel="banco"]'), 'banco', [
     if (pos && !pos.querySelector('[data-rango-bar="pos"]')) pos.insertAdjacentHTML('afterbegin', rangoSelectorHtml('pos'));
 })();
 applyInnerTabs(document.getElementById('metricsPanelPos'), 'pos', [
-    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [1, 2] },
-    { id: 'analisis', icon: '📈', label: 'Análisis', idx: [3] },
-    { id: 'clientes', icon: '👥', label: 'Clientes', idx: [4] }
+    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [1, 2, 3] },
+    { id: 'analisis', icon: '📈', label: 'Análisis', idx: [4] },
+    { id: 'clientes', icon: '👥', label: 'Clientes', idx: [5] }
 ]);
 applyInnerTabs(document.getElementById('metricsPanelApp'), 'app', [
     { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0] },
@@ -11478,7 +11478,7 @@ onRango('fb', () => renderMetricasFeedback(), 'todo');
 onRango('canjes', () => renderCuponesCanjes(), 'todo');
 onRango('fid', () => renderMetricasFeedback(), 'mes');
 
-function _renderBarChart(containerId, data, color) {
+function _renderBarChart(containerId, data, color, fmt) {
     const el = document.getElementById(containerId);
     if (!el) return;
     if (!data || !data.length) { el.innerHTML = '<p class="met-empty-note">Sin datos suficientes.</p>'; return; }
@@ -11488,7 +11488,7 @@ function _renderBarChart(containerId, data, color) {
         return `<div class="met-bar-item">
             <span class="met-bar-label">${escapeHtml(String(d.label))}</span>
             <div class="met-bar-track"><div class="met-bar-fill" style="width:${pct}%;background:${color}"></div></div>
-            <span class="met-bar-val">${d.val}</span>
+            <span class="met-bar-val">${fmt ? escapeHtml(fmt(d.val)) : d.val}</span>
         </div>`;
     }).join('');
 }
@@ -13559,6 +13559,35 @@ function _renderMetricsUserRows(users) {
     });
 }
 
+// Descuentos y cobros extra de una lista de pedidos cobrados (líneas descuento:: / cobro-extra::).
+// SYNC: misma cuenta que functions/fodiAjustes.js (resumirAjustes); si cambias una, cambia la otra.
+function _posAjustesResumen(orders) {
+    let ventaNeta = 0;
+    const desc = { n: 0, monto: 0, pedidos: new Set() }, extra = { n: 0, monto: 0 };
+    const porQuien = new Map(), porConcepto = new Map();
+    const suma = (m, k, monto) => { const g = m.get(k) || { n: 0, monto: 0 }; g.n++; g.monto += monto; m.set(k, g); };
+    orders.forEach((o) => {
+        ventaNeta += Number(o.total || 0);
+        (o.items || []).forEach((it) => {
+            if (!_posEsAjuste(it)) return;
+            const monto = Math.abs(Number(it.subtotal != null ? it.subtotal : Number(it.unitPrice || 0) * Number(it.quantity || 1)));
+            if (!(monto > 0)) return;
+            if (_posAjusteEsDescuento(it)) {
+                desc.n++; desc.monto += monto; desc.pedidos.add(o.id);
+                suma(porQuien, String(it.aplicadoPor || '').trim() || 'Sin dato', monto);
+                suma(porConcepto, String(it.productName || '').trim() || 'Descuento', monto);
+            } else { extra.n++; extra.monto += monto; }
+        });
+    });
+    const bruta = ventaNeta + desc.monto;
+    return {
+        descuentos: { cantidad: desc.n, pedidos: desc.pedidos.size, monto: desc.monto, pct: bruta > 0 ? Math.round((desc.monto / bruta) * 1000) / 10 : 0 },
+        cobrosExtra: { cantidad: extra.n, monto: extra.monto },
+        porQuien: [...porQuien.entries()].sort((a, b) => b[1].monto - a[1].monto),
+        porConcepto: [...porConcepto.entries()].sort((a, b) => b[1].monto - a[1].monto)
+    };
+}
+
 function renderMetricsPos() {
     const list = document.getElementById('metricsPosList');
     if (!list) return;
@@ -13589,6 +13618,15 @@ function renderMetricsPos() {
     set('posKpiRevenue', formatMoney(totalRev));
     set('posKpiTicket',  formatMoney(avgTicket));
     set('posKpiMax',     formatMoney(maxTicket));
+
+    // Descuentos y cobros extra del rango (con PIN de supervisor)
+    const _aj = _posAjustesResumen(posOrders.filter((o) => o.source !== 'cuenta_por_cobrar'));
+    set('posAjDescMonto', formatMoney(_aj.descuentos.monto));
+    set('posAjDescPct',   `${_aj.descuentos.pct.toLocaleString('es-CO')}%`);
+    set('posAjDescN',     `${_aj.descuentos.cantidad.toLocaleString('es-CO')}${_aj.descuentos.pedidos ? ` · ${_aj.descuentos.pedidos} pedido${_aj.descuentos.pedidos === 1 ? '' : 's'}` : ''}`);
+    set('posAjExtraMonto', `${formatMoney(_aj.cobrosExtra.monto)}${_aj.cobrosExtra.cantidad ? ` · ${_aj.cobrosExtra.cantidad}` : ''}`);
+    _renderBarChart('posAjQuienChart', _aj.porQuien.slice(0, 5).map(([k, g]) => ({ label: k, val: g.monto })), '#f87171', formatMoney);
+    _renderBarChart('posAjConceptoChart', _aj.porConcepto.slice(0, 5).map(([k, g]) => ({ label: k, val: g.monto })), '#fb923c', formatMoney);
 
     // Períodos
     const pT = _periodStats(posOrdersAll, 'today');
