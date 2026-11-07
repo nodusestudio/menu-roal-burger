@@ -7593,6 +7593,65 @@ function openBurgerClasicasPosModal(productId, productName) {
     document.body.appendChild(overlay);
 }
 
+// Extras para los productos que se piden en combo (ventanas de variantes y de bebida incluida): antes solo tenían "Nota".
+// · 🚫 Quitar ingredientes / salsas → el mismo checklist de la hoja del producto (queda como "Sin tomate, con La Jeva…")
+// · 🥗 Adicionales → acompañantes activos del POS, que se guardan como hijos del producto (salen dentro de su cuadro en el ticket)
+function _posComboExtrasBar(productId, productName) {
+    const state = { sinText: '', extras: [] };
+    const el = document.createElement('div');
+    el.className = 'combo-modal-extras';
+    const btnSin = document.createElement('button');
+    btnSin.type = 'button';
+    const btnAdic = document.createElement('button');
+    btnAdic.type = 'button';
+    const refrescar = () => {
+        btnSin.textContent = state.sinText ? `🚫 ${state.sinText.length > 26 ? state.sinText.slice(0, 25) + '…' : state.sinText}` : '🚫 Quitar / 🥫 Salsas';
+        btnSin.classList.toggle('has-val', !!state.sinText);
+        btnAdic.textContent = state.extras.length ? `🥗 Adicionales (${state.extras.length})` : '🥗 Adicionales';
+        btnAdic.classList.toggle('has-val', state.extras.length > 0);
+    };
+    btnSin.addEventListener('click', () => {
+        const prod = productsState.find((p) => p.id === String(productId).split('::')[0]);
+        const ings = posIngredientesDeProducto(prod);
+        _posSinChecklist(`Quitar de <strong>${escapeHtml(productName)}</strong>`, ings, state.sinText, (terms) => {
+            state.sinText = posSinTexto(terms);
+            refrescar();
+        });
+    });
+    btnAdic.addEventListener('click', () => {
+        const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos).sort((a, b) => a.orden - b.orden);
+        if (!activos.length) { showNotice('No hay adicionales activos para el POS.', 'warn'); return; }
+        let sel = state.extras.map((e) => e.id);
+        const chips = () => activos.map((a) => `<button type="button" class="pos-salsa-chip${sel.includes(`acomp-${a.id}`) ? ' on' : ''}" data-ad="${escapeHtml(a.id)}">${escapeHtml(a.nombre)} <small>${a.precio > 0 ? '+' + escapeHtml(formatMoney(a.precio)) : 'incluido'}</small></button>`).join('');
+        const modal = _posFloatModal('posComboAdicModal', `Adicionales para <strong>${escapeHtml(productName)}</strong>`,
+            `<div class="pos-salsas-chips">${chips()}</div>`,
+            () => {
+                state.extras = activos.filter((a) => sel.includes(`acomp-${a.id}`)).map((a) => ({ id: `acomp-${a.id}`, name: a.nombre, price: Number(a.precio) || 0 }));
+                refrescar();
+            }, 'Listo');
+        const box = modal.querySelector('.pos-salsas-chips');
+        box.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-ad]');
+            if (!b) return;
+            const id = `acomp-${b.dataset.ad}`;
+            sel = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
+            box.innerHTML = chips();
+        });
+    });
+    refrescar();
+    el.appendChild(btnSin);
+    el.appendChild(btnAdic);
+    return { el, state };
+}
+
+// Agrega el producto principal y, si se eligieron adicionales, los deja ligados a él (parentKey) para que el ticket los agrupe.
+function _posAgregarConExtras(id, nombre, precio, nota, extras) {
+    if (!extras.length) { addProductToPosOrder(id, nombre, precio, nota); return; }
+    const mainKey = `${id}::u${Date.now()}_0`;
+    addProductToPosOrder(id, nombre, precio, nota, null, { upgradeHandled: true, forcedKey: mainKey });
+    extras.forEach((e) => addProductToPosOrder(e.id, e.name, e.price, '', null, { parentKey: mainKey, forcedKey: `${mainKey}::${e.id}` }));
+}
+
 function openProductVariantesModal(productId, productName, categoryName, variantes, replaceItemKey = null) {
     let selectedVariante = null;
     let selectedSabores = []; // array de largo cantidad_bebidas, cada slot es null o string
@@ -7634,6 +7693,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     noteInput.placeholder = 'Ej: sin papas extras, sin hielo...';
     noteRow.appendChild(noteLabel);
     noteRow.appendChild(noteInput);
+    const extrasBar = _posComboExtrasBar(productId, productName);
 
     // Botón confirmar
     const confirmBtn = document.createElement('button');
@@ -7663,7 +7723,8 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         if (!v.con_bebida || !v.bebida_ref_id || !v.bebida_pres_id) return [];
         const beb = bebidasState.find((b) => b.id === v.bebida_ref_id);
         const pres = beb?.presentaciones?.find((p) => p.id === v.bebida_pres_id);
-        return pres?.sabores || [];
+        // Sin sabores repetidos (había "toronja" y "tamarindo" dos veces)
+        return (pres?.sabores || []).filter((s, i, a) => a.findIndex((x) => String(x).trim().toLowerCase() === String(s).trim().toLowerCase()) === i);
     }
 
     // Helper: mostrar/ocultar y poblar sección de sabores (una fila horizontal por bebida)
@@ -7752,17 +7813,18 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         const bebInfo = selectedVariante.con_bebida && selectedVariante.bebida_nombre
             ? ` + ${selectedVariante.bebida_nombre}${saboresLabel ? ` (${saboresLabel})` : ''}${cant > 1 ? ` ×${cant}` : ''}`
             : '';
-        const optLabel = `${selectedVariante.nombre}${bebInfo}${note ? ` | ${note}` : ''}`;
+        const optLabel = `${selectedVariante.nombre}${bebInfo}${note ? ` | ${note}` : ''}${extrasBar.state.sinText ? ` | ${extrasBar.state.sinText}` : ''}`;
         if (replaceItemKey) {
             internalOrderItems = internalOrderItems.filter(
                 (i) => i.itemKey !== replaceItemKey && i.parentKey !== replaceItemKey
             );
         }
-        addProductToPosOrder(
+        _posAgregarConExtras(
             `${String(productId).trim()}::${selectedVariante.id}`,
             productName,
             Number(selectedVariante.precio || 0),
-            optLabel
+            optLabel,
+            extrasBar.state.extras
         );
         overlay.remove();
     });
@@ -7774,6 +7836,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     card.appendChild(grid);
     card.appendChild(saborSection);
     card.appendChild(noteRow);
+    card.appendChild(extrasBar.el);
     card.appendChild(footer);
 
     _bindOverlayClose(overlay, () => overlay.remove());
@@ -7783,7 +7846,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
 function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, replaceItemKey = null) {
     const beb = bebidasState.find((b) => b.id === bebidaConfig.bebida_ref_id);
     const pres = beb?.presentaciones?.find((p) => p.id === bebidaConfig.bebida_pres_id);
-    const saboresDisp = pres?.sabores || [];
+    const saboresDisp = (pres?.sabores || []).filter((s, i, a) => a.findIndex((x) => String(x).trim().toLowerCase() === String(s).trim().toLowerCase()) === i);
     const cant = Math.max(1, Number(bebidaConfig.cantidad) || 1);
 
     if (!saboresDisp.length) {
@@ -7873,17 +7936,19 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
     confirmBtn.addEventListener('click', () => {
         const saborNote = selectedSabores.filter(Boolean).join(', ');
         const userNote = noteInput.value.trim();
-        const note = `🥤 ${bebidaConfig.bebida_nombre}${saborNote ? ' — ' + saborNote : ''}${userNote ? ' | ' + userNote : ''}`;
+        const note = `🥤 ${bebidaConfig.bebida_nombre}${saborNote ? ' — ' + saborNote : ''}${userNote ? ' | ' + userNote : ''}${extrasBar.state.sinText ? ' | ' + extrasBar.state.sinText : ''}`;
         overlay.remove();
         if (replaceItemKey) internalOrderItems = internalOrderItems.filter(
             (i) => i.itemKey !== replaceItemKey && i.parentKey !== replaceItemKey
         );
-        addProductToPosOrder(productId, productName, productPrice, note);
+        _posAgregarConExtras(productId, productName, productPrice, note, extrasBar.state.extras);
     });
 
+    const extrasBar = _posComboExtrasBar(productId, productName);
     card.appendChild(saborLabel);
     card.appendChild(saborGrid);
     card.appendChild(noteRow);
+    card.appendChild(extrasBar.el);
     card.appendChild(confirmBtn);
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
@@ -14536,7 +14601,7 @@ function buildThermalTicketMarkup(order, options = {}) {
             .join(' | ');
     };
 
-    const rows = _groupOrderItemsForDisplay(order.items).map((item) => {
+    const rows = _groupOrderItemsForDisplay(order.items).map((item, _idx, _arr) => {
         const origUnit = item.originalUnitPrice != null ? Number(item.originalUnitPrice) : null;
         const hasItemDiscount = origUnit !== null && origUnit > Number(item.unitPrice || 0);
         const origSubtotal = hasItemDiscount ? origUnit * Number(item.quantity || 1) : null;
@@ -14564,13 +14629,19 @@ function buildThermalTicketMarkup(order, options = {}) {
             ? itemNameBlock
             : `<button type="button" class="ticket-copy-btn" style="display:block;width:100%;" data-order-ticket-action="edit-items" data-order-id="${escapeHtml(order.id)}" title="Editar productos del pedido">${itemNameBlock}</button>`;
 
+        // Cada producto va en su propio cuadro junto con lo que lleva (combo, adicionales): el cuadro empieza en el producto
+        // y termina en su último hijo. Solo se ve en pantalla; la impresión usa su propio estilo.
+        const _siguienteEsHijo = !!(_arr[_idx + 1] && _arr[_idx + 1].parentItemKey);
+        const _clsFila = ['tk-g', !isChild ? 'tk-g-first' : '', !_siguienteEsHijo ? 'tk-g-last' : '', isChild ? 'ticket-row-child' : ''].filter(Boolean).join(' ');
+        // Fila de separación entre cuadros (solo en pantalla: la impresión no lleva filas vacías).
+        const _separador = (!printMode && !_siguienteEsHijo && _idx < _arr.length - 1) ? '<tr class="tk-gap" aria-hidden="true"><td colspan="2"></td></tr>' : '';
         return `
-            <tr${isChild ? ' class="ticket-row-child"' : ''}>
+            <tr class="${_clsFila}">
                 <td>
                     ${itemNameCell}
                 </td>
                 <td style="text-align:right;">${priceCell}</td>
-            </tr>
+            </tr>${_separador}
         `;
     }).join('') + (order.voidedItems || []).map((v) => `
         <tr>

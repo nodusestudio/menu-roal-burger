@@ -13610,6 +13610,29 @@
         /* ── Recepción: Agregar / Imprimir / Cobrar arriba del ticket, siempre a la vista sin bajar ── */
         @media screen and (min-width: 769px) { #orderTicketPanel .ticket-paper-wrap > .ticket-print-row { order: -1; } }
 
+        /* ── Ventanas de combo: quitar ingredientes / salsas y adicionales ── */
+        .combo-modal-extras { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 0 2px; }
+        .combo-modal-extras button { flex: 1 1 180px; min-height: 44px; padding: 6px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.07); color: #eef4ff; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+        .combo-modal-extras button.has-val { background: rgba(255,122,26,0.22); border-color: #ff7a1a; }
+        #posSinModal, #posComboAdicModal { z-index: 10100; }
+
+        /* ── Ticket en pantalla: cada producto en su cuadro, con su combo / adicionales adentro ── */
+        @media screen {
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table { border-collapse: separate; border-spacing: 0; }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-gap > td { height: 8px; padding: 0; border: 0; background: none; }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g > td { background: rgba(255,255,255,0.045); border: 0; padding: 6px 9px; }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g > td:first-child { border-left: 1px solid rgba(255,255,255,0.24); }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g > td:last-child { border-right: 1px solid rgba(255,255,255,0.24); }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g-first > td { border-top: 1px solid rgba(255,255,255,0.24); }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g-last > td { border-bottom: 1px solid rgba(255,255,255,0.24); }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g-first > td:first-child { border-top-left-radius: 10px; }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g-first > td:last-child { border-top-right-radius: 10px; }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g-last > td:first-child { border-bottom-left-radius: 10px; }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g-last > td:last-child { border-bottom-right-radius: 10px; }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g.ticket-row-child > td { background: rgba(255,140,58,0.09); padding-top: 4px; padding-bottom: 4px; }
+            :is(#orderTicketPanel, .ticket-paper) .ticket-table tr.tk-g.ticket-row-child > td:first-child { padding-left: 18px; box-shadow: inset 3px 0 0 #ff8c3a; }
+        }
+
         /* ── Pago en efectivo: billetes rápidos ── */
         .pf-cash-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
         .pf-cash-chip { flex: 1 1 28%; min-height: 48px; border-radius: 10px; border: 1px solid rgba(255,149,64,0.45); background: rgba(255,149,64,0.1); color: #ffd9b8; font-family: 'Oswald', sans-serif; font-size: 1rem; cursor: pointer; }
