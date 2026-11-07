@@ -26706,6 +26706,8 @@ async function _meseroEnterWorkspace(sessionId) {
     // otras secciones esta oculto por CSS, asi que el mesero nunca dispara otro target.
     setupAccordion();
     setupCardCollapse();
+    // Los pedidos se leen ahora, con la sesión de Firebase ya abierta (antes de entrar no hay permiso para listarlos).
+    try { await fetchOrders(); } catch (err) { console.warn('[Mesero] No se pudieron cargar los pedidos:', err.code || err.message); }
     announceNewOrders(ordersState);
     renderOrders();
     _subscribeMeseroOrders();
@@ -26749,8 +26751,11 @@ async function initMeseroMode(token) {
             fetchBebidas(),
             fetchAcompanantes(),
             fetchCombosPack(),
-            fetchCatalogoVisibilidad(),
-            fetchOrders()
+            fetchCatalogoVisibilidad()
+            // fetchOrders() YA NO va aquí: listar pedidos exige sesión (reglas de Firestore: admin o mesero con sesión) y en este
+            // punto el mesero todavía no entró. Con la regla endurecida esa lectura fallaba con "permission-denied", el catch
+            // lo tomaba por enlace inválido y TODOS los enlaces de mesero mostraban "Enlace no disponible". Se carga en
+            // _meseroEnterWorkspace, ya con la sesión abierta.
         ]);
         if (!snap.exists) {
             _showMeseroInvalidScreen();
