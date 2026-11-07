@@ -4452,11 +4452,17 @@
             border-bottom: 1px solid rgba(255,255,255,0.07);
             flex-shrink: 0;
             display: flex;
+            flex-wrap: wrap;
             gap: 8px;
             position: relative;
         }
+        /* Cuando la fila es angosta (columna de productos en pantallas medianas) los botones quedan solo con su icono: antes "Descuento" se salía del panel */
+        .pos-searchbar.is-compact .pos-act-lbl { display: none; }
+        .pos-searchbar.is-compact .pos-cart-action-btn { padding: 0 9px; font-size: 1rem; }
+        .pos-searchbar.is-compact { gap: 6px; }
+        .pos-searchbar.is-compact .pos-product-search { flex-basis: 100px; min-width: 90px; }
         .pos-product-search {
-            flex: 1; min-width: 0;
+            flex: 1 1 130px; min-width: 0;
             height: 40px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.12);
@@ -4492,8 +4498,10 @@
             top: 100%;
             right: 10px;
             margin-top: 6px;
-            width: 280px;
+            width: 310px;
             max-width: calc(100vw - 20px);
+            max-height: calc(100vh - 150px);
+            overflow-y: auto;
             background: #1e2636;
             border: 1px solid rgba(255,255,255,0.14);
             border-radius: 12px;
@@ -5005,6 +5013,34 @@
             transition: opacity .15s; text-align: center;
         }
         .pos-cobro-extra-add-btn:hover { opacity: .88; }
+        .pos-cobro-extra-add-btn:disabled { opacity: .55; cursor: wait; }
+        /* Formulario compartido de cobro extra / descuento: más compacto (monto primero, PIN y "aplicado por" en una fila) */
+        .pos-action-popover .pos-cobro-extra-panel { padding: 12px; gap: 10px; }
+        .pos-action-popover .pos-cobro-extra-fields { gap: 9px; }
+        .pos-action-popover .pos-cobro-extra-field { min-width: 0; }
+        .pos-action-popover .pos-cobro-extra-field input { font-size: 0.92rem; padding: 8px 10px; min-width: 0; width: 100%; box-sizing: border-box; }
+        .pos-cobro-extra-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .pos-cobro-extra-panel.is-descuento .pos-cobro-extra-header { color: #f87171; opacity: 1; }
+        .pos-cobro-extra-panel.is-extra .pos-cobro-extra-header { color: #ffc46b; opacity: 1; }
+        .pos-cobro-extra-panel.is-descuento .pos-cobro-extra-add-btn { background: linear-gradient(135deg,#c0392b,#e74c3c); }
+        .pos-cobro-extra-panel.is-descuento .pos-cobro-extra-field input:focus { border-color: rgba(248,113,113,.7); }
+        .pos-cobro-extra-panel.is-descuento .pos-cobro-preset-btn:hover { background: rgba(248,113,113,.2); border-color: rgba(248,113,113,.5); }
+        .pos-ajuste-modos { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid rgba(255,255,255,.16); border-radius: 9px; overflow: hidden; }
+        .pos-ajuste-modo { background: transparent; border: 0; color: rgba(255,255,255,.65); font-size: 0.78rem; font-weight: 700; padding: 8px 6px; cursor: pointer; }
+        .pos-ajuste-modo.on { background: rgba(248,113,113,.22); color: #fff; }
+        .pos-ajuste-calculo { font-size: 0.74rem; color: #fca5a5; margin-top: 2px; }
+        .pos-ajuste-calculo[hidden] { display: none; }
+        /* Los dos botones junto al buscador se distinguen por color (antes eran idénticos y casi invisibles) */
+        #posCobroExtraBtn { border-color: rgba(255,196,107,.55); color: #ffc46b; background: rgba(255,196,107,.08); }
+        #posCobroExtraBtn:hover { background: rgba(255,196,107,.18); color: #ffe0a8; border-color: rgba(255,196,107,.85); }
+        #posDescuentoBtn { border-color: rgba(248,113,113,.55); color: #fca5a5; background: rgba(248,113,113,.08); }
+        #posDescuentoBtn:hover { background: rgba(248,113,113,.18); color: #fecaca; border-color: rgba(248,113,113,.85); }
+        /* Línea de cobro extra / descuento dentro del carrito: sin controles de producto, con su color */
+        .pos-item-row-ajuste { border-left: 3px solid #ffc46b; }
+        .pos-item-row-ajuste.is-descuento { border-left-color: #f87171; }
+        .pos-item-ajuste-badge { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; font-size: 0.66rem; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; background: rgba(255,196,107,.16); color: #ffc46b; }
+        .pos-item-row-ajuste.is-descuento .pos-item-ajuste-badge { background: rgba(248,113,113,.16); color: #fca5a5; }
+        .pos-item-row-ajuste.is-descuento .pos-item-price-ajuste { color: #fca5a5; }
 
         .pos-promo-panel { padding: 8px 4px; }
         .pos-promo-section { margin-bottom: 16px; }
@@ -16207,8 +16243,8 @@
                 <!-- Tipo de pedido siempre a la vista, en la MISMA fila del buscador: Mesa (con su número) / Llevar / Domicilio. Se rellena por JS (renderPosTypeBar). -->
                 <div class="pos-typebar" id="posTypeBar" hidden></div>
                 <input type="text" id="posProductSearch" class="pos-product-search" placeholder="🔍 Buscar producto…" autocomplete="off">
-                <button type="button" class="pos-cart-action-btn" id="posCobroExtraBtn" title="Agregar un cobro extra al ticket">➕ Cobro extra</button>
-                <button type="button" class="pos-cart-action-btn" id="posDescuentoBtn" title="Aplicar un descuento al ticket">🏷 Descuento</button>
+                <button type="button" class="pos-cart-action-btn" id="posCobroExtraBtn" title="Agregar un cobro extra al ticket" aria-label="Cobro extra">➕<span class="pos-act-lbl"> Cobro extra</span></button>
+                <button type="button" class="pos-cart-action-btn" id="posDescuentoBtn" title="Aplicar un descuento al ticket" aria-label="Descuento">🏷<span class="pos-act-lbl"> Descuento</span></button>
                 <div class="pos-action-popover" id="posCobroExtraPopover" hidden></div>
                 <div class="pos-action-popover" id="posDescuentoPopover" hidden></div>
             </div>

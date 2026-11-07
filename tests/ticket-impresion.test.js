@@ -11,10 +11,21 @@ const extraer = (nombre) => {
     assert.ok(m, `no se encontró ${nombre}`);
     return m[0];
 };
-const { _ticketDetalleLineas, _escNormalize, createEscPosLineBuilder } = new Function(
-    `${extraer('_ticketDetalleLineas')}\n${extraer('_escNormalize')}\n${extraer('createEscPosLineBuilder')}\n`
-    + 'return { _ticketDetalleLineas, _escNormalize, createEscPosLineBuilder };'
+const { _ticketDetalleLineas, _escNormalize, createEscPosLineBuilder, _posEsAjuste, _posAjusteEsDescuento } = new Function(
+    `${extraer('_posEsAjuste')}\n${extraer('_posAjusteEsDescuento')}\n${extraer('_ticketDetalleLineas')}\n${extraer('_escNormalize')}\n${extraer('createEscPosLineBuilder')}\n`
+    + 'return { _ticketDetalleLineas, _escNormalize, createEscPosLineBuilder, _posEsAjuste, _posAjusteEsDescuento };'
 )();
+
+test('cobro extra / descuento: se reconocen por el productId y su ticket solo dice quién autorizó', () => {
+    assert.equal(_posEsAjuste({ productId: 'descuento::Cliente frecuente::2000' }), true);
+    assert.equal(_posEsAjuste({ productId: 'cobro-extra::Empaque::1000' }), true);
+    assert.equal(_posEsAjuste({ productId: 'prod123' }), false);
+    assert.equal(_posEsAjuste(null), false);
+    assert.equal(_posAjusteEsDescuento({ productId: 'descuento::x::1' }), true);
+    assert.equal(_posAjusteEsDescuento({ productId: 'cobro-extra::x::1' }), false);
+    assert.deepEqual(_ticketDetalleLineas({ productId: 'descuento::x::1', categoryName: 'AJUSTES', aplicadoPor: 'Laura' }).map((d) => d.x), ['Autorizó: Laura']);
+    assert.deepEqual(_ticketDetalleLineas({ productId: 'cobro-extra::x::1', categoryName: 'AJUSTES' }), []);
+});
 
 const lineas = (fn, cols = 32) => {
     const bytes = [];

@@ -431,6 +431,15 @@ function getPosCategoryColor(name) {
 // Punto único de mutación del carrito activo (internalOrderItems). Centraliza la fusión por
 // itemKey, la matemática de cantidad/subtotal y el mapeo hacia el payload que se guarda en Firestore,
 // para no repetir esa lógica en cada handler de UI que toca el carrito.
+// Cobro extra / descuento al ticket: son líneas "de ajuste" (no productos). Se reconocen por el prefijo del productId
+// (también en pedidos ya guardados). Una sola definición para carrito, tickets, cocina y "repetir pedido".
+function _posEsAjuste(item) {
+    return /^(cobro-extra|descuento)::/.test(String((item && item.productId) || ''));
+}
+function _posAjusteEsDescuento(item) {
+    return String((item && item.productId) || '').startsWith('descuento::');
+}
+
 const PosCart = {
     addItem(productId, productName, productPrice, note = '', originalUnitPrice = null, opts = {}) {
         productId = String(productId || '').trim();
@@ -447,7 +456,10 @@ const PosCart = {
         const baseProductId = productId.split('::')[0];
         const realProduct = productsState.find((p) => p.id === baseProductId);
         const fallbackCategory = String(posSelectedCategory || '').startsWith('__POS_GROUP__:') ? '' : posSelectedCategory;
-        const category = String(realProduct?.categoria || fallbackCategory || 'Sin categoria').trim() || 'Sin categoria';
+        // Un cobro extra / descuento NO es de la categoría que esté abierta: antes tomaba la pestaña activa (ej. HAMBURGUESAS)
+        // y ensuciaba las ventas por categoría y el botón ✎ de la línea.
+        const category = _posEsAjuste({ productId }) ? 'AJUSTES'
+            : (String(realProduct?.categoria || fallbackCategory || 'Sin categoria').trim() || 'Sin categoria');
         const promoLabel = String(opts.promoLabel || '').trim();
         const promo2x1 = opts.promo2x1 === true;
         const promo2x1Incremento = opts.promo2x1Incremento === true;
@@ -4949,6 +4961,12 @@ document.addEventListener('click', (e) => {
     if (e.target.closest('.pos-action-popover') || e.target.closest('.pos-cart-action-btn')) return;
     _closePosActionPopovers();
 });
+// Fila del buscador angosta → los botones Cobro extra / Descuento pasan a solo icono (si no, se salían del panel).
+(() => {
+    const sb = document.querySelector('.pos-searchbar');
+    if (!sb || typeof ResizeObserver === 'undefined') return;
+    new ResizeObserver(() => sb.classList.toggle('is-compact', sb.clientWidth > 0 && sb.clientWidth < 720)).observe(sb);
+})();
 
 const _waImgReducir = (file) => new Promise((ok, mal) => {
     const url = URL.createObjectURL(file), im = new Image();
@@ -5233,222 +5251,213 @@ function renderPosAcompanantesPanel(grid) {
     });
 }
 
-function renderPosCobroExtraPanel(grid) {
+// Quién autorizó el último ajuste de esta sesión: se sugiere de nuevo para no teclearlo en cada descuento.
+let _posUltimoAutorizador = '';
+
+// Suma de los productos del ticket SIN contar cobros extra ni descuentos (base para calcular un descuento en %).
+function _posBaseProductos() {
+    return internalOrderItems.reduce((sum, i) => sum + (_posEsAjuste(i) ? 0 : Number(i.subtotal || 0)), 0);
+}
+
+// Verifica el PIN de supervisor en el servidor. Devuelve true solo si es válido; si no, avisa y deja los campos como están.
+async function _posVerificarPinSupervisor(pinInput) {
+    const pin = String(pinInput?.value || '').replace(/\D/g, '');
+    if (!/^\d{4}$/.test(pin)) {
+        pinInput?.focus();
+        showNotice('Ingresa el PIN de supervisor (4 dígitos).', 'error');
+        return false;
+    }
+    if (!firebaseFunctions) {
+        showNotice('Servicio no disponible. Recarga la página.', 'error');
+        return false;
+    }
+    let check;
+    try {
+        check = await firebaseFunctions.httpsCallable('verifySupervisorPin')({ pin });
+    } catch (_) {
+        showNotice('No se pudo verificar el PIN. Revisa la conexión e intenta de nuevo.', 'error');
+        return false;
+    }
+    if (check?.data?.configured === false) {
+        showNotice('Configura un PIN de supervisor primero (Configuración → Seguridad).', 'error');
+        return false;
+    }
+    if (check?.data?.valid !== true) {
+        pinInput?.focus();
+        pinInput?.select?.();
+        showNotice('PIN de supervisor incorrecto.', 'error');
+        return false;
+    }
+    return true;
+}
+
+// Formulario común de "Cobro extra" y "Descuento" (mismos campos, mismo orden, misma validación). tipo: 'extra' | 'descuento'.
+function _renderPosAjustePanel(grid, tipo) {
+    const esDesc = tipo === 'descuento';
     grid.style.display = 'block';
     grid.innerHTML = '';
 
-    const PRESETS = [1000, 2000, 3000, 5000, 8000, 10000];
+    const PRESETS_MONTO = [1000, 2000, 3000, 5000, 8000, 10000];
+    const PRESETS_PCT = [5, 10, 15, 20, 30, 50];
+    let modo = '$'; // '$' = monto fijo · '%' = porcentaje del ticket (solo descuento)
 
     const wrap = document.createElement('div');
-    wrap.className = 'pos-cobro-extra-panel';
+    wrap.className = `pos-cobro-extra-panel ${esDesc ? 'is-descuento' : 'is-extra'}`;
     wrap.innerHTML = `
         <div class="pos-cobro-extra-header">
-            <span class="pos-cobro-extra-icon">➕</span>
-            <span>Cobro extra al ticket</span>
+            <span class="pos-cobro-extra-icon">${esDesc ? '🏷' : '➕'}</span>
+            <span>${esDesc ? 'Descuento al ticket' : 'Cobro extra al ticket'}</span>
             <button type="button" class="pos-cobro-extra-close-btn" aria-label="Cerrar">✕</button>
         </div>
+        ${esDesc ? `<div class="pos-ajuste-modos" role="group" aria-label="Tipo de descuento">
+            <button type="button" class="pos-ajuste-modo on" data-modo="$">Monto $</button>
+            <button type="button" class="pos-ajuste-modo" data-modo="%">Porcentaje %</button>
+        </div>` : ''}
         <div class="pos-cobro-extra-fields">
             <div class="pos-cobro-extra-field">
-                <label for="cobroExtraConcepto">Concepto</label>
-                <input id="cobroExtraConcepto" type="text" placeholder="Ej: Domicilio, Empaque, Servicio..." maxlength="60" autocomplete="off">
+                <label for="ajusteMonto" id="ajusteMontoLabel">${esDesc ? 'Monto a descontar $' : 'Monto $'}</label>
+                <input id="ajusteMonto" type="number" placeholder="0" min="0" step="100" inputmode="numeric">
+                <div class="pos-ajuste-calculo" id="ajusteCalculo" hidden></div>
             </div>
+            <div class="pos-cobro-extra-presets" id="ajustePresets"></div>
             <div class="pos-cobro-extra-field">
-                <label for="cobroExtraMonto">Monto $</label>
-                <input id="cobroExtraMonto" type="number" placeholder="0" min="0" step="100" inputmode="numeric">
+                <label for="ajusteConcepto">Concepto</label>
+                <input id="ajusteConcepto" type="text" placeholder="${esDesc ? 'Ej: Cliente frecuente, Cortesía…' : 'Ej: Domicilio, Empaque, Servicio…'}" maxlength="60" autocomplete="off">
             </div>
-            <div class="pos-cobro-extra-field">
-                <label for="cobroExtraPin">PIN de supervisor</label>
-                <input id="cobroExtraPin" type="password" inputmode="numeric" maxlength="4" placeholder="4 dígitos" autocomplete="off">
-            </div>
-            <div class="pos-cobro-extra-field">
-                <label for="cobroExtraAplicadoPor">Aplicado por</label>
-                <input id="cobroExtraAplicadoPor" type="text" placeholder="Quién autoriza" maxlength="40" autocomplete="off">
+            <div class="pos-cobro-extra-row">
+                <div class="pos-cobro-extra-field">
+                    <label for="ajustePin">PIN supervisor</label>
+                    <input id="ajustePin" type="password" inputmode="numeric" maxlength="4" placeholder="4 dígitos" autocomplete="off">
+                </div>
+                <div class="pos-cobro-extra-field">
+                    <label for="ajusteAplicadoPor">Aplicado por</label>
+                    <input id="ajusteAplicadoPor" type="text" placeholder="Quién autoriza" maxlength="40" autocomplete="off">
+                </div>
             </div>
         </div>
-        <div class="pos-cobro-extra-presets">
-            ${PRESETS.map((v) => `<button type="button" class="pos-cobro-preset-btn" data-value="${v}">${formatMoney(v)}</button>`).join('')}
-        </div>
-        <button type="button" id="cobroExtraAddBtn" class="pos-cobro-extra-add-btn">➕ Agregar al ticket</button>
+        <button type="button" id="ajusteAddBtn" class="pos-cobro-extra-add-btn">${esDesc ? '🏷 Aplicar descuento' : '➕ Agregar al ticket'}</button>
     `;
+
+    const $ = (sel) => wrap.querySelector(sel);
+    const montoInput = $('#ajusteMonto');
+    const conceptoInput = $('#ajusteConcepto');
+    const pinInput = $('#ajustePin');
+    const aplicadoInput = $('#ajusteAplicadoPor');
+    const calculo = $('#ajusteCalculo');
+    aplicadoInput.value = _posUltimoAutorizador;
+
+    // Monto en pesos que realmente se aplica (en modo % se calcula sobre los productos del ticket, a múltiplos de $50).
+    const montoEfectivo = () => {
+        const v = Number(montoInput.value || 0);
+        if (!esDesc || modo === '$') return Math.round(v);
+        return Math.round((_posBaseProductos() * v / 100) / 50) * 50;
+    };
+    const refrescarCalculo = () => {
+        if (!esDesc || modo !== '%') { calculo.hidden = true; return; }
+        const v = Number(montoInput.value || 0);
+        calculo.hidden = false;
+        calculo.textContent = v > 0
+            ? `${v}% de ${formatMoney(_posBaseProductos())} = −${formatMoney(montoEfectivo())}`
+            : `Se calcula sobre ${formatMoney(_posBaseProductos())} (productos del ticket)`;
+    };
+    const pintarPresets = () => {
+        const lista = esDesc && modo === '%' ? PRESETS_PCT : PRESETS_MONTO;
+        $('#ajustePresets').innerHTML = lista
+            .map((v) => `<button type="button" class="pos-cobro-preset-btn" data-value="${v}">${esDesc && modo === '%' ? `${v}%` : formatMoney(v)}</button>`)
+            .join('');
+    };
+    pintarPresets();
 
     wrap.querySelector('.pos-cobro-extra-close-btn').addEventListener('click', () => _closePosActionPopovers());
 
-    // Presets rellenan el monto
-    wrap.querySelectorAll('.pos-cobro-preset-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const input = wrap.querySelector('#cobroExtraMonto');
-            if (input) { input.value = btn.dataset.value; input.focus(); }
+    // Presets (delegado porque se vuelven a dibujar al cambiar $ / %)
+    $('#ajustePresets').addEventListener('click', (e) => {
+        const b = e.target.closest('.pos-cobro-preset-btn');
+        if (!b) return;
+        montoInput.value = b.dataset.value;
+        refrescarCalculo();
+        montoInput.focus();
+    });
+    montoInput.addEventListener('input', refrescarCalculo);
+
+    wrap.querySelectorAll('.pos-ajuste-modo').forEach((b) => {
+        b.addEventListener('click', () => {
+            modo = b.dataset.modo;
+            wrap.querySelectorAll('.pos-ajuste-modo').forEach((x) => x.classList.toggle('on', x === b));
+            $('#ajusteMontoLabel').textContent = modo === '%' ? 'Porcentaje a descontar %' : 'Monto a descontar $';
+            montoInput.step = modo === '%' ? '5' : '100';
+            montoInput.max = modo === '%' ? '100' : '';
+            montoInput.value = '';
+            pintarPresets();
+            refrescarCalculo();
+            montoInput.focus();
         });
     });
 
-    // Agregar al ticket
-    wrap.querySelector('#cobroExtraAddBtn').addEventListener('click', async () => {
-        const conceptoInput = wrap.querySelector('#cobroExtraConcepto');
-        const montoInput    = wrap.querySelector('#cobroExtraMonto');
-        const pinInput      = wrap.querySelector('#cobroExtraPin');
-        const aplicadoPorInput = wrap.querySelector('#cobroExtraAplicadoPor');
-        const concepto = String(conceptoInput?.value || '').trim() || 'Cobro extra';
-        const monto    = Number(montoInput?.value || 0);
-        const aplicadoPor = String(aplicadoPorInput?.value || '').trim();
+    $('#ajusteAddBtn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        if (btn.disabled) return;
+        const valor = Number(montoInput.value || 0);
+        const monto = montoEfectivo();
+        const aplicadoPor = String(aplicadoInput.value || '').trim();
+        const enPct = esDesc && modo === '%';
 
-        if (!monto || monto <= 0) {
-            montoInput?.focus();
-            showNotice('Ingresa un monto mayor a $0.', 'error');
+        if (!valor || valor <= 0 || monto <= 0) {
+            montoInput.focus();
+            showNotice(enPct ? 'Ingresa un porcentaje entre 1 y 100.' : 'Ingresa un monto mayor a $0.', 'error');
             return;
         }
-
-        // Gate de supervisor — el PIN real vive solo en el servidor; el intento se verifica
-        // vía verifySupervisorPin (Cloud Function). No se limpian los campos ni se cierra el
-        // popover si falla, para no obligar a reescribir todo.
-        const pin = String(pinInput?.value || '').replace(/\D/g, '');
-        if (!/^\d{4}$/.test(pin)) {
-            pinInput?.focus();
-            showNotice('Ingresa el PIN de supervisor (4 dígitos).', 'error');
+        if (enPct && valor > 100) {
+            montoInput.focus();
+            showNotice('El porcentaje no puede pasar de 100.', 'error');
             return;
         }
-        if (!firebaseFunctions) {
-            showNotice('Servicio no disponible. Recarga la página.', 'error');
-            return;
-        }
-        let _pinCheck;
-        try {
-            _pinCheck = await firebaseFunctions.httpsCallable('verifySupervisorPin')({ pin });
-        } catch (_) {
-            showNotice('No se pudo verificar el PIN. Revisa la conexión e intenta de nuevo.', 'error');
-            return;
-        }
-        if (_pinCheck?.data?.configured === false) {
-            showNotice('Configura un PIN de supervisor primero (Configuración → Seguridad).', 'error');
-            return;
-        }
-        if (_pinCheck?.data?.valid !== true) {
-            pinInput?.focus();
-            showNotice('PIN de supervisor incorrecto.', 'error');
-            return;
+        if (esDesc) {
+            // Un descuento no puede dejar el ticket en negativo (antes el total se cortaba a $0 sin avisar y la línea quedaba mal).
+            const actual = PosCart.getTotals().subtotal;
+            if (!internalOrderItems.some((i) => !_posEsAjuste(i))) {
+                showNotice('Agrega productos al ticket antes de aplicar un descuento.', 'error');
+                return;
+            }
+            if (monto > actual) {
+                montoInput.focus();
+                showNotice(`El descuento (${formatMoney(monto)}) supera lo que falta por cobrar (${formatMoney(actual)}).`, 'error');
+                return;
+            }
         }
 
-        // El monto va en el productId (no solo el concepto) para que dos cobros con el mismo
-        // concepto pero distinto monto no se fusionen en una sola fila con el monto del primero.
-        addProductToPosOrder(`cobro-extra::${concepto}::${monto}`, concepto, monto, '', null, { aplicadoPor });
-        showNotice(`${concepto} — ${formatMoney(monto)} agregado al ticket.`, 'ok');
+        // Gate de supervisor — el PIN real vive solo en el servidor. No se limpian los campos ni se cierra el
+        // popover si falla, para no obligar a reescribir todo. El botón se bloquea mientras se verifica (evita doble toque).
+        btn.disabled = true;
+        const textoBtn = btn.textContent;
+        btn.textContent = 'Verificando…';
+        let ok = false;
+        try { ok = await _posVerificarPinSupervisor(pinInput); } finally { btn.disabled = false; btn.textContent = textoBtn; }
+        if (!ok) return;
 
+        const concepto = String(conceptoInput.value || '').trim()
+            || (esDesc ? (enPct ? `Descuento ${valor}%` : 'Descuento') : 'Cobro extra');
+        _posUltimoAutorizador = aplicadoPor;
+        // El monto va en el productId para que dos ajustes con el mismo concepto y distinto monto no se fusionen en una sola fila.
+        // Precio negativo = descuento.
+        addProductToPosOrder(`${esDesc ? 'descuento' : 'cobro-extra'}::${concepto}::${monto}`, concepto, esDesc ? -monto : monto, '', null, { aplicadoPor });
+        showNotice(`${concepto} — ${esDesc ? '−' : '+'}${formatMoney(monto)} ${esDesc ? 'aplicado al' : 'agregado al'} ticket.`, 'ok');
         _closePosActionPopovers();
     });
 
-    // Enter en monto dispara el botón de agregar
-    wrap.querySelector('#cobroExtraMonto').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') wrap.querySelector('#cobroExtraAddBtn')?.click();
+    // Enter en monto / concepto / PIN / autoriza dispara el botón; Escape cierra.
+    wrap.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { _closePosActionPopovers(); return; }
+        if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); $('#ajusteAddBtn')?.click(); }
     });
 
     grid.appendChild(wrap);
+    // Lo primero que se necesita es el monto.
+    setTimeout(() => montoInput.focus(), 0);
 }
 
-function renderPosDescuentoPanel(grid) {
-    grid.style.display = 'block';
-    grid.innerHTML = '';
-
-    const PRESETS = [1000, 2000, 3000, 5000, 8000, 10000];
-
-    const wrap = document.createElement('div');
-    wrap.className = 'pos-cobro-extra-panel';
-    wrap.innerHTML = `
-        <div class="pos-cobro-extra-header" style="color:#f87171;">
-            <span class="pos-cobro-extra-icon">🏷</span>
-            <span>Descuento al ticket</span>
-            <button type="button" class="pos-cobro-extra-close-btn" aria-label="Cerrar">✕</button>
-        </div>
-        <div class="pos-cobro-extra-fields">
-            <div class="pos-cobro-extra-field">
-                <label for="descuentoConcepto">Concepto</label>
-                <input id="descuentoConcepto" type="text" placeholder="Ej: Descuento cliente, Cortesía..." maxlength="60" autocomplete="off">
-            </div>
-            <div class="pos-cobro-extra-field">
-                <label for="descuentoMonto">Monto a descontar $</label>
-                <input id="descuentoMonto" type="number" placeholder="0" min="0" step="100" inputmode="numeric">
-            </div>
-            <div class="pos-cobro-extra-field">
-                <label for="descuentoPin">PIN de supervisor</label>
-                <input id="descuentoPin" type="password" inputmode="numeric" maxlength="4" placeholder="4 dígitos" autocomplete="off">
-            </div>
-            <div class="pos-cobro-extra-field">
-                <label for="descuentoAplicadoPor">Aplicado por</label>
-                <input id="descuentoAplicadoPor" type="text" placeholder="Quién autoriza" maxlength="40" autocomplete="off">
-            </div>
-        </div>
-        <div class="pos-cobro-extra-presets">
-            ${PRESETS.map((v) => `<button type="button" class="pos-cobro-preset-btn pos-desc-preset-btn" data-value="${v}">${formatMoney(v)}</button>`).join('')}
-        </div>
-        <button type="button" id="descuentoAddBtn" class="pos-cobro-extra-add-btn" style="background:linear-gradient(135deg,#c0392b,#e74c3c);">🏷 Aplicar descuento</button>
-    `;
-
-    wrap.querySelector('.pos-cobro-extra-close-btn').addEventListener('click', () => _closePosActionPopovers());
-
-    wrap.querySelectorAll('.pos-cobro-preset-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const input = wrap.querySelector('#descuentoMonto');
-            if (input) { input.value = btn.dataset.value; input.focus(); }
-        });
-    });
-
-    wrap.querySelector('#descuentoAddBtn').addEventListener('click', async () => {
-        const conceptoInput = wrap.querySelector('#descuentoConcepto');
-        const montoInput    = wrap.querySelector('#descuentoMonto');
-        const pinInput      = wrap.querySelector('#descuentoPin');
-        const aplicadoPorInput = wrap.querySelector('#descuentoAplicadoPor');
-        const concepto = String(conceptoInput?.value || '').trim() || 'Descuento';
-        const monto    = Number(montoInput?.value || 0);
-        const aplicadoPor = String(aplicadoPorInput?.value || '').trim();
-
-        if (!monto || monto <= 0) {
-            montoInput?.focus();
-            showNotice('Ingresa un monto mayor a $0.', 'error');
-            return;
-        }
-
-        // Gate de supervisor — el PIN real vive solo en el servidor; el intento se verifica
-        // vía verifySupervisorPin (Cloud Function). No se limpian los campos ni se cierra el
-        // popover si falla, para no obligar a reescribir todo.
-        const pin = String(pinInput?.value || '').replace(/\D/g, '');
-        if (!/^\d{4}$/.test(pin)) {
-            pinInput?.focus();
-            showNotice('Ingresa el PIN de supervisor (4 dígitos).', 'error');
-            return;
-        }
-        if (!firebaseFunctions) {
-            showNotice('Servicio no disponible. Recarga la página.', 'error');
-            return;
-        }
-        let _pinCheck;
-        try {
-            _pinCheck = await firebaseFunctions.httpsCallable('verifySupervisorPin')({ pin });
-        } catch (_) {
-            showNotice('No se pudo verificar el PIN. Revisa la conexión e intenta de nuevo.', 'error');
-            return;
-        }
-        if (_pinCheck?.data?.configured === false) {
-            showNotice('Configura un PIN de supervisor primero (Configuración → Seguridad).', 'error');
-            return;
-        }
-        if (_pinCheck?.data?.valid !== true) {
-            pinInput?.focus();
-            showNotice('PIN de supervisor incorrecto.', 'error');
-            return;
-        }
-
-        // Precio negativo = descuento. El monto va en el productId para que dos descuentos con
-        // el mismo concepto pero distinto monto no se fusionen en una sola fila (ver cobro extra).
-        addProductToPosOrder(`descuento::${concepto}::${monto}`, concepto, -monto, '', null, { aplicadoPor });
-        showNotice(`${concepto} — -${formatMoney(monto)} aplicado al ticket.`, 'ok');
-
-        _closePosActionPopovers();
-    });
-
-    wrap.querySelector('#descuentoMonto').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') wrap.querySelector('#descuentoAddBtn')?.click();
-    });
-
-    grid.appendChild(wrap);
-}
+function renderPosCobroExtraPanel(grid) { _renderPosAjustePanel(grid, 'extra'); }
+function renderPosDescuentoPanel(grid) { _renderPosAjustePanel(grid, 'descuento'); }
 
 function renderPosPromocionesPanel(grid) {
     grid.style.display = 'block';
@@ -8215,6 +8224,23 @@ function renderPosOrderItems() {
                 <div class="pos-item-qty-price">
                     ${priceHTML}
                     <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
+                </div>
+            </div>`;
+        }
+        if (_posEsAjuste(item)) {
+            // Línea de ajuste: sin cortesía, sin ✎ ni +/− (cambiarla = quitarla y aplicarla de nuevo, con su PIN).
+            const esDesc = _posAjusteEsDescuento(item);
+            const monto = Math.abs(Number(item.subtotal || 0));
+            const veces = Number(item.quantity || 1) > 1 ? ` ×${Number(item.quantity)}` : '';
+            return `<div class="pos-item-row pos-item-row-ajuste ${esDesc ? 'is-descuento' : 'is-extra'}" data-item-key="${escapeHtml(item.itemKey)}">
+                <div class="pos-item-name">
+                    <span class="pos-item-ajuste-badge">${esDesc ? '🏷 Descuento' : '➕ Cobro extra'}${veces}</span>
+                    ${escapeHtml(item.productName)}
+                    ${item.aplicadoPor ? `<span class="pos-item-note">Autorizó: ${escapeHtml(item.aplicadoPor)}</span>` : ''}
+                </div>
+                <div class="pos-item-qty-price">
+                    <div class="pos-item-price pos-item-price-ajuste">${esDesc ? '−' : '+'}${formatMoney(monto)}</div>
+                    <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}" aria-label="Quitar">&times;</button>
                 </div>
             </div>`;
         }
@@ -13720,7 +13746,8 @@ function _repeatOrderInPos(pastItems) {
     // ligados a su producto, el combo/sabor (optionLabel), las opciones, los 2×1 con su empaque y las promos. Antes se
     // cargaban como productos sueltos y sin marcas, y el combo o el 2×1 salían mal cobrados.
     // No se repiten las cortesías ni lo atado a un cupón/código (serían un descuento que no corresponde la segunda vez).
-    const _esUnicaVez = (it) => it.cortesia === true
+    // Tampoco los cobros extra / descuentos: exigen el PIN de supervisor cada vez, repetirlos sería saltárselo.
+    const _esUnicaVez = (it) => it.cortesia === true || _posEsAjuste(it)
         || Object.keys(it.orderOptions && typeof it.orderOptions === 'object' ? it.orderOptions : {}).some((k) => /cupon|coupon|codigo|fidel/i.test(k));
     const origen = pastItems.filter((it) => String(it.productName || it.nombre || '').trim());
     const omitidos = origen.filter(_esUnicaVez);
@@ -18258,6 +18285,8 @@ function _escNormalize(str) {
 // largo separado con " | ", que en el papel angosto quedaba amontonado y difícil de entender.
 //   tipos: cat (categoría) · cortesia · opt (parte del combo/opción) · beb (nota de bebida) · nota
 function _ticketDetalleLineas(item, { categoria = true } = {}) {
+    // Cobro extra / descuento: sin categoría ni opciones; solo quién lo autorizó.
+    if (_posEsAjuste(item)) return item.aplicadoPor ? [{ t: 'opt', x: `Autorizó: ${String(item.aplicadoPor).trim()}` }] : [];
     const out = [];
     if (categoria && !item.parentItemKey && item.categoryName) out.push({ t: 'cat', x: String(item.categoryName).trim() });
     if (item.cortesia) out.push({ t: 'cortesia', x: 'CORTESÍA' });
@@ -18428,7 +18457,7 @@ function buildESCPOSData(order) {
     const _grupos = _groupOrderItemsForDisplay(order.items || []);
     _grupos.forEach((item, idx) => {
         const esHijo = !!item.parentItemKey;
-        const precio = Number(item.subtotal) > 0 ? formatMoney(item.subtotal) : (esHijo ? 'incl.' : formatMoney(item.subtotal));
+        const precio = Number(item.subtotal) > 0 ? formatMoney(item.subtotal) : (Number(item.subtotal) < 0 ? '-' + formatMoney(Math.abs(item.subtotal)) : (esHijo ? 'incl.' : formatMoney(item.subtotal)));
         if (esHijo) wh('   + ', `${item.quantity}x ${item.productName}`, precio);
         else wh(String(item.quantity).padStart(2) + 'x ', item.productName, precio);
         _ticketDetalleLineas(item, { categoria: false }).forEach((d) => {
@@ -19032,7 +19061,8 @@ function buildKitchenTicketHtml(order) {
     // Un combo/adición vinculado a un producto (parentItemKey) debe imprimirse anidado bajo
     // ese producto, igual que se ve en el carrito del POS — si no, cocina no sabe a qué
     // hamburguesa pertenece el combo o la adición y quedan como líneas sueltas sin relación.
-    const items = order.items || [];
+    // Cocina no prepara un cobro extra ni un descuento: esas líneas son solo de caja.
+    const items = (order.items || []).filter((i) => !_posEsAjuste(i));
     const itemsByKey = new Map(items.map((i) => [i.itemKey, i]));
     // Si el padre referenciado no existe en el pedido (dato antiguo/incompleto), el ítem se
     // imprime igual como línea principal — nunca se debe perder un producto del ticket.
