@@ -13570,6 +13570,46 @@
         .ticket-print-row .ticket-cobrar-btn { flex: 1.5 1 0; }
         .ticket-print-row .ticket-print-btn { flex: 1 1 0; min-width: 0; }
 
+        /* ── Hoja de opciones del POS (combo / bebida / adicionales): sin pie mientras se elige, listas en columnas ── */
+        .pos-upgrade-sheet.is-substep .pos-upgrade-footer { display: none; }
+        @media (min-width: 1024px) { #posUpgradeOverlay .pos-upgrade-sheet { max-width: 600px; } }
+        .pos-upgrade-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+        .pos-upgrade-opt { padding: 10px 14px; min-height: 44px; }
+        .pos-upgrade-opt-name { font-size: 0.95rem; }
+        .pos-flavors-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+        .pos-flavor-btn { padding: 10px 8px; min-height: 44px; }
+        .pos-upgrade-back-btn { margin-top: 6px; padding: 4px 0; }
+        .pos-upgrade-footer { display: grid; grid-template-columns: auto 1fr; grid-template-areas: "comment comment" "qty add"; gap: 8px; align-items: center; padding: 8px 12px 10px; }
+        .pos-upgrade-footer .pos-upgrade-comment-row { grid-area: comment; margin-bottom: 0; }
+        .pos-upgrade-footer .pos-upgrade-qty-row { grid-area: qty; padding: 0; gap: 8px; }
+        .pos-upgrade-footer .pos-upgrade-add-btn { grid-area: add; padding: 12px; }
+        .pus-qty-btn { width: 40px; height: 40px; }
+        .pus-qty-label { min-width: 62px; font-size: 0.82rem; }
+
+        /* ── Personalizar ticket: más compacto (cliente y dirección ya no se amontonan) ── */
+        .pts-modal { max-width: 460px; padding: 16px 18px; gap: 12px; }
+        .pts-type-btn { flex-direction: row; gap: 8px; padding: 9px 6px; font-size: 0.74rem; }
+        .pts-search-results { max-height: 220px; }
+        .pts-result-item { padding: 7px 12px; }
+        .pts-result-addr1 { margin-top: 2px; font-size: 0.7rem; color: rgba(255,255,255,0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .pts-addr-picker { gap: 4px; margin-bottom: 4px; }
+        .pts-addr-chip { padding: 6px 10px; font-size: 0.78rem; }
+        .pts-addr-actions { justify-content: flex-start; gap: 4px; margin-top: 2px; }
+        .pts-addr-act-btn { flex: 0 0 auto; padding: 4px 10px; background: none; border-color: transparent; text-decoration: underline; color: #ffa060; }
+        .pts-selected-chip.is-visible { margin-top: 4px; padding: 6px 10px; }
+        .pts-fee-input-wrap { margin-top: 4px; }
+        .pts-fee-input { padding: 7px 0 !important; }
+
+        /* ── Carrito del POS: info del pedido en 2 líneas y botones más bajos ── */
+        #posCartTicketInfo.pos-cart-ticket-info { padding: 8px 12px; }
+        .pos-ticket-info-line { font-size: 0.84rem; line-height: 1.35; color: #eef4ff; overflow-wrap: anywhere; }
+        .pos-ticket-info-line + .pos-ticket-info-line { color: rgba(255,255,255,0.7); font-size: 0.78rem; }
+        .pos-extra-btn { min-height: 40px; padding: 4px 6px; }
+        .pos-searchbar .pos-product-search { min-width: 140px; }
+
+        /* ── Recepción: Agregar / Imprimir / Cobrar arriba del ticket, siempre a la vista sin bajar ── */
+        @media screen and (min-width: 769px) { #orderTicketPanel .ticket-paper-wrap > .ticket-print-row { order: -1; } }
+
         /* ── Pago en efectivo: billetes rápidos ── */
         .pf-cash-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
         .pf-cash-chip { flex: 1 1 28%; min-height: 48px; border-radius: 10px; border: 1px solid rgba(255,149,64,0.45); background: rgba(255,149,64,0.1); color: #ffd9b8; font-family: 'Oswald', sans-serif; font-size: 1rem; cursor: pointer; }

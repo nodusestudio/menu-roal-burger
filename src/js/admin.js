@@ -8338,6 +8338,9 @@ function _setPosUpgradeAddBtnState(enabled) {
     btn.disabled = !enabled;
     btn.style.opacity = enabled ? '1' : '0.45';
     btn.style.cursor = enabled ? '' : 'not-allowed';
+    // Mientras se ELIGE algo (combo, sabor, adicional…) el pie con cantidad / comentario / "Agregar al carrito" no sirve:
+    // se oculta y reaparece al volver a la pantalla principal de la hoja.
+    document.querySelector('#posUpgradeOverlay .pos-upgrade-sheet')?.classList.toggle('is-substep', !enabled);
 }
 
 function openPosUpgradeSheet(productId, productName, productPrice, promoOpts) {
@@ -8481,6 +8484,14 @@ function _renderPosUpgradeOptionGrid({ title, items, emptyMessage, onSelect, onB
         return;
     }
 
+    // Opciones idénticas (mismo nombre, detalle y precio) se muestran una sola vez: había sabores repetidos ("toronja", "tamarindo").
+    const _vistasOpc = new Set();
+    items = items.filter((it) => {
+        const k = `${String(it.name).toLowerCase()}|${String(it.detail || '').toLowerCase()}|${it.price}`;
+        if (_vistasOpc.has(k)) return false;
+        _vistasOpc.add(k);
+        return true;
+    });
     body.innerHTML = `
         <div class="pos-upgrade-options">
             ${items.map((it) => `
@@ -8664,7 +8675,7 @@ function _renderPosUpgradeBebidaSabores(bebida, presentacion, onBack = renderPos
 
     body.innerHTML = `
         <div class="pos-flavors-grid">
-            ${presentacion.sabores.map((s) => `
+            ${presentacion.sabores.filter((s, i, arr) => arr.findIndex((x) => String(x).trim().toLowerCase() === String(s).trim().toLowerCase()) === i).map((s) => `
             <button type="button" class="pos-flavor-btn" data-sabor="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('')}
         </div>
         <button type="button" class="pos-upgrade-back-btn" id="posUpgradeBackBtn">← Volver</button>`;
@@ -22882,7 +22893,6 @@ function renderPosTypeBar() {
     let html = btn('mesa', '🍽️', tipo === 'mesa' && cfg.mesaNumber ? `Mesa ${cfg.mesaNumber}` : 'Mesa')
         + btn('retiro', '🥡', 'Llevar')
         + btn('domicilio', '🛵', tipo === 'domicilio' && cfg.deliveryAddress ? 'Domicilio ✓' : 'Domicilio');
-    if (cfg.customerName) html += `<span class="pos-typebar-resumen">👤 ${escapeHtml(cfg.customerName)}</span>`;
     if (_posTypeBarMesasAbiertas) {
         let mesas = '';
         for (let n = 1; n <= totalMesas; n++) {
@@ -22968,23 +22978,12 @@ function renderPosCartTicketInfo() {
     const clientValue = source.customerName || '';
     const phoneValue = source.customerPhone || '';
     const addressValue = source.deliveryAddress || '';
+    // Compacto: tipo · cliente · teléfono en una línea y la dirección en otra (antes eran 4 filas con etiquetas).
+    const _icono = { mesa: '🍽️', retiro: '🥡', domicilio: '🛵' }[source.orderType] || '';
+    const _linea1 = [`<b>${_icono} ${escapeHtml(typeValue)}</b>`, clientValue ? escapeHtml(clientValue) : '', phoneValue ? escapeHtml(phoneValue) : ''].filter(Boolean).join(' · ');
     el.innerHTML = `
-        <div class="pos-ticket-info-row">
-            <span class="pos-ticket-info-label">TIPO</span>
-            <span class="pos-ticket-info-value">${escapeHtml(typeValue)}</span>
-        </div>
-        ${clientValue ? `<div class="pos-ticket-info-row">
-            <span class="pos-ticket-info-label">CLIENTE</span>
-            <span class="pos-ticket-info-value">${escapeHtml(clientValue)}</span>
-        </div>` : ''}
-        ${phoneValue ? `<div class="pos-ticket-info-row">
-            <span class="pos-ticket-info-label">TEL</span>
-            <span class="pos-ticket-info-value">${escapeHtml(phoneValue)}</span>
-        </div>` : ''}
-        ${addressValue ? `<div class="pos-ticket-info-row">
-            <span class="pos-ticket-info-label">DIR</span>
-            <span class="pos-ticket-info-value">${escapeHtml(addressValue)}</span>
-        </div>` : ''}
+        <div class="pos-ticket-info-line">${_linea1}</div>
+        ${addressValue ? `<div class="pos-ticket-info-line">📍 ${escapeHtml(addressValue)}</div>` : ''}
     `;
     el.hidden = false;
     // Recalcular totales para reflejar el domicilio
@@ -23222,8 +23221,10 @@ function _ptsRenderSearchResults(query) {
             if (!a) return '';
             return typeof a === 'string' ? a.trim() : String(a.address || a.value || a.label || '').trim();
         }).filter((t) => t && !esRotuloDireccion(t));
-        const addrsHtml = addrTexts.length
-            ? `<div class="pts-result-addrs">${addrTexts.map((t) => `<span class="pts-result-addr-chip">${escapeHtml(t)}</span>`).join('')}</div>`
+        // Solo la primera dirección (y cuántas más tiene): antes se listaban todas en chips y la lista se amontonaba.
+        const _unicas = addrTexts.filter((t, i, arr) => arr.findIndex((x) => x.toLowerCase().replace(/\s+/g, ' ') === t.toLowerCase().replace(/\s+/g, ' ')) === i);
+        const addrsHtml = _unicas.length
+            ? `<div class="pts-result-addr1" title="${escapeHtml(_unicas.join(' · '))}">📍 ${escapeHtml(_unicas[0])}${_unicas.length > 1 ? ` <b>(+${_unicas.length - 1})</b>` : ''}</div>`
             : '';
         return `
         <div class="pts-result-item" data-pts-client-id="${escapeHtml(c.id || '')}" data-pts-client-name="${escapeHtml(c.customerName || '')}" data-pts-client-phone="${escapeHtml(c.customerPhone || '')}">
@@ -23278,7 +23279,15 @@ function _ptsFillClientAddress(client) {
             lat: Number.isFinite(Number(a.latitude))  ? Number(a.latitude)  : null,
             lon: Number.isFinite(Number(a.longitude)) ? Number(a.longitude) : null,
         };
-    }).filter(Boolean);
+    }).filter(Boolean)
+    // Direcciones repetidas (solo cambia mayúsculas o espacios) se muestran una vez; si una trae coordenadas, esa gana.
+    .reduce((acc, e) => {
+        const k = e.text.toLowerCase().replace(/\s+/g, ' ');
+        const i = acc.findIndex((x) => x.text.toLowerCase().replace(/\s+/g, ' ') === k);
+        if (i < 0) acc.push(e);
+        else if (acc[i].lat === null && e.lat !== null) acc[i] = e;
+        return acc;
+    }, []);
 
     const addrInput  = document.getElementById('ptsDeliveryAddress');
     const addrPicker = document.getElementById('ptsAddressPicker');
