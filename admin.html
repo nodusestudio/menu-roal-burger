@@ -13565,6 +13565,9 @@
         .mesa-cfg-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 700; }
         .mesa-cfg-top input, .mesa-cfg-fila select { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.22); border-radius: 8px; padding: 7px 10px; font: inherit; }
         .mesa-cfg-top input { width: 84px; text-align: center; }
+        /* La lista desplegable nativa salía con letras blancas sobre fondo blanco: se fuerza el tema oscuro */
+        .mesa-cfg-top input, .mesa-cfg-fila select { color-scheme: dark; }
+        .mesa-cfg-fila select option { background: #1a2133; color: #fff; }
         #mesaConfigModal .pos-note-modal-box { width: min(520px, 94vw); max-width: 520px; }
         .mesa-cfg-fila { white-space: nowrap; }
         .mesa-cfg-sub { margin: 12px 0 6px; font-size: 0.78rem; color: rgba(255,255,255,0.6); }
