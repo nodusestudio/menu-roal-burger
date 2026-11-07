@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261106-1916">
+    <link rel="stylesheet" href="style.css?v=20261106-1935">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -7407,6 +7407,22 @@
             flex-shrink: 0;
         }
         /* Quitar ingredientes + nota del ticket + salsas para llevar */
+        .cxc-box { width: min(640px, 94vw); max-width: none; }
+        .cxc-cuerpo { max-height: 56vh; overflow-y: auto; margin: 8px 0; }
+        .cxc-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+        .cxc-tabs button { flex: 1; padding: 7px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); color: inherit; }
+        .cxc-tabs button.on { background: rgba(255,122,26,0.25); border-color: #ff7a1a; }
+        .cxc-grupo { margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; overflow: hidden; }
+        .cxc-grupo-t { display: flex; justify-content: space-between; padding: 8px 10px; background: rgba(255,255,255,0.07); }
+        .cxc-fila { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-top: 1px solid rgba(255,255,255,0.08); cursor: pointer; }
+        .cxc-info { flex: 1; font-size: 0.82rem; } .cxc-info small { display: block; opacity: 0.7; font-size: 0.72rem; }
+        .cxc-valor { font-weight: 700; white-space: nowrap; }
+        .cxc-vacio { opacity: 0.75; font-size: 0.85rem; padding: 10px 2px; }
+        .cxc-pie { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.14); }
+        .cxc-pie[hidden] { display: none; }
+        .cxc-acciones { display: flex; gap: 6px; }
+        .cxc-acciones button { padding: 8px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; background: rgba(255,122,26,0.2); border: 1px solid rgba(255,122,26,0.7); color: inherit; }
+        .cxc-acciones button:disabled { opacity: 0.4; cursor: not-allowed; }
         .pos-item-note-sin { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
         .pos-note-sin-link { margin: 6px 0 2px; padding: 6px 10px; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; background: rgba(255,122,26,0.18); border: 1px solid rgba(255,122,26,0.7); color: #ffb27a; }
         .pos-item-sin-btn { background: none; border: 1px solid rgba(255,255,255,0.18); color: #ffb27a; border-radius: 8px; font-size: 0.8rem; padding: 2px 7px; cursor: pointer; line-height: 1.2; }
@@ -14239,6 +14255,7 @@
                                 </div>
                                 <div class="sales-day-banner-actions">
                                     <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
+                                    <button type="button" class="caja-chica-btn" id="cxcBtn" title="Lo que te deben y aún no ha entrado a la caja">🧾 Por cobrar</button>
                                     <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
                                         Nuevo Pedido
@@ -16841,6 +16858,7 @@
                 </div>
                 <button type="button" id="pfSplitToggleBtn" class="dpm-split-toggle" style="margin:12px auto 0;">➗ Dividir pago entre 2 métodos</button>
                 <button type="button" id="pfQrTvBtn" class="dpm-split-toggle" style="margin:10px auto 0;" title="Muestra el QR de Bancolombia y el total en la pantalla de TV, y registra el pago solo cuando llega">📲 Cobrar con QR en la TV</button>
+                <button type="button" id="pfPorCobrarBtn" class="dpm-split-toggle" style="margin:10px auto 0;" title="El pedido se entrega pero NO suma a la caja: queda en Cuentas por cobrar hasta que te paguen (ej. Cámara de Comercio)">🧾 Por cobrar (cuenta de cobro)</button>
             </div>
             <!-- Paso split: pago dividido entre 2+ métodos -->
             <div id="pfStepSplit" class="pf-step" hidden>
@@ -17006,17 +17024,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261106-1916"></script>
+    <script defer src="firebase-config.js?v=20261106-1935"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261106-1916"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261106-1935"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1916"></script>
-    <script defer src="admin.js?v=20261106-1916"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1935"></script>
+    <script defer src="admin.js?v=20261106-1935"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

@@ -3517,6 +3517,9 @@ function normalizeOrder(raw) {
         meseroName: String(raw.meseroName || '').trim() || null,
         barrioEspecial: String(raw.barrioEspecial || '').trim() || null,
         cuentaCobroNumero: Number(raw.cuentaCobroNumero || 0) || null,
+        porCobrarA: String(raw.porCobrarA || '').trim(),
+        porCobrarEstado: String(raw.porCobrarEstado || '').trim(),
+        cobroRecibidoId: String(raw.cobroRecibidoId || '').trim(),
         // Nota general del ticket y salsas para llevar (POS): el ticket los lee, por eso viajan aquí.
         orderNote: String(raw.orderNote || '').trim(),
         salsasLlevar: Array.isArray(raw.salsasLlevar) ? raw.salsasLlevar.map(String) : [],
@@ -13099,7 +13102,8 @@ function renderMetricasProductos(period) {
         if (order.voided || order.anulado) continue;
         // isOrderPaid = el mismo criterio de Caja Diaria: un pedido web con el medio elegido pero sin cobrar ni cerrar
         // (paymentMethod puesto por el cliente) ya no cuenta como venta en el ranking.
-        if (!isOrderPaid(order)) continue;
+        if (order.source === 'cuenta_por_cobrar') continue;
+        if (!isOrderPaid(order) || (esPorCobrar(order) && order.porCobrarEstado !== 'cobrada')) continue;
         const ts = order.createdAt
             ? (typeof order.createdAt.toDate === 'function' ? order.createdAt.toDate() : new Date(order.createdAt))
             : null;
@@ -14092,6 +14096,7 @@ function buildOrderItemSummary(order) {
 
 function getOrderPaymentLabel(order) {
     const method = String(order.paymentMethod || '').toLowerCase();
+    if (method === 'por_cobrar') return `Por cobrar${order.porCobrarA ? ` a ${order.porCobrarA}` : ''}${order.porCobrarEstado === 'cobrada' ? ' (cobrada)' : ''}`;
     const sub = String(order.paymentSubMethod || '').toLowerCase();
 
     const subLabels = { nequi: 'Nequi', bold: 'Bold', bancolombia: 'Bancolombia' };
@@ -14509,7 +14514,7 @@ function buildThermalTicketMarkup(order, options = {}) {
 
     // Build payment rows for totals section
     const _ticketPaymentMethod = String(order.paymentMethod || '').toLowerCase();
-    const _orderPaid = isOrderPaid(order);
+    const _orderPaid = isOrderPaidReal(order);
     let _ticketPaymentRows = '';
     if (_ticketPaymentMethod === 'efectivo') {
         if (cashGiven > 0) {
@@ -15272,7 +15277,7 @@ function renderSalesDayBanner() {
     const aperturaHoy = cajaAperturaAt && aperturaHoyStr === todayStr;
     const paidOrders = ordersState.filter((o) => {
         if (o.voided || o.anulado) return false;
-        if (!isOrderPaid(o)) return false;
+        if (!isOrderPaid(o) || esPorCobrar(o)) return false;
         const paidMs = _tsMs(o.paidAt);
         if (!paidMs) return false;
         const _paidDate = new Date(paidMs);
@@ -18040,7 +18045,7 @@ function buildESCPOSData(order) {
         }
     } else if (order.paymentMethod === 'efectivo') {
         wl('  Metodo  : Efectivo');
-        if (!isOrderPaid(order)) { pb(ESC, 0x45, 0x01); wl('  ** POR COBRAR **'); pb(ESC, 0x45, 0x00); }
+        if (!isOrderPaidReal(order)) { pb(ESC, 0x45, 0x01); wl('  ** POR COBRAR **'); pb(ESC, 0x45, 0x00); }
         if (_cashGiven > 0) {
             wc('  Recibe', formatMoney(_cashGiven));
             wc('  Cambio', _changeAmt > 0 ? formatMoney(_changeAmt) : 'Exacto');
@@ -18048,7 +18053,7 @@ function buildESCPOSData(order) {
     } else {
         wl('  Metodo  : ' + _payMethod);
         if (order.paymentMethod && order.paymentMethod !== 'pendiente') {
-            pb(ESC, 0x45, 0x01); wl(isOrderPaid(order) ? '  ** PAGADO **' : '  ** POR COBRAR **'); pb(ESC, 0x45, 0x00);
+            pb(ESC, 0x45, 0x01); wl(isOrderPaidReal(order) ? '  ** PAGADO **' : '  ** POR COBRAR **'); pb(ESC, 0x45, 0x00);
         }
     }
     sep2();
@@ -18227,10 +18232,12 @@ function _printOrderViaBrowser(order) {
     setTimeout(() => { window.print(); }, 150);
 }
 
-// ── Cuenta de cobro ──────────────────────────────────────────────────────────────────────────────────
-// Documento para quien NO está obligado a facturar electrónicamente (ej.: cobrarle a la Cámara de Comercio los cupones que
-// se redimen en el local). Se genera desde el menú ☰ del ticket, solo cuando alguien la pide; el ticket normal no cambia.
-// Lleva consecutivo propio (CC-0001…) guardado en el pedido, así reimprimirla no gasta otro número.
+// ── Cuenta de cobro + cuentas por cobrar ───────────────────────────────────────────────────────────
+// Para quien NO está obligado a facturar electrónicamente (ej.: cobrarle a la Cámara de Comercio los cupones que se redimen).
+//  · Un pedido se cobra con el método "Por cobrar": queda entregado pero NO suma a la caja (no entró plata).
+//  · "Cuentas por cobrar" (botón en Recepción) lista lo pendiente; de ahí se genera UNA cuenta de cobro por pedido o una sola
+//    que junta varios, y cuando llega la plata se marca "cobrada": ese día entra a la caja como un ingreso (recibo CC-000N).
+//  · La cuenta de cobro lleva consecutivo propio (CC-0001…), guardado en el/los pedido(s): reimprimirla no gasta otro número.
 
 // SYNC:cuenta-cobro-letras:inicio
 function cuentaCobroEnLetras(valor) {
@@ -18265,8 +18272,68 @@ function cuentaCobroEnLetras(valor) {
 }
 // SYNC:cuenta-cobro-letras:fin
 
+// SYNC:cxc-recibo:inicio
+// Recibo de caja que se crea al marcar cobradas una o varias cuentas por cobrar: un pedido "entregado" y pagado HOY con el medio
+// por donde llegó la plata. Así la Caja Diaria, el cierre y los informes lo cuentan el día que de verdad entró.
+function cxcConstruirRecibo(ordenes, o) {
+    const total = ordenes.reduce((s, x) => s + (Number(x.total) || Number(x.subtotal) || 0), 0);
+    const code = `CC-${String(o.numero).padStart(4, '0')}`;
+    const codigos = ordenes.map((x) => x.code).filter(Boolean);
+    const detalle = `Pedidos: ${codigos.join(', ')}`.slice(0, 300);
+    const pagador = String(o.pagador || (ordenes[0] && ordenes[0].porCobrarA) || 'Cuenta por cobrar').trim();
+    return {
+        id: o.id,
+        code,
+        customerName: pagador,
+        customerPhone: '',
+        customerPhoneDigits: '',
+        customerAddress: '',
+        deliveryAddress: '',
+        profileAddress: '',
+        paymentMethod: o.metodo,
+        paymentSubMethod: o.sub || '',
+        cashChangeRequired: false,
+        cashTenderAmount: null,
+        orderType: 'retiro',
+        pickupMode: 'llego',
+        source: 'cuenta_por_cobrar',
+        isAdminOrder: true,
+        status: 'entregado',
+        cajero: o.cajero || '',
+        items: [{
+            index: 1, itemKey: 'cxc', parentItemKey: null, productId: 'cuenta-por-cobrar',
+            productName: `Cobro cuenta de cobro ${code}`, categoryName: 'Cuentas por cobrar',
+            optionLabel: detalle, note: detalle, quantity: 1, unitPrice: total, subtotal: total
+        }],
+        itemCount: 1,
+        totalItems: 1,
+        subtotal: total,
+        discount: 0,
+        deliveryFee: null,
+        total,
+        currency: 'COP',
+        summaryMessage: '',
+        cuentaCobroNumero: o.numero,
+        pedidosOrigen: ordenes.map((x) => x.id),
+        paidAt: o.ahora,
+        deliveredAt: o.ahora,
+        createdAt: o.ahora,
+        updatedAt: o.ahora
+    };
+}
+// SYNC:cxc-recibo:fin
+
 const CUENTA_COBRO_STORAGE_KEY = 'roal_cuenta_cobro_datos';
 const CUENTA_COBRO_LEYENDA_DEFECTO = 'Persona no obligada a expedir factura electrónica de venta.';
+
+function esPorCobrar(order) {
+    return !!order && String(order.paymentMethod || '').toLowerCase() === 'por_cobrar';
+}
+
+// "Pagado de verdad": un pedido por cobrar está cerrado, pero la plata todavía no entró.
+function isOrderPaidReal(order) {
+    return isOrderPaid(order) && !esPorCobrar(order);
+}
 
 function _cuentaCobroDatosGuardados() {
     try { return JSON.parse(localStorage.getItem(CUENTA_COBRO_STORAGE_KEY) || '{}') || {}; } catch (_) { return {}; }
@@ -18276,9 +18343,12 @@ function _cuentaCobroGuardarDatos(datos) {
     try { localStorage.setItem(CUENTA_COBRO_STORAGE_KEY, JSON.stringify(datos)); } catch (_) { /* sin almacenamiento: se vuelve a escribir */ }
 }
 
-// Consecutivo propio: se asigna una sola vez por pedido (transacción sobre un contador) y queda guardado en el pedido.
-async function _cuentaCobroAsignarNumero(order) {
-    if (order.cuentaCobroNumero) return Number(order.cuentaCobroNumero);
+// Consecutivo propio: una sola vez por cuenta (transacción sobre un contador); queda guardado en el/los pedido(s).
+async function _cuentaCobroAsignarNumero(ordenes) {
+    const lista = Array.isArray(ordenes) ? ordenes : [ordenes];
+    const numeros = [...new Set(lista.map((o) => Number(o.cuentaCobroNumero || 0)))];
+    if (numeros.length === 1 && numeros[0]) return numeros[0];
+    if (numeros.some((n) => n)) throw new Error('Estos pedidos ya tienen números de cuenta de cobro distintos; elígelos por separado');
     const ref = firebaseDb.collection(CONFIG_COLLECTION).doc('cuenta_cobro_consecutivo');
     let numero = 0;
     await firebaseDb.runTransaction(async (tx) => {
@@ -18286,29 +18356,44 @@ async function _cuentaCobroAsignarNumero(order) {
         numero = Number(snap.exists ? snap.data().current : 0) + 1;
         tx.set(ref, { current: numero, updatedAt: firestoreNow() }, { merge: true });
     });
-    await updateOrder(order.id, { cuentaCobroNumero: numero, cuentaCobroAt: firestoreNow() });
-    const idx = ordersState.findIndex((o) => o.id === order.id);
-    if (idx >= 0) ordersState[idx] = { ...ordersState[idx], cuentaCobroNumero: numero };
+    for (const o of lista) {
+        await updateOrder(o.id, { cuentaCobroNumero: numero, cuentaCobroAt: firestoreNow() });
+        const idx = ordersState.findIndex((x) => x.id === o.id);
+        if (idx >= 0) ordersState[idx] = { ...ordersState[idx], cuentaCobroNumero: numero };
+        o.cuentaCobroNumero = numero;
+    }
     return numero;
 }
 
-function buildCuentaCobroHtml(order, d) {
+function buildCuentaCobroHtml(ordenes, d) {
+    const lista = Array.isArray(ordenes) ? ordenes : [ordenes];
+    const unico = lista.length === 1;
+    const order = lista[0];
     const esc = escapeHtml;
-    const total = getOrderDisplayTotal(order);
+    const total = lista.reduce((s, o) => s + getOrderDisplayTotal(o), 0);
     const numero = `CC-${String(d.numero).padStart(4, '0')}`;
     const hoy = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
-    const consumo = formatOrderDate(order.createdAt);
-    const filas = _groupOrderItemsForDisplay(order.items || []).map((it) => {
-        const hijo = !!it.parentItemKey;
-        const detalle = [it.cortesia ? 'Cortesía' : '', _waLimpiarOpcion(it.optionLabel), it.note && it.note !== it.optionLabel ? it.note : ''].filter(Boolean).join(' · ').replace(/[\u{1F300}-\u{1FAFF}☀-➿️]/gu, '').replace(/\s{2,}/g, ' ').trim();
-        const unit = Number(it.quantity) ? Number(it.subtotal || 0) / Number(it.quantity) : 0;
-        return `<tr><td class="c">${esc(String(it.quantity))}</td><td>${hijo ? '+ ' : ''}${esc(it.productName || '')}${detalle ? `<small>${esc(detalle)}</small>` : ''}</td><td class="r">${esc(formatMoney(unit))}</td><td class="r">${esc(formatMoney(it.subtotal || 0))}</td></tr>`;
-    }).join('');
-    const extra = [];
-    if (Number(order.promo2x1IncrementoFee || 0) > 0) extra.push(['Empaque 2×1', Number(order.promo2x1IncrementoFee)]);
-    if (order.orderType === 'domicilio' && Number(order.deliveryFee || 0) > 0) extra.push(['Domicilio', Number(order.deliveryFee)]);
-    if (Number(order.pointsRedeemed || 0) > 0) extra.push([`Puntos usados (${order.pointsRedeemed})`, -Number(order.pointsDiscountAmount || 0)]);
-    const extraHtml = extra.map(([t, v]) => `<tr><td></td><td>${esc(t)}</td><td></td><td class="r">${esc(formatMoney(v))}</td></tr>`).join('');
+    const refPedido = unico ? `Pedido ${esc(order.code || '')} · ${esc(formatOrderDate(order.createdAt))}` : `${lista.length} pedidos`;
+    const limpiar = (t) => String(t || '').replace(/[\u{1F300}-\u{1FAFF}☀-➿️]/gu, '').replace(/\s{2,}/g, ' ').trim();
+    let filas = '';
+    if (unico) {
+        filas = _groupOrderItemsForDisplay(order.items || []).map((it) => {
+            const hijo = !!it.parentItemKey;
+            const detalle = limpiar([it.cortesia ? 'Cortesía' : '', _waLimpiarOpcion(it.optionLabel), it.note && it.note !== it.optionLabel ? it.note : ''].filter(Boolean).join(' · '));
+            const unit = Number(it.quantity) ? Number(it.subtotal || 0) / Number(it.quantity) : 0;
+            return `<tr><td class="c">${esc(String(it.quantity))}</td><td>${hijo ? '+ ' : ''}${esc(it.productName || '')}${detalle ? `<small>${esc(detalle)}</small>` : ''}</td><td class="r">${esc(formatMoney(unit))}</td><td class="r">${esc(formatMoney(it.subtotal || 0))}</td></tr>`;
+        }).join('');
+        const extra = [];
+        if (Number(order.promo2x1IncrementoFee || 0) > 0) extra.push(['Empaque 2×1', Number(order.promo2x1IncrementoFee)]);
+        if (order.orderType === 'domicilio' && Number(order.deliveryFee || 0) > 0) extra.push(['Domicilio', Number(order.deliveryFee)]);
+        if (Number(order.pointsRedeemed || 0) > 0) extra.push([`Puntos usados (${order.pointsRedeemed})`, -Number(order.pointsDiscountAmount || 0)]);
+        filas += extra.map(([t, v]) => `<tr><td></td><td>${esc(t)}</td><td></td><td class="r">${esc(formatMoney(v))}</td></tr>`).join('');
+    } else {
+        filas = lista.map((o) => {
+            const resumen = limpiar((o.items || []).filter((i) => !i.parentItemKey).map((i) => `${i.quantity} x ${i.productName}`).join(', '));
+            return `<tr><td class="c">1</td><td>Pedido ${esc(o.code || '')} · ${esc(formatOrderDate(o.createdAt))}<small>${esc(resumen)}</small></td><td class="r">${esc(formatMoney(getOrderDisplayTotal(o)))}</td><td class="r">${esc(formatMoney(getOrderDisplayTotal(o)))}</td></tr>`;
+        }).join('');
+    }
     const css = '@page{size:letter;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#111;margin:0;line-height:1.4}'
         + '.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px}'
         + 'h1{font-size:20pt;margin:0;letter-spacing:1px}.num{font-size:14pt;font-weight:700;text-align:right}.sm{font-size:9.5pt;color:#333}'
@@ -18320,11 +18405,11 @@ function buildCuentaCobroHtml(order, d) {
         + '.btn{display:block;margin:18px 0;padding:12px;width:100%;background:#ff7a1a;color:#fff;border:0;font-size:15px;font-weight:700;cursor:pointer}@media print{.btn{display:none}}';
     const titularLinea = [d.titularDoc ? `NIT / C.C. ${esc(d.titularDoc)}` : '', esc(brandingState.address || ''), brandingState.whatsappNumber ? `Tel. ${esc(brandingState.whatsappNumber)}` : ''].filter(Boolean).join(' · ');
     return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cuenta de cobro ${numero}</title><style>${css}</style></head><body>`
-        + `<div class="top"><div><h1>CUENTA DE COBRO</h1><div class="sm">${esc(d.ciudad)}, ${esc(hoy)}</div></div><div class="num">N.º ${numero}<div class="sm">Pedido ${esc(order.code || '')} · ${esc(consumo)}</div></div></div>`
+        + `<div class="top"><div><h1>CUENTA DE COBRO</h1><div class="sm">${esc(d.ciudad)}, ${esc(hoy)}</div></div><div class="num">N.º ${numero}<div class="sm">${refPedido}</div></div></div>`
         + `<div class="box"><b class="t">A cargo de</b><strong>${esc(d.pagador || '—')}</strong>${d.pagadorDoc ? `<br>NIT / C.C. ${esc(d.pagadorDoc)}` : ''}</div>`
         + `<div class="box"><b class="t">Debe a</b><strong>${esc(d.titular)}</strong><br><span class="sm">${titularLinea}</span></div>`
         + `<div class="box"><b class="t">Por concepto de</b>${esc(d.concepto || '')}</div>`
-        + `<table><thead><tr><th class="c">Cant.</th><th>Descripción</th><th class="r">Valor unitario</th><th class="r">Valor</th></tr></thead><tbody>${filas}${extraHtml}</tbody></table>`
+        + `<table><thead><tr><th class="c">Cant.</th><th>Descripción</th><th class="r">Valor unitario</th><th class="r">Valor</th></tr></thead><tbody>${filas}</tbody></table>`
         + `<div class="box"><b class="t">Total a pagar</b><span class="tot">${esc(formatMoney(total))}</span><br><span class="letras">Son: ${esc(cuentaCobroEnLetras(total))}</span></div>`
         + `${d.pago ? `<div class="box"><b class="t">Datos para el pago</b>${esc(d.pago).replace(/\n/g, '<br>')}</div>` : ''}`
         + `${d.leyenda ? `<p class="ley">${esc(d.leyenda)}</p>` : ''}`
@@ -18332,32 +18417,42 @@ function buildCuentaCobroHtml(order, d) {
         + `<button class="btn" onclick="window.print()">Imprimir / guardar como PDF</button></body></html>`;
 }
 
-function _abrirCuentaCobro(order, d) {
-    const html = buildCuentaCobroHtml(order, d);
+function _abrirCuentaCobro(ordenes, d) {
+    const html = buildCuentaCobroHtml(ordenes, d);
     try {
         const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
         const win = window.open(url, '_blank');
         if (win) { setTimeout(() => URL.revokeObjectURL(url), 60000); return; }
         URL.revokeObjectURL(url);
-    } catch (_) { /* se usa el respaldo */ }
+    } catch (_) { /* se usa el aviso */ }
     showNotice('El navegador bloqueó la ventana. Permite las ventanas emergentes para ver la cuenta de cobro.', 'error');
 }
 
-function openCuentaCobroModal(order) {
-    if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+// Acepta un pedido o una lista de pedidos (cuenta de cobro que junta varios).
+function openCuentaCobroModal(entrada) {
+    const ordenes = (Array.isArray(entrada) ? entrada : [entrada]).filter(Boolean);
+    if (!ordenes.length) { showNotice('Pedido no encontrado.', 'error'); return; }
+    const unico = ordenes.length === 1;
     const g = _cuentaCobroDatosGuardados();
-    const nombreCliente = esNombreGenerico(order.customerName) ? '' : String(order.customerName || '').trim();
-    const pagadorDoc = (g.pagadores && g.pagadores[nombreCliente.toLowerCase()]) || '';
-    const resumen = (order.items || []).filter((i) => !i.parentItemKey).map((i) => `${i.quantity} x ${i.productName}`).join(', ');
-    const concepto = `Consumo en ${brandingState.restaurantName || 'Roal Burger'}: ${resumen}`.slice(0, 400);
+    const primero = ordenes[0];
+    const nombreBase = esPorCobrar(primero) && primero.porCobrarA ? primero.porCobrarA : (esNombreGenerico(primero.customerName) ? '' : String(primero.customerName || '').trim());
+    const pagadorDoc = (g.pagadores && g.pagadores[nombreBase.toLowerCase()]) || '';
+    const totalGrupo = ordenes.reduce((s, o) => s + getOrderDisplayTotal(o), 0);
+    const resumen = (primero.items || []).filter((i) => !i.parentItemKey).map((i) => `${i.quantity} x ${i.productName}`).join(', ');
+    const concepto = (unico
+        ? `Consumo en ${brandingState.restaurantName || 'Roal Burger'}: ${resumen}`
+        : `Consumo en ${brandingState.restaurantName || 'Roal Burger'}: ${ordenes.length} pedidos (${ordenes.map((o) => o.code).join(', ')})`).slice(0, 400);
     const campo = (id, etiqueta, valor, tipo = 'input') => `<label style="display:block;font-size:0.78rem;margin:8px 0 3px;opacity:.85;">${etiqueta}</label>`
         + (tipo === 'area'
             ? `<textarea id="${id}" rows="2" class="pos-note-modal-input" style="width:100%;box-sizing:border-box;">${escapeHtml(valor)}</textarea>`
             : `<input id="${id}" type="text" class="pos-note-modal-input" style="width:100%;box-sizing:border-box;height:auto;" value="${escapeHtml(valor)}">`);
-    const yaTiene = order.cuentaCobroNumero ? `<p style="font-size:0.8rem;margin:0 0 4px;">Esta cuenta ya tiene el número <strong>CC-${String(order.cuentaCobroNumero).padStart(4, '0')}</strong>; al generarla de nuevo conserva ese número.</p>` : '';
-    _posFloatModal('ccModal', `Cuenta de cobro · Pedido <strong>${escapeHtml(order.code || '')}</strong> · ${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}`,
+    const numerosPrevios = [...new Set(ordenes.map((o) => Number(o.cuentaCobroNumero || 0)).filter(Boolean))];
+    const yaTiene = numerosPrevios.length === 1 && ordenes.every((o) => o.cuentaCobroNumero)
+        ? `<p style="font-size:0.8rem;margin:0 0 4px;">Ya tiene el número <strong>CC-${String(numerosPrevios[0]).padStart(4, '0')}</strong>; al generarla de nuevo conserva ese número.</p>` : '';
+    const titulo = unico ? `Pedido <strong>${escapeHtml(primero.code || '')}</strong>` : `<strong>${ordenes.length}</strong> pedidos`;
+    _posFloatModal('ccModal', `Cuenta de cobro · ${titulo} · ${escapeHtml(formatMoney(totalGrupo))}`,
         `<div style="max-height:62vh;overflow-y:auto;padding-right:4px;">${yaTiene}`
-        + campo('ccPagador', 'A cargo de (quien paga)', nombreCliente || 'Cámara de Comercio')
+        + campo('ccPagador', 'A cargo de (quien paga)', nombreBase || 'Cámara de Comercio')
         + campo('ccPagadorDoc', 'NIT o documento de quien paga (opcional)', pagadorDoc)
         + campo('ccConcepto', 'Por concepto de', concepto, 'area')
         + campo('ccTitular', 'Quien cobra (nombre o razón social)', g.titular || brandingState.restaurantName || '')
@@ -18373,11 +18468,126 @@ function openCuentaCobroModal(order) {
             const pagadores = { ...(g.pagadores || {}) };
             if (datos.pagadorDoc) pagadores[datos.pagador.toLowerCase()] = datos.pagadorDoc;
             _cuentaCobroGuardarDatos({ titular: datos.titular, titularDoc: datos.titularDoc, ciudad: datos.ciudad, pago: datos.pago, leyenda: datos.leyenda, pagadores });
-            _cuentaCobroAsignarNumero(order)
-                .then((numero) => _abrirCuentaCobro({ ...order, cuentaCobroNumero: numero }, { ...datos, numero }))
+            _cuentaCobroAsignarNumero(ordenes)
+                .then((numero) => _abrirCuentaCobro(ordenes.map((o) => ({ ...o, cuentaCobroNumero: numero })), { ...datos, numero }))
                 .catch((err) => showNotice(`No se pudo generar la cuenta de cobro: ${err.message || 'error inesperado'}.`, 'error'));
         }, 'Generar');
 }
+
+// ── Cuentas por cobrar ──────────────────────────────────────────────────────────────────────────────
+let _cxcOrdenes = [];
+let _cxcVista = 'pendientes';
+const _cxcSel = new Set();
+
+async function _cxcCargar() {
+    const [a, b] = await Promise.all([
+        firebaseDb.collection(ORDERS_COLLECTION).where('paymentMethod', '==', 'por_cobrar').get(),
+        firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).where('paymentMethod', '==', 'por_cobrar').get()
+    ]);
+    const mapa = new Map();
+    a.docs.forEach((d) => mapa.set(d.id, { ...normalizeOrder({ id: d.id, ...d.data() }), _col: ORDERS_COLLECTION }));
+    b.docs.forEach((d) => mapa.set(d.id, { ...normalizeOrder({ id: d.id, ...d.data() }), _col: ORDERS_ARCHIVE_COLLECTION }));
+    _cxcOrdenes = [...mapa.values()].filter((o) => !o.anulado && !o.voided).sort((x, y) => _tsMs(y.createdAt) - _tsMs(x.createdAt));
+}
+
+function _cxcRender() {
+    const modal = document.getElementById('cxcModal');
+    if (!modal) return;
+    const pendientes = _cxcOrdenes.filter((o) => o.porCobrarEstado !== 'cobrada');
+    const cobradas = _cxcOrdenes.filter((o) => o.porCobrarEstado === 'cobrada');
+    const lista = _cxcVista === 'pendientes' ? pendientes : cobradas;
+    [..._cxcSel].forEach((id) => { if (!pendientes.some((o) => o.id === id)) _cxcSel.delete(id); });
+    const sel = pendientes.filter((o) => _cxcSel.has(o.id));
+    const suma = (arr) => arr.reduce((s, o) => s + getOrderDisplayTotal(o), 0);
+    const porPagador = new Map();
+    lista.forEach((o) => { const k = o.porCobrarA || 'Sin nombre'; if (!porPagador.has(k)) porPagador.set(k, []); porPagador.get(k).push(o); });
+    const bloques = [...porPagador.entries()].map(([k, arr]) => `<div class="cxc-grupo"><div class="cxc-grupo-t"><strong>${escapeHtml(k)}</strong><span>${escapeHtml(formatMoney(suma(arr)))}</span></div>`
+        + arr.map((o) => `<label class="cxc-fila">${_cxcVista === 'pendientes' ? `<input type="checkbox" data-cxc="${escapeHtml(o.id)}"${_cxcSel.has(o.id) ? ' checked' : ''}>` : ''}`
+            + `<span class="cxc-info">${escapeHtml(o.code || '')} · ${escapeHtml(formatOrderDate(o.createdAt))}${o.cuentaCobroNumero ? ` · <em>CC-${String(o.cuentaCobroNumero).padStart(4, '0')}</em>` : ''}`
+            + `<small>${escapeHtml((o.items || []).filter((i) => !i.parentItemKey).map((i) => `${i.quantity} x ${i.productName}`).join(', ').slice(0, 90))}</small></span>`
+            + `<span class="cxc-valor">${escapeHtml(formatMoney(getOrderDisplayTotal(o)))}</span></label>`).join('') + '</div>').join('');
+    modal.querySelector('.cxc-cuerpo').innerHTML = `<div class="cxc-tabs"><button type="button" data-cxc-vista="pendientes" class="${_cxcVista === 'pendientes' ? 'on' : ''}">Pendientes (${pendientes.length}) · ${escapeHtml(formatMoney(suma(pendientes)))}</button>`
+        + `<button type="button" data-cxc-vista="cobradas" class="${_cxcVista === 'cobradas' ? 'on' : ''}">Cobradas (${cobradas.length})</button></div>`
+        + (bloques || `<p class="cxc-vacio">${_cxcVista === 'pendientes' ? 'No hay cuentas pendientes. Cuando cobres un pedido con "Por cobrar" aparece aquí.' : 'Todavía no hay cuentas cobradas.'}</p>`);
+    const pie = modal.querySelector('.cxc-pie');
+    pie.hidden = _cxcVista !== 'pendientes';
+    pie.querySelector('.cxc-sel').textContent = sel.length ? `${sel.length} seleccionada${sel.length === 1 ? '' : 's'} · ${formatMoney(suma(sel))}` : 'Marca las cuentas que quieres cobrar';
+    pie.querySelectorAll('button').forEach((b) => { b.disabled = !sel.length; });
+}
+
+async function openCxcModal() {
+    document.getElementById('cxcModal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'cxcModal';
+    modal.className = 'pos-note-modal-overlay';
+    modal.innerHTML = `<div class="pos-note-modal-box cxc-box"><p class="pos-note-modal-title">🧾 Cuentas por cobrar</p>`
+        + `<div class="cxc-cuerpo"><p class="cxc-vacio">Cargando…</p></div>`
+        + `<div class="cxc-pie" hidden><span class="cxc-sel"></span><div class="cxc-acciones"><button type="button" data-cxc-acc="cuenta">🧾 Cuenta de cobro</button><button type="button" data-cxc-acc="cobrar">✅ Marcar cobradas</button></div></div>`
+        + `<div class="pos-note-modal-actions"><button type="button" class="pos-note-cancel-btn">Cerrar</button></div></div>`;
+    modal.querySelector('.pos-note-cancel-btn').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) { modal.remove(); return; }
+        const tab = e.target.closest('[data-cxc-vista]');
+        if (tab) { _cxcVista = tab.dataset.cxcVista; _cxcRender(); return; }
+        const acc = e.target.closest('[data-cxc-acc]');
+        if (acc) {
+            const sel = _cxcOrdenes.filter((o) => _cxcSel.has(o.id) && o.porCobrarEstado !== 'cobrada');
+            if (!sel.length) return;
+            if (acc.dataset.cxcAcc === 'cuenta') openCuentaCobroModal(sel);
+            else _cxcMarcarCobradas(sel);
+        }
+    });
+    modal.addEventListener('change', (e) => {
+        const cb = e.target.closest('[data-cxc]');
+        if (!cb) return;
+        if (cb.checked) _cxcSel.add(cb.dataset.cxc); else _cxcSel.delete(cb.dataset.cxc);
+        _cxcRender();
+    });
+    document.body.appendChild(modal);
+    try { await _cxcCargar(); } catch (err) { modal.querySelector('.cxc-cuerpo').innerHTML = `<p class="cxc-vacio">No se pudieron cargar las cuentas: ${escapeHtml(err.message || 'error')}.</p>`; return; }
+    _cxcSel.clear();
+    _cxcVista = 'pendientes';
+    _cxcRender();
+}
+
+// Cuando llega la plata: se crea UN recibo de caja (pagado hoy, con el medio elegido) y las cuentas quedan "cobradas", todo en un
+// solo lote para que nunca quede una sin la otra.
+async function _cxcMarcarCobradas(ordenes) {
+    const metodos = getEnabledPaymentMethods().filter((m) => m.id !== 'por_cobrar');
+    const opciones = metodos.map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.label || m.id)}</option>`).join('');
+    const total = ordenes.reduce((s, o) => s + getOrderDisplayTotal(o), 0);
+    const pagador = ordenes[0].porCobrarA || 'quien pagó';
+    _posFloatModal('cxcCobroModal', `Marcar cobradas · ${escapeHtml(pagador)} · <strong>${escapeHtml(formatMoney(total))}</strong>`,
+        `<p style="font-size:0.82rem;margin:0 0 6px;opacity:.85;">${ordenes.length} cuenta${ordenes.length === 1 ? '' : 's'}. Esa plata entra a la caja HOY, con el medio por donde llegó.</p>`
+        + `<label style="display:block;font-size:0.78rem;margin:6px 0 3px;">¿Por dónde llegó la plata?</label><select id="cxcMetodo" class="pos-note-modal-input" style="width:100%;height:auto;">${opciones}</select>`,
+        () => {
+            const metodo = String(document.getElementById('cxcMetodo')?.value || '');
+            if (!metodo) { showNotice('Elige por dónde llegó la plata.', 'error'); return false; }
+            (async () => {
+                try {
+                    const numero = await _cuentaCobroAsignarNumero(ordenes);
+                    const ahora = firestoreNow();
+                    const reciboId = firebaseDb.collection(ORDERS_COLLECTION).doc().id;
+                    const recibo = cxcConstruirRecibo(ordenes, { id: reciboId, numero, metodo, sub: '', pagador, cajero: _cajaAperturaBy || '', ahora });
+                    const batch = firebaseDb.batch();
+                    batch.set(firebaseDb.collection(ORDERS_COLLECTION).doc(reciboId), recibo);
+                    ordenes.forEach((o) => {
+                        batch.update(firebaseDb.collection(o._col || ORDERS_COLLECTION).doc(o.id), {
+                            porCobrarEstado: 'cobrada', porCobradoAt: ahora, porCobradoMetodo: metodo, cobroRecibidoId: reciboId, cuentaCobroNumero: numero, updatedAt: ahora
+                        });
+                    });
+                    await batch.commit();
+                    await reloadDataAndRender();
+                    showNotice(`Cobradas: ${formatMoney(total)} entraron a la caja con el recibo CC-${String(numero).padStart(4, '0')}.`, 'ok');
+                    if (document.getElementById('cxcModal')) { await _cxcCargar(); _cxcSel.clear(); _cxcRender(); }
+                } catch (err) {
+                    showNotice(`No se pudo marcar como cobradas: ${err.message || 'error inesperado'}.`, 'error');
+                }
+            })();
+        }, 'Marcar cobradas');
+}
+
+document.getElementById('cxcBtn')?.addEventListener('click', openCxcModal);
 
 function buildKitchenTicketHtml(order) {
     const restaurantName = escapeHtml(brandingState.restaurantName || 'Roal Burger');
@@ -26232,6 +26442,21 @@ document.getElementById('pfOverlay')?.addEventListener('click', async (e) => {
         return;
     }
 
+    if (e.target.closest('#pfPorCobrarBtn')) {
+        const ordenCxc = _pfOrder;
+        const recibirCxc = _pfReceiveOrder;
+        if (!ordenCxc) return;
+        const sugerido = esNombreGenerico(ordenCxc.customerName) ? '' : String(ordenCxc.customerName || '').trim();
+        const quien = await showPromptModal({ icon: '🧾', title: '¿A quién se le cobra?', message: 'Queda como cuenta por cobrar: el pedido se entrega, pero NO suma a la caja hasta que te paguen.', placeholder: 'Ej: Cámara de Comercio', value: sugerido, confirmText: 'Dejar por cobrar' });
+        if (!quien || !quien.trim()) return;
+        _pfClose();
+        await _pfApplyPaymentUpdate(ordenCxc, recibirCxc, {
+            paymentMethod: 'por_cobrar', paymentSubMethod: '', porCobrarA: quien.trim(), porCobrarEstado: 'pendiente',
+            cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow()
+        });
+        return;
+    }
+
     const methodBtn = e.target.closest('[data-pf-method]');
     if (methodBtn) {
         const method = methodBtn.dataset.pfMethod;
@@ -27604,7 +27829,7 @@ function renderCajaDiaria() {
 
     // Filtrar cobros de la jornada actual; usa deliveredAt como fallback de timestamp
     const allPaid = ordersState.filter((o) => {
-        if (!isOrderPaid(o)) return false;
+        if (!isOrderPaid(o) || esPorCobrar(o)) return false;
         const ts = o.paidAt || o.deliveredAt || o.createdAt;
         const paidMs = _tsMs(ts);
         if (!paidMs) return false;
@@ -28466,7 +28691,7 @@ async function cerrarCaja() {
 
         // Mismo filtro que renderCajaDiaria; usa deliveredAt como fallback de timestamp
         const paid = ordersState.filter((o) => {
-            if (!isOrderPaid(o)) return false;
+            if (!isOrderPaid(o) || esPorCobrar(o)) return false;
             const ts = o.paidAt || o.deliveredAt || o.createdAt;
             const ms = _tsMs(ts);
             if (!ms) return false;
