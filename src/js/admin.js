@@ -7552,6 +7552,8 @@ function openBurgerClasicasPosModal(productId, productName) {
     noteInput.placeholder = 'Ej: sin cebolla, bien tostada...';
     noteRow.appendChild(noteLabel);
     noteRow.appendChild(noteInput);
+    // Igual que las ventanas de combo: quitar ingredientes / salsas y adicionales.
+    const extrasBar = _posComboExtrasBar(productId, productName);
 
     POS_BURGER_CLASICAS_OPTIONS.forEach((opt) => {
         const btn = document.createElement('button');
@@ -7559,7 +7561,8 @@ function openBurgerClasicasPosModal(productId, productName) {
         btn.style.cssText = 'padding:12px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;text-align:center;font-size:0.88rem;line-height:1.35;';
         btn.innerHTML = `<strong style="display:block;font-size:0.9rem;">${escapeHtml(opt.label)}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${opt.price.toLocaleString('es-CO')}</span>`;
         btn.addEventListener('click', () => {
-            const note = noteInput.value.trim();
+            const note = [noteInput.value.trim(), extrasBar.state.sinText].filter(Boolean).join(' | ');
+            const extrasElegidos = extrasBar.state.extras.slice();
             const finalId   = `${String(productId).trim()}::${opt.label.replace(/\s+/g, '_')}`;
             const finalName = `${productName} - ${opt.label}`;
 
@@ -7578,8 +7581,10 @@ function openBurgerClasicasPosModal(productId, productName) {
                 openPosUpgradeSheet(finalId, finalName, opt.price);
                 const commentInput = document.getElementById('posUpgradeComment');
                 if (commentInput && note) commentInput.value = note;
+                // Los adicionales ya elegidos aquí pasan a la hoja (no se vuelven a pedir)
+                if (extrasElegidos.length && _posUpgradePending) { _posUpgradePending.extras.push(...extrasElegidos); renderPosUpgradeStep1(); }
             } else {
-                addProductToPosOrder(finalId, finalName, opt.price, note);
+                _posAgregarConExtras(finalId, finalName, opt.price, note, extrasElegidos);
             }
         });
         optGrid.appendChild(btn);
@@ -7588,6 +7593,7 @@ function openBurgerClasicasPosModal(productId, productName) {
     card.appendChild(secLabel);
     card.appendChild(optGrid);
     card.appendChild(noteRow);
+    card.appendChild(extrasBar.el);
 
     _bindOverlayClose(overlay, () => overlay.remove());
     document.body.appendChild(overlay);
