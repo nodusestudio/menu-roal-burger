@@ -3516,6 +3516,7 @@ function normalizeOrder(raw) {
         meseroId: String(raw.meseroId || '').trim() || null,
         meseroName: String(raw.meseroName || '').trim() || null,
         barrioEspecial: String(raw.barrioEspecial || '').trim() || null,
+        cuentaCobroNumero: Number(raw.cuentaCobroNumero || 0) || null,
         // Nota general del ticket y salsas para llevar (POS): el ticket los lee, por eso viajan aquí.
         orderNote: String(raw.orderNote || '').trim(),
         salsasLlevar: Array.isArray(raw.salsasLlevar) ? raw.salsasLlevar.map(String) : [],
@@ -14387,6 +14388,7 @@ function buildThermalTicketMarkup(order, options = {}) {
         ...(_canRequestCourier ? [{ icon: '🛵', label: 'Pedir domiciliario', cardAction: 'esperando_domiciliario' }] : []),
         ...(_paidHasType ? [{ icon: '💳', label: 'Editar medio de pago', action: 'editar_pago' }] : []),
         { icon: '👥', label: 'Agregar contacto', action: 'contact' },
+        { icon: '🧾', label: 'Cuenta de cobro', action: 'cuenta_cobro' },
     ];
     const _oid = escapeHtml(order.id);
     // `action` → data-order-ticket-action (listener de #orderTicketPanel / vista previa).
@@ -18223,6 +18225,158 @@ function _printOrderViaBrowser(order) {
     const cleanup = () => { printArea.innerHTML = ''; window.removeEventListener('afterprint', cleanup); };
     window.addEventListener('afterprint', cleanup);
     setTimeout(() => { window.print(); }, 150);
+}
+
+// ── Cuenta de cobro ──────────────────────────────────────────────────────────────────────────────────
+// Documento para quien NO está obligado a facturar electrónicamente (ej.: cobrarle a la Cámara de Comercio los cupones que
+// se redimen en el local). Se genera desde el menú ☰ del ticket, solo cuando alguien la pide; el ticket normal no cambia.
+// Lleva consecutivo propio (CC-0001…) guardado en el pedido, así reimprimirla no gasta otro número.
+
+// SYNC:cuenta-cobro-letras:inicio
+function cuentaCobroEnLetras(valor) {
+    const n = Math.round(Number(valor) || 0);
+    if (n === 0) return 'cero pesos m/cte';
+    if (n < 0 || n >= 1e9) return `${n} pesos m/cte`;
+    const U = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince',
+        'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiún', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco',
+        'veintiséis', 'veintisiete', 'veintiocho', 'veintinueve'];
+    const D = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+    const C = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+    const tres = (x) => {
+        if (x === 100) return 'cien';
+        const c = Math.floor(x / 100);
+        const r = x % 100;
+        const centena = C[c];
+        if (r === 0) return centena;
+        if (r < 30) return (centena ? `${centena} ` : '') + U[r];
+        const d = Math.floor(r / 10);
+        const u = r % 10;
+        return (centena ? `${centena} ` : '') + D[d] + (u ? ` y ${U[u]}` : '');
+    };
+    const millones = Math.floor(n / 1e6);
+    const miles = Math.floor((n % 1e6) / 1000);
+    const resto = n % 1000;
+    const partes = [];
+    if (millones) partes.push(millones === 1 ? 'un millón' : `${tres(millones)} millones`);
+    if (miles) partes.push(miles === 1 ? 'mil' : `${tres(miles)} mil`);
+    if (resto) partes.push(tres(resto));
+    const deMillon = (!miles && !resto) ? ' de' : '';
+    return `${partes.join(' ')}${deMillon} ${n === 1 ? 'peso' : 'pesos'} m/cte`;
+}
+// SYNC:cuenta-cobro-letras:fin
+
+const CUENTA_COBRO_STORAGE_KEY = 'roal_cuenta_cobro_datos';
+const CUENTA_COBRO_LEYENDA_DEFECTO = 'Persona no obligada a expedir factura electrónica de venta.';
+
+function _cuentaCobroDatosGuardados() {
+    try { return JSON.parse(localStorage.getItem(CUENTA_COBRO_STORAGE_KEY) || '{}') || {}; } catch (_) { return {}; }
+}
+
+function _cuentaCobroGuardarDatos(datos) {
+    try { localStorage.setItem(CUENTA_COBRO_STORAGE_KEY, JSON.stringify(datos)); } catch (_) { /* sin almacenamiento: se vuelve a escribir */ }
+}
+
+// Consecutivo propio: se asigna una sola vez por pedido (transacción sobre un contador) y queda guardado en el pedido.
+async function _cuentaCobroAsignarNumero(order) {
+    if (order.cuentaCobroNumero) return Number(order.cuentaCobroNumero);
+    const ref = firebaseDb.collection(CONFIG_COLLECTION).doc('cuenta_cobro_consecutivo');
+    let numero = 0;
+    await firebaseDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        numero = Number(snap.exists ? snap.data().current : 0) + 1;
+        tx.set(ref, { current: numero, updatedAt: firestoreNow() }, { merge: true });
+    });
+    await updateOrder(order.id, { cuentaCobroNumero: numero, cuentaCobroAt: firestoreNow() });
+    const idx = ordersState.findIndex((o) => o.id === order.id);
+    if (idx >= 0) ordersState[idx] = { ...ordersState[idx], cuentaCobroNumero: numero };
+    return numero;
+}
+
+function buildCuentaCobroHtml(order, d) {
+    const esc = escapeHtml;
+    const total = getOrderDisplayTotal(order);
+    const numero = `CC-${String(d.numero).padStart(4, '0')}`;
+    const hoy = new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+    const consumo = formatOrderDate(order.createdAt);
+    const filas = _groupOrderItemsForDisplay(order.items || []).map((it) => {
+        const hijo = !!it.parentItemKey;
+        const detalle = [it.cortesia ? 'Cortesía' : '', _waLimpiarOpcion(it.optionLabel), it.note && it.note !== it.optionLabel ? it.note : ''].filter(Boolean).join(' · ');
+        const unit = Number(it.quantity) ? Number(it.subtotal || 0) / Number(it.quantity) : 0;
+        return `<tr><td class="c">${esc(String(it.quantity))}</td><td>${hijo ? '+ ' : ''}${esc(it.productName || '')}${detalle ? `<small>${esc(detalle)}</small>` : ''}</td><td class="r">${esc(formatMoney(unit))}</td><td class="r">${esc(formatMoney(it.subtotal || 0))}</td></tr>`;
+    }).join('');
+    const extra = [];
+    if (Number(order.promo2x1IncrementoFee || 0) > 0) extra.push(['Empaque 2×1', Number(order.promo2x1IncrementoFee)]);
+    if (order.orderType === 'domicilio' && Number(order.deliveryFee || 0) > 0) extra.push(['Domicilio', Number(order.deliveryFee)]);
+    if (Number(order.pointsRedeemed || 0) > 0) extra.push([`Puntos usados (${order.pointsRedeemed})`, -Number(order.pointsDiscountAmount || 0)]);
+    const extraHtml = extra.map(([t, v]) => `<tr><td></td><td>${esc(t)}</td><td></td><td class="r">${esc(formatMoney(v))}</td></tr>`).join('');
+    const css = '@page{size:letter;margin:16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#111;margin:0;line-height:1.4}'
+        + '.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px}'
+        + 'h1{font-size:20pt;margin:0;letter-spacing:1px}.num{font-size:14pt;font-weight:700;text-align:right}.sm{font-size:9.5pt;color:#333}'
+        + '.box{border:1px solid #999;padding:8px 10px;margin:0 0 10px}.box b.t{display:block;font-size:9pt;text-transform:uppercase;letter-spacing:.6px;color:#555;margin-bottom:3px}'
+        + 'table{width:100%;border-collapse:collapse;margin:6px 0 10px}th,td{border-bottom:1px solid #ccc;padding:5px 6px;vertical-align:top;text-align:left}'
+        + 'th{font-size:9pt;text-transform:uppercase;color:#555;border-bottom:1.5px solid #111}td.r,th.r{text-align:right;white-space:nowrap}td.c,th.c{text-align:center;width:36px}'
+        + 'small{display:block;color:#555;font-size:9pt}.tot{font-size:13pt;font-weight:700}.letras{font-weight:700;text-transform:uppercase}'
+        + '.firma{margin-top:46px;width:60%;border-top:1px solid #111;padding-top:4px;font-size:10pt}.ley{font-size:10pt;margin:10px 0}'
+        + '.btn{display:block;margin:18px 0;padding:12px;width:100%;background:#ff7a1a;color:#fff;border:0;font-size:15px;font-weight:700;cursor:pointer}@media print{.btn{display:none}}';
+    const titularLinea = [d.titularDoc ? `NIT / C.C. ${esc(d.titularDoc)}` : '', esc(brandingState.address || ''), brandingState.whatsappNumber ? `Tel. ${esc(brandingState.whatsappNumber)}` : ''].filter(Boolean).join(' · ');
+    return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cuenta de cobro ${numero}</title><style>${css}</style></head><body>`
+        + `<div class="top"><div><h1>CUENTA DE COBRO</h1><div class="sm">${esc(d.ciudad)}, ${esc(hoy)}</div></div><div class="num">N.º ${numero}<div class="sm">Pedido ${esc(order.code || '')} · ${esc(consumo)}</div></div></div>`
+        + `<div class="box"><b class="t">A cargo de</b><strong>${esc(d.pagador || '—')}</strong>${d.pagadorDoc ? `<br>NIT / C.C. ${esc(d.pagadorDoc)}` : ''}</div>`
+        + `<div class="box"><b class="t">Debe a</b><strong>${esc(d.titular)}</strong><br><span class="sm">${titularLinea}</span></div>`
+        + `<div class="box"><b class="t">Por concepto de</b>${esc(d.concepto || '')}</div>`
+        + `<table><thead><tr><th class="c">Cant.</th><th>Descripción</th><th class="r">Valor unitario</th><th class="r">Valor</th></tr></thead><tbody>${filas}${extraHtml}</tbody></table>`
+        + `<div class="box"><b class="t">Total a pagar</b><span class="tot">${esc(formatMoney(total))}</span><br><span class="letras">Son: ${esc(cuentaCobroEnLetras(total))}</span></div>`
+        + `${d.pago ? `<div class="box"><b class="t">Datos para el pago</b>${esc(d.pago).replace(/\n/g, '<br>')}</div>` : ''}`
+        + `${d.leyenda ? `<p class="ley">${esc(d.leyenda)}</p>` : ''}`
+        + `<div class="firma">${esc(d.titular)}${d.titularDoc ? `<br>NIT / C.C. ${esc(d.titularDoc)}` : ''}</div>`
+        + `<button class="btn" onclick="window.print()">Imprimir / guardar como PDF</button></body></html>`;
+}
+
+function _abrirCuentaCobro(order, d) {
+    const html = buildCuentaCobroHtml(order, d);
+    try {
+        const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+        const win = window.open(url, '_blank');
+        if (win) { setTimeout(() => URL.revokeObjectURL(url), 60000); return; }
+        URL.revokeObjectURL(url);
+    } catch (_) { /* se usa el respaldo */ }
+    showNotice('El navegador bloqueó la ventana. Permite las ventanas emergentes para ver la cuenta de cobro.', 'error');
+}
+
+function openCuentaCobroModal(order) {
+    if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+    const g = _cuentaCobroDatosGuardados();
+    const nombreCliente = esNombreGenerico(order.customerName) ? '' : String(order.customerName || '').trim();
+    const pagadorDoc = (g.pagadores && g.pagadores[nombreCliente.toLowerCase()]) || '';
+    const resumen = (order.items || []).filter((i) => !i.parentItemKey).map((i) => `${i.quantity} x ${i.productName}`).join(', ');
+    const concepto = `Consumo en ${brandingState.restaurantName || 'Roal Burger'}: ${resumen}`.slice(0, 400);
+    const campo = (id, etiqueta, valor, tipo = 'input') => `<label style="display:block;font-size:0.78rem;margin:8px 0 3px;opacity:.85;">${etiqueta}</label>`
+        + (tipo === 'area'
+            ? `<textarea id="${id}" rows="2" class="pos-note-modal-input" style="width:100%;box-sizing:border-box;">${escapeHtml(valor)}</textarea>`
+            : `<input id="${id}" type="text" class="pos-note-modal-input" style="width:100%;box-sizing:border-box;height:auto;" value="${escapeHtml(valor)}">`);
+    const yaTiene = order.cuentaCobroNumero ? `<p style="font-size:0.8rem;margin:0 0 4px;">Esta cuenta ya tiene el número <strong>CC-${String(order.cuentaCobroNumero).padStart(4, '0')}</strong>; al generarla de nuevo conserva ese número.</p>` : '';
+    _posFloatModal('ccModal', `Cuenta de cobro · Pedido <strong>${escapeHtml(order.code || '')}</strong> · ${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}`,
+        `<div style="max-height:62vh;overflow-y:auto;padding-right:4px;">${yaTiene}`
+        + campo('ccPagador', 'A cargo de (quien paga)', nombreCliente || 'Cámara de Comercio')
+        + campo('ccPagadorDoc', 'NIT o documento de quien paga (opcional)', pagadorDoc)
+        + campo('ccConcepto', 'Por concepto de', concepto, 'area')
+        + campo('ccTitular', 'Quien cobra (nombre o razón social)', g.titular || brandingState.restaurantName || '')
+        + campo('ccTitularDoc', 'NIT o cédula de quien cobra', g.titularDoc || '')
+        + campo('ccCiudad', 'Ciudad', g.ciudad || 'Armenia, Quindío')
+        + campo('ccPago', 'Datos para el pago (banco, tipo y número de cuenta)', g.pago || '', 'area')
+        + campo('ccLeyenda', 'Leyenda (confirma el texto con tu contador)', g.leyenda != null ? g.leyenda : CUENTA_COBRO_LEYENDA_DEFECTO, 'area')
+        + '</div>',
+        () => {
+            const v = (id) => String(document.getElementById(id)?.value || '').trim();
+            const datos = { pagador: v('ccPagador'), pagadorDoc: v('ccPagadorDoc'), concepto: v('ccConcepto'), titular: v('ccTitular'), titularDoc: v('ccTitularDoc'), ciudad: v('ccCiudad'), pago: v('ccPago'), leyenda: v('ccLeyenda') };
+            if (!datos.pagador || !datos.titular) { showNotice('Escribe quién paga y quién cobra.', 'error'); return false; }
+            const pagadores = { ...(g.pagadores || {}) };
+            if (datos.pagadorDoc) pagadores[datos.pagador.toLowerCase()] = datos.pagadorDoc;
+            _cuentaCobroGuardarDatos({ titular: datos.titular, titularDoc: datos.titularDoc, ciudad: datos.ciudad, pago: datos.pago, leyenda: datos.leyenda, pagadores });
+            _cuentaCobroAsignarNumero(order)
+                .then((numero) => _abrirCuentaCobro({ ...order, cuentaCobroNumero: numero }, { ...datos, numero }))
+                .catch((err) => showNotice(`No se pudo generar la cuenta de cobro: ${err.message || 'error inesperado'}.`, 'error'));
+        }, 'Generar');
 }
 
 function buildKitchenTicketHtml(order) {
@@ -24438,6 +24592,12 @@ if (orderTicketPanel) {
             return;
         }
 
+        if (actionButton.dataset.orderTicketAction === 'cuenta_cobro') {
+            const ccId = String(actionButton.dataset.orderId || '').trim() || selectedOrderId;
+            openCuentaCobroModal(ordersState.find((o) => o.id === ccId) || _ticketsData.find((o) => o.id === ccId));
+            return;
+        }
+
         if (actionButton.dataset.orderTicketAction === 'cambiar_cliente') {
             const targetOrderId = String(actionButton.dataset.orderId || '').trim();
             const order = ordersState.find(o => o.id === targetOrderId);
@@ -30513,6 +30673,9 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', async (
                 closeTicketPreviewModal();
                 openOrderContactFieldEditor(order, field);
             }
+        } else if (action === 'cuenta_cobro' && order) {
+            closeTicketPreviewModal();
+            openCuentaCobroModal(order);
         } else if (action === 'editar_pago' && order) {
             if (!(await showConfirmModal({ title: '¿Cambiar el método de pago?', message: 'Se anulará el pago actual (no sumará en cajas) y el ticket quedará libre para cobrar de nuevo por cualquier medio.', confirmText: 'Cambiar' }))) return;
             closeTicketPreviewModal();
