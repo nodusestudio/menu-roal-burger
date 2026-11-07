@@ -14780,8 +14780,13 @@ function buildThermalTicketMarkup(order, options = {}) {
                     : '';
                 // "Editar medio de pago", "Agregar contacto" y "Cambiar mesa" viven ahora en el
                 // menú ☰ (sección Edición).
+                // Agregar productos a la vista (antes solo estaba escondido en el menú ☰): si el pedido sigue abierto.
+                const _addBtn = (!_isPaid && !_isEntregado && !isOrderLockedForEdit(order))
+                    ? `<button type="button" class="ticket-print-btn ticket-add-btn ticket-action-btn" data-order-ticket-action="edit-items" data-order-id="${order.id}" title="Agregar productos a este pedido">➕ Agregar</button>`
+                    : '';
                 return `
                 <div class="ticket-print-row">
+                    ${_addBtn}
                     <button type="button" class="ticket-print-btn ticket-action-btn" data-order-ticket-action="print" data-order-id="${order.id}">Imprimir</button>
                     <button type="button" class="ticket-cobrar-btn ticket-action-btn" data-order-ticket-action="cobrar" data-order-id="${order.id}" ${_cobrarDisabled} title="${_cobrarTitle}">💰 Cobrar</button>
                     ${_meseroDeleteBtn}
@@ -15214,10 +15219,19 @@ function renderMesaMap(container, mesaOrders) {
             </button>`;
         }
         const isSelected = order.id === selectedOrderId;
+        // Acciones directas sobre la mesa (sin abrir primero el ticket): ➕ agregar productos y 💰 cobrar.
+        // Son <span role=button> (no <button>) porque van dentro de la tarjeta, que ya es un botón.
+        const puedeActuar = !isOrderLockedForEdit(order) && !isOrderClosed(order);
+        const acciones = puedeActuar
+            ? `<span class="mesa-tile-actions">
+                <span class="mesa-tile-act" role="button" tabindex="0" data-tile-act="add" data-order-id="${escapeHtml(order.id)}" title="Agregar productos a la mesa ${num}" aria-label="Agregar productos a la mesa ${num}">➕</span>
+                ${(_meseroSession || isOrderPaid(order)) ? '' : `<span class="mesa-tile-act mesa-tile-act--cobrar" role="button" tabindex="0" data-tile-act="cobrar" data-order-id="${escapeHtml(order.id)}" title="Cobrar la mesa ${num}" aria-label="Cobrar la mesa ${num}">💰</span>`}
+            </span>` : '';
         return `<button type="button" class="mesa-map-tile is-ocupada${isSelected ? ' is-selected' : ''}" data-order-id="${escapeHtml(order.id)}">
             <span class="mesa-map-num">${num}</span>
             <span class="mesa-map-label">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
             <span class="mesa-map-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+            ${acciones}
         </button>`;
     }).join('');
     _mesaSumaActualizar(mesaOrders);
@@ -23966,10 +23980,19 @@ document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
 
     const btn = e.target.closest('[data-quick-type]');
     if (!btn) return;
-    const type = btn.dataset.quickType;
+    startQuickOrder(btn.dataset.quickType);
+});
+
+// Empieza un pedido nuevo YA con su tipo elegido, directo a los productos (sin pasar por la ventana "Personalizar ticket"):
+//  · mesa → abre el POS con el selector de mesas desplegado (un toque elige la mesa)
+//  · para llevar → queda fijado de una vez
+//  · domicilio → abre la ventana de cliente/dirección/tarifa, que es lo único que hace falta preguntar
+function startQuickOrder(type) {
+    _posLiberarCuponesFid();
     posTicketConfig = null;
     internalOrderItems = [];
     posSetOrderExtras('', []);
+    _posTypeBarMesasAbiertas = false;
     if (!internalOrderModal?.classList.contains('is-open')) {
         openInternalOrderModal();
     } else {
@@ -23978,8 +24001,41 @@ document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
         renderPosBottomBar();
         showPosScreen('main');
     }
-    setTimeout(() => openPosTicketSetupModal(true, type), 60);
+    if (type === 'mesa') {
+        _posTypeBarMesasAbiertas = true;
+        renderPosTypeBar();
+    } else if (type === 'retiro') {
+        _posAplicarTicketConfig({ orderType: 'retiro', pickupMode: 'llego', customerName: '', customerPhone: '', deliveryAddress: '', deliveryFee: null });
+    } else {
+        setTimeout(() => openPosTicketSetupModal(true, type), 60);
+    }
+}
+
+document.getElementById('quickOrderBar')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-new-order]');
+    if (b && !b.disabled) startQuickOrder(b.dataset.newOrder);
 });
+
+// Acciones directas en la tarjeta de una mesa ocupada (en fase de captura para que no abran/cierren el ticket).
+function _mesaTileAccion(e) {
+    const act = e.target.closest('[data-tile-act]');
+    if (!act) return;
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const order = ordersState.find((o) => o.id === act.dataset.orderId);
+    if (!order) { showNotice('Pedido no encontrado.', 'error'); return; }
+    if (act.dataset.tileAct === 'add') {
+        if (isOrderLockedForEdit(order)) { showNotice('El pedido ya está cobrado — no se puede editar.', 'error'); return; }
+        if (!_meseroCheckOwnOrder(order)) return;
+        openOrderItemsEditor(order);
+    } else if (act.dataset.tileAct === 'cobrar') {
+        if (_meseroSession) return;
+        _triggerTicketCobro(order);
+    }
+}
+document.getElementById('ordersBoard')?.addEventListener('click', _mesaTileAccion, true);
+document.getElementById('ordersBoard')?.addEventListener('keydown', _mesaTileAccion, true);
 
 // ── Cerrar upgrade sheet
 document.getElementById('posUpgradeCloseBtn')?.addEventListener('click', closePosUpgradeSheet);
