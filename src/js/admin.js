@@ -4590,6 +4590,32 @@ function _renderUpgradesDetailPanel(optId) {
 
 
 
+var _posTopCache = null;
+function _posTopProducts() {
+    if (_posTopCache && Date.now() - _posTopCache.ts < 120000 && _posTopCache.n === productsState.length) return _posTopCache.list;
+    let fuente = ordersState || [];
+    // Si las métricas ya cargaron pedidos de meses (no se piden aquí: es una lectura grande), se aprovechan.
+    try { if (_metricsOrdersState.length) fuente = _metricsOrdersState; } catch (_) { /* aún no inicializado */ }
+    const desde = Date.now() - 30 * 86400000;
+    const cuenta = new Map();
+    fuente.forEach((o) => {
+        if (!o || o.anulado || o.voided || o.status === 'cancelado' || o.status === 'en_espera') return;
+        const ms = _tsMs(o.createdAt) || 0;
+        if (ms && ms < desde) return;
+        (Array.isArray(o.items) ? o.items : []).forEach((it) => {
+            if (it.parentItemKey || it.parentKey || it.cortesia) return; // extras de combo y cortesías no cuentan
+            const id = String(it.productId || '');
+            if (id) cuenta.set(id, (cuenta.get(id) || 0) + (Number(it.quantity) || 1));
+        });
+    });
+    const list = [...cuenta.entries()].sort((a, b) => b[1] - a[1])
+        .map(([id]) => productsState.find((p) => p.id === id))
+        .filter((p) => p && p.visible_pos !== false && p.estado !== 'paused')
+        .slice(0, 12);
+    _posTopCache = { ts: Date.now(), n: productsState.length, list };
+    return list;
+}
+
 function renderPosCategoriesPanel() {
     const tabs = document.getElementById('posCatTabs');
     if (!tabs) return;
@@ -4632,12 +4658,15 @@ function renderPosCategoriesPanel() {
         }
     });
 
-    const allTabs = catTabs.concat([promoTab]);
+    // "Más vendidos": los productos que más se piden (últimos 30 días) a un toque, sin recorrer categorías.
+    const topList = _posTopProducts();
+    const topTab = topList.length >= 3 ? { value: '__POS_TOP__', label: '⭐ MÁS VENDIDOS' } : null;
+    const allTabs = (topTab ? [topTab] : []).concat(catTabs, [promoTab]);
 
-    const specialKeys = ['__POS_PROMOCIONES__'];
+    const specialKeys = ['__POS_PROMOCIONES__', ...(topTab ? ['__POS_TOP__'] : [])];
     const validCatValues = catTabs.map((t) => t.value);
     if (!(posSelectedCategory && (specialKeys.includes(posSelectedCategory) || validCatValues.includes(posSelectedCategory)))) {
-        posSelectedCategory = catTabs.length > 0 ? catTabs[0].value : null;
+        posSelectedCategory = topTab ? topTab.value : (catTabs.length > 0 ? catTabs[0].value : null);
     }
 
     tabs.innerHTML = allTabs.map((tab) => `
@@ -4775,6 +4804,14 @@ function renderPosProductsPanel() {
     // Categoría principal agrupando varias categorías reales
     if (posSelectedCategory.startsWith('__POS_GROUP__:')) {
         renderPosGroupedProductsPanel(grid, posSelectedCategory.slice('__POS_GROUP__:'.length));
+        return;
+    }
+
+    if (posSelectedCategory === '__POS_TOP__') {
+        grid.innerHTML = '';
+        const top = _posTopProducts();
+        if (!top.length) { grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Aún no hay suficientes ventas para mostrar los más vendidos</p>'; return; }
+        _renderPosProductCards(grid, top);
         return;
     }
 
@@ -8835,7 +8872,12 @@ function _updatePosSaveBtnLabel() {
     if (!btn) return;
     const canEspera = !internalOrderItems.length && !!_posCurrentClient()
         && !_editingItemsOnlyOrderId && !_editingOrderData;
-    btn.textContent = canEspera ? '⏳ GUARDAR EN ESPERA' : 'GUARDAR';
+    // "ENVIAR A COCINA" dice lo que hace (antes "GUARDAR" hacía dudar si cerraba la venta); al editar un pedido ya enviado se guarda el cambio.
+    const editando = !!_editingItemsOnlyOrderId || !!_editingOrderData;
+    const etiqueta = canEspera ? '⏳ GUARDAR EN ESPERA' : (editando ? 'GUARDAR CAMBIOS' : 'ENVIAR A COCINA');
+    btn.textContent = etiqueta;
+    const bottomBtn = document.getElementById('posBottomSaveOrderBtn');
+    if (bottomBtn) bottomBtn.textContent = etiqueta;
     btn.classList.toggle('pos-save-order-btn--espera', canEspera);
 }
 
@@ -9171,7 +9213,7 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
                 closeMobileTicketPanel({ clearSelection: true });
             }
             showNotice('Pedido enviado a recepción.', 'ok');
-            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR'; }
+            if (saveBtn) { saveBtn.disabled = false; _updatePosSaveBtnLabel(); }
             return;
         }
 
@@ -9206,7 +9248,7 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
     } catch (error) {
         showNotice(`Error al guardar: ${error.message || 'error'}`, 'error');
     } finally {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR'; }
+        if (saveBtn) { saveBtn.disabled = false; _updatePosSaveBtnLabel(); }
     }
 }
 
@@ -9418,7 +9460,7 @@ async function saveOrderItemsEdit() {
     } catch (error) {
         showNotice(`Error al guardar los productos: ${error.message || 'error'}`, 'error');
     } finally {
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'GUARDAR'; }
+        if (saveBtn) { saveBtn.disabled = false; _updatePosSaveBtnLabel(); }
     }
 }
 
@@ -22760,8 +22802,96 @@ let _ptsActiveTab = 'none';
 let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
 let _ptsCobrarAfterSave = false; // true = este guardado viene de COBRAR sin tipo asignado aún: abrir el modal de pago apenas se confirme el tipo
 
+// ── Barra de tipo de pedido (siempre visible en el POS) ──────────────────────────────────────────
+// Mesa (con número) / Llevar / Domicilio se eligen ANTES de armar el pedido, como en Toast o Square: así COBRAR y
+// ENVIAR A COCINA ya no abren la ventana "Personalizar ticket" (se ahorran 3 toques). Si no se elige nada, esos
+// botones siguen abriendo la ventana de siempre. Tocar una mesa con cuenta abierta suma los productos a ESA cuenta.
+var _posTypeBarMesasAbiertas = false; // var: renderPosCartTicketInfo puede correr antes de que se evalúe esta línea
+
+function _posMesaOcupada(n) {
+    return (ordersState || []).find((o) => o.orderType === 'mesa' && Number(o.mesaNumber) === Number(n)
+        && !['entregado', 'enviado', 'cancelado'].includes(o.status) && !o.anulado) || null;
+}
+
+function renderPosTypeBar() {
+    const bar = document.getElementById('posTypeBar');
+    if (!bar) return;
+    // Al editar un pedido ya existente el tipo se cambia con ✎ Info (la barra solo es para pedidos nuevos).
+    if (_editingItemsOnlyOrderId || _editingOrderData) { bar.hidden = true; bar.innerHTML = ''; return; }
+    const cfg = posTicketConfig || {};
+    const tipo = cfg.orderType || '';
+    const totalMesas = document.querySelectorAll('#ptsMesaGrid .pts-mesa-btn').length || 8;
+    const btn = (type, icon, label) => `<button type="button" class="pos-typebar-btn${tipo === type ? ' is-active' : ''}" data-pos-type="${type}">${icon} ${label}</button>`;
+    let html = btn('mesa', '🍽️', tipo === 'mesa' && cfg.mesaNumber ? `Mesa ${cfg.mesaNumber}` : 'Mesa')
+        + btn('retiro', '🥡', 'Llevar')
+        + btn('domicilio', '🛵', tipo === 'domicilio' && cfg.deliveryAddress ? 'Domicilio ✓' : 'Domicilio');
+    if (cfg.customerName) html += `<span class="pos-typebar-resumen">👤 ${escapeHtml(cfg.customerName)}</span>`;
+    if (_posTypeBarMesasAbiertas) {
+        let mesas = '';
+        for (let n = 1; n <= totalMesas; n++) {
+            const ocupada = _posMesaOcupada(n);
+            const activa = tipo === 'mesa' && Number(cfg.mesaNumber) === n;
+            mesas += `<button type="button" class="pos-typebar-mesa${activa ? ' is-active' : ''}${ocupada ? ' is-ocupada' : ''}" data-pos-mesa="${n}" title="${ocupada ? `Mesa ${n} con cuenta abierta (#${escapeHtml(String(ocupada.code || ''))}): toca para sumarle productos` : `Mesa ${n} libre`}">${n}${ocupada ? ' ➕' : ''}</button>`;
+        }
+        html += `<div class="pos-typebar-mesas">${mesas}</div><p class="pos-typebar-hint">Las mesas en naranja ya tienen cuenta: tócalas para sumarle productos a esa cuenta.</p>`;
+    }
+    bar.innerHTML = html;
+    bar.hidden = false;
+}
+
+// Suma lo que hay en el carrito a la cuenta abierta de una mesa (usa la edición SEGURA de productos: no toca pago ni estado).
+async function _posSumarAMesaOcupada(n) {
+    const order = _posMesaOcupada(n);
+    if (!order) { showNotice(`La mesa ${n} ya no tiene cuenta abierta.`, 'warn'); renderPosTypeBar(); return; }
+    if (isOrderLockedForEdit(order)) { showNotice(`La mesa ${n} ya está cobrada: no se le pueden sumar productos.`, 'error'); return; }
+    if (!_meseroCheckOwnOrder(order)) return;
+    const pendientes = internalOrderItems.slice();
+    if (pendientes.length && !(await showConfirmModal({
+        icon: '🍽️', title: `Sumar a la cuenta de la Mesa ${n}`,
+        message: `Los productos del carrito se agregarán al pedido #${order.code}${order.customerName && !esNombreGenerico(order.customerName) ? ` (${order.customerName})` : ''}.`,
+        confirmText: 'Sumar', danger: false
+    }))) return;
+    _posTypeBarMesasAbiertas = false;
+    openOrderItemsEditor(order);
+    if (pendientes.length) {
+        internalOrderItems = internalOrderItems.concat(pendientes);
+        renderPosOrderItems();
+        renderPosTotals();
+        renderPosBottomBar();
+    }
+}
+
+document.getElementById('posTypeBar')?.addEventListener('click', (e) => {
+    const mesaBtn = e.target.closest('[data-pos-mesa]');
+    const typeBtn = e.target.closest('[data-pos-type]');
+    const prev = posTicketConfig || {};
+    const conservar = { customerName: prev.customerName || '', customerPhone: prev.customerPhone || '' };
+    if (mesaBtn) {
+        const n = Number(mesaBtn.dataset.posMesa);
+        if (_posMesaOcupada(n)) { _posSumarAMesaOcupada(n); return; }
+        _posTypeBarMesasAbiertas = false;
+        _posAplicarTicketConfig({ orderType: 'mesa', mesaNumber: n, ...conservar, deliveryAddress: '', deliveryFee: null });
+        return;
+    }
+    if (!typeBtn) return;
+    const tipo = typeBtn.dataset.posType;
+    if (tipo === 'mesa') {
+        _posTypeBarMesasAbiertas = !_posTypeBarMesasAbiertas;
+        renderPosTypeBar();
+    } else if (tipo === 'retiro') {
+        _posTypeBarMesasAbiertas = false;
+        _posAplicarTicketConfig({ orderType: 'retiro', pickupMode: prev.pickupMode || 'llego', ...conservar, deliveryAddress: '', deliveryFee: null });
+    } else if (tipo === 'domicilio') {
+        _posTypeBarMesasAbiertas = false;
+        // Domicilio necesita cliente, dirección y tarifa: se abre la ventana ya en "domicilio", solo para fijar la configuración.
+        openPosTicketSetupModal(true, 'domicilio');
+        renderPosTypeBar();
+    }
+});
+
 function renderPosCartTicketInfo() {
     if (typeof _updatePosSaveBtnLabel === 'function') _updatePosSaveBtnLabel();
+    renderPosTypeBar();
     const el = document.getElementById('posCartTicketInfo');
     if (!el) return;
     // Al editar un pedido existente, posTicketConfig se deja en null a propósito (el modal de
@@ -22841,7 +22971,9 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
     _ptsSelectedPickupMode = prefill?.pickupMode || 'llego';
     _ptsSelectedClient = prefill?.customerName ? { name: prefill.customerName, phone: prefill.customerPhone || '' } : null;
     // Si hay cliente prefill, usar tab 'quick' para mostrar los datos
-    _ptsActiveTab = (_ptsSelectedClient && configOnly) ? 'quick' : 'none';
+    // Por defecto se abre en "Buscar cliente" (campo único: se busca por nombre o teléfono y, si no existe, se crea desde ahí
+    // mismo); vacío = pedido sin cliente. Ya no hay que decidir entre 4 pestañas antes de empezar.
+    _ptsActiveTab = (_ptsSelectedClient && configOnly) ? 'quick' : 'search';
     // Atajo rápido de columna: abrir directo en tab búsqueda (no para mesa)
     if (presetType && presetType !== 'mesa') _ptsActiveTab = 'search';
 
@@ -23017,7 +23149,13 @@ function _ptsRenderSearchResults(query) {
     }).slice(0, 6);
 
     if (!matches.length) {
-        container.innerHTML = '<p class="pts-no-results">Sin resultados</p>';
+        // Sin coincidencias: se ofrece crear el cliente (o usar solo el nombre) con lo que ya se escribió, sin cambiar de pestaña a mano.
+        const texto = String(query || '').trim();
+        container.innerHTML = `<p class="pts-no-results">No hay un cliente así.</p>
+            <div class="pts-addr-actions">
+                <button type="button" class="pts-addr-act-btn pts-addr-act-add" data-pts-create="${escapeHtml(texto)}">➕ Crear cliente «${escapeHtml(texto)}»</button>
+                <button type="button" class="pts-addr-act-btn" data-pts-justname="${escapeHtml(texto)}">✏️ Solo el nombre</button>
+            </div>`;
         return;
     }
 
@@ -23189,6 +23327,10 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
         _ptsShowFeedback('Escribiste datos del cliente: toca "Guardar y seleccionar" antes de confirmar.');
         return;
     }
+    if (_ptsActiveTab === 'search' && !_ptsSelectedClient && String(document.getElementById('ptsSearchInput')?.value || '').trim().length >= 2) {
+        _ptsShowFeedback('Elige un cliente de la lista, créalo con ➕, o borra lo escrito para seguir sin cliente.');
+        return;
+    }
     const resolvedMesa = activeMesaBtn ? Number(activeMesaBtn.dataset.ptsMesa) : _ptsSelectedMesa;
     const resolvedPickupMode = activePickupModeBtn ? activePickupModeBtn.dataset.ptsPickupMode : _ptsSelectedPickupMode;
 
@@ -23334,6 +23476,21 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
         // Al cambiar de tab se pierde el cliente — limpiar sección de domicilio
         _ptsHideSelectedClientChip();
         _ptsRefreshDomicilioSection();
+        return;
+    }
+
+    // "Crear cliente «texto»" / "Solo el nombre": pasa a la pestaña correspondiente con lo escrito ya puesto
+    const crearBtn = e.target.closest('[data-pts-create], [data-pts-justname]');
+    if (crearBtn) {
+        const texto = String(crearBtn.dataset.ptsCreate ?? crearBtn.dataset.ptsJustname ?? '').trim();
+        const soloDigitos = texto.replace(/\D/g, '');
+        const esTelefono = soloDigitos.length >= 7 && soloDigitos.length >= texto.replace(/\s/g, '').length - 2;
+        const nuevo = crearBtn.hasAttribute('data-pts-create');
+        document.querySelector(`#posTicketSetupModal [data-pts-tab="${nuevo ? 'new' : 'quick'}"]`)?.click();
+        const nameEl = document.getElementById(nuevo ? 'ptsNewTabName' : 'ptsQuickName');
+        const phoneEl = document.getElementById(nuevo ? 'ptsNewTabPhone' : 'ptsQuickPhone');
+        if (esTelefono) { if (phoneEl) phoneEl.value = texto; nameEl?.focus(); }
+        else { if (nameEl) nameEl.value = texto; (nuevo ? phoneEl : nameEl)?.focus(); }
         return;
     }
 
@@ -23698,7 +23855,7 @@ document.getElementById('posGuardarTicketBtn')?.addEventListener('click', () => 
     // COBRAR crea un pedido nuevo — nunca debe dispararse mientras se edita uno existente
     // (abierto con el lápiz ✎ "Editar productos"), o duplicaría el pedido en vez de actualizarlo.
     if (_editingItemsOnlyOrderId) {
-        showNotice('Estás editando un pedido existente: usa GUARDAR, no COBRAR.', 'error');
+        showNotice('Estás editando un pedido existente: usa GUARDAR CAMBIOS; el cobro se hace desde Recepción.', 'error');
         return;
     }
     // Si el tipo de pedido ya está confirmado, cobrar directo. Si no, exigirlo primero
@@ -26253,26 +26410,32 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate, opts = 
     }
 }
 
-async function _promptPrintReceiptAfterCharge(order) {
-    const wantsPrint = await showConfirmModal({
-        icon: '🖨️',
-        title: '¿Imprimir el recibo?',
-        message: 'Se abrirá el ticket listo para imprimir.',
-        confirmText: 'Imprimir',
-        cancelText: 'No, gracias',
-        danger: false
+// Aviso NO bloqueante tras cobrar: antes era una ventana que había que contestar ("¿Imprimir el recibo?") antes de seguir
+// con el siguiente cliente. Ahora aparece abajo con "Imprimir" y se va solo a los 12 s; nunca frena la caja.
+function _promptPrintReceiptAfterCharge(order) {
+    // Si se cobran varios pedidos seguidos (cobro en lote) los avisos se apilan: cada uno con su botón.
+    const previos = document.querySelectorAll('.print-snack').length;
+    const snack = document.createElement('div');
+    snack.id = 'printSnack';
+    snack.className = 'print-snack';
+    snack.style.bottom = `${24 + previos * 64}px`;
+    snack.setAttribute('role', 'status');
+    snack.innerHTML = `<span>🖨️ Pedido #${escapeHtml(String(order.code || ''))} cobrado</span><button type="button" class="ps-print">Imprimir recibo</button><button type="button" class="ps-close" aria-label="Cerrar">✕</button>`;
+    const quitar = () => { clearTimeout(timer); snack.remove(); };
+    const timer = setTimeout(quitar, 12000);
+    snack.querySelector('.ps-close').addEventListener('click', quitar);
+    snack.querySelector('.ps-print').addEventListener('click', async () => {
+        quitar();
+        try {
+            await openOrderPrintTicket(order.id);
+        } catch (error) {
+            showNotice(`No se pudo imprimir el recibo: ${error.message || 'error inesperado.'}`, 'error');
+        }
+        // Mismo mensaje completo que copia el botón "Copiar mensaje" del ticket — antes se
+        // copiaba una versión resumida que no servía para pegarle al cliente.
+        try { await copyTextToClipboard(buildOrderWhatsAppMessage(order)); } catch (_) { /* sin portapapeles */ }
     });
-    if (!wantsPrint) return;
-
-    try {
-        await openOrderPrintTicket(order.id);
-    } catch (error) {
-        showNotice(`No se pudo imprimir el recibo: ${error.message || 'error inesperado.'}`, 'error');
-    }
-
-    // Mismo mensaje completo que copia el botón "Copiar mensaje" del ticket — antes se
-    // copiaba una versión resumida que no servía para pegarle al cliente.
-    await copyTextToClipboard(buildOrderWhatsAppMessage(order));
+    document.body.appendChild(snack);
 }
 
 async function _pfProcessPayment(method, subMethod, cashTender) {
@@ -26532,6 +26695,7 @@ document.getElementById('pfOverlay')?.addEventListener('click', async (e) => {
             if (changeLine) changeLine.hidden = true;
             const confirmBtn = document.getElementById('pfCashConfirmBtn');
             if (confirmBtn) confirmBtn.disabled = true;
+            _pfRenderCashChips();
             _pfShowStep('pfStep2Cash');
             // Pedido web que ya indicó "paga con $X": precarga el billete (solo si alcanza para
             // el total) y deja calculado el cambio; el cajero solo confirma o lo corrige.
@@ -26570,6 +26734,30 @@ document.getElementById('pfOverlay')?.addEventListener('click', async (e) => {
         await _pfProcessPayment('efectivo', '', cashTender);
         return;
     }
+});
+
+// Billetes rápidos para el efectivo: el siguiente "redondo" que alcanza para el total (10, 20, 50 y 100 mil, sin repetir).
+function _pfCashSuggestions(total) {
+    const t = Math.max(0, Math.round(Number(total) || 0));
+    const out = [];
+    const add = (v) => { if (v > t && !out.includes(v)) out.push(v); };
+    [5000, 10000].forEach((paso) => add(Math.ceil(t / paso) * paso)); // el redondo más cercano
+    [20000, 50000, 100000].forEach(add);                               // y los billetes que más se usan
+    return out.sort((a, b) => a - b).slice(0, 4);
+}
+
+function _pfRenderCashChips() {
+    const wrap = document.getElementById('pfCashChips');
+    if (!wrap) return;
+    wrap.innerHTML = _pfCashSuggestions(_pfOrderTotal).map((v) => `<button type="button" class="pf-cash-chip" data-pf-cash-chip="${v}">${escapeHtml(formatMoney(v))}</button>`).join('');
+}
+
+document.getElementById('pfCashChips')?.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-pf-cash-chip]');
+    const input = document.getElementById('pfCashInput');
+    if (!chip || !input) return;
+    input.value = _pfFormatCash(Number(chip.dataset.pfCashChip));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
 });
 
 document.getElementById('pfCashInput')?.addEventListener('input', (e) => {

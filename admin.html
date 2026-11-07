@@ -13510,6 +13510,36 @@
             font-family: 'Space Grotesk', sans-serif; transition: opacity 0.15s;
         }
         #pfCashConfirmBtn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        /* ── POS: barra de tipo de pedido (siempre visible) ── */
+        .pos-typebar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; background: #161c28; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
+        .pos-typebar[hidden] { display: none; }
+        .pos-typebar-btn, .pos-typebar-mesa { min-height: 44px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #eef4ff; font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.4px; font-size: 0.85rem; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .pos-typebar-btn { padding: 0 16px; }
+        .pos-typebar-mesa { min-width: 44px; padding: 0 10px; }
+        .pos-typebar-btn.is-active, .pos-typebar-mesa.is-active { background: rgba(255,122,26,0.28); border-color: #ff7a1a; color: #fff; font-weight: 700; }
+        .pos-typebar-mesa.is-ocupada { border-color: #f59e0b; color: #fbbf24; background: rgba(245,158,11,0.12); }
+        .pos-typebar-mesas { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+        .pos-typebar-hint { width: 100%; margin: 0; font-size: 0.72rem; color: rgba(255,255,255,0.55); }
+        .pos-typebar-resumen { font-size: 0.78rem; color: rgba(255,255,255,0.65); margin-left: auto; }
+
+        /* ── POS: zonas táctiles de al menos 44 px (guía Apple/WCAG) ── */
+        .pos-drawer-close { min-width: 44px; min-height: 44px; font-size: 1.7rem; }
+        .pos-drawer-edit-btn, .pos-drawer-clear-btn { min-height: 44px; min-width: 44px; padding: 0 12px; }
+        .pos-cart-action-btn { height: 44px; }
+        .pos-item-remove { width: 40px; height: 40px; }
+        .pus-qty-btn { width: 44px; height: 44px; }
+        .pos-extra-btn { min-height: 44px; }
+
+        /* ── Pago en efectivo: billetes rápidos ── */
+        .pf-cash-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+        .pf-cash-chip { flex: 1 1 28%; min-height: 48px; border-radius: 10px; border: 1px solid rgba(255,149,64,0.45); background: rgba(255,149,64,0.1); color: #ffd9b8; font-family: 'Oswald', sans-serif; font-size: 1rem; cursor: pointer; }
+        .pf-cash-chip:active { background: rgba(255,149,64,0.28); }
+
+        /* ── Aviso no bloqueante para imprimir el recibo ── */
+        #printSnack { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20000; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 12px; background: #1f2a3d; color: #fff; border: 1px solid rgba(255,255,255,0.22); box-shadow: 0 8px 28px rgba(0,0,0,0.45); font-size: 0.9rem; }
+        #printSnack button { min-height: 44px; padding: 0 16px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.08); color: #fff; font-weight: 700; cursor: pointer; }
+        #printSnack .ps-print { background: #1a4a8a; border-color: #2f6fc7; }
         #pfSplitConfirmBtn {
             flex: 1; width: 100%; padding: 13px; border-radius: 10px; border: none;
             background: linear-gradient(135deg,#22c55e,#15803d); color: #fff;
@@ -16041,6 +16071,9 @@
                 </div>
             </div>
 
+            <!-- Tipo de pedido siempre a la vista: Mesa (con su número) / Llevar / Domicilio. Se rellena por JS (renderPosTypeBar). -->
+            <div class="pos-typebar" id="posTypeBar" hidden></div>
+
             <div class="pos-trifasica-quick" id="posTrifasicaQuick" hidden></div>
 
             <div class="pos-searchbar">
@@ -16068,7 +16101,7 @@
                     <span class="pos-bottom-chevron">&#9650; Ver carrito</span>
                 </button>
                 <div class="pos-bottom-actions">
-                    <button type="button" class="pos-bottom-act-btn pos-bottom-save-btn" id="posBottomSaveOrderBtn">GUARDAR</button>
+                    <button type="button" class="pos-bottom-act-btn pos-bottom-save-btn" id="posBottomSaveOrderBtn">ENVIAR A COCINA</button>
                     <button type="button" class="pos-bottom-act-btn pos-bottom-ticket-btn pos-bottom-cobrar-btn" id="posBottomGuardarTicketBtn">COBRAR</button>
                 </div>
             </div>
@@ -16119,7 +16152,7 @@
                         <button type="button" id="posSalsasBtn" class="pos-extra-btn">🥫 Salsas</button>
                     </div>
                     <div class="pos-drawer-actions">
-                        <button type="button" class="pos-save-order-btn" id="posDrawerSaveBtn">GUARDAR</button>
+                        <button type="button" class="pos-save-order-btn" id="posDrawerSaveBtn">ENVIAR A COCINA</button>
                         <button type="button" class="pos-cobrar-full-btn" id="posGuardarTicketBtn">COBRAR</button>
                     </div>
                 </div>
@@ -16670,12 +16703,11 @@
 
             <!-- Cliente (opcional) -->
             <div class="pts-section">
-                <p class="pts-section-label">Cliente <span class="pts-optional">(opcional)</span></p>
+                <p class="pts-section-label">Cliente <span class="pts-optional">(opcional: si no lo necesitas, déjalo vacío)</span></p>
                 <div class="pts-client-tabs">
-                    <button type="button" class="pts-tab active" data-pts-tab="none">Sin nombre</button>
-                    <button type="button" class="pts-tab" data-pts-tab="quick">Rápido</button>
-                    <button type="button" class="pts-tab" data-pts-tab="search">Buscar</button>
+                    <button type="button" class="pts-tab active" data-pts-tab="search">🔎 Buscar cliente</button>
                     <button type="button" class="pts-tab pts-tab-new" data-pts-tab="new">👤 Nuevo</button>
+                    <button type="button" class="pts-tab" data-pts-tab="quick">✏️ Solo nombre</button>
                 </div>
                 <div class="pts-client-panel" id="ptsPanelQuick" hidden>
                     <input type="text" class="pts-input" id="ptsQuickName" placeholder="Nombre provisional..." autocomplete="off" maxlength="120">
@@ -16880,6 +16912,7 @@
             <div id="pfStep2Cash" class="pf-step" hidden>
                 <p class="pf-cash-total-label">Total a cobrar</p>
                 <p id="pfCashOrderTotal" class="pf-cash-order-total"></p>
+                <div class="pf-cash-chips" id="pfCashChips"></div>
                 <label class="pf-cash-input-label" for="pfCashInput">Con cuánto paga el cliente</label>
                 <div class="pf-cash-input-wrap">
                     <span class="pf-cash-prefix-sign">$</span>
@@ -16887,7 +16920,7 @@
                 </div>
                 <p id="pfChangeLine" hidden>Cambio: <strong id="pfChangeVal"></strong></p>
                 <div class="pf-cash-footer">
-                    <button type="button" id="pfSinCambioBtn">Sin cambio</button>
+                    <button type="button" id="pfSinCambioBtn">Exacto (sin cambio)</button>
                     <button type="button" id="pfCashConfirmBtn" disabled>✓ Aceptar</button>
                 </div>
             </div>
