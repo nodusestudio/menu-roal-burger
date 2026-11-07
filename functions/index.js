@@ -2051,6 +2051,30 @@ exports.adminResetClientCredentials = onCall(
     }
 );
 
+// Une dos fichas de cliente (mismo celular guardado dos veces, o cambio de teléfono): suma contadores y puntos, mueve pedidos,
+// ajustes de puntos y credenciales a la ficha que se conserva y borra la otra (con copia en clientes_uniones). Solo administradores:
+// los puntos y las credenciales no son escribibles desde el navegador, por eso va aquí con el Admin SDK. Ver clientesUnir.js.
+exports.adminUnirClientes = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, timeoutSeconds: 120 },
+    async (request) => {
+        const adminUid = request.auth?.uid;
+        if (!adminUid) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+        const adminDoc = await getFirestore().collection('admins').doc(adminUid).get();
+        if (!adminDoc.exists) throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        const { keepId, otherId, customerPhone } = request.data || {};
+        try {
+            return await require('./clientesUnir').unirClientes(
+                getFirestore(),
+                { keepId: String(keepId || ''), otherId: String(otherId || ''), customerPhone: String(customerPhone || '').slice(0, 30), adminUid },
+                FieldValue, require('firebase-admin/firestore').Timestamp
+            );
+        } catch (err) {
+            console.error('[adminUnirClientes]', err);
+            throw new HttpsError('failed-precondition', String(err && err.message ? err.message : 'No se pudo unir los clientes.').slice(0, 200));
+        }
+    }
+);
+
 // ─────────────────────────────────────────────────────────────
 // PIN de supervisor del POS (gate de descuentos / cobros extra). El valor vive en
 // configuracion/supervisor_pin, que YA NO es legible desde el cliente (ver

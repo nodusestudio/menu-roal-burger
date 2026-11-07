@@ -23196,6 +23196,94 @@ if (openCreateClientBtn) {
     });
 }
 
+// ── Unir clientes duplicados ────────────────────────────────────────────────────────────────────────
+// SYNC: la detección es la misma de functions/clientesUnir.js (detectarDuplicados); si cambias una, cambia la otra.
+// La unión real la hace la función adminUnirClientes (suma pedidos y puntos, mueve historial y credenciales, borra la ficha repetida).
+function _clientesDuplicados(clientes) {
+    const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const generico = (n) => { const x = norm(n); return !x || /^(cliente|cliente sin nombre|sin nombre|invitado|cliente rapido|mostrador|n a)$/.test(x); };
+    const dig = (c) => normalizePhoneDigits(c.customerPhoneDigits || (/\d/.test(String(c.customerPhone || '')) ? c.customerPhone : '') || String(c.id || '').replace(/^phone_/, ''));
+    const grupos = [];
+    const usados = new Set();
+    const porTel = new Map();
+    clientes.forEach((c) => { const d = dig(c); if (d.length >= 7) { if (!porTel.has(d)) porTel.set(d, []); porTel.get(d).push(c); } });
+    porTel.forEach((lista) => { if (lista.length >= 2) { lista.forEach((c) => usados.add(c.id)); grupos.push({ tipo: 'mismo_telefono', clientes: lista }); } });
+    const porNombre = new Map();
+    clientes.forEach((c) => {
+        if (usados.has(c.id) || generico(c.customerName)) return;
+        const n = norm(c.customerName);
+        if (n.split(' ').length < 2) return;
+        if (!porNombre.has(n)) porNombre.set(n, []);
+        porNombre.get(n).push(c);
+    });
+    porNombre.forEach((lista) => { if (lista.length >= 2 && new Set(lista.map(dig)).size >= 2) grupos.push({ tipo: 'mismo_nombre', clientes: lista }); });
+    const canon = (c) => (c.id === `phone_${dig(c)}` ? 1 : 0);
+    return grupos.map((g) => ({
+        ...g,
+        sugerido: [...g.clientes].sort((a, b) => (Number(b.totalOrders || 0) - Number(a.totalOrders || 0)) || (canon(b) - canon(a)) || (Number(b.puntosDisponibles || 0) - Number(a.puntosDisponibles || 0)))[0].id
+    }));
+}
+
+async function _clientesUnirLlamar(keepId, otherId, customerPhone = '') {
+    if (!firebaseFunctions) throw new Error('No hay conexión con el servidor.');
+    const res = await firebaseFunctions.httpsCallable('adminUnirClientes')({ keepId, otherId, customerPhone });
+    return res && res.data;
+}
+
+async function openUnirClientesModal() {
+    document.getElementById('unirClientesModal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'unirClientesModal';
+    modal.className = 'pos-note-modal-overlay';
+    modal.innerHTML = '<div class="pos-note-modal-box cxc-box"><p class="pos-note-modal-title">🧩 Unir clientes duplicados</p><div class="uc-cuerpo"><p class="cxc-vacio">Buscando…</p></div><div class="pos-note-modal-actions"><button type="button" class="pos-note-cancel-btn">Cerrar</button></div></div>';
+    modal.querySelector('.pos-note-cancel-btn').addEventListener('click', () => modal.remove());
+    document.body.appendChild(modal);
+    const cuerpo = modal.querySelector('.uc-cuerpo');
+    let grupos = [];
+    const pintar = () => {
+        if (!grupos.length) { cuerpo.innerHTML = '<p class="cxc-vacio">No encontré clientes repetidos. 🎉</p>'; return; }
+        cuerpo.innerHTML = '<p style="font-size:.78rem;opacity:.75;margin:0 0 8px;">Elige cuál ficha se conserva en cada grupo: a esa se le suman los pedidos y los puntos de las demás, y las otras se borran (queda una copia de seguridad).</p>'
+            + grupos.map((g, gi) => `<div class="cxc-grupo" data-g="${gi}"><div class="cxc-grupo-t"><strong>${g.tipo === 'mismo_telefono' ? '📞 Mismo teléfono' : '🔎 Posible: mismo nombre, otro teléfono'}</strong></div>`
+                + g.clientes.map((c) => `<label class="cxc-fila"><input type="radio" name="uc${gi}" value="${escapeHtml(c.id)}"${c.id === g.sugerido ? ' checked' : ''}>`
+                    + `<span class="cxc-info">${escapeHtml(c.customerName)} · ${escapeHtml(c.customerPhone)}<small>${escapeHtml(c.id)} · ${Number(c.totalOrders || 0)} pedidos · ${escapeHtml(formatMoney(c.totalSpent || 0))} · ${Number(c.puntosDisponibles || 0).toLocaleString('es-CO')} pts</small></span></label>`).join('')
+                + `<div class="cxc-acciones" style="margin-top:6px;"><button type="button" data-uc-unir="${gi}">🧩 Unir en el marcado</button></div></div>`).join('');
+    };
+    modal.addEventListener('click', async (e) => {
+        if (e.target === modal) { modal.remove(); return; }
+        const btn = e.target.closest('[data-uc-unir]');
+        if (!btn || btn.disabled) return;
+        const g = grupos[Number(btn.dataset.ucUnir)];
+        const keepId = modal.querySelector(`input[name="uc${btn.dataset.ucUnir}"]:checked`)?.value;
+        if (!g || !keepId) return;
+        const otros = g.clientes.filter((c) => c.id !== keepId);
+        const keep = g.clientes.find((c) => c.id === keepId);
+        const sumaPed = g.clientes.reduce((s, c) => s + Number(c.totalOrders || 0), 0);
+        const sumaPts = g.clientes.reduce((s, c) => s + Number(c.puntosDisponibles || 0), 0);
+        const ok = await showConfirmModal({
+            icon: '🧩', danger: false, confirmText: 'Unir',
+            title: `¿Unir en ${keep.customerName} (${keep.customerPhone})?`,
+            message: `${otros.map((c) => `${c.customerName} (${c.customerPhone})`).join(', ')} se borra${otros.length > 1 ? 'n' : ''} y todo pasa a ${keep.customerName}: ${sumaPed} pedidos y ${sumaPts.toLocaleString('es-CO')} puntos en total. ${g.tipo === 'mismo_nombre' ? 'OJO: tienen teléfonos DISTINTOS; júntalos solo si es la misma persona. ' : ''}Queda una copia de seguridad.`
+        });
+        if (!ok) return;
+        btn.disabled = true; btn.textContent = 'Uniendo…';
+        try {
+            let movidos = 0;
+            for (const o of otros) { const r = await _clientesUnirLlamar(keepId, o.id); movidos += Number(r && r.pedidosMovidos || 0); }
+            await fetchClients({ force: true });
+            grupos = _clientesDuplicados(clientsState);
+            pintar();
+            renderClients();
+            showNotice(`Clientes unidos en ${keep.customerName}. ${movidos} pedido${movidos === 1 ? '' : 's'} pasaron a su historial.`, 'ok');
+        } catch (err) {
+            btn.disabled = false; btn.textContent = '🧩 Unir en el marcado';
+            showNotice(`No se pudo unir: ${err.message || err}`, 'error');
+        }
+    });
+    try { await fetchClients({ force: true }); grupos = _clientesDuplicados(clientsState); pintar(); }
+    catch (err) { cuerpo.innerHTML = `<p class="cxc-vacio">No se pudieron cargar los clientes: ${escapeHtml(err.message || 'error')}.</p>`; }
+}
+document.getElementById('openUnirClientesBtn')?.addEventListener('click', openUnirClientesModal);
+
 if (openCreateInternalOrderBtn) {
     openCreateInternalOrderBtn.addEventListener('click', () => {
         // Siempre empezar un pedido en blanco — nunca reanudar uno anterior sin terminar
@@ -25146,6 +25234,15 @@ if (clientEditForm) {
                 const oldSnap = await firebaseDb.collection(CLIENTS_COLLECTION).doc(oldClientId).get();
                 baseData = oldSnap.exists ? oldSnap.data() : {};
             }
+            // Los puntos no se escriben desde el navegador (reglas de Firestore): siguen en la ficha, no se vuelven a mandar.
+            baseData = { ...baseData };
+            delete baseData.puntosDisponibles; delete baseData.puntosAcumuladosTotal;
+
+            // Cambio de teléfono: la ficha se MUEVE en el servidor con todo lo suyo (puntos, credenciales/PIN, pedidos y ajustes de puntos).
+            // Antes se copiaba solo la ficha desde aquí: los puntos se perdían (las reglas lo impiden) y el historial de pedidos quedaba con el teléfono viejo.
+            if (phoneChanged) {
+                await _clientesUnirLlamar(newClientId, oldClientId, customerPhone);
+            }
 
             await firebaseDb.collection(CLIENTS_COLLECTION).doc(clientId).set({
                 ...baseData,
@@ -25173,10 +25270,7 @@ if (clientEditForm) {
                 updatedAt: firestoreNow()
             }, { merge: true });
 
-            if (phoneChanged) {
-                await firebaseDb.collection(CLIENTS_COLLECTION).doc(oldClientId).delete();
-            }
-
+            // (la ficha vieja ya la borró el servidor al mover)
             if (_clientEditSyncOrderId && _clientEditSyncField) {
                 // Si en esta edición se agregó una dirección nueva, esa es la que queda en el pedido (antes quedaba la principal vieja).
                 const _syncValues = { customerName, customerPhone, deliveryAddress: _clientEditNuevaDireccion || savedAddresses[0] || address };
@@ -37466,6 +37560,9 @@ function _asistAcciones(msg, acciones) {
         } else if (a.tipo === 'cobrar_cuentas') {
             txt = `<b>🧾 Marcar como cobradas · ${escapeHtml(a.pagador || '')}</b><br><small>${Number(a.cantidad) || 0} cuenta${Number(a.cantidad) === 1 ? '' : 's'} · <b>${dinero(a.total)}</b><br>${(a.resumen || []).map(escapeHtml).join('<br>')}</small><br><small>Al tocar el botón se abre la ventana de cobro: ahí eliges por dónde llegó la plata y confirmas.</small>`;
             btn = '🧾 Abrir el cobro';
+        } else if (a.tipo === 'unir_clientes') {
+            txt = `<b>🧩 Unir clientes</b><br><small>${(a.resumen || []).map(escapeHtml).join('<br>')}<br>Total tras unir: <b>${Number(a.totalPedidos) || 0} pedidos</b> · <b>${(Number(a.totalPuntos) || 0).toLocaleString('es-CO')} puntos</b>. Las fichas repetidas se borran (queda copia de seguridad).</small>`;
+            btn = '🧩 Unir clientes';
         } else continue;
         // no guardan nada por sí solos (navegar, abrir TV, abrir la ventana de cobro): sin "Descartar" ni "ya quedó guardado"
         const soloAbre = a.tipo === 'navegar' || a.tipo === 'abrir_tv' || a.tipo === 'cobrar_cuentas';
@@ -37556,6 +37653,17 @@ async function _asistEjecutarAccion(a) {
         const ords = _cxcOrdenes.filter((o) => ids.has(o.id) && o.porCobrarEstado !== 'cobrada');
         if (!ords.length) throw new Error('Esas cuentas ya no están pendientes.');
         _cxcMarcarCobradas(ords);
+        return;
+    }
+    if (a.tipo === 'unir_clientes') {
+        let movidos = 0;
+        for (const otro of (Array.isArray(a.otherIds) ? a.otherIds : [])) {
+            const r = await _clientesUnirLlamar(a.keepId, otro);
+            movidos += Number(r && r.pedidosMovidos || 0);
+        }
+        await fetchClients({ force: true });
+        if (typeof renderClients === 'function') renderClients();
+        showNotice(`Clientes unidos. ${movidos} pedido${movidos === 1 ? '' : 's'} pasaron a la ficha que se conserva.`, 'ok');
         return;
     }
     if (a.tipo === 'tv_config') {

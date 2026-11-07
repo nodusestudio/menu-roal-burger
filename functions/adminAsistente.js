@@ -834,6 +834,11 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { pagador: { type: 'string', description: 'Parte del nombre de quien debe (ej. "cámara").' }, desde: { type: 'string', description: 'YYYY-MM-DD: desde cuándo mirar lo ya cobrado.' }, hasta: { type: 'string', description: 'YYYY-MM-DD.' } } }
     },
     {
+        name: 'clientes_duplicados',
+        description: 'Busca clientes repetidos en la base: el MISMO celular guardado en dos fichas (seguro, p. ej. con y sin el 57) y fichas con el mismo nombre completo pero otro teléfono (solo una pista: confirma con el administrador). Devuelve los grupos con pedidos, gastado y puntos de cada ficha y cuál conviene conservar. Para unirlos usa proponer_accion tipo unir_clientes. Úsala para "¿tengo clientes repetidos?", "unir duplicados".',
+        input_schema: { type: 'object', properties: {} }
+    },
+    {
         name: 'velocidad_pedidos',
         description: 'Velocidad al tomar pedidos nuevos en el POS de caja: cuántos segundos (activos) y cuántos toques toma un pedido, toques por producto, comparación por cajero, por hora del día y los 5 pedidos más lentos. Sin fechas = últimos 7 días. Solo cuenta pedidos tomados desde que existe la medición. Úsala para "¿qué tan rápido toma pedidos el cajero?", "¿a qué hora nos atascamos?".',
         input_schema: { type: 'object', properties: { ...FECHAS } }
@@ -874,9 +879,11 @@ const TOOLS = [
     },
     {
         name: 'proponer_accion',
-        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). tipo "abrir_tv" propone abrir el Modo TV (pantalla del local) en otra ventana. tipo "tv_config" propone cambiar la configuración de la pantalla de TV (pausar/reanudar, segundos por producto, qué se muestra: todo/categorías/productos/promos/destacados, orden y qué textos salen); pasa solo lo que cambia. tipo "cobrar_cuentas" propone marcar como cobradas las cuentas por cobrar pendientes de una persona (pagador): el botón abre la ventana de cobro donde el administrador elige por dónde llegó la plata y confirma; antes usa cuentas_por_cobrar para ver qué debe. Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
+        description: 'Propone una acción al administrador; NO la ejecuta: él la verá como un botón y debe confirmarla. tipo "navegar" lleva a una pestaña del panel (tab; en "costos" también vista). tipo "precio_insumo" propone cambiar el precio de compra de un insumo de la calculadora de costos (nombre + precio_nuevo, en pesos del empaque). tipo "abrir_tv" propone abrir el Modo TV (pantalla del local) en otra ventana. tipo "tv_config" propone cambiar la configuración de la pantalla de TV (pausar/reanudar, segundos por producto, qué se muestra: todo/categorías/productos/promos/destacados, orden y qué textos salen); pasa solo lo que cambia. tipo "cobrar_cuentas" propone marcar como cobradas las cuentas por cobrar pendientes de una persona (pagador): el botón abre la ventana de cobro donde el administrador elige por dónde llegó la plata y confirma; antes usa cuentas_por_cobrar para ver qué debe. tipo "unir_clientes" propone juntar fichas de cliente repetidas (conservar + unir): suma pedidos y puntos, mueve el historial y borra las repetidas; usa antes clientes_duplicados. Úsala solo cuando el administrador pida ir a algo o cambiar un precio, o cuando sea la siguiente acción natural.',
         input_schema: { type: 'object', properties: {
-            tipo: { type: 'string', enum: ['navegar', 'precio_insumo', 'abrir_tv', 'tv_config', 'cobrar_cuentas'] },
+            tipo: { type: 'string', enum: ['navegar', 'precio_insumo', 'abrir_tv', 'tv_config', 'cobrar_cuentas', 'unir_clientes'] },
+            conservar: { type: 'string', description: 'Solo con tipo "unir_clientes": id (phone_…) o teléfono de la ficha de cliente que se queda.' },
+            unir: { type: 'array', items: { type: 'string' }, description: 'Solo con tipo "unir_clientes": ids o teléfonos de las fichas repetidas que se juntan con la que se queda (máx. 5).' },
             pagador: { type: 'string', description: 'Solo con tipo "cobrar_cuentas": nombre de quien pagó (como en cuentas por cobrar, ej. "Cámara de Comercio").' },
             codigos: { type: 'array', items: { type: 'string' }, description: 'Solo con tipo "cobrar_cuentas": códigos de pedido concretos; sin esto se proponen todas las pendientes de esa persona.' },
             tab: { type: 'string', enum: PESTANAS_NAVEGABLES, description: 'Solo con tipo "navegar".' },
@@ -936,6 +943,7 @@ async function proponerAccion(db, args = {}) {
         return { ok: true, accion: { tipo: 'precio_insumo', insumoId: i.id, nombre: String(i.nombre || ''), precioActual: Number(i.precioCompra) || 0, precioNuevo: Math.round(nuevo * 100) / 100 } };
     }
     if (args.tipo === 'cobrar_cuentas') return require('./fodiCuentasPorCobrar').proponerCobro(db, args);
+    if (args.tipo === 'unir_clientes') return require('./clientesUnir').proponerUnion(db, args);
     if (args.tipo === 'abrir_tv') return { ok: true, accion: { tipo: 'abrir_tv' } };
     if (args.tipo === 'tv_config') return proponerTvConfig(db, args);
     return { error: 'tipo desconocido.' };
@@ -1186,6 +1194,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'cobros_qr') return await require('./fodiCobrosQr').cobrosQr(db, args);
         if (nombre === 'conciliacion_bancolombia') return await require('./fodiConciliacion').conciliacionBancolombia(db, args);
         if (nombre === 'cuentas_por_cobrar') return await require('./fodiCuentasPorCobrar').cuentasPorCobrar(db, args);
+        if (nombre === 'clientes_duplicados') return await require('./clientesUnir').clientesDuplicados(db);
         if (nombre === 'velocidad_pedidos') return await require('./fodiVelocidad').velocidadPedidos(db, args);
         if (nombre === 'estado_avisos_banco') return await require('./fodiVigilancia').estadoAvisosBanco(db, args);
         if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);
