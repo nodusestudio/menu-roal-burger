@@ -15257,6 +15257,13 @@ function createOrderCard(order) {
 // Cantidad de mesas del local (configuracion/config_mesas.cantidad; por defecto 8). Una sola fuente para el mapa de
 // Recepción, la barra del POS, "Personalizar ticket" y "Cambiar mesa": _aplicarCantidadMesas() reconstruye los tres.
 const MESAS_DOC_ID = 'config_mesas';
+// Puestos por mesa (configuracion/config_mesas.puestos = { "1": 2, "5": 2 … }). Sin configurar: 4, salvo la 1 y la 5 que eran de 2.
+let MESAS_PUESTOS = {};
+function _mesaPuestos(num) {
+    const v = Number(MESAS_PUESTOS[String(num)]);
+    if (Number.isFinite(v) && v >= 1 && v <= 12) return Math.floor(v);
+    return Object.keys(MESAS_PUESTOS).length ? 4 : ([1, 5].includes(Number(num)) ? 2 : 4);
+}
 const RECEPTION_MESA_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 function _aplicarCantidadMesas(valor) {
@@ -15275,7 +15282,9 @@ function _aplicarCantidadMesas(valor) {
 async function fetchMesasConfig() {
     try {
         const doc = await firebaseDb.collection(CONFIG_COLLECTION).doc(MESAS_DOC_ID).get();
+        if (doc.exists && doc.data().puestos && typeof doc.data().puestos === 'object') MESAS_PUESTOS = { ...doc.data().puestos };
         if (doc.exists && Number(doc.data().cantidad) > 0) _aplicarCantidadMesas(doc.data().cantidad);
+        else if (doc.exists) _aplicarCantidadMesas(RECEPTION_MESA_NUMBERS.length);
     } catch (_) { /* se quedan las 8 de siempre */ }
 }
 
@@ -15306,11 +15315,24 @@ function _mesaSumaActualizar(mesaOrders) {
 }
 
 // Dibujo de una mesa vista desde arriba (con sus 4 sillas) y el número adentro; el color lo da la tarjeta (libre/ocupada).
-// Mesas de dos puestos (solo dos sillas); las demás se dibujan con cuatro.
-const MESAS_DOS_PUESTOS = [1, 5];
 function _mesaSvg(num) {
-    const sillasLaterales = MESAS_DOS_PUESTOS.includes(Number(num)) ? '' : '<rect x="2" y="14" width="7" height="24" rx="3.5" opacity=".45"/><rect x="55" y="14" width="7" height="24" rx="3.5" opacity=".45"/>';
-    return `<svg class="mesa-svg" viewBox="0 0 64 52" width="58" height="47" aria-hidden="true" focusable="false"><g fill="currentColor"><rect x="20" y="2" width="24" height="7" rx="3.5" opacity=".45"/><rect x="20" y="43" width="24" height="7" rx="3.5" opacity=".45"/>${sillasLaterales}</g><rect x="12" y="11" width="40" height="30" rx="10" fill="currentColor" fill-opacity=".14" stroke="currentColor" stroke-width="1.6"/><text x="32" y="27" text-anchor="middle" dominant-baseline="central" font-size="19" font-weight="700" fill="currentColor" font-family="Oswald, sans-serif">${num}</text></svg>`;
+    const n = _mesaPuestos(num);
+    // Sillas: con 3 o más puestos hay una a cada lado (izquierda/derecha) y el resto se reparte arriba y abajo.
+    const lados = n >= 3 ? 2 : 0;
+    const resto = n - lados;
+    const arriba = Math.ceil(resto / 2);
+    const abajo = Math.floor(resto / 2);
+    const fila = (k, y) => {
+        if (k <= 0) return '';
+        const w = Math.min(24, (36 - (k - 1) * 3) / k);
+        const total = k * w + (k - 1) * 3;
+        const x0 = 32 - total / 2;
+        let out = '';
+        for (let i = 0; i < k; i++) out += `<rect x="${(x0 + i * (w + 3)).toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="7" rx="3.5" opacity=".45"/>`;
+        return out;
+    };
+    const sillasLaterales = lados ? '<rect x="2" y="14" width="7" height="24" rx="3.5" opacity=".45"/><rect x="55" y="14" width="7" height="24" rx="3.5" opacity=".45"/>' : '';
+    return `<svg class="mesa-svg" viewBox="0 0 64 52" width="58" height="47" role="img" aria-label="Mesa ${num}, ${n} puestos" focusable="false"><title>Mesa ${num} · ${n} puestos</title><g fill="currentColor">${fila(arriba, 2)}${fila(abajo, 43)}${sillasLaterales}</g><rect x="12" y="11" width="40" height="30" rx="10" fill="currentColor" fill-opacity=".14" stroke="currentColor" stroke-width="1.6"/><text x="32" y="27" text-anchor="middle" dominant-baseline="central" font-size="19" font-weight="700" fill="currentColor" font-family="Oswald, sans-serif">${num}</text></svg>`;
 }
 
 function renderMesaMap(container, mesaOrders) {
@@ -15357,27 +15379,45 @@ function renderMesaMap(container, mesaOrders) {
     _mesaSumaActualizar(mesaOrders);
 }
 
+// Engranaje de Recepción: cuántas mesas tiene el local y cuántos puestos tiene cada una (se dibuja con ese número de sillas).
+function _abrirConfigMesas() {
+    const actual = RECEPTION_MESA_NUMBERS.length;
+    const ocupadas = (_mesaSumaOrders || []).map((o) => Number(o.mesaNumber) || 0);
+    const opciones = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12];
+    const filas = (n, previo) => Array.from({ length: n }, (_, i) => {
+        const num = i + 1;
+        const p = previo[num] ?? _mesaPuestos(num);
+        return `<label class="mesa-cfg-fila"><span>Mesa ${num}</span><select data-mesa-p="${num}">${opciones.map((o) => `<option value="${o}"${o === p ? ' selected' : ''}>${o} puesto${o === 1 ? '' : 's'}</option>`).join('')}</select></label>`;
+    }).join('');
+    const modal = _posFloatModal('mesaConfigModal', 'Mesas del local',
+        `<label class="mesa-cfg-top"><span>¿Cuántas mesas?</span><input type="number" id="mesaCfgCantidad" min="1" max="40" value="${actual}"></label>
+         <p class="mesa-cfg-sub">Puestos de cada mesa (así se dibuja con sus sillas)</p>
+         <div class="mesa-cfg-lista" id="mesaCfgLista">${filas(actual, {})}</div>`,
+        (m) => {
+            const n = Math.floor(Number(m.querySelector('#mesaCfgCantidad').value));
+            if (!Number.isFinite(n) || n < 1 || n > 40) { showNotice('Escribe un número de mesas entre 1 y 40.', 'error'); return false; }
+            const maxOcupada = Math.max(0, ...ocupadas);
+            if (n < maxOcupada) { showNotice(`La mesa ${maxOcupada} tiene una cuenta abierta: no se pueden dejar menos de ${maxOcupada} mesas.`, 'error'); return false; }
+            const puestos = {};
+            m.querySelectorAll('select[data-mesa-p]').forEach((sel) => { if (Number(sel.dataset.mesaP) <= n) puestos[sel.dataset.mesaP] = Number(sel.value); });
+            firebaseDb.collection(CONFIG_COLLECTION).doc(MESAS_DOC_ID).set({ cantidad: n, puestos, updatedAt: firestoreNow() }, { merge: true })
+                .then(() => { MESAS_PUESTOS = puestos; _aplicarCantidadMesas(n); showNotice(`Listo: ${n} mesas guardadas.`, 'ok'); })
+                .catch((err) => showNotice(`No se pudo guardar: ${err.code === 'permission-denied' ? 'solo el administrador puede cambiarlo' : (err.message || 'error')}`, 'error'));
+        }, 'Guardar');
+    // Al cambiar la cantidad, la lista de puestos se ajusta (conservando lo ya elegido)
+    modal.querySelector('#mesaCfgCantidad').addEventListener('input', (e) => {
+        const n = Math.min(40, Math.max(1, Math.floor(Number(e.target.value)) || 1));
+        const previo = {};
+        modal.querySelectorAll('select[data-mesa-p]').forEach((sel) => { previo[sel.dataset.mesaP] = Number(sel.value); });
+        modal.querySelector('#mesaCfgLista').innerHTML = filas(n, previo);
+    });
+}
+
 // Sumar mesas: activar/desactivar, marcar mesas y limpiar
 document.getElementById('ordersBoard')?.addEventListener('click', (e) => {
     const re = () => renderMesaMap(document.getElementById('ordersColumnMesa'), _mesaSumaOrders);
     if (e.target.closest('#mesaConfigBtn')) {
-        (async () => {
-            const actual = RECEPTION_MESA_NUMBERS.length;
-            const ocupadas = (_mesaSumaOrders || []).map((o) => Number(o.mesaNumber) || 0);
-            const respuesta = await showPromptModal({ icon: '🍽️', title: '¿Cuántas mesas tiene el local?', message: 'Se actualiza el mapa de Recepción, el POS y "Cambiar mesa".', placeholder: 'Ej: 12', value: String(actual), confirmText: 'Guardar' });
-            if (respuesta === null || respuesta === undefined || String(respuesta).trim() === '') return;
-            const n = Math.floor(Number(String(respuesta).trim()));
-            if (!Number.isFinite(n) || n < 1 || n > 40) { showNotice('Escribe un número de mesas entre 1 y 40.', 'error'); return; }
-            const maxOcupada = Math.max(0, ...ocupadas);
-            if (n < maxOcupada) { showNotice(`La mesa ${maxOcupada} tiene una cuenta abierta: no se pueden dejar menos de ${maxOcupada} mesas.`, 'error'); return; }
-            try {
-                await firebaseDb.collection(CONFIG_COLLECTION).doc(MESAS_DOC_ID).set({ cantidad: n, updatedAt: firestoreNow() }, { merge: true });
-                _aplicarCantidadMesas(n);
-                showNotice(`Ahora el local tiene ${n} mesas.`, 'ok');
-            } catch (err) {
-                showNotice(`No se pudo guardar: ${err.code === 'permission-denied' ? 'solo el administrador puede cambiarlo' : (err.message || 'error')}`, 'error');
-            }
-        })();
+        _abrirConfigMesas();
         return;
     }
     if (e.target.closest('#mesaSumarBtn')) { _mesaSumaActiva = !_mesaSumaActiva; _mesaSumaSel.clear(); re(); return; }
