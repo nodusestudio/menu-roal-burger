@@ -43,6 +43,25 @@ test('vercel.json sirve /mesero.webmanifest con la función y antes de las regla
     assert.ok(general < 0 || i < general, 'el rewrite debe ir antes del comodín del host admin-roal.vercel.app');
 });
 
+test('admin.html escribe el enlace al manifiesto desde el principio del head (iPhone no relee lo que cambia un script)', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'admin.html'), 'utf8');
+    const head = html.slice(0, html.indexOf('</head>'));
+    // no hay un <link rel="manifest"> fijo fuera del <noscript>: el único que cuenta lo escribe el script según ?mesero=
+    const sinNoscript = head.replace(/<noscript>[\s\S]*?<\/noscript>/g, '');
+    assert.ok(!/<link[^>]+rel="manifest"/.test(sinNoscript.replace(/document\.write\([^)]*\)/g, '')), 'no debe quedar un link de manifiesto estático');
+    assert.ok(head.includes("/mesero.webmanifest?t="));
+    assert.ok(head.includes("document.write('<link rel=\"manifest\""));
+    // se ejecuta ANTES de las hojas de estilo y demás: es lo primero que lee el navegador
+    assert.ok(head.indexOf('document.write') < head.indexOf('style.css'));
+    // ejecutado de verdad, con y sin token
+    const bloque = head.match(/<script>\s*\(function \(\) \{[\s\S]*?\}\)\(\);\s*<\/script>/)[0].replace(/^<script>|<\/script>$/g, '');
+    const correr = (search) => { let escrito = ''; new Function('window', 'document', bloque)({ location: { search } }, { write: (s) => { escrito = s; } }); return escrito; };
+    assert.equal(correr(''), '<link rel="manifest" href="admin.webmanifest">');
+    assert.equal(correr('?mesero=3f2b8c1e-9a4d-4e57-b6a0-1c2d3e4f5a6b'), '<link rel="manifest" href="/mesero.webmanifest?t=3f2b8c1e-9a4d-4e57-b6a0-1c2d3e4f5a6b"><meta name="apple-mobile-web-app-title" content="Mesero">');
+    assert.ok(head.includes('name="apple-mobile-web-app-capable"'));
+    assert.equal(correr('?mesero=x"><script>alert(1)</script>'), '<link rel="manifest" href="admin.webmanifest">'); // token raro: nada se refleja
+});
+
 test('admin.js cambia el manifiesto solo en modo mesero y valida el token', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'js', 'admin.js'), 'utf8');
     assert.ok(src.includes('/mesero.webmanifest?t='));

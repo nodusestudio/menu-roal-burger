@@ -16,7 +16,26 @@
     <meta name="twitter:image" content="https://www.roalburger.com/isotipo-fodexa.png?v=4">
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
-    <link rel="manifest" href="admin.webmanifest">
+    <!-- Manifiesto de la app instalada. Si la página se abre con ?mesero=<token>, el enlace al manifiesto lleva ese token DESDE QUE
+         SE LEE EL HTML (Safari/iPhone lee el manifiesto al cargar y no vuelve a mirar si un script lo cambia después; cambiarlo
+         con JS no bastaba y la app guardada abría /fodexa pidiendo correo y contraseña). Sin ?mesero= es el del administrador. -->
+    <script>
+    (function () {
+        var href = 'admin.webmanifest', extra = '';
+        try {
+            var t = new URLSearchParams(window.location.search).get('mesero');
+            if (t && /^[A-Za-z0-9_-]{8,80}$/.test(t)) {
+                href = '/mesero.webmanifest?t=' + encodeURIComponent(t);
+                extra = '<meta name="apple-mobile-web-app-title" content="Mesero">'; // nombre del icono en iPhone
+            }
+        } catch (e) { /* sin URLSearchParams: manifiesto del administrador */ }
+        document.write('<link rel="manifest" href="' + href + '">' + extra);
+    })();
+    </script>
+    <!-- iPhone: sin esto, "Añadir a pantalla de inicio" abre un atajo de Safari en vez de una app (iOS anteriores a 16.4 no leen el manifiesto). -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
     <link rel="stylesheet" href="style.css?v=20261106-2018">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
