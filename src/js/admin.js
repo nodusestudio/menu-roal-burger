@@ -1319,6 +1319,8 @@ function _createComboModalShell({ titleHtml, subtitleHtml = '', zIndex = null } 
     header.appendChild(closeX);
     card.appendChild(header);
     overlay.appendChild(card);
+    // Igual que los demás modales del POS: tocar fuera de la tarjeta lo cierra (Escape: ver _posCerrarModalSuperior).
+    _bindOverlayClose(overlay, () => overlay.remove());
 
     return { overlay, card, header };
 }
@@ -8103,6 +8105,23 @@ function _openPosSinModal(item) {
     });
 }
 
+// Notas que más se repiten en los pedidos recientes (las 6 más usadas), para tocarlas en vez de escribirlas.
+// Sin historial suficiente se completan con unas básicas. Se ignoran los "Sin/Con/Poca …" (los maneja "Quitar ingredientes") y las marcas de promo.
+function _posNotasFrecuentes() {
+    const cuenta = new Map();
+    (typeof ordersState !== 'undefined' ? ordersState : []).slice(0, 400).forEach((o) => (o.items || []).forEach((it) => {
+        String(it.note || '').split(/\s+\|\s+/).forEach((p) => {
+            const t = p.trim();
+            if (!t || t.length > 28 || /^(sin|con|poca)\b/i.test(t) || /2\s*[x×]\s*1/i.test(t) || /^[\d$]/.test(t)) return;
+            const k = t.toLowerCase();
+            cuenta.set(k, { t, n: (cuenta.get(k) ? cuenta.get(k).n : 0) + 1 });
+        });
+    }));
+    const top = [...cuenta.values()].filter((x) => x.n >= 2).sort((a, b) => b.n - a.n).slice(0, 6).map((x) => x.t);
+    const base = ['Bien cocida', 'Poco picante', 'Para llevar', 'Sin servilleta'];
+    return [...top, ...base.filter((b) => !top.some((t) => t.toLowerCase() === b.toLowerCase()))].slice(0, 6);
+}
+
 function _openPosNoteModal(item, itemKey, container) {
     const existing = document.getElementById('posNoteModal');
     if (existing) existing.remove();
@@ -8113,6 +8132,7 @@ function _openPosNoteModal(item, itemKey, container) {
         <div class="pos-note-modal-box">
             <p class="pos-note-modal-title">Nota para <strong>${escapeHtml(item.productName)}</strong></p>
             <textarea class="pos-note-modal-input" maxlength="400" placeholder="Ej: sin cebolla, extra picante…">${escapeHtml(item.note || '')}</textarea>
+            <div class="pos-salsas-chips pos-note-chips" style="margin:0 0 8px;">${_posNotasFrecuentes().map((t) => `<button type="button" class="pos-salsa-chip" data-nota="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')}</div>
             ${posIngredientesDeItem(item).length ? '<button type="button" class="pos-note-sin-link">🚫 Quitar ingredientes</button>' : ''}
             <div class="pos-note-modal-actions">
                 <button type="button" class="pos-note-cancel-btn">Cancelar</button>
@@ -8142,6 +8162,22 @@ function _openPosNoteModal(item, itemKey, container) {
         modal.remove();
     };
 
+    // Tocar una nota frecuente la agrega (separada por " | ", cada una sale en su línea del ticket); volver a tocarla la quita.
+    modal.querySelector('.pos-note-chips')?.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-nota]');
+        if (!chip) return;
+        const ta = modal.querySelector('.pos-note-modal-input');
+        const partes = ta.value.split(/\s*\|\s*/).map((s) => s.trim()).filter(Boolean);
+        const i = partes.findIndex((p) => p.toLowerCase() === chip.dataset.nota.toLowerCase());
+        if (i >= 0) partes.splice(i, 1); else partes.push(chip.dataset.nota);
+        ta.value = partes.join(' | ');
+        chip.classList.toggle('on', i < 0);
+        ta.focus();
+    });
+    modal.querySelectorAll('.pos-note-chips [data-nota]').forEach((chip) => {
+        const actual = modal.querySelector('.pos-note-modal-input').value.split(/\s*\|\s*/).map((s) => s.trim().toLowerCase());
+        if (actual.includes(chip.dataset.nota.toLowerCase())) chip.classList.add('on');
+    });
     modal.querySelector('.pos-note-sin-link')?.addEventListener('click', () => {
         PosCart.setNote(itemKey, modal.querySelector('.pos-note-modal-input').value.trim());
         modal.remove();
@@ -8153,7 +8189,7 @@ function _openPosNoteModal(item, itemKey, container) {
         applyNote(modal.querySelector('.pos-note-modal-input').value.trim());
     });
     modal.querySelector('.pos-note-modal-input').addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') modal.remove();
+        if (e.key === 'Escape') { e.stopPropagation(); modal.remove(); }
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             applyNote(modal.querySelector('.pos-note-modal-input').value.trim());
@@ -8882,8 +8918,38 @@ function openInternalOrderModal() {
     internalOrderModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('pos-is-open');
     document.body.style.overflow = 'hidden';
+    // Pedido nuevo (carrito vacío y no se está editando): arranca la medición de velocidad.
+    if (!internalOrderItems.length && !_editingOrderData && !_editingItemsOnlyOrderId) _posMedReset();
     _posRefrescarCatalogo();
 }
+
+// ── Medición de velocidad al tomar un pedido nuevo en el POS ─────────────────────────────────────────
+// Cuenta los toques y el tiempo ACTIVO (el hueco entre dos toques cuenta máximo 15 s: así una pausa para atender otra cosa
+// no infla el tiempo). Se guarda en el pedido como `posMedicion` y FODI la lee con la herramienta `velocidad_pedidos`.
+const _posMed = { ms: 0, last: 0, toques: 0 };
+function _posMedReset() { _posMed.ms = 0; _posMed.last = 0; _posMed.toques = 0; }
+document.addEventListener('click', () => {
+    if (!document.body.classList.contains('pos-is-open')) return;
+    const t = Date.now();
+    if (_posMed.last) _posMed.ms += Math.min(t - _posMed.last, 15000);
+    _posMed.last = t;
+    _posMed.toques++;
+}, true);
+
+// Escape cierra lo que esté más arriba entre los modales del POS (nota, quitar ingredientes, bebida, combo…) y, si no hay,
+// la hoja de acompañantes. Antes solo algunos cerraban con Escape y cada uno a su manera.
+function _posCerrarModalSuperior() {
+    if (!document.body.classList.contains('pos-is-open')) return false;
+    if (document.querySelector('.pos-action-popover:not([hidden])')) return false;
+    const modales = [...document.querySelectorAll('.pos-note-modal-overlay, .combo-modal-overlay')];
+    if (modales.length) { modales[modales.length - 1].remove(); return true; }
+    const hoja = document.getElementById('posUpgradeOverlay');
+    if (hoja && !hoja.hidden && hoja.style.display !== 'none') { closePosUpgradeSheet(); return true; }
+    return false;
+}
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !e.defaultPrevented && _posCerrarModalSuperior()) e.preventDefault();
+});
 
 // ── Contadores del cliente (totalOrders / totalSpent) ───────────────────────────────────────────────
 // Se suman al CREAR el pedido (_upsertClientStatsFromPosOrder / checkout web). Estas funciones los mantienen al día
@@ -9284,6 +9350,15 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
             updatedAt: firestoreNow()
         };
 
+        // Velocidad del cajero (solo pedidos nuevos): tiempo activo y toques desde que se abrió el POS. Ver _posMed.
+        if (!isEditing && _posMed.toques > 0) {
+            orderDoc.posMedicion = {
+                seg: Math.round(_posMed.ms / 1000),
+                toques: _posMed.toques,
+                lineas: internalOrderItems.filter((i) => !i.parentKey && !_posEsAjuste(i)).length,
+                unidades: orderDoc.totalItems
+            };
+        }
         if (mesaNumber) {
             orderDoc.mesaNumber = mesaNumber;
         }
@@ -9297,6 +9372,7 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
 
         const _prevParaStats = (isEditing && !_wasEnEspera) ? ordersState.find((o) => o.id === orderId) : null;
         await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
+        if (!isEditing) _posMedReset();
         if (_pedidoContado(_prevParaStats)) {
             const _antes = getOrderDisplayTotal(_prevParaStats), _ahora = Number(orderDoc.total || 0);
             if (_prevParaStats.customerPhoneDigits === orderDoc.customerPhoneDigits) _ajustarStatsCliente(orderDoc.customerPhoneDigits, 0, _ahora - _antes);
@@ -18947,7 +19023,10 @@ function _cxcRender() {
     const suma = (arr) => arr.reduce((s, o) => s + getOrderDisplayTotal(o), 0);
     const porPagador = new Map();
     lista.forEach((o) => { const k = o.porCobrarA || 'Sin nombre'; if (!porPagador.has(k)) porPagador.set(k, []); porPagador.get(k).push(o); });
-    const bloques = [...porPagador.entries()].map(([k, arr]) => `<div class="cxc-grupo"><div class="cxc-grupo-t"><strong>${escapeHtml(k)}</strong><span>${escapeHtml(formatMoney(suma(arr)))}</span></div>`
+    // Antigüedad: cuántos días lleva esperando la cuenta más vieja del grupo (rojo pasados 30 días).
+    const _ahoraCxc = Date.now();
+    const _diasEsperando = (arr) => Math.max(0, ...arr.map((o) => Math.floor((_ahoraCxc - _tsMs(o.createdAt)) / 86400000)));
+    const bloques = [...porPagador.entries()].map(([k, arr]) => `<div class="cxc-grupo"><div class="cxc-grupo-t"><strong>${escapeHtml(k)}${_cxcVista === 'pendientes' ? ` <small style="font-weight:600;${_diasEsperando(arr) > 30 ? 'color:#f87171;' : 'opacity:.65;'}">· hace ${_diasEsperando(arr)} d</small>` : ''}</strong><span>${escapeHtml(formatMoney(suma(arr)))}</span></div>`
         + arr.map((o) => `<label class="cxc-fila">${_cxcVista === 'pendientes' ? `<input type="checkbox" data-cxc="${escapeHtml(o.id)}"${_cxcSel.has(o.id) ? ' checked' : ''}>` : ''}`
             + `<span class="cxc-info">${escapeHtml(o.code || '')} · ${escapeHtml(formatOrderDate(o.createdAt))}${o.cuentaCobroNumero ? ` · <em>CC-${String(o.cuentaCobroNumero).padStart(4, '0')}</em>` : ''}`
             + `<small>${escapeHtml((o.items || []).filter((i) => !i.parentItemKey).map((i) => `${i.quantity} x ${i.productName}`).join(', ').slice(0, 90))}</small></span>`

@@ -829,6 +829,16 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { fecha: { type: 'string', description: 'Día YYYY-MM-DD (hora Bogotá). Por defecto hoy.' } } }
     },
     {
+        name: 'cuentas_por_cobrar',
+        description: 'Cuentas por cobrar (pedidos cobrados con "Por cobrar", p. ej. cupones de la Cámara de Comercio que se pagan después): cuánto nos deben en total, quién debe más y desde hace cuántos días, antigüedad (0-7, 8-15, 16-30, más de 30 días), si ya tienen cuenta de cobro (CC-000N) y, de lo ya cobrado, cuánto y cuántos días tardaron en pagar. Con "pagador" filtra por nombre; con desde/hasta limita lo cobrado a esas fechas. Úsala para "¿cuánto nos deben?", "¿quién no ha pagado?".',
+        input_schema: { type: 'object', properties: { pagador: { type: 'string', description: 'Parte del nombre de quien debe (ej. "cámara").' }, desde: { type: 'string', description: 'YYYY-MM-DD: desde cuándo mirar lo ya cobrado.' }, hasta: { type: 'string', description: 'YYYY-MM-DD.' } } }
+    },
+    {
+        name: 'velocidad_pedidos',
+        description: 'Velocidad al tomar pedidos nuevos en el POS de caja: cuántos segundos (activos) y cuántos toques toma un pedido, toques por producto, comparación por cajero, por hora del día y los 5 pedidos más lentos. Sin fechas = últimos 7 días. Solo cuenta pedidos tomados desde que existe la medición. Úsala para "¿qué tan rápido toma pedidos el cajero?", "¿a qué hora nos atascamos?".',
+        input_schema: { type: 'object', properties: { ...FECHAS } }
+    },
+    {
         name: 'estado_avisos_banco',
         description: 'Estado de los avisos del banco (Bancolombia): si hay una alerta de cobros del POS sin su aviso del banco, hace cuánto llegó el último aviso y si el programa de voz de cada computador está en línea. Úsala para "¿están llegando los avisos del banco?" o "¿por qué no sonó el pago?".',
         input_schema: { type: 'object', properties: {} }
@@ -1170,6 +1180,8 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'pagos_bancolombia') return await require('./fodiBanco').pagosBancolombia(db, args);
         if (nombre === 'cobros_qr') return await require('./fodiCobrosQr').cobrosQr(db, args);
         if (nombre === 'conciliacion_bancolombia') return await require('./fodiConciliacion').conciliacionBancolombia(db, args);
+        if (nombre === 'cuentas_por_cobrar') return await require('./fodiCuentasPorCobrar').cuentasPorCobrar(db, args);
+        if (nombre === 'velocidad_pedidos') return await require('./fodiVelocidad').velocidadPedidos(db, args);
         if (nombre === 'estado_avisos_banco') return await require('./fodiVigilancia').estadoAvisosBanco(db, args);
         if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);
         if (nombre === 'lecciones') return await require('./fodiLecciones').lecciones(db, args);
