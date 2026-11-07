@@ -17,7 +17,7 @@
     <link rel="icon" type="image/png" href="isotipo-fodexa.png?v=4">
     <link rel="apple-touch-icon" href="isotipo-fodexa.png?v=4">
     <link rel="manifest" href="admin.webmanifest">
-    <link rel="stylesheet" href="style.css?v=20261106-1959">
+    <link rel="stylesheet" href="style.css?v=20261106-2018">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -12190,6 +12190,8 @@
             letter-spacing: 0.5px; text-transform: uppercase; cursor: pointer;
             transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
         }
+        #cxcBtn { padding: 0 9px; font-size: 0.9rem; }
+        .sales-day-banner-actions { flex-wrap: nowrap; }
         .caja-chica-btn:hover {
             background: rgba(255,149,64,0.16);
             box-shadow: 0 5px 16px rgba(255,149,64,0.2); transform: translateY(-1px); color: #fff;
@@ -14255,7 +14257,7 @@
                                 </div>
                                 <div class="sales-day-banner-actions">
                                     <button type="button" class="caja-chica-btn" id="cajaChicaBtn">💰 Caja Chica</button>
-                                    <button type="button" class="caja-chica-btn" id="cxcBtn" title="Lo que te deben y aún no ha entrado a la caja">🧾 Por cobrar</button>
+                                    <button type="button" class="caja-chica-btn" id="cxcBtn" title="Cuentas por cobrar: lo que te deben y aún no ha entrado a la caja" aria-label="Cuentas por cobrar">🧾</button>
                                     <button type="button" class="nuevo-ticket-btn" id="openCreateInternalOrderBtn">
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-6V5h-2v6H5v2h6v6h2v-6h6z"/></svg>
                                         Nuevo Pedido
@@ -17024,17 +17026,17 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261106-1959"></script>
+    <script defer src="firebase-config.js?v=20261106-2018"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261106-1959"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261106-2018"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-1959"></script>
-    <script defer src="admin.js?v=20261106-1959"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-2018"></script>
+    <script defer src="admin.js?v=20261106-2018"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
