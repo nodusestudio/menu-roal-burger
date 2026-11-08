@@ -38892,7 +38892,20 @@ function _rrInit() {
             if (!t) { vTxt.focus(); return; }
             try { localStorage.setItem('rrVozTexto', t); } catch (_) { /* sin storage */ }
             vBtn.classList.add('on');
-            _fodiDecir(t, { onend: () => vBtn.classList.remove('on') });
+            // Chrome a veces no arranca si se llama speak() justo después de cancel() o con la cola pausada:
+            // se cancela, se espera un instante, se reanuda y recién ahí se habla. Si no suena en 4 s, se avisa.
+            _fodiParar();
+            let empezo = false;
+            setTimeout(() => {
+                try { window.speechSynthesis?.resume(); } catch (_) { /* sin voz */ }
+                _fodiDecir(t, { onstart: () => { empezo = true; }, onend: () => { empezo = true; vBtn.classList.remove('on'); } });
+            }, 200);
+            setTimeout(() => {
+                if (empezo || !vBtn.classList.contains('on')) return;
+                vBtn.classList.remove('on');
+                const hayVoz = (window.speechSynthesis?.getVoices() || []).length;
+                _adminPopup(hayVoz ? 'La voz no arrancó. Prueba de nuevo o activa la «Voz natural» en el panel de FODI.' : 'Este navegador no tiene voces instaladas para reproducir audio.', 'error');
+            }, 4000);
         });
     }
     document.getElementById('rrCerrar').addEventListener('click', () => { panel.hidden = true; });
