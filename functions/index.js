@@ -9,7 +9,6 @@ const { getAuth }           = require('firebase-admin/auth');
 const crypto                = require('crypto');
 const { handleIncomingTurn, getDisplayHistory, appendAdminMessage, handbackToAgent, markConversationSeen, answerPendingQuestion, runFollowUpTurn, addAdminNote, runInactivitySweep, checkCostAlert, lookupProductInfo, closeConversationWithMessage, archiveConversation, blockConversation, deleteConversation } = require('./agent/orchestrator');
 const { fetchAllSellableItems } = require('./agent/tools');
-const { buildWhatsAppOrderDraft } = require('./agent/whatsappOrderParser');
 const orderLogic = require('./agent/orderLogic');
 const { buildDeliveredOrderWhatsAppMessage } = orderLogic;
 const pricing = require('./pricing');
@@ -2345,18 +2344,12 @@ exports.submitOrderFeedback = onCall(
 );
 
 // ─────────────────────────────────────────────────────────────
-// FODEXA POS — "Pegar pedido de WhatsApp"
-// Dos callables, ambos SOLO para admins (doc en `admins/{uid}`, mismo criterio que
-// agentChatAdminReply):
-//   1. parseWhatsAppOrderDraft(rawText): manda el texto crudo de un chat de WhatsApp a Claude
-//      (claude-haiku-4-5, EXTRACCIÓN pura — nunca inventa un producto/precio/dato), resuelve los
-//      productos contra el menú real con matching difuso y devuelve un BORRADOR editable. NO
-//      crea nada.
-//   2. createManualWhatsAppOrder(draft revisado): recibe lo que el cajero ya editó y crea el
-//      pedido real reusando orderLogic.createAgentOrder — la MISMA función que Reina en
-//      place_order — con source 'admin-manual-whatsapp'. Si createAgentOrder falla (tienda
-//      cerrada, barrio especial sin confirmar, etc.) el mensaje se pasa TAL CUAL al frontend.
-// Requiere secret: ANTHROPIC_API_KEY (solo el paso 1 llama al modelo).
+// FODEXA POS — pedidos de WhatsApp creados desde el panel / FODI
+// createManualWhatsAppOrder(borrador revisado): SOLO para admins (doc en `admins/{uid}`). Recibe lo que el cajero (o FODI) ya
+// revisó y crea el pedido real reusando orderLogic.createAgentOrder — la MISMA función que Reina en place_order — con source
+// 'admin-manual-whatsapp'. Si createAgentOrder falla (tienda cerrada, barrio especial sin confirmar, etc.) el mensaje se pasa TAL
+// CUAL al frontend. El parseo del texto con Claude (buildWhatsAppOrderDraft) lo hace ahora FODI (adminAsistente.js); la callable
+// parseWhatsAppOrderDraft se eliminó porque el panel ya no la usa.
 // ─────────────────────────────────────────────────────────────
 async function ensureAdminCaller(request) {
     const uid = request.auth?.uid;
@@ -2369,39 +2362,6 @@ async function ensureAdminCaller(request) {
     }
     return uid;
 }
-
-exports.parseWhatsAppOrderDraft = onCall(
-    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY], cors: ALLOWED_ORIGINS },
-    async (request) => {
-        await ensureAdminCaller(request);
-
-        const rawText = String(request.data?.rawText || '').trim();
-        const imagen = request.data?.imagen;
-        const tieneImg = !!(imagen && typeof imagen.base64 === 'string' && ['image/jpeg', 'image/png', 'image/webp'].includes(imagen.mediaType));
-        if (tieneImg && imagen.base64.length > 6 * 1024 * 1024) {
-            throw new HttpsError('invalid-argument', 'La captura es muy grande.');
-        }
-        if (!rawText && !tieneImg) {
-            throw new HttpsError('invalid-argument', 'Pega el texto de la conversacion, dicta el pedido o adjunta una captura.');
-        }
-        if (rawText.length > 8000) {
-            throw new HttpsError('invalid-argument', 'El texto es demasiado largo (maximo 8000 caracteres).');
-        }
-        const apiKey = ANTHROPIC_API_KEY.value();
-        if (!apiKey) {
-            throw new HttpsError('failed-precondition', 'Agente no configurado.');
-        }
-
-        try {
-            const draft = await buildWhatsAppOrderDraft(getFirestore(), apiKey, rawText, { image: tieneImg ? imagen : null, voz: request.data?.voz === true });
-            return { draft };
-        } catch (err) {
-            if (err instanceof HttpsError) throw err;
-            console.error('parseWhatsAppOrderDraft error:', err);
-            throw new HttpsError('internal', err.message || 'No se pudo procesar el texto.');
-        }
-    }
-);
 
 exports.createManualWhatsAppOrder = onCall(
     { region: 'us-central1', cors: ALLOWED_ORIGINS },
