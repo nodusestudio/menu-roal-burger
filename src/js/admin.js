@@ -38568,7 +38568,11 @@ function _fodiFlotInit() {
     const $ = (id) => document.getElementById(id);
     const burbuja = $('fodiFlotBurbuja'), mic = $('fodiFlotMic'), log = $('fodiFlotLog'), txt = $('fodiFlotTxt'), toggle = $('fodiFlotToggle'), hola = $('fodiFlotHola');
     let apagada = false;
-    try { apagada = localStorage.getItem('fodiFlotOff') === '1'; } catch (_) { /* sin storage */ }
+    try {
+        const guardado = localStorage.getItem('fodiFlotOff');
+        // En PC arranca oculto (se muestra con el botón 💛 de la barra inferior); en celular, como siempre.
+        apagada = guardado === '1' || (guardado === null && window.matchMedia('(min-width:1024px)').matches);
+    } catch (_) { /* sin storage */ }
     const aplicar = () => {
         raiz.classList.toggle('on', !apagada); if (apagada) raiz.classList.remove('abierto'); if (toggle) toggle.checked = !apagada;
         const rf = document.getElementById('rrFodi'); // botón de la barra inferior (PC)
@@ -38875,7 +38879,6 @@ function _rrInit() {
     };
     btn.addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden) suscribir(); });
     document.getElementById('rrFodi')?.addEventListener('click', () => { if (window._fodiFlotAlternar) window._fodiFlotAlternar(); });
-    document.getElementById('rrCalla')?.addEventListener('click', () => { if (window._fodiCallar) window._fodiCallar(); });
     document.getElementById('rrCerrar').addEventListener('click', () => { panel.hidden = true; });
     buscar.addEventListener('input', pintar);
     lista.addEventListener('click', async (e) => {
@@ -39341,11 +39344,14 @@ function _bancoEquiposUI() {
     if (btn) return btn;
     btn = document.createElement('button'); btn.type = 'button'; btn.id = 'bancoSilencioBtn';
     btn.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9998;width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.92);color:#fff;font-size:21px;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.4);padding:0';
-    btn.textContent = '🔊'; btn.title = 'Voz de pagos: silenciar o activar cada computador';
+    btn.textContent = '🔊'; btn.dataset.tip = 'Voz de pagos (silenciar / activar)'; btn.setAttribute('aria-label', 'Voz de pagos: silenciar o activar cada computador');
     const caja = document.createElement('div'); caja.id = 'bancoSilencioCaja'; caja.hidden = true;
     caja.style.cssText = 'position:fixed;right:14px;bottom:68px;z-index:9998;width:min(330px,calc(100vw - 28px));max-height:60vh;overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.97);color:#fff;font:14px system-ui,sans-serif;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,.5)';
     btn.addEventListener('click', () => { caja.hidden = !caja.hidden; });
-    document.body.appendChild(caja); document.body.appendChild(btn);
+    // En PC el botón vive dentro de la barra inferior (#rrWrap); en celular queda flotante en la esquina.
+    document.body.appendChild(caja);
+    const barra = document.getElementById('rrWrap');
+    if (barra) barra.insertBefore(btn, document.getElementById('rrBtn')); else document.body.appendChild(btn);
     return btn;
 }
 function _bancoPintarEquipos(docs) {
