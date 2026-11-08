@@ -17393,12 +17393,15 @@
             body.pos-is-open #rrWrap{bottom:146px}
             body.pos-is-open #fodiFlot{bottom:200px}
         }
-        #rrBtn .rr-lbl{display:none}
-        /* PC: barra fija abajo (cabe justo en los 36px que deja libres el POS) con el botón de respuestas rápidas */
+        .rr-bar-btn{display:none}
+        /* PC: barra fija abajo (cabe justo en los 34px que deja libres el POS), con iconos a la derecha;
+           el nombre aparece al pasar el ratón (data-tip) */
         @media (min-width:1024px){
-            #rrWrap{left:0;right:0;bottom:0;height:34px;background:#141922;border-top:1px solid rgba(255,255,255,.1)}
-            #rrBtn{float:none;position:absolute;left:16px;top:3px;width:auto;height:28px;padding:0 14px;border-radius:14px;font-size:.82rem;box-shadow:none;display:flex;align-items:center;gap:6px}
-            #rrBtn .rr-lbl{display:inline;font-family:inherit}
+            body.admin-unlocked:not(.mesero-mode) #rrWrap{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 16px;box-sizing:border-box;left:0;right:0;bottom:0;height:34px;background:#26304f;border-top:2px solid #ff7a1a}
+            #rrBtn,.rr-bar-btn{position:relative;float:none;display:flex;align-items:center;justify-content:center;width:30px;height:26px;padding:0;border-radius:13px;font-size:.95rem;box-shadow:none;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;cursor:pointer}
+            #rrBtn:hover,.rr-bar-btn:hover{background:rgba(255,255,255,.2)}
+            .rr-bar-btn.on{background:#ff7a1a;border-color:#ff7a1a}
+            #rrBtn[data-tip]:hover::after,.rr-bar-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;right:0;bottom:34px;white-space:nowrap;background:#0d111b;color:#fff;font-size:.78rem;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);pointer-events:none}
         }
         #rrPanel{position:absolute;right:0;bottom:56px;width:min(340px,calc(100vw - 32px));max-height:min(70vh,520px);overflow:auto;background:#1b2133;color:#eef4ff;border:1px solid rgba(255,255,255,.18);border-radius:18px;padding:12px;box-shadow:0 18px 50px rgba(0,0,0,.6)}
         #rrPanel[hidden],#rrForm[hidden]{display:none}
@@ -17411,7 +17414,7 @@
         .rr-item small{display:block;opacity:.7;font-size:.76rem;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
         .rr-item.ok{background:#16a34a;border-color:#16a34a}
         .rr-nuevo{width:100%;padding:8px;border-radius:10px;border:1px dashed rgba(255,255,255,.35);background:none;color:#fff;cursor:pointer;font:inherit;font-size:.85rem}
-        @media (min-width:1024px){ #rrPanel{right:auto;left:16px;bottom:42px} }
+        @media (min-width:1024px){ #rrPanel{right:16px;left:auto;bottom:42px} }
         #fodiFlotBurbuja{position:relative;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;width:68px;height:68px;border-radius:50%;border:0;background:radial-gradient(circle at 35% 25%,#3a3f66,#1b2133 70%);cursor:pointer;padding:5px;box-shadow:0 8px 22px rgba(120,90,255,.35),0 0 0 3px rgba(255,255,255,.14);transition:transform .2s cubic-bezier(.3,1.6,.5,1),box-shadow .2s}
         #fodiFlotBurbuja:hover{transform:scale(1.1) rotate(-4deg);box-shadow:0 10px 26px rgba(255,150,200,.5),0 0 0 3px rgba(255,200,230,.35)}
         #fodiFlotBurbuja:active{transform:scale(.9)}
@@ -17485,7 +17488,9 @@
                 <button type="button" id="rrGuardar" class="rr-nuevo">Guardar</button>
             </div>
         </div>
-        <button type="button" id="rrBtn" aria-label="Respuestas rápidas" title="Respuestas rápidas (tocar para copiar)">📋<span class="rr-lbl">Respuestas rápidas</span></button>
+        <button type="button" id="rrFodi" class="rr-bar-btn" data-tip="FODI (mostrar / ocultar)" aria-label="Mostrar u ocultar a FODI" aria-pressed="false">💛</button>
+        <button type="button" id="rrCalla" class="rr-bar-btn" data-tip="Callar a FODI" aria-label="Callar a FODI">🔇</button>
+        <button type="button" id="rrBtn" data-tip="Respuestas rápidas" aria-label="Respuestas rápidas (tocar para copiar)">📋</button>
     </div>
     <div id="fodiFlot" aria-live="polite">
         <div id="fodiFlotHola" aria-hidden="true">¡Hola! 💛</div>

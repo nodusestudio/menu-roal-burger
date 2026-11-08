@@ -38569,8 +38569,14 @@ function _fodiFlotInit() {
     const burbuja = $('fodiFlotBurbuja'), mic = $('fodiFlotMic'), log = $('fodiFlotLog'), txt = $('fodiFlotTxt'), toggle = $('fodiFlotToggle'), hola = $('fodiFlotHola');
     let apagada = false;
     try { apagada = localStorage.getItem('fodiFlotOff') === '1'; } catch (_) { /* sin storage */ }
-    const aplicar = () => { raiz.classList.toggle('on', !apagada); if (apagada) raiz.classList.remove('abierto'); if (toggle) toggle.checked = !apagada; };
+    const aplicar = () => {
+        raiz.classList.toggle('on', !apagada); if (apagada) raiz.classList.remove('abierto'); if (toggle) toggle.checked = !apagada;
+        const rf = document.getElementById('rrFodi'); // botón de la barra inferior (PC)
+        if (rf) { rf.classList.toggle('on', !apagada); rf.setAttribute('aria-pressed', String(!apagada)); }
+    };
     aplicar();
+    // Barra inferior: tocar a FODI lo muestra en pantalla y volver a tocar lo oculta (se recuerda en este navegador)
+    window._fodiFlotAlternar = () => { apagada = !apagada; try { localStorage.setItem('fodiFlotOff', apagada ? '1' : '0'); } catch (_) { /* sin storage */ } aplicar(); };
     if (toggle) toggle.addEventListener('change', () => { apagada = !toggle.checked; try { localStorage.setItem('fodiFlotOff', apagada ? '1' : '0'); } catch (_) { /* sin storage */ } aplicar(); });
     _fodiMontar(burbuja, {});
     _fodiMontar($('fodiFlotCara'), {});
@@ -38580,6 +38586,7 @@ function _fodiFlotInit() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) mic.style.display = 'none';
     const callar = () => { _fodiParar(); hablar(false); };
+    window._fodiCallar = callar;
     const hayGesto = () => !!(navigator.userActivation ? navigator.userActivation.hasBeenActive : true);
     const msg = (clase, texto, md) => {
         const d = document.createElement('div'); d.className = 'ff-m ' + clase;
@@ -38867,6 +38874,8 @@ function _rrInit() {
         }, (err) => { suscrito = false; console.error('rr onSnapshot error:', err); });
     };
     btn.addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden) suscribir(); });
+    document.getElementById('rrFodi')?.addEventListener('click', () => { if (window._fodiFlotAlternar) window._fodiFlotAlternar(); });
+    document.getElementById('rrCalla')?.addEventListener('click', () => { if (window._fodiCallar) window._fodiCallar(); });
     document.getElementById('rrCerrar').addEventListener('click', () => { panel.hidden = true; });
     buscar.addEventListener('input', pintar);
     lista.addEventListener('click', async (e) => {
