@@ -17384,6 +17384,20 @@
         #respClienteModal .rc-resp .rc-btn{margin-top:8px;padding:6px 14px;font-size:.82rem}
         #fodiFlot{position:fixed;right:16px;bottom:96px;width:68px;height:68px;z-index:2147483000;display:none;font-family:inherit}
         body.admin-unlocked:not(.mesero-mode) #fodiFlot.on{display:block}
+        #rrWrap{display:none;position:fixed;right:16px;bottom:28px;z-index:2147482990;font-family:inherit}
+        body.admin-unlocked:not(.mesero-mode) #rrWrap{display:block}
+        #rrBtn{width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,.28);background:#1b2133;color:#fff;font-size:1.25rem;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.4);-webkit-tap-highlight-color:transparent;float:right}
+        #rrPanel{position:absolute;right:0;bottom:56px;width:min(340px,calc(100vw - 32px));max-height:min(70vh,520px);overflow:auto;background:#1b2133;color:#eef4ff;border:1px solid rgba(255,255,255,.18);border-radius:18px;padding:12px;box-shadow:0 18px 50px rgba(0,0,0,.6)}
+        #rrPanel[hidden],#rrForm[hidden]{display:none}
+        #rrPanel .rr-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+        #rrPanel .rr-head button{background:none;border:0;color:#fff;font-size:1rem;cursor:pointer}
+        #rrPanel input,#rrPanel textarea{width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:.9rem}
+        #rrLista{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+        .rr-item{text-align:left;padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.07);color:#fff;cursor:pointer;font:inherit}
+        .rr-item b{display:block;font-size:.9rem}
+        .rr-item small{display:block;opacity:.7;font-size:.76rem;margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+        .rr-item.ok{background:#16a34a;border-color:#16a34a}
+        .rr-nuevo{width:100%;padding:8px;border-radius:10px;border:1px dashed rgba(255,255,255,.35);background:none;color:#fff;cursor:pointer;font:inherit;font-size:.85rem}
         #fodiFlotBurbuja{position:relative;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;width:68px;height:68px;border-radius:50%;border:0;background:radial-gradient(circle at 35% 25%,#3a3f66,#1b2133 70%);cursor:pointer;padding:5px;box-shadow:0 8px 22px rgba(120,90,255,.35),0 0 0 3px rgba(255,255,255,.14);transition:transform .2s cubic-bezier(.3,1.6,.5,1),box-shadow .2s}
         #fodiFlotBurbuja:hover{transform:scale(1.1) rotate(-4deg);box-shadow:0 10px 26px rgba(255,150,200,.5),0 0 0 3px rgba(255,200,230,.35)}
         #fodiFlotBurbuja:active{transform:scale(.9)}
@@ -17444,6 +17458,20 @@
             <div class="rc-fila"><button type="button" class="rc-btn" id="rcSugerir">✨ Sugerir respuesta</button><span id="rcEstado" style="font-size:.85rem;color:#c9d6f0"></span></div>
             <div class="rc-res" id="rcResultado"></div>
         </div>
+    </div>
+    <div id="rrWrap">
+        <div id="rrPanel" hidden>
+            <div class="rr-head"><strong>📋 Respuestas rápidas</strong><button type="button" id="rrCerrar" aria-label="Cerrar">✕</button></div>
+            <input type="search" id="rrBuscar" placeholder="Buscar…" autocomplete="off">
+            <div id="rrLista"></div>
+            <button type="button" id="rrNuevoBtn" class="rr-nuevo">+ Nueva respuesta</button>
+            <div id="rrForm" hidden>
+                <input type="text" id="rrNombre" maxlength="40" placeholder="Nombre corto (ej: Ubicación)">
+                <textarea id="rrTexto" rows="3" placeholder="Texto que se copia al tocar…"></textarea>
+                <button type="button" id="rrGuardar" class="rr-nuevo">Guardar</button>
+            </div>
+        </div>
+        <button type="button" id="rrBtn" aria-label="Respuestas rápidas" title="Respuestas rápidas (tocar para copiar)">📋</button>
     </div>
     <div id="fodiFlot" aria-live="polite">
         <div id="fodiFlotHola" aria-hidden="true">¡Hola! 💛</div>

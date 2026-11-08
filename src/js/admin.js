@@ -38843,6 +38843,53 @@ function _fodiFlotInit() {
     window._fodiPreguntar = (t) => { raiz.classList.add('abierto'); hola.classList.remove('on'); if (!log.childElementCount) { log.innerHTML = ''; } enviar(t); };
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _fodiFlotInit); else _fodiFlotInit();
+
+// ── Respuestas rápidas: botón flotante 📋 que despliega los mensajes guardados y copia al tocar ──
+// Usa la misma colección que "Mensajes preestablecidos" del chat (agent_canned_messages).
+function _rrInit() {
+    const btn = document.getElementById('rrBtn'), panel = document.getElementById('rrPanel');
+    if (!btn || !panel) return;
+    const lista = document.getElementById('rrLista'), buscar = document.getElementById('rrBuscar'), form = document.getElementById('rrForm');
+    let items = [], suscrito = false;
+    const pintar = () => {
+        const q = (buscar.value || '').trim().toLowerCase();
+        const vis = items.filter((m) => !q || `${m.label || ''} ${m.text || ''}`.toLowerCase().includes(q));
+        lista.innerHTML = vis.length
+            ? vis.map((m) => `<button type="button" class="rr-item" data-rr="${escapeHtml(m.id)}"><b>${escapeHtml(m.label || '(sin nombre)')}</b><small>${escapeHtml(m.text || '')}</small></button>`).join('')
+            : '<p style="opacity:.7;font-size:.85rem;margin:4px 0">Aún no hay respuestas. Crea la primera abajo.</p>';
+    };
+    const suscribir = () => {
+        if (suscrito || !firebaseDb) return;
+        suscrito = true;
+        firebaseDb.collection('agent_canned_messages').orderBy('order', 'asc').onSnapshot((sn) => {
+            items = sn.docs.map((d) => ({ id: d.id, ...d.data() }));
+            pintar();
+        }, (err) => { suscrito = false; console.error('rr onSnapshot error:', err); });
+    };
+    btn.addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden) suscribir(); });
+    document.getElementById('rrCerrar').addEventListener('click', () => { panel.hidden = true; });
+    buscar.addEventListener('input', pintar);
+    lista.addEventListener('click', async (e) => {
+        const it = e.target.closest('.rr-item');
+        if (!it) return;
+        const m = items.find((x) => x.id === it.dataset.rr);
+        if (!m) return;
+        const ok = await copyTextToClipboard(m.text || '');
+        if (ok !== false) { it.classList.add('ok'); setTimeout(() => { it.classList.remove('ok'); }, 900); }
+    });
+    document.getElementById('rrNuevoBtn').addEventListener('click', () => { form.hidden = !form.hidden; });
+    document.getElementById('rrGuardar').addEventListener('click', async () => {
+        const label = document.getElementById('rrNombre').value.trim(), text = document.getElementById('rrTexto').value.trim();
+        if (!label || !text) { showNotice('Escribe el nombre y el texto primero.', 'warn'); return; }
+        try {
+            await firebaseDb.collection('agent_canned_messages').add({ label, text, imageUrl: null, order: items.length, createdAt: firestoreNow() });
+            document.getElementById('rrNombre').value = ''; document.getElementById('rrTexto').value = '';
+            form.hidden = true;
+            showNotice('Respuesta guardada.', 'ok');
+        } catch (err) { showNotice(`Error: ${err.message || 'no se pudo guardar'}`, 'error'); }
+    });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _rrInit); else _rrInit();
 setTimeout(() => { if (document.body.classList.contains('admin-unlocked') && !_meseroSession) { _fodiAlertasCargar(); _fodiInformeCargar(false); } }, 9000);
 
 // Auto-actualización: la ventana/app instalada puede quedar días abierta con un admin.js viejo.
