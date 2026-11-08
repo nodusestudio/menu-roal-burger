@@ -17402,6 +17402,9 @@
             body.admin-unlocked:not(.mesero-mode) #rrWrap{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 16px;box-sizing:border-box;left:0;right:0;bottom:0;height:34px;background:#26304f;border-top:2px solid #ff7a1a}
             #rrWrap #bancoSilencioBtn{position:relative!important;right:auto!important;bottom:auto!important;width:30px!important;height:26px!important;font-size:.95rem!important;border-radius:13px!important;box-shadow:none!important;display:flex!important;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.22)!important}
             #bancoSilencioCaja{right:16px!important;bottom:42px!important}
+            /* tarjetas flotantes que nacían pegadas al borde de abajo: que queden por encima de la barra */
+            body.admin-unlocked:not(.mesero-mode) #cobroQrCard{bottom:48px!important}
+            body.admin-unlocked:not(.mesero-mode) #printSnack{bottom:48px!important}
             #rrWrap #bancoSilencioBtn[data-tip]:hover::after{content:attr(data-tip);position:absolute;right:0;bottom:34px;white-space:nowrap;background:#0d111b;color:#fff;font:.78rem system-ui,sans-serif;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);pointer-events:none}
             #rrBtn,.rr-bar-btn{position:relative;float:none;display:flex;align-items:center;justify-content:center;width:30px;height:26px;padding:0;border-radius:13px;font-size:.95rem;box-shadow:none;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;cursor:pointer}
             #rrBtn:hover,.rr-bar-btn:hover{background:rgba(255,255,255,.2)}
