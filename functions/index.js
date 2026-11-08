@@ -1015,6 +1015,8 @@ function hashPinSalted(pin, salt) {
 
 // Mismo criterio que normalizeCustomerSavedAddresses (script-v2.js) — se duplica aqui porque
 // las Cloud Functions no comparten módulo con el cliente.
+// Rótulos de pantalla que NO son una dirección real (nunca se guardan como dirección del cliente).
+const esRotuloDireccion = (t) => /^(sin direcci[oó]n registrada|recoge en el local|retira en el local|come en el local|comer en el local|no registrad[oa])$/i.test(String(t || '').trim());
 function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '') {
     const normalizedAddresses = [];
     const seen = new Set();
@@ -1023,7 +1025,7 @@ function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '')
     const appendAddressEntry = (entry) => {
         const safeAddress = String((typeof entry === 'string' ? entry : (entry?.address || entry?.value || entry?.label)) || '').trim();
         const normalizedKey = safeAddress.toLowerCase();
-        if (!safeAddress || seen.has(normalizedKey)) return;
+        if (!safeAddress || esRotuloDireccion(safeAddress) || seen.has(normalizedKey)) return;
         seen.add(normalizedKey);
         const latitude = Number.isFinite(Number(entry?.latitude)) ? Number(entry.latitude) : null;
         const longitude = Number.isFinite(Number(entry?.longitude)) ? Number(entry.longitude) : null;

@@ -690,7 +690,7 @@ async function upsertAgentClientProfile(db, customerInfo, orderInfo) {
         const previousTotalSpent = Number(previous.totalSpent || 0);
         // Solo direcciones reales: los rótulos "Recoge en el local" / "Sin direccion registrada" se mostraban luego
         // como dirección de entrega del cliente. Sin dirección real no se escribe el campo (merge conserva la previa).
-        const esRotulo = (t) => /^(sin direcci[oó]n registrada|recoge en el local|come en el local|no registrado)$/i.test(String(t || '').trim());
+        const esRotulo = (t) => /^(sin direcci[oó]n registrada|recoge en el local|retira en el local|come en el local|comer en el local|no registrad[oa])$/i.test(String(t || '').trim());
         const resolvedAddress = String(customerInfo.address || (esRotulo(previous.address) ? '' : previous.address) || '').trim();
 
         transaction.set(clientRef, {

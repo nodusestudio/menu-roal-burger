@@ -415,6 +415,8 @@ function normalizeCustomerPin(value) {
     return String(value || '').replace(/\D+/g, '').slice(0, 6);
 }
 
+// Rótulos de pantalla que NO son una dirección real (nunca se guardan como dirección del cliente).
+const esRotuloDireccion = (t) => /^(sin direcci[oó]n registrada|recoge en el local|retira en el local|come en el local|comer en el local|no registrad[oa])$/i.test(String(t || '').trim());
 function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '') {
     const normalizedAddresses = [];
     const seen = new Set();
@@ -427,7 +429,7 @@ function normalizeCustomerSavedAddresses(rawAddresses = [], primaryAddress = '')
         // es vacio y se colaria como si fuera una direccion real guardada.
         const safeAddress = String((typeof entry === 'string' ? entry : (entry?.address || entry?.value || entry?.label)) || '').trim();
         const normalizedKey = safeAddress.toLowerCase();
-        if (!safeAddress || seen.has(normalizedKey)) {
+        if (!safeAddress || esRotuloDireccion(safeAddress) || seen.has(normalizedKey)) {
             return;
         }
 
@@ -2177,7 +2179,8 @@ async function upsertClientProfile(db, customerInfo = {}, orderInfo = {}) {
     // Solo direcciones reales: "Recoge en el local" / "Sin direccion registrada" son rótulos de pantalla y antes se
     // guardaban como dirección del cliente (aparecían luego como dirección de entrega). Si no hay dirección real,
     // no se escribe el campo y se conserva la que el cliente ya tuviera (merge).
-    const realAddress = String(customerInfo.profileAddress || customerInfo.deliveryAddress || '').trim();
+    const realAddressRaw = String(customerInfo.profileAddress || customerInfo.deliveryAddress || '').trim();
+    const realAddress = esRotuloDireccion(realAddressRaw) ? '' : realAddressRaw;
     const savedAddresses = normalizeCustomerSavedAddresses(customerInfo.savedAddresses || [], realAddress);
     const resolvedAddress = String(savedAddresses[0]?.address || realAddress).trim();
 

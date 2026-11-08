@@ -11461,9 +11461,9 @@ applyInnerTabs(document.querySelector('[data-tab-panel="banco"]'), 'banco', [
     if (pos && !pos.querySelector('[data-rango-bar="pos"]')) pos.insertAdjacentHTML('afterbegin', rangoSelectorHtml('pos'));
 })();
 applyInnerTabs(document.getElementById('metricsPanelPos'), 'pos', [
-    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [1, 2, 3] },
-    { id: 'analisis', icon: '📈', label: 'Análisis', idx: [4] },
-    { id: 'clientes', icon: '👥', label: 'Clientes', idx: [5] }
+    { id: 'resumen', icon: '📊', label: 'Resumen', idx: [1, 2, 3, 4] },
+    { id: 'analisis', icon: '📈', label: 'Análisis', idx: [5] },
+    { id: 'clientes', icon: '👥', label: 'Clientes', idx: [6] }
 ]);
 applyInnerTabs(document.getElementById('metricsPanelApp'), 'app', [
     { id: 'resumen', icon: '📊', label: 'Resumen', idx: [0] },
@@ -13589,6 +13589,48 @@ function _posAjustesResumen(orders) {
     };
 }
 
+// Cuentas por cobrar para Métricas > POS. Pendiente = hoy; cobrado = las cobradas dentro del rango elegido.
+// SYNC: misma cuenta que functions/fodiCuentasPorCobrar.js (resumirCuentasPorCobrar); si cambias una, cambia la otra.
+function _posCxcResumen(ordenes, desdeMs, hastaMs, ahoraMs) {
+    const dias = (a, b) => Math.max(0, Math.floor((b - a) / 86400000));
+    const pendientes = ordenes.filter((o) => o.porCobrarEstado !== 'cobrada');
+    const cobradas = ordenes.filter((o) => o.porCobrarEstado === 'cobrada' && (desdeMs == null || (_tsMs(o.porCobradoAt) >= desdeMs && _tsMs(o.porCobradoAt) < hastaMs)));
+    const cubos = [['0 a 7 días', 0, 7], ['8 a 15 días', 8, 15], ['16 a 30 días', 16, 30], ['Más de 30 días', 31, Infinity]];
+    const antig = new Map(cubos.map(([k]) => [k, 0]));
+    const porPagador = new Map();
+    pendientes.forEach((o) => {
+        const d = dias(_tsMs(o.createdAt), ahoraMs), t = getOrderDisplayTotal(o);
+        const c = cubos.find(([, a, b]) => d >= a && d <= b)[0];
+        antig.set(c, antig.get(c) + t);
+        const k = String(o.porCobrarA || '').trim() || 'Sin nombre';
+        porPagador.set(k, (porPagador.get(k) || 0) + t);
+    });
+    const demoras = cobradas.filter((o) => _tsMs(o.porCobradoAt) && _tsMs(o.createdAt)).map((o) => dias(_tsMs(o.createdAt), _tsMs(o.porCobradoAt)));
+    return {
+        pendTotal: pendientes.reduce((a, o) => a + getOrderDisplayTotal(o), 0), pendN: pendientes.length,
+        masViejo: pendientes.reduce((a, o) => Math.max(a, dias(_tsMs(o.createdAt), ahoraMs)), 0),
+        cobTotal: cobradas.reduce((a, o) => a + getOrderDisplayTotal(o), 0), cobN: cobradas.length,
+        demora: demoras.length ? Math.round(demoras.reduce((a, n) => a + n, 0) / demoras.length) : null,
+        porPagador: [...porPagador.entries()].sort((a, b) => b[1] - a[1]), antiguedad: [...antig.entries()]
+    };
+}
+async function _posCxcPintar() {
+    if (!document.getElementById('posCxcCard')) return;
+    // renderMetricsPos corre seguido: las 2 consultas se repiten como mucho cada 60 s
+    if (!_posCxcPintar._t || Date.now() - _posCxcPintar._t > 60000) {
+        try { await _cxcCargar(); _posCxcPintar._t = Date.now(); } catch (e) { console.warn('Métricas cuentas por cobrar:', e); return; }
+    }
+    const r = rangoMs('pos');
+    const x = _posCxcResumen(_cxcOrdenes, rangoState('pos').preset === 'todo' ? null : r.desde, r.hasta, Date.now());
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('posCxcPend', `${formatMoney(x.pendTotal)}${x.pendN ? ` · ${x.pendN}` : ''}`);
+    set('posCxcViejo', x.pendN ? `${x.masViejo} día${x.masViejo === 1 ? '' : 's'}` : '—');
+    set('posCxcCobrado', `${formatMoney(x.cobTotal)}${x.cobN ? ` · ${x.cobN}` : ''}`);
+    set('posCxcDemora', x.demora == null ? '—' : `${x.demora} día${x.demora === 1 ? '' : 's'}`);
+    _renderBarChart('posCxcPagadorChart', x.porPagador.slice(0, 5).map(([k, v]) => ({ label: k, val: v })), '#f87171', formatMoney);
+    _renderBarChart('posCxcAntiguedadChart', x.antiguedad.filter(([, v]) => v > 0).map(([k, v]) => ({ label: k, val: v })), '#fb923c', formatMoney);
+}
+
 function renderMetricsPos() {
     const list = document.getElementById('metricsPosList');
     if (!list) return;
@@ -13620,6 +13662,7 @@ function renderMetricsPos() {
     set('posKpiTicket',  formatMoney(avgTicket));
     set('posKpiMax',     formatMoney(maxTicket));
 
+    _posCxcPintar();
     // Descuentos y cobros extra del rango (con PIN de supervisor)
     const _aj = _posAjustesResumen(posOrders.filter((o) => o.source !== 'cuenta_por_cobrar'));
     set('posAjDescMonto', formatMoney(_aj.descuentos.monto));
@@ -18501,6 +18544,19 @@ function _ticketDetalleLineas(item, { categoria = true } = {}) {
     return out;
 }
 
+// Ancho del papel de la impresora térmica (Configuración > Impresora): 58 mm = 32 columnas, 80 mm = 48. Se recuerda en este navegador.
+function _btPapelMm() { try { return localStorage.getItem('btPapelMm') === '80' ? 80 : 58; } catch (_) { return 58; } }
+function _btCols() { return _btPapelMm() === 80 ? 48 : 32; }
+(function _btPapelInit() {
+    const init = () => {
+        const sel = document.getElementById('ticketPapelMm');
+        if (!sel) return;
+        sel.value = String(_btPapelMm());
+        sel.addEventListener('change', () => { try { localStorage.setItem('btPapelMm', sel.value === '80' ? '80' : '58'); } catch (_) { /* sin storage */ } _adminPopup(`Papel de ${sel.value === '80' ? '80' : '58'} mm. Se usa en el próximo ticket.`, 'ok'); });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+
 // Helpers de formato ESC/POS compartidos por buildESCPOSData y buildCierreESCPOSData:
 // _emit (línea cruda), ww (envuelve por palabras, nunca corta), wl (envuelve o no según COLS),
 // wc (columna izquierda/derecha), sep/sep2 (separadores). `pb` recibe los bytes a imprimir.
@@ -18595,7 +18651,7 @@ function createEscPosLineBuilder(pb, COLS) {
 
 function buildESCPOSData(order) {
     const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
-    const COLS = 32;
+    const COLS = _btCols();
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
     const { ww, wl, wc, wh, blank, sep, sep2 } = createEscPosLineBuilder(pb, COLS);
@@ -28520,7 +28576,7 @@ function buildGastoTicketHtml(gasto) {
 
 function buildGastoESCPOSData(gasto) {
     const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
-    const COLS = 32;
+    const COLS = _btCols();
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
     const { wl, wc, sep2 } = createEscPosLineBuilder(pb, COLS);
@@ -29244,7 +29300,7 @@ let _cierrePrintData = null; // {c, dateStr, timeStr} para reimpresión BT
 
 function buildCierreESCPOSData(c, dateStr, timeStr) {
     const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
-    const COLS = 32;
+    const COLS = _btCols();
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
     const { ww, wl, wc, sep, sep2 } = createEscPosLineBuilder(pb, COLS);

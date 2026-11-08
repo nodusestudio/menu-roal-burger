@@ -15304,6 +15304,12 @@
                                                 <span class="ticket-bt-label" id="ticketBtLabel">Sin impresora BT</span>
                                                 <button type="button" class="ticket-bt-btn" id="ticketBtBtn" data-bt-action="connect">Buscar</button>
                                             </div>
+                                            <label style="display:flex;align-items:center;gap:10px;margin-top:12px;font-weight:600">Ancho del papel
+                                                <select id="ticketPapelMm" aria-label="Ancho del papel de la impresora" style="padding:8px 12px;border-radius:10px">
+                                                    <option value="58">58 mm (el más común)</option>
+                                                    <option value="80">80 mm</option>
+                                                </select>
+                                            </label>
                                         </div>
                                     </div>
                                 </div>
@@ -15554,6 +15560,37 @@
                             <div class="met-analytics-card">
                                 <div class="met-analytics-title">Por concepto</div>
                                 <div id="posAjConceptoChart"></div>
+                            </div>
+                        </div>
+                    </article>
+                    <article class="admin-card" id="posCxcCard">
+                        <div class="met-section-title">Cuentas por cobrar <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">lo pendiente es de hoy; lo cobrado sigue el rango elegido</small></div>
+                        <div class="met-kpi-row">
+                            <div class="met-kpi-card">
+                                <span class="met-kpi-val" id="posCxcPend">—</span>
+                                <span class="met-kpi-lbl">Pendiente por cobrar</span>
+                            </div>
+                            <div class="met-kpi-card">
+                                <span class="met-kpi-val" id="posCxcViejo">—</span>
+                                <span class="met-kpi-lbl">La cuenta más antigua</span>
+                            </div>
+                            <div class="met-kpi-card met-kpi-card--green">
+                                <span class="met-kpi-val" id="posCxcCobrado">—</span>
+                                <span class="met-kpi-lbl">Cobrado en el rango</span>
+                            </div>
+                            <div class="met-kpi-card">
+                                <span class="met-kpi-val" id="posCxcDemora">—</span>
+                                <span class="met-kpi-lbl">Días promedio en cobrar</span>
+                            </div>
+                        </div>
+                        <div class="met-analytics-grid" style="margin-top:12px;">
+                            <div class="met-analytics-card">
+                                <div class="met-analytics-title">Quién debe más</div>
+                                <div id="posCxcPagadorChart"></div>
+                            </div>
+                            <div class="met-analytics-card">
+                                <div class="met-analytics-title">Antigüedad de lo pendiente</div>
+                                <div id="posCxcAntiguedadChart"></div>
                             </div>
                         </div>
                     </article>
