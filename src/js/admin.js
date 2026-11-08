@@ -1290,6 +1290,39 @@ function showPromptModal({ icon = '✎', title, message = '', placeholder = '', 
     });
 }
 
+// Piezas comunes de las ventanas de opciones del POS (variantes, bebida incluida, burgers clásicas): una sola forma de
+// armar la etiqueta de sección, la fila "Nota (opcional)" y el botón de confirmar, para que todas se vean y se comporten igual.
+function _comboSectionLabel(texto) {
+    const el = document.createElement('div');
+    el.className = 'combo-modal-section-label';
+    el.textContent = texto;
+    return el;
+}
+function _comboNoteRow(placeholder) {
+    const row = document.createElement('div');
+    row.className = 'combo-modal-note-row';
+    const label = document.createElement('label');
+    label.className = 'combo-modal-note-label';
+    label.textContent = 'Nota (opcional)';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'combo-modal-note-input';
+    input.placeholder = placeholder;
+    row.appendChild(label);
+    row.appendChild(input);
+    return { row, input };
+}
+// Botón de confirmar: nace apagado (gris) hasta que la ventana tenga todo lo que necesita.
+function _comboConfirmBtn(texto) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'combo-modal-confirm-btn';
+    btn.textContent = texto;
+    btn.disabled = true;
+    btn.style.opacity = '0.45';
+    return btn;
+}
+
 /**
  * Esqueleto compartido de los modales tipo "combo-modal-*" del POS: overlay + card + header
  * (título opcional con subtítulo + botón de cerrar). `titleHtml`/`subtitleHtml` ya deben venir
@@ -5085,9 +5118,7 @@ function openPosBebidaPickerModal(bev) {
     // ── Sabores ──
     const saborSection = document.createElement('div');
     saborSection.style.display = 'none';
-    const saborLabel = document.createElement('div');
-    saborLabel.className = 'combo-modal-section-label';
-    saborLabel.textContent = 'Sabor';
+    const saborLabel = _comboSectionLabel('Sabor');
     const saborChips = document.createElement('div');
     saborChips.className = 'combo-sabor-chips';
     saborChips.style.justifyContent = 'flex-start';
@@ -7570,24 +7601,12 @@ function openBurgerClasicasPosModal(productId, productName) {
         subtitleHtml: 'Selecciona tamano y cantidad de carne'
     });
 
-    const secLabel = document.createElement('div');
-    secLabel.className = 'combo-modal-section-label';
-    secLabel.textContent = 'Elige una opcion';
+    const secLabel = _comboSectionLabel('Elige una opcion');
 
     const optGrid = document.createElement('div');
     optGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px;';
 
-    const noteRow = document.createElement('div');
-    noteRow.className = 'combo-modal-note-row';
-    const noteLabel = document.createElement('label');
-    noteLabel.className = 'combo-modal-note-label';
-    noteLabel.textContent = 'Nota (opcional)';
-    const noteInput = document.createElement('input');
-    noteInput.type = 'text';
-    noteInput.className = 'combo-modal-note-input';
-    noteInput.placeholder = 'Ej: sin cebolla, bien tostada...';
-    noteRow.appendChild(noteLabel);
-    noteRow.appendChild(noteInput);
+    const { row: noteRow, input: noteInput } = _comboNoteRow('Ej: sin cebolla, bien tostada...');
     // Igual que las ventanas de combo: quitar ingredientes / salsas y adicionales.
     const extrasBar = _posComboExtrasBar(productId, productName);
 
@@ -7704,9 +7723,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     });
 
     // Etiqueta variantes
-    const secLabel = document.createElement('div');
-    secLabel.className = 'combo-modal-section-label';
-    secLabel.textContent = 'Selecciona una opción';
+    const secLabel = _comboSectionLabel('Selecciona una opción');
 
     // Grid de variantes
     const grid = document.createElement('div');
@@ -7715,35 +7732,18 @@ function openProductVariantesModal(productId, productName, categoryName, variant
     // Sección sabor (oculta hasta que se elija variante con bebida y sabores)
     const saborSection = document.createElement('div');
     saborSection.hidden = true;
-    const saborLabel = document.createElement('div');
-    saborLabel.className = 'combo-modal-section-label';
-    saborLabel.textContent = 'Sabor de la bebida';
+    const saborLabel = _comboSectionLabel('Sabor de la bebida');
     const saborGrid = document.createElement('div');
     saborGrid.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
     saborSection.appendChild(saborLabel);
     saborSection.appendChild(saborGrid);
 
     // Nota
-    const noteRow = document.createElement('div');
-    noteRow.className = 'combo-modal-note-row';
-    const noteLabel = document.createElement('label');
-    noteLabel.className = 'combo-modal-note-label';
-    noteLabel.textContent = 'Nota (opcional)';
-    const noteInput = document.createElement('input');
-    noteInput.type = 'text';
-    noteInput.className = 'combo-modal-note-input';
-    noteInput.placeholder = 'Ej: sin papas extras, sin hielo...';
-    noteRow.appendChild(noteLabel);
-    noteRow.appendChild(noteInput);
+    const { row: noteRow, input: noteInput } = _comboNoteRow('Ej: sin papas extras, sin hielo...');
     const extrasBar = _posComboExtrasBar(productId, productName);
 
     // Botón confirmar
-    const confirmBtn = document.createElement('button');
-    confirmBtn.type = 'button';
-    confirmBtn.className = 'combo-modal-confirm-btn';
-    confirmBtn.textContent = 'Selecciona una opción';
-    confirmBtn.disabled = true;
-    confirmBtn.style.opacity = '0.45';
+    const confirmBtn = _comboConfirmBtn('Selecciona una opción');
 
     // Helper: actualizar estado del botón confirmar
     function refreshConfirm() {
@@ -7907,31 +7907,14 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
         subtitleHtml: `🥤 ${escapeHtml(bebidaConfig.bebida_nombre || 'Bebida incluida')}`
     });
 
-    const saborLabel = document.createElement('div');
-    saborLabel.className = 'combo-modal-section-label';
-    saborLabel.textContent = cant > 1 ? `Elige ${cant} sabores` : 'Sabor de la bebida';
+    const saborLabel = _comboSectionLabel(cant > 1 ? `Elige ${cant} sabores` : 'Sabor de la bebida');
 
     const saborGrid = document.createElement('div');
     saborGrid.style.cssText = 'display:flex;flex-direction:column;gap:7px;';
 
-    const noteRow = document.createElement('div');
-    noteRow.className = 'combo-modal-note-row';
-    const noteLabel = document.createElement('label');
-    noteLabel.className = 'combo-modal-note-label';
-    noteLabel.textContent = 'Nota (opcional)';
-    const noteInput = document.createElement('input');
-    noteInput.type = 'text';
-    noteInput.className = 'combo-modal-note-input';
-    noteInput.placeholder = 'Ej: sin hielo, extra picante...';
-    noteRow.appendChild(noteLabel);
-    noteRow.appendChild(noteInput);
+    const { row: noteRow, input: noteInput } = _comboNoteRow('Ej: sin hielo, extra picante...');
 
-    const confirmBtn = document.createElement('button');
-    confirmBtn.type = 'button';
-    confirmBtn.className = 'combo-modal-confirm-btn';
-    confirmBtn.disabled = true;
-    confirmBtn.style.opacity = '0.45';
-    confirmBtn.textContent = cant > 1 ? `Selecciona sabores (0/${cant})` : 'Selecciona el sabor';
+    const confirmBtn = _comboConfirmBtn(cant > 1 ? `Selecciona sabores (0/${cant})` : 'Selecciona el sabor');
 
     function refreshConfirm() {
         const filled = selectedSabores.filter((s) => s !== null).length;
