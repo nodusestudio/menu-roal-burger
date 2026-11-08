@@ -4729,7 +4729,9 @@
         .pos-bottom-total-amt { font-size: 1.05rem; font-weight: 700; }
         .pos-bottom-chevron { font-size: 0.72rem; opacity: 0.85; display: flex; align-items: center; gap: 4px; }
         .pos-bottom-actions {
-            display: grid; grid-template-columns: 1fr 1fr;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+            /* margen inferior generoso: en el celular la barra de gestos / esquinas redondeadas se comían el botón */
+            padding: 10px 12px calc(18px + env(safe-area-inset-bottom, 0px));
             background: #141922;
             border-top: 1px solid rgba(255,255,255,0.08);
             flex-shrink: 0;
@@ -4737,13 +4739,12 @@
         .pos-bottom-act-btn {
             border: none; cursor: pointer;
             font-family: 'Oswald', sans-serif;
-            font-size: 0.78rem; letter-spacing: 0.5px;
-            text-transform: uppercase; height: 48px;
+            font-size: 0.9rem; letter-spacing: 0.5px;
+            text-transform: uppercase; height: 54px; border-radius: 12px;
             transition: filter 0.13s;
         }
         .pos-bottom-save-btn {
             background: #1a4a8a; color: #fff;
-            border-right: 1px solid rgba(255,255,255,0.08);
         }
         .pos-bottom-save-btn:hover { filter: brightness(1.12); }
         .pos-bottom-ticket-btn {
@@ -4857,7 +4858,7 @@
         .pos-drawer-body { flex: 1; overflow-y: auto; min-height: 0; }
         .pos-drawer-body .pos-items-list { padding: 12px 12px 4px; }
         .pos-drawer-footer {
-            padding: 12px;
+            padding: 12px 12px calc(20px + env(safe-area-inset-bottom, 0px));
             border-top: 1px solid rgba(255,255,255,0.08);
             flex-shrink: 0; background: #141922;
         }
