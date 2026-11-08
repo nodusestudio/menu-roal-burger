@@ -856,32 +856,60 @@ function _posFloatModal(id, titleHtml, bodyHtml, onSave, saveLabel = 'Guardar') 
     return modal;
 }
 
+// Ventana de opciones del POS con la misma carcasa que variantes / bebida / burgers clásicas (_createComboModalShell):
+// título, × para cerrar, contenido y un botón principal. `contenido` es un nodo; onSave puede devolver false para no cerrar.
+function _posOpcionesModal(id, titleHtml, contenido, onSave, labelGuardar = 'Guardar') {
+    document.getElementById(id)?.remove();
+    const { overlay, card } = _createComboModalShell({ titleHtml });
+    overlay.id = id;
+    card.appendChild(contenido);
+    const ok = _comboConfirmBtn(labelGuardar);
+    ok.disabled = false;
+    ok.style.opacity = '1';
+    ok.style.marginTop = '12px';
+    ok.style.width = '100%';
+    ok.addEventListener('click', () => { if (onSave(overlay) !== false) overlay.remove(); });
+    card.appendChild(ok);
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
 function openPosOrderNoteModal() {
-    const modal = _posFloatModal('posOrderNoteModal', 'Comentario del <strong>ticket</strong> (todo el pedido)',
-        `<textarea class="pos-note-modal-input" maxlength="400" placeholder="Ej: todos los productos sin tomate…">${escapeHtml(posOrderNote)}</textarea>`,
-        (m) => { posOrderNote = m.querySelector('textarea').value.trim(); renderPosOrderExtras(); });
-    modal.querySelector('textarea').focus();
+    const area = document.createElement('textarea');
+    area.className = 'combo-modal-note-input';
+    area.maxLength = 400;
+    area.rows = 4;
+    area.style.resize = 'vertical';
+    area.placeholder = 'Ej: todos los productos sin tomate…';
+    area.value = posOrderNote;
+    _posOpcionesModal('posOrderNoteModal', 'Comentario del <strong>ticket</strong> (todo el pedido)', area,
+        () => { posOrderNote = area.value.trim(); renderPosOrderExtras(); });
+    area.focus();
 }
 
 function openPosSalsasModal() {
     let sel = posSalsas.slice();
-    const chipsHtml = () => POS_SALSAS.map((s) => `<button type="button" class="pos-salsa-chip${sel.includes(s.name) ? ' on' : ''}" data-salsa="${escapeHtml(s.name)}">${escapeHtml(s.name)} <small>(${escapeHtml(s.tipo)})</small></button>`).join('')
-        + `<button type="button" class="pos-salsa-chip${sel.includes(POS_SALSAS_AZAR) ? ' on' : ''}" data-salsa="${POS_SALSAS_AZAR}">🎲 ${POS_SALSAS_AZAR}</button>`;
-    const modal = _posFloatModal('posSalsasModal', 'Salsas para <strong>llevar</strong>',
-        `<div class="pos-salsas-chips">${chipsHtml()}</div>`,
-        () => { posSalsas = sel.slice(); renderPosOrderExtras(); }, 'Listo');
-    const box = modal.querySelector('.pos-salsas-chips');
+    const box = document.createElement('div');
+    box.className = 'combo-sabor-chips';
+    box.style.justifyContent = 'flex-start';
+    const pintar = () => {
+        box.innerHTML = POS_SALSAS.map((s) => `<button type="button" class="combo-sabor-chip${sel.includes(s.name) ? ' selected' : ''}" data-salsa="${escapeHtml(s.name)}">${escapeHtml(s.name)} <small style="opacity:.65">(${escapeHtml(s.tipo)})</small></button>`).join('')
+            + `<button type="button" class="combo-sabor-chip${sel.includes(POS_SALSAS_AZAR) ? ' selected' : ''}" data-salsa="${POS_SALSAS_AZAR}">🎲 ${POS_SALSAS_AZAR}</button>`;
+    };
+    pintar();
     box.addEventListener('click', (e) => {
-        const btn = e.target.closest('.pos-salsa-chip');
+        const btn = e.target.closest('.combo-sabor-chip');
         if (!btn) return;
         const name = btn.dataset.salsa;
         if (name === POS_SALSAS_AZAR) sel = sel.includes(name) ? [] : [name];
         else {
-            const otras = sel.filter((s) => s !== POS_SALSAS_AZAR);
-            sel = otras.includes(name) ? otras.filter((s) => s !== name) : [...otras, name];
+            const otras = sel.filter((x) => x !== POS_SALSAS_AZAR);
+            sel = otras.includes(name) ? otras.filter((x) => x !== name) : [...otras, name];
         }
-        box.innerHTML = chipsHtml();
+        pintar();
     });
+    _posOpcionesModal('posSalsasModal', 'Salsas para <strong>llevar</strong>', box,
+        () => { posSalsas = sel.slice(); renderPosOrderExtras(); }, 'Listo');
 }
 
 document.getElementById('posOrderNoteBtn')?.addEventListener('click', openPosOrderNoteModal);
@@ -12541,7 +12569,7 @@ let _cumpleVentana = 7; // días hacia adelante: 0 = solo hoy, 1 = mañana, 7, 3
 let _cumpleQ = '';
 
 function _fbNavTipoHtml(extra = '') {
-    const TIPOS = [['quindio', '🏆', 'Sabe a Quindío'], ['general', '💛', 'Fidelización'], ['cumple', '🎂', 'Cumpleaños'], ['reactivar', '🔁', 'Reactivar'], ['atender', '⚠️', 'Atender'], ['referidos', '🤝', 'Referidos'], ['cupones', '🎟️', 'Cupones'], ['metas', '🎯', 'Metas']];
+    const TIPOS = [['quindio', '🏆', 'Sabe a Quindío'], ['general', '💛', 'Fidelización'], ['cumple', '🎂', 'Cumpleaños'], ['reactivar', '🔁', 'Reactivar'], ['atender', '⚠️', 'Atender'], ['referidos', '🤝', 'Referidos'], ['cupones', '🎟️', 'Cupones'], ['metas', '🎯', 'Metas'], ['config', '⚙️', 'Configuración']];
     return `<article class="admin-card menu-section-card" style="padding-bottom:0">
         <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Tipo de feedback">
             ${TIPOS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}${id === 'atender' && _fidAtenderPendientes() ? ` <b style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:.72rem">${_fidAtenderPendientes()}</b>` : ''}</span></button>`).join('')}
@@ -12692,7 +12720,7 @@ function _fbCumpleClick(e) {
 //  · cupones_fidelizacion/{codigo}: cupón personal (cliente, beneficio, vigencia, estado, canje).
 //  · configuracion/fidelizacion: textos, umbrales y metas semanales editables.
 // Atribución: un cliente "volvió" si hizo un pedido pagado dentro de los 14 días siguientes al último mensaje/cupón que recibió.
-const FB_TIPOS_FID = ['cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas'];
+const FB_TIPOS_FID = ['cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
@@ -13006,6 +13034,54 @@ function _fidLineaBaseHtml() {
 
 function _fidKpi(cls, val, lbl) { return `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`; }
 
+// Pestaña ⚙️ Configuración: todos los ajustes de configuracion/fidelizacion juntos (las demás pestañas guardan los mismos campos).
+function _fidConfigHtml() {
+    const c = _fidCfg;
+    const campo = (id, etiqueta, valor, extra = 'type="text" maxlength="120"') => `<label class="admin-hint">${etiqueta}<input ${extra} id="${id}" class="admin-input" value="${escapeHtml(String(valor))}"></label>`;
+    const prod = (id, etiqueta, sel) => `<label class="admin-hint">${etiqueta}<select id="${id}" class="admin-input">${_fidOpcionesProducto(sel)}</select></label>`;
+    const num = (id, etiqueta, v, min, max, step = 1) => `<label class="admin-hint">${etiqueta}<input type="number" id="${id}" class="admin-input" min="${min}" ${max != null ? `max="${max}"` : ''} step="${step}" style="width:130px" value="${Number(v)}"></label>`;
+    return `<article class="admin-card">
+        <div class="met-section-title">🔁 Reactivar clientes</div>
+        <div style="display:grid;gap:8px">
+            ${campo('fcgReactOferta', 'Oferta del mensaje («te damos <em>oferta</em>»)', c.reactivarOferta)}
+            ${prod('fcgReactProducto', 'Producto regalo (el POS lo agrega gratis al aplicar el cupón)', c.reactivarProductoId)}
+            <div style="display:flex;gap:10px;flex-wrap:wrap">${num('fcgReactDias', 'Días sin pedir', c.reactivarDias, 7, 120)}${num('fcgVigencia', 'Vigencia del cupón (días)', c.vigenciaDias, 1, 30)}</div>
+        </div>
+    </article>
+    <article class="admin-card">
+        <div class="met-section-title">🎂 Cumpleaños</div>
+        <div style="display:grid;gap:8px">
+            ${campo('fcgCumpleRegalo', 'Regalo que dice el saludo («…queremos celebrarlo contigo: <em>regalo</em>»)', _cumpleRegalo)}
+            ${prod('fcgCumpleProducto', 'Producto regalo de cumpleaños', c.cumpleProductoId)}
+        </div>
+    </article>
+    <article class="admin-card">
+        <div class="met-section-title">⚠️ Atender y reseñas</div>
+        <div style="display:grid;gap:8px">
+            ${campo('fcgDisculpaOferta', 'Compensación del mensaje de disculpa', c.disculpaOferta)}
+            ${prod('fcgDisculpaProducto', 'Producto de cortesía para la disculpa', c.disculpaProductoId)}
+            ${campo('fcgResenaUrl', 'Link para dejar la reseña en Google', c.googleResenaUrl, 'type="url" maxlength="300" placeholder="https://g.page/r/…/review"')}
+        </div>
+    </article>
+    <article class="admin-card">
+        <div class="met-section-title">🤝 Referidos</div>
+        <div style="display:grid;gap:8px">
+            ${campo('fcgRefAmigo', 'Qué recibe el amigo', c.referidoAmigo)}
+            ${prod('fcgRefAmigoProducto', 'Producto regalo del amigo', c.referidoAmigoProductoId)}
+            ${campo('fcgRefRecompensa', 'Qué recibe quien invita', c.referidoRecompensa)}
+            ${prod('fcgRefRecompensaProducto', 'Producto regalo de quien invita', c.referidoRecompensaProductoId)}
+        </div>
+    </article>
+    <article class="admin-card">
+        <div class="met-section-title">🎯 Metas semanales y supuestos</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            ${num('fcgMetaMensajes', 'Mensajes', c.metaMensajes, 0, null)}${num('fcgMetaReactivados', 'Clientes que vuelven', c.metaReactivados, 0, null)}${num('fcgMetaCanjes', 'Cupones canjeados', c.metaCanjes, 0, null)}
+            ${num('fcgMetaVentas', 'Ventas ($)', c.metaVentas, 0, null, 1000)}${num('fcgMargen', 'Margen estimado %', c.margenPct, 0, 100)}${num('fcgCostoRegalo', 'Costo de un regalo ($)', c.costoRegalo, 0, null, 500)}
+        </div>
+    </article>
+    <article class="admin-card" style="display:flex;justify-content:flex-end"><button type="button" class="section-action-btn primary" data-fid-guardar-todo>Guardar toda la configuración</button></article>`;
+}
+
 function _fbRenderFid(body) {
     if (_fbTipo === 'cumple') { _fbRenderCumple(body); return; }
     _fidCargarCfg();
@@ -13014,7 +13090,9 @@ function _fbRenderFid(body) {
     const hoyMs = Date.now();
     let html = '';
 
-    if (_fbTipo === 'atender') {
+    if (_fbTipo === 'config') {
+        html = _fidConfigHtml();
+    } else if (_fbTipo === 'atender') {
         html = _fidAtenderHtml();
     } else if (_fbTipo === 'referidos') {
         html = _fidReferidosHtml();
@@ -13159,7 +13237,8 @@ function _fbRenderFid(body) {
         referidos: 'Invita a tus mejores clientes a traer amigos: el amigo recibe un cupón y, cuando lo canjea en la caja, tu cliente recibe su recompensa.',
         reactivar: 'Clientes que llevan tiempo sin pedir y a quienes no se les ha escrito en los últimos 14 días. Copia el mensaje con su cupón personal y mándalo por WhatsApp.',
         cupones: 'Cada cupón es único por cliente, con vigencia. Canjéalo aquí cuando el cliente dé su código.',
-        metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Todo sale de los mensajes y cupones registrados y de los pedidos.'
+        metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Todo sale de los mensajes y cupones registrados y de los pedidos.',
+        config: 'Todos los ajustes de fidelización en un solo lugar: ofertas, productos regalo, vigencias, reseña de Google y metas. Lo que guardes aquí lo usan las demás pestañas.'
     }[_fbTipo] || ''}</p>`) + `<span id="fidMarca" hidden></span>` + html;
 }
 
@@ -13212,6 +13291,23 @@ function _fidClick(e) {
     const guardar = (campos, msg) => firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').set({ ...campos, actualizadoAt: firestoreNow() }, { merge: true })
         .then(() => { _fidCfg = { ..._fidCfg, ...campos }; showNotice(msg, 'ok'); renderMetricasFeedback(); })
         .catch((err) => showNotice(`No se pudo guardar: ${err.message || 'error'}`, 'error'));
+    if (t.closest('[data-fid-guardar-todo]')) {
+        const v = (id) => String(document.getElementById(id)?.value || '').trim();
+        const n = (id, def, min = 0, max = Infinity) => { const x = Number(document.getElementById(id)?.value); return Number.isFinite(x) ? Math.min(max, Math.max(min, x)) : def; };
+        const url = v('fcgResenaUrl');
+        if (url && !/^https:\/\//i.test(url)) { showNotice('El link de reseñas debe empezar con https://', 'error'); return true; }
+        if (!v('fcgReactOferta') || !v('fcgDisculpaOferta') || !v('fcgRefAmigo') || !v('fcgRefRecompensa') || !v('fcgCumpleRegalo')) { showNotice('Hay textos de ofertas vacíos: complétalos antes de guardar.', 'error'); return true; }
+        const regalo = v('fcgCumpleRegalo');
+        _cumpleRegalo = regalo;
+        guardar({
+            reactivarOferta: v('fcgReactOferta'), reactivarProductoId: v('fcgReactProducto'), reactivarDias: n('fcgReactDias', 21, 7, 120), vigenciaDias: n('fcgVigencia', 3, 1, 30),
+            cumpleRegalo: regalo, cumpleProductoId: v('fcgCumpleProducto'),
+            disculpaOferta: v('fcgDisculpaOferta'), disculpaProductoId: v('fcgDisculpaProducto'), googleResenaUrl: url,
+            referidoAmigo: v('fcgRefAmigo'), referidoAmigoProductoId: v('fcgRefAmigoProducto'), referidoRecompensa: v('fcgRefRecompensa'), referidoRecompensaProductoId: v('fcgRefRecompensaProducto'),
+            metaMensajes: n('fcgMetaMensajes', 30), metaReactivados: n('fcgMetaReactivados', 8), metaCanjes: n('fcgMetaCanjes', 6), metaVentas: n('fcgMetaVentas', 500000), margenPct: n('fcgMargen', 35, 0, 100), costoRegalo: n('fcgCostoRegalo', 3000)
+        }, 'Configuración guardada.');
+        return true;
+    }
     if (t.closest('[data-fid-guardar-cfg]')) {
         const oferta = String(document.getElementById('fidOferta')?.value || '').trim();
         if (!oferta) { showNotice('Escribe la oferta del mensaje.', 'error'); return true; }
