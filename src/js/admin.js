@@ -38879,6 +38879,22 @@ function _rrInit() {
     };
     btn.addEventListener('click', () => { panel.hidden = !panel.hidden; if (!panel.hidden) suscribir(); });
     document.getElementById('rrFodi')?.addEventListener('click', () => { if (window._fodiFlotAlternar) window._fodiFlotAlternar(); });
+    // 🔊 Escribir y reproducir en voz (misma voz de FODI: Piper si está activa, o la del navegador)
+    const vBtn = document.getElementById('rrVoz'), vPanel = document.getElementById('rrVozPanel'), vTxt = document.getElementById('rrVozTexto');
+    if (vBtn && vPanel && vTxt) {
+        try { vTxt.value = localStorage.getItem('rrVozTexto') || ''; } catch (_) { /* sin storage */ }
+        const parar = () => { _fodiParar(); vBtn.classList.remove('on'); };
+        vBtn.addEventListener('click', () => { vPanel.hidden = !vPanel.hidden; if (!vPanel.hidden) { panel.hidden = true; vTxt.focus(); } });
+        document.getElementById('rrVozCerrar').addEventListener('click', () => { vPanel.hidden = true; });
+        document.getElementById('rrVozStop').addEventListener('click', parar);
+        document.getElementById('rrVozPlay').addEventListener('click', () => {
+            const t = vTxt.value.trim();
+            if (!t) { vTxt.focus(); return; }
+            try { localStorage.setItem('rrVozTexto', t); } catch (_) { /* sin storage */ }
+            vBtn.classList.add('on');
+            _fodiDecir(t, { onend: () => vBtn.classList.remove('on') });
+        });
+    }
     document.getElementById('rrCerrar').addEventListener('click', () => { panel.hidden = true; });
     buscar.addEventListener('input', pintar);
     lista.addEventListener('click', async (e) => {
