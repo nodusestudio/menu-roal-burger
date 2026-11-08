@@ -16820,6 +16820,13 @@
                     <label for="clientEditWhatsappUser">Usuario de WhatsApp (opcional)</label>
                     <input type="text" id="clientEditWhatsappUser" name="clientEditWhatsappUser" maxlength="60" autocomplete="off" placeholder="@usuario">
                 </div>
+                <div class="admin-field">
+                    <label for="clientEditBirthDay">🎂 Cumpleaños (opcional)</label>
+                    <div style="display:flex;gap:8px">
+                        <select id="clientEditBirthDay" aria-label="Día del cumpleaños"></select>
+                        <select id="clientEditBirthMonth" aria-label="Mes del cumpleaños"></select>
+                    </div>
+                </div>
                 <div class="admin-field full">
                     <label for="clientEditAddress">Direccion</label>
                     <input type="text" id="clientEditAddress" name="clientEditAddress">
@@ -16986,6 +16993,10 @@
                     <input type="tel" class="pts-input" id="ptsNewTabPhone" placeholder="Teléfono (opcional)" autocomplete="off" maxlength="20">
                     <input type="text" class="pts-input" id="ptsNewTabWa" placeholder="Usuario de WhatsApp (opcional)" autocomplete="off" maxlength="60">
                     <input type="text" class="pts-input" id="ptsNewTabAddr" placeholder="Dirección (opcional)" autocomplete="off" maxlength="400">
+                    <div style="display:flex;gap:8px">
+                        <select class="pts-input" id="ptsNewTabBDia" aria-label="Día del cumpleaños (opcional)"></select>
+                        <select class="pts-input" id="ptsNewTabBMes" aria-label="Mes del cumpleaños (opcional)"></select>
+                    </div>
                     <button type="button" class="pts-new-client-save" id="ptsNewTabSaveBtn">Guardar y seleccionar</button>
                 </div>
             </div>

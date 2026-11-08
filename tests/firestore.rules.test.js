@@ -107,6 +107,15 @@ test('g) crear cliente con whatsappUser válido funciona; muy largo o no-texto f
     await assertFails(db.collection('clientes').doc('phone_3001112266').set({ ...base, whatsappUser: 12345 }));
 });
 
+// fechaCumple: cumpleaños opcional "MM-DD" que el admin captura al crear un cliente en el POS.
+test('g2) crear cliente con fechaCumple "MM-DD" funciona; con otro formato falla', async () => {
+    const db = testEnv.authenticatedContext('admin-bd-uid').firestore();
+    const base = { customerName: 'Luis', customerPhone: '3002223344', customerPhoneDigits: '3002223344' };
+    await assertSucceeds(db.collection('clientes').doc('phone_3002223344').set({ ...base, fechaCumple: '07-21' }));
+    await assertFails(db.collection('clientes').doc('phone_3002223355').set({ ...base, customerPhone: '3002223355', customerPhoneDigits: '3002223355', fechaCumple: '21/07/1990' }));
+    await assertFails(db.collection('clientes').doc('phone_3002223366').set({ ...base, customerPhone: '3002223366', customerPhoneDigits: '3002223366', fechaCumple: 721 }));
+});
+
 // ajustes_puntos_lealtad (auditoria de adminAdjustLoyaltyPoints, ver functions/index.js) --
 // solo lectura para admins (para el historial de ajustes en el panel), escritura EXCLUSIVA
 // del Admin SDK dentro de la Cloud Function -- ni siquiera un admin autenticado por el SDK

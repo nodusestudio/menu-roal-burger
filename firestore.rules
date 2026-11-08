@@ -226,13 +226,16 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'customerName', 'customerPhone', 'customerPhoneDigits', 'address', 'savedAddresses',
           'lastOrderCode', 'lastOrderId', 'lastOrderTotal', 'totalOrders', 'totalSpent',
-          'source', 'firstOrderAt', 'createdAt', 'updatedAt', 'lastOrderAt', 'whatsappUser'
+          'source', 'firstOrderAt', 'createdAt', 'updatedAt', 'lastOrderAt', 'whatsappUser', 'fechaCumple'
         ])
         && request.resource.data.customerPhone is string
         && request.resource.data.customerPhone.size() > 0
         // whatsappUser: usuario de WhatsApp opcional que el admin captura al crear un cliente.
         && (!('whatsappUser' in request.resource.data)
-            || (request.resource.data.whatsappUser is string && request.resource.data.whatsappUser.size() <= 60));
+            || (request.resource.data.whatsappUser is string && request.resource.data.whatsappUser.size() <= 60))
+        // fechaCumple: cumpleaños opcional "MM-DD" que el admin captura al crear un cliente.
+        && (!('fechaCumple' in request.resource.data)
+            || (request.resource.data.fechaCumple is string && request.resource.data.fechaCumple.matches('^([0-9]{2}-[0-9]{2})?$')));
 
       // puntosDisponibles/puntosAcumuladosTotal (acumulación de puntos de lealtad, ver
       // functions/index.js: awardLoyaltyPoints) son de escritura EXCLUSIVA de Cloud Functions

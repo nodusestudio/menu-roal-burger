@@ -17761,6 +17761,7 @@ function openCreateClientModal() {
         clientEditSaveBtn.textContent = 'Guardar cliente';
         clientEditSaveBtn.disabled = false;
     }
+    _poblarCumple('clientEditBirthDay', 'clientEditBirthMonth');
     renderClientAddrChips([]);
     clientEditModal.classList.add('show');
     clientEditModal.setAttribute('aria-hidden', 'false');
@@ -17790,6 +17791,7 @@ function openEditClientModal(client, focusField = 'customerName') {
     if (clientEditWhatsappUserInput) {
         clientEditWhatsappUserInput.value = client.whatsappUser || '';
     }
+    _poblarCumple('clientEditBirthDay', 'clientEditBirthMonth', client.fechaCumple);
     if (clientEditAddressInput) {
         clientEditAddressInput.value = esRotuloDireccion(client.address) ? '' : client.address;
     }
@@ -24273,6 +24275,7 @@ document.getElementById('posTicketSetupModal')?.addEventListener('click', (e) =>
             if (p) p.value = '';
             if (a) a.value = '';
             if (w) w.value = '';
+            _poblarCumple('ptsNewTabBDia', 'ptsNewTabBMes');
         }
         // Al cambiar de tab se pierde el cliente — limpiar sección de domicilio
         _ptsHideSelectedClientChip();
@@ -24537,7 +24540,27 @@ document.getElementById('ptsSaveAddrNo')?.addEventListener('click', () => {
 // duplicada con un segundo flujo inline (formulario dentro de la pestaña "Buscar")
 // que resultó ser código muerto: su botón disparador nunca existió en el HTML, así
 // que ese formulario quedaba permanentemente oculto e inalcanzable.
-async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' }) {
+// Cumpleaños del cliente (día y mes, sin año): se guarda como fechaCumple "MM-DD", igual que el registro público y la encuesta.
+const _CUMPLE_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const _CUMPLE_DIAS_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function _poblarCumple(diaId, mesId, mmdd = '') {
+    const dia = document.getElementById(diaId), mes = document.getElementById(mesId);
+    if (!dia || !mes) return;
+    const m = /^(\d{2})-(\d{2})$/.exec(String(mmdd || ''));
+    dia.innerHTML = '<option value="">Cumpleaños: día</option>' + Array.from({ length: 31 }, (_, i) => { const v = String(i + 1).padStart(2, '0'); return `<option value="${v}">${i + 1}</option>`; }).join('');
+    mes.innerHTML = '<option value="">Mes</option>' + _CUMPLE_MESES.map((n, i) => `<option value="${String(i + 1).padStart(2, '0')}">${n}</option>`).join('');
+    dia.value = m ? m[2] : '';
+    mes.value = m ? m[1] : '';
+}
+// '' = sin cumpleaños · 'MM-DD' = válido · null = fecha imposible (p. ej. 31 de febrero) o a medias (solo día o solo mes)
+function _leerCumple(diaId, mesId) {
+    const d = String(document.getElementById(diaId)?.value || ''), m = String(document.getElementById(mesId)?.value || '');
+    if (!d && !m) return '';
+    if (!d || !m || Number(d) > _CUMPLE_DIAS_MES[Number(m) - 1]) return null;
+    return `${m}-${d}`;
+}
+
+async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '', fechaCumple = '' }) {
     name = name || 'Cliente';
     const phoneDigits = normalizePhoneDigits ? normalizePhoneDigits(phone) : phone;
     const clientId = buildAdminClientDocumentId
@@ -24561,6 +24584,7 @@ async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' 
     const datos = existe
         ? { customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, savedAddresses, ...(addr ? { address: addr } : {}), ...(wa ? { whatsappUser: wa } : {}) }
         : { customerName: name, customerPhone: phone, customerPhoneDigits: phoneDigits, address: addr, savedAddresses, totalOrders: 0, totalSpent: 0, createdAt: firestoreNow(), source: 'admin_pos', ...(wa ? { whatsappUser: wa } : {}) };
+    if (fechaCumple) datos.fechaCumple = fechaCumple; // opcional: si no se pone, no se toca el que ya tuviera
     await ref.set(datos, { merge: true });
 
     // Sin releer toda la colección de clientes (era lo que hacía lenta la acción): se agrega al caché local y se refresca en segundo plano
@@ -24583,6 +24607,7 @@ async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' 
     const phoneInput = document.getElementById('ptsNewTabPhone');
     const addrInput  = document.getElementById('ptsNewTabAddr');
     const waInput    = document.getElementById('ptsNewTabWa');
+    _poblarCumple('ptsNewTabBDia', 'ptsNewTabBMes');
     if (!saveBtn) return;
 
     saveBtn.addEventListener('click', async () => {
@@ -24590,6 +24615,11 @@ async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' 
         const phone = String(phoneInput?.value || '').trim();
         const addr  = String(addrInput?.value || '').trim();
         const whatsappUser = String(waInput?.value || '').trim();
+        const fechaCumple = _leerCumple('ptsNewTabBDia', 'ptsNewTabBMes');
+        if (fechaCumple === null) {
+            showNotice('El cumpleaños no es válido: elige día y mes (o deja los dos vacíos).', 'warn');
+            return;
+        }
 
         if (!phone && whatsappUser) {
             // El usuario de WhatsApp es un dato adicional: la ficha del cliente siempre necesita el teléfono.
@@ -24618,9 +24648,10 @@ async function _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser = '' 
         saveBtn.textContent = 'Guardando…';
 
         try {
-            await _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser });
+            await _ptsCreateAndSelectClient({ name, phone, addr, whatsappUser, fechaCumple });
 
             // Limpiar campos
+            _poblarCumple('ptsNewTabBDia', 'ptsNewTabBMes');
             if (nameInput) nameInput.value = '';
             if (phoneInput) phoneInput.value = '';
             if (addrInput) addrInput.value = '';
@@ -25389,6 +25420,11 @@ if (clientEditForm) {
         const customerName = String(clientEditNameInput?.value || '').trim();
         const customerPhone = String(clientEditPhoneInput?.value || '').trim();
         const whatsappUser = String(clientEditWhatsappUserInput?.value || '').trim();
+        const fechaCumple = _leerCumple('clientEditBirthDay', 'clientEditBirthMonth');
+        if (fechaCumple === null) {
+            showModalFeedback(clientEditFeedback, 'El cumpleaños no es válido: elige día y mes (o deja los dos vacíos).', 'error');
+            return;
+        }
         const chipsActuales = getClientAddrChips();
         const addressEscrita = String(clientEditAddressInput?.value || '').trim();
         // Si la principal está vacía, la primera dirección agregada hace de principal (antes el campo obligatorio bloqueaba guardar).
@@ -25463,6 +25499,8 @@ if (clientEditForm) {
                 customerPhoneDigits,
                 // Opcional; al crear sin usuario no se escribe el campo, al editar sí (para poder borrarlo).
                 ...(whatsappUser || oldClientId ? { whatsappUser } : {}),
+                // Opcional; al editar, vacío lo quita.
+                ...(fechaCumple || oldClientId ? { fechaCumple } : {}),
                 address: savedAddresses[0] || address,
                 // Se reutilizan las direcciones tal como estaban guardadas (con coordenadas / principal); solo las nuevas entran como texto.
                 savedAddresses: savedAddresses.map((t) => {
