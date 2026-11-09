@@ -1430,6 +1430,8 @@ function _adminPopup(text, type = 'ok', ms) {
     const msg = _avisoTexto(String(text == null ? '' : text).trim());
     if (!msg) return;
     const t = _POPUP_ICONOS[type] ? type : 'info';
+    // FODI escondida (botón 💛 de la barra): el aviso solo se DICE, no se muestra nada en pantalla. Al tocarla vuelve a mostrar los mensajes.
+    if (typeof window._fodiFlotOculta === 'function' && window._fodiFlotOculta()) { _adminDecirAviso(msg, null); return; }
     // Con FODI flotante a la vista, el aviso sale como pensamiento encima de ÉL (como "Pedido nuevo"); si no, en el centro
     if (typeof window._fodiFlotAviso === 'function' && window._fodiFlotAviso(msg, t, ms)) return;
     let host = document.getElementById('adminPopupHost');
@@ -38753,6 +38755,7 @@ function _fodiFlotInit() {
     };
     aplicar();
     // Barra inferior: tocar a FODI lo muestra en pantalla y volver a tocar lo oculta (se recuerda en este navegador)
+    window._fodiFlotOculta = () => apagada; // true = escondida: los avisos solo suenan, no se ven
     window._fodiFlotAlternar = () => { apagada = !apagada; try { localStorage.setItem('fodiFlotOff', apagada ? '1' : '0'); } catch (_) { /* sin storage */ } aplicar(); };
     if (toggle) toggle.addEventListener('change', () => { apagada = !toggle.checked; try { localStorage.setItem('fodiFlotOff', apagada ? '1' : '0'); } catch (_) { /* sin storage */ } aplicar(); });
     _fodiMontar(burbuja, {});
