@@ -25862,6 +25862,19 @@ document.addEventListener('click', (event) => {
             const willOpen = panel.hidden;
             panel.hidden = !willOpen;
             toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            if (willOpen) {
+                // El menú es más alto que el espacio que le deja la tarjeta del ticket (que lo recorta): se limita al espacio visible
+                // hasta el borde de la ventana o del contenedor que recorta, y el resto se alcanza con su propio scroll.
+                let limite = window.innerHeight;
+                for (let el = panel.parentElement; el && el !== document.body; el = el.parentElement) {
+                    const cs = getComputedStyle(el);
+                    if (cs.overflowY !== 'visible' || cs.overflow !== 'visible') limite = Math.min(limite, el.getBoundingClientRect().bottom);
+                }
+                panel.style.maxHeight = '';
+                const libre = Math.floor(limite - panel.getBoundingClientRect().top - 12);
+                panel.style.maxHeight = `${Math.max(160, libre)}px`;
+                panel.style.overscrollBehavior = 'contain';
+            }
         }
     }
 });
