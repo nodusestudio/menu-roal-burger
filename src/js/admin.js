@@ -39734,10 +39734,24 @@ async function _cqConfirmarManual() {
     // Sin pregunta extra: es un botón deliberado y lo importante es la rapidez. El servidor cierra el cobro, la TV agradece, la voz
     // lo dice y el correo del banco, cuando llegue, se enlaza en silencio al mismo cobro (ver functions/cobrosQr.js).
     const boton = document.getElementById('cqYaPagoBtn'); if (boton) { boton.disabled = true; boton.textContent = 'Confirmando…'; }
-    try {
-        const r = (await firebaseFunctions.httpsCallable('confirmarCobroManual')({ cobroId: x.id })).data;
-        if (!r || !r.ok) showNotice('Ese cobro ya no estaba abierto.', 'info');
-    } catch (e) { showNotice(`No se pudo confirmar: ${e.message || e}`, 'error'); if (boton) { boton.disabled = false; boton.textContent = '✓ Ya pagó'; } }
+    // Si el servidor está saturado (cuota de CPU de Google, "internal"/"unavailable"/"resource-exhausted") se reintenta solo hasta 4 veces
+    // antes de rendirse; los errores de permisos o de datos no se reintentan.
+    const NO_REINTENTAR = ['permission-denied', 'unauthenticated', 'invalid-argument', 'failed-precondition', 'not-found'];
+    let ultimo = null;
+    for (let intento = 1; intento <= 4; intento++) {
+        try {
+            const r = (await firebaseFunctions.httpsCallable('confirmarCobroManual')({ cobroId: x.id })).data;
+            if (!r || !r.ok) showNotice('Ese cobro ya no estaba abierto.', 'info');
+            return;
+        } catch (e) {
+            ultimo = e;
+            if (NO_REINTENTAR.some((c) => String(e && e.code || '').endsWith(c))) break;
+            if (boton) boton.textContent = `Reintentando (${intento}/4)…`;
+            await new Promise((ok) => setTimeout(ok, 2500 * intento));
+        }
+    }
+    showNotice(`No se pudo confirmar${ultimo ? ': ' + (ultimo.message || ultimo) : ''}. Cobra el pedido de forma manual.`, 'error');
+    if (boton) { boton.disabled = false; boton.textContent = '✓ Ya pagó'; }
 }
 // Registra el pago en el pedido: el mismo camino del modal de cobro (Bancolombia → Transferencia), una sola vez.
 async function _cqAplicar(x) {
