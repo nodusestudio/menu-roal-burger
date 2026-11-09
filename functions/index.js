@@ -252,7 +252,7 @@ exports.notifyNewOrder = onDocumentCreated(
 // humano (needsHuman false -> true), se avisa a los admins con el celular/PC abiertos.
 // ─────────────────────────────────────────────────────────────
 exports.notifyNewAgentChat = onDocumentWritten(
-    { document: 'agent_conversations/{conversationKey}', region: 'us-central1' },
+    { cpu: 0.5, document: 'agent_conversations/{conversationKey}', region: 'us-central1' },
     async (event) => {
         const before = event.data?.before?.exists ? event.data.before.data() : null;
         const after  = event.data?.after?.exists  ? event.data.after.data()  : null;
@@ -326,8 +326,11 @@ exports.notifyNewAgentChat = onDocumentWritten(
 // Cliente nuevo → aviso al celular con el botón "Agregar a contactos" (ver functions/pushAdmin.js).
 // Los creados desde el panel/POS también avisan (para guardarlos en la agenda del móvil); la importación masiva no.
 // ─────────────────────────────────────────────────────────────
+// CPU: las funciones de fondo (programadas y disparadores no críticos) usan medio vCPU (`cpu: 0.5`, que fuerza concurrencia 1):
+// el proyecto tiene un tope de 20 vCPU en us-central1 y con 1 vCPU por instancia los picos agotaban la cuota. Las de pedidos, cobros,
+// puntos y las que generan imágenes/videos se quedan en 1 vCPU a propósito.
 exports.notifyNewClient = onDocumentCreated(
-    { document: 'clientes/{clienteId}', region: 'us-central1' },
+    { cpu: 0.5, document: 'clientes/{clienteId}', region: 'us-central1' },
     async (event) => {
         const c = event.data?.data();
         if (!c) return;
@@ -339,7 +342,7 @@ exports.notifyNewClient = onDocumentCreated(
 // Cierre de caja → aviso al celular/PC con el resumen del día (ventas, pedidos, métodos de pago, gastos y neto).
 // ─────────────────────────────────────────────────────────────
 exports.notifyCierreCaja = onDocumentCreated(
-    { document: 'cierres_caja/{cierreId}', region: 'us-central1' },
+    { cpu: 0.5, document: 'cierres_caja/{cierreId}', region: 'us-central1' },
     async (event) => {
         const c = event.data?.data();
         if (!c) return;
@@ -448,7 +451,7 @@ exports.confirmarCobroManual = onCall(
 // Vigilancia del aviso del banco: cada 10 min (de 9 a. m. a 11 p. m., hora de Bogotá) revisa si hay cobros Bancolombia del POS sin
 // su aviso del banco pasados 8 min y avisa por push. Ver functions/vigilanciaBanco.js.
 exports.vigilarAvisosBanco = onSchedule(
-    { schedule: 'every 10 minutes', timeZone: 'America/Bogota', region: 'us-central1' },
+    { cpu: 0.5, schedule: 'every 10 minutes', timeZone: 'America/Bogota', region: 'us-central1' },
     async () => {
         const hora = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
         if (hora < 9 || hora >= 23) return;
@@ -462,7 +465,7 @@ exports.vigilarAvisosBanco = onSchedule(
 // SOLO a ese dispositivo. Así el dueño sabe al instante que los avisos le van a llegar.
 // ─────────────────────────────────────────────────────────────
 exports.notifyTokenActivado = onDocumentWritten(
-    { document: 'admin_fcm_tokens/{tokenDoc}', region: 'us-central1' },
+    { cpu: 0.5, document: 'admin_fcm_tokens/{tokenDoc}', region: 'us-central1' },
     async (event) => {
         const before = event.data?.before?.exists ? event.data.before.data() : null;
         const after = event.data?.after?.exists ? event.data.after.data() : null;
@@ -2729,7 +2732,7 @@ exports.chatRoalMenuList = onCall(
 // aviso. Ver runInactivitySweep en orchestrator.js para el detalle.
 // ─────────────────────────────────────────────────────────────
 exports.chatRoalInactivitySweep = onSchedule(
-    { schedule: 'every 5 minutes', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
+    { cpu: 0.5, schedule: 'every 5 minutes', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
     async () => {
         const { warned, archived, toPushWhatsApp } = await runInactivitySweep(getFirestore());
         if (toPushWhatsApp.length) {
@@ -2751,7 +2754,7 @@ exports.chatRoalInactivitySweep = onSchedule(
 // número que el admin dejó guardado (costAlertPhone en configuracion/chat_roal_config). Sin
 // número configurado, no hace nada (ver checkCostAlert en orchestrator.js).
 exports.chatRoalCostAlertSweep = onSchedule(
-    { schedule: 'every 10 minutes', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
+    { cpu: 0.5, schedule: 'every 10 minutes', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
     async () => {
         try {
             const alert = await checkCostAlert(getFirestore());
@@ -2771,7 +2774,7 @@ exports.chatRoalCostAlertSweep = onSchedule(
 // deleteCustomerAccount/cancelAccountDeletion) -- corre una vez al dia, nunca borra nada antes de
 // que se cumpla deletionScheduledAt.
 exports.purgeExpiredAccountDeletions = onSchedule(
-    { schedule: 'every 24 hours', region: 'us-central1' },
+    { cpu: 0.5, schedule: 'every 24 hours', region: 'us-central1' },
     async () => {
         const db = getFirestore();
         // Solo el filtro de igualdad -- el de fecha se resuelve en memoria para no depender de un
@@ -2838,7 +2841,7 @@ async function sweepEnviadoOrders(db, nowMs = Date.now()) {
 }
 
 exports.sweepEnviadoToEntregado = onSchedule(
-    { schedule: 'every 5 minutes', region: 'us-central1' },
+    { cpu: 0.5, schedule: 'every 5 minutes', region: 'us-central1' },
     async () => {
         const closed = await sweepEnviadoOrders(getFirestore());
         console.log(`sweepEnviadoToEntregado: ${closed} pedido(s) cerrados a 'entregado'.`);
@@ -3099,7 +3102,7 @@ exports.guardarCampanaPana = onCall(
 
 // Mantiene cupones_campanas_publico (lo único que la landing puede leer) en sync con la campaña.
 exports.syncCampanaPublica = onDocumentWritten(
-    { document: 'cupones_campanas/{campanaId}', region: 'us-central1' },
+    { cpu: 0.5, document: 'cupones_campanas/{campanaId}', region: 'us-central1' },
     async (event) => {
         await cuponPana.syncCampanaPublica(getFirestore(), event.params.campanaId);
     }
@@ -3107,7 +3110,7 @@ exports.syncCampanaPublica = onDocumentWritten(
 
 // 23:30 hora Colombia: vence los cupones sin canjear de campañas ya terminadas.
 exports.vencerCuponesPana = onSchedule(
-    { schedule: '30 23 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    { cpu: 0.5, schedule: '30 23 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
     async () => {
         const r = await cuponPana.vencerCuponesPana(getFirestore());
         console.log(`vencerCuponesPana: ${r.vencidos} cupones vencidos en ${r.campanas} campañas terminadas.`);
@@ -3195,7 +3198,7 @@ exports.adminCodigoDia = onCall(
 
 // 00:05 hora Colombia: asegura los próximos 7 días y publica el producto de hoy.
 exports.programarCodigoDia = onSchedule(
-    { schedule: '5 0 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    { cpu: 0.5, schedule: '5 0 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
     async () => {
         const r = await codigoDia.programarProximosDias(getFirestore());
         console.log(`programarCodigoDia: hoy=${r.hoy} creados=${r.creados.join(',') || '-'} regenerados=${r.regenerados.join(',') || '-'}${r.sinProductos ? ' (SIN productos elegibles)' : ''}`);
@@ -3205,7 +3208,7 @@ exports.programarCodigoDia = onSchedule(
 // Un producto pausado/editado (precio, foto) o un cambio en la configuración se refleja en la
 // vista pública de hoy sin esperar a la medianoche.
 exports.syncCodigoDiaPublico = onDocumentWritten(
-    { document: 'codigo_dia/{fecha}', region: 'us-central1' },
+    { cpu: 0.5, document: 'codigo_dia/{fecha}', region: 'us-central1' },
     async (event) => {
         const nowMs = Date.now();
         if (event.params.fecha !== codigoDia.bogotaParts(nowMs).dateKey) return;
@@ -3220,7 +3223,7 @@ exports.syncCodigoDiaPublico = onDocumentWritten(
 
 // El producto de hoy cambió (precio, foto, pausado): refrescar la vista pública al instante.
 exports.syncCodigoDiaProducto = onDocumentWritten(
-    { document: 'productos/{productoId}', region: 'us-central1' },
+    { cpu: 0.5, document: 'productos/{productoId}', region: 'us-central1' },
     async (event) => {
         const db = getFirestore();
         const publico = await db.collection(codigoDia.PUBLICO_COLLECTION).doc(codigoDia.PUBLICO_DOC).get();
@@ -3386,7 +3389,7 @@ exports.publicarHistoriaAgotado = onDocumentWritten(
 
 // Lunes 06:00: renueva el token de Instagram (dura 60 días) cuando le faltan menos de 20.
 exports.refrescarTokenInstagram = onSchedule(
-    { schedule: '0 6 * * 1', timeZone: 'America/Bogota', region: 'us-central1' },
+    { cpu: 0.5, schedule: '0 6 * * 1', timeZone: 'America/Bogota', region: 'us-central1' },
     async () => {
         try {
             const r = await instagramHistorias.refrescarToken(getFirestore());
@@ -3399,7 +3402,7 @@ exports.refrescarTokenInstagram = onSchedule(
 
 // Cada 30 min: seguidores y métricas de las historias vivas (Instagram solo las da durante 24 h).
 exports.actualizarMetricasInstagram = onSchedule(
-    { schedule: '*/30 * * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    { cpu: 0.5, schedule: '*/30 * * * *', timeZone: 'America/Bogota', region: 'us-central1' },
     async () => {
         try {
             const r = await instagramHistorias.actualizarMetricas(getFirestore());
@@ -3412,7 +3415,7 @@ exports.actualizarMetricasInstagram = onSchedule(
 
 // Cada 30 min: métricas de las publicaciones de Facebook (14 días) y de la página. Sin página conectada no hace nada.
 exports.actualizarMetricasFacebook = onSchedule(
-    { schedule: '*/30 * * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    { cpu: 0.5, schedule: '*/30 * * * *', timeZone: 'America/Bogota', region: 'us-central1' },
     async () => {
         try {
             const r = await facebookMetricas.actualizarMetricasFacebook(getFirestore());
@@ -3976,7 +3979,7 @@ ${ejemplos.map((e) => `- [${e.tipo || 'caso'}${e.corregida ? ', corregida' : ''}
 // Alertas proactivas de FODI: cada día 7:30 a. m. (Bogotá) calcula insumos que subieron, márgenes bajos,
 // caída/alza de ventas de ayer y resultados de sugerencias; el admin las ve en la pestaña Asistente.
 exports.fodiAlertasDiarias = onSchedule(
-    { schedule: '30 7 * * *', timeZone: 'America/Bogota', region: 'us-central1', timeoutSeconds: 180, memory: '512MiB' },
+    { cpu: 0.5, schedule: '30 7 * * *', timeZone: 'America/Bogota', region: 'us-central1', timeoutSeconds: 180, memory: '512MiB' },
     async () => {
         try {
             const r = await fodiInteligencia.guardarAlertas(getFirestore());
@@ -4015,7 +4018,7 @@ async function fodiGenerarInforme(db, apiKey) {
     return { fecha: hasta, desde, hasta, texto, costoUsd: costo };
 }
 exports.fodiInformeSemanal = onSchedule(
-    { schedule: '0 8 * * 1', timeZone: 'America/Bogota', region: 'us-central1', secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 300, memory: '512MiB' },
+    { cpu: 0.5, schedule: '0 8 * * 1', timeZone: 'America/Bogota', region: 'us-central1', secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 300, memory: '512MiB' },
     async () => {
         try { const r = await fodiGenerarInforme(getFirestore(), ANTHROPIC_API_KEY.value()); console.log('fodiInformeSemanal', r.fecha, r.costoUsd); } catch (e) { console.error('fodiInformeSemanal error:', e); }
     }
