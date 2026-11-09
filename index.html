@@ -236,7 +236,9 @@
                 var preview = /[?&]festival=1\b/.test(location.search);
                 var now = Date.now();
                 var inWindow = now <= Date.parse('2026-11-08T23:59:59-05:00');
-                if (!preview && !inWindow) return;
+                // Suspendido 2026-11-08: la Burger Trifásica se agotó. Poner en false para reactivar el aviso.
+                var suspendido = true;
+                if (!preview && (!inWindow || suspendido)) return;
                 el.hidden = false;
                 var info = document.getElementById('festivalInfo');
                 var cerrar = function () { el.hidden = true; };

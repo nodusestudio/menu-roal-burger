@@ -6907,6 +6907,7 @@ function showCartAddedToast(categoryName, productName) {
 }
 
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId, initialQuantity = 1, parentKey = null) {
+    if (_esTrifasicaAgotada(productName)) { _avisoTrifasicaAgotada(); return; }
     _hapticTap();
     // Interceptar para mostrar upgrades si corresponde
     const upgradeExtra = Number(orderOptions?.upgradeExtra || 0);
@@ -8615,6 +8616,7 @@ function openCombosConPapasModal(productName, categoryName, buttonId, extraOptio
 }
 
 function startProductOrderFlow(productName, categoryName, buttonId, extraOptions = {}) {
+    if (_esTrifasicaAgotada(productName)) { _avisoTrifasicaAgotada(); return; }
     _hapticTap();
 
     const safeCategoryName = String(categoryName || getSelectedCategoryName()).trim() || 'NUESTROS PRODUCTOS';
@@ -10911,6 +10913,17 @@ function renderCodigoDiaHome() {
 // Tarjeta al inicio del menú hasta el 08/11/2026 23:59 (hora Colombia). Se pide como cualquier
 // producto del catálogo: NO usa código, cupón ni canal "usar en local".
 const FESTIVAL_TRIFASICA_HASTA = Date.parse('2026-11-08T23:59:59-05:00');
+// Bloqueo manual (2026-11-08): la Burger Trifásica se agotó. La tarjeta queda con la banda AGOTADO
+// y no se puede pedir (ni desde la tarjeta ni desde el catálogo). Poner en false para reabrir.
+const FESTIVAL_TRIFASICA_AGOTADA = true;
+
+function _esTrifasicaAgotada(productName) {
+    return FESTIVAL_TRIFASICA_AGOTADA && normalizeCategoryKey(String(productName || '')).includes('trifasica');
+}
+
+function _avisoTrifasicaAgotada() {
+    _showLockedToast('🍔 La Burger Trifásica está agotada');
+}
 
 function renderFestivalHome() {
     const slot = document.getElementById('festivalHome');
@@ -10937,8 +10950,10 @@ function renderFestivalHome() {
            <span class="codigo-dia-price">${formatCurrency(unitPrice)}</span>`
         : `<span class="codigo-dia-price">${formatCurrency(unitPrice)}</span>`;
     const card = document.createElement('article');
-    card.className = 'codigo-dia-card liquid-glass';
+    const agotada = FESTIVAL_TRIFASICA_AGOTADA;
+    card.className = 'codigo-dia-card liquid-glass' + (agotada ? ' festival-agotado' : '');
     card.innerHTML = `
+        ${agotada ? '<div class="festival-agotado-banda" role="status">AGOTADO</div>' : ''}
         <div class="codigo-dia-top">
             <span class="codigo-dia-kicker">🏆 Festival Sabe a Quindío</span>
             <span class="codigo-dia-badge">${es2x1 ? '2×1 · hasta el 8 de nov.' : 'Hasta el 8 de nov.'}</span>
@@ -10961,8 +10976,15 @@ function renderFestivalHome() {
     img.alt = nombre;
     img.addEventListener('error', () => { img.src = _IMG_FINAL_FALLBACK; }, { once: true });
     card.querySelector('.codigo-dia-name').textContent = nombre;
+    if (agotada) {
+        const btnPedir = card.querySelector('.festival-pedir');
+        btnPedir.disabled = true;
+        btnPedir.textContent = 'Agotado';
+        card.querySelector('.festival-info')?.remove(); // el aviso está suspendido: no hay información que abrir
+    }
     card.querySelector('.festival-pedir').addEventListener('click', () => {
         _hapticTap();
+        if (agotada) { _avisoTrifasicaAgotada(); return; }
         if (es2x1) {
             addItemToCart(nombre, categoria, {
                 type: 'solo',
@@ -10975,7 +10997,7 @@ function renderFestivalHome() {
             startProductOrderFlow(nombre, categoria, 'festival-trifasica');
         }
     });
-    card.querySelector('.festival-info').addEventListener('click', () => {
+    card.querySelector('.festival-info')?.addEventListener('click', () => {
         if (typeof window.abrirFestivalInfo === 'function') window.abrirFestivalInfo();
     });
     slot.appendChild(card);

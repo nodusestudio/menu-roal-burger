@@ -9160,6 +9160,37 @@ html.low-fx .support-feedback--error:not(:empty) {
     background: rgba(255, 255, 255, 0.06);
     border-color: var(--glass-border);
 }
+/* Burger Trifásica agotada: banda diagonal AGOTADO sobre la tarjeta del Festival */
+.codigo-dia-card.festival-agotado {
+    position: relative;
+    overflow: hidden;
+}
+.codigo-dia-card.festival-agotado .codigo-dia-main,
+.codigo-dia-card.festival-agotado .codigo-dia-top {
+    filter: grayscale(0.85);
+    opacity: 0.55;
+}
+.codigo-dia-card.festival-agotado .festival-pedir {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.festival-agotado-banda {
+    position: absolute;
+    top: 50%;
+    left: -10%;
+    width: 120%;
+    transform: translateY(-50%) rotate(-8deg);
+    z-index: 2;
+    padding: 8px 0;
+    text-align: center;
+    font-weight: 900;
+    font-size: 1.6rem;
+    letter-spacing: 0.28em;
+    color: #fff;
+    background: rgba(200, 30, 30, 0.92);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
 .codigo-dia-card .codigo-dia-form {
     display: grid;
     gap: 6px;
