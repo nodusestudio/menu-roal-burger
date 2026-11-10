@@ -1119,8 +1119,8 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
                 <h3 style="margin:0 0 0.5rem;color:#fff;font-size:1.1rem;font-weight:700;">${escapeHtml(title || '')}</h3>
                 ${message ? `<p style="margin:0 0 1.25rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">${escapeHtml(message)}</p>` : '<div style="margin-bottom:0.9rem;"></div>'}
                 <div style="display:flex;gap:0.75rem;">
-                    <button type="button" id="_gcCancelBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">${escapeHtml(cancelText)}</button>
-                    <button type="button" id="_gcAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:${danger ? '#e53935' : 'var(--admin-accent,#ff9540)'};color:${danger ? '#fff' : '#111'};font-size:0.9rem;font-weight:700;cursor:pointer;">${escapeHtml(confirmText)}</button>
+                    <button type="button" id="_gcCancelBtn" class="informes-action-btn" style="flex:1;">${escapeHtml(cancelText)}</button>
+                    <button type="button" id="_gcAcceptBtn" class="informes-action-btn ${danger ? 'informes-action-btn--danger-solid' : 'informes-action-btn--primary'}" style="flex:1;">${escapeHtml(confirmText)}</button>
                 </div>
             </div>`;
         document.body.appendChild(overlay);
@@ -1325,8 +1325,8 @@ function showPromptModal({ icon = '✎', title, message = '', placeholder = '', 
                 ${message ? `<p style="margin:0 0 0.9rem;color:rgba(255,255,255,0.65);font-size:0.88rem;line-height:1.5;">${escapeHtml(message)}</p>` : ''}
                 <input type="text" id="_gpInput" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(value)}" style="width:100%;box-sizing:border-box;background:#0c0e18;border:1.5px solid rgba(255,255,255,0.18);border-radius:10px;color:#fff;padding:10px 12px;font-size:0.9rem;margin-bottom:1.1rem;outline:none;font-family:'Space Grotesk',sans-serif;">
                 <div style="display:flex;gap:0.75rem;">
-                    <button type="button" id="_gpCancelBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">${escapeHtml(cancelText)}</button>
-                    <button type="button" id="_gpAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:var(--admin-accent,#ff9540);color:#111;font-size:0.9rem;font-weight:700;cursor:pointer;">${escapeHtml(confirmText)}</button>
+                    <button type="button" id="_gpCancelBtn" class="informes-action-btn" style="flex:1;">${escapeHtml(cancelText)}</button>
+                    <button type="button" id="_gpAcceptBtn" class="informes-action-btn informes-action-btn--primary" style="flex:1;">${escapeHtml(confirmText)}</button>
                 </div>
             </div>`;
         document.body.appendChild(overlay);
@@ -9419,8 +9419,8 @@ async function _sqPedirRegistroCliente(nombreInicial = '') {
                 <input type="text" id="_sqNom" placeholder="Nombre (opcional)" autocomplete="off" value="${escapeHtml(nombreInicial && !/^Mesa \d+$/.test(nombreInicial) ? nombreInicial : '')}" style="${inputCss}">
                 <p id="_sqTipo" style="margin:-0.2rem 0 0.9rem;min-height:1.2em;font-size:0.82rem;color:#fbbf24;text-align:center;"></p>
                 <div style="display:flex;gap:0.75rem;">
-                    <button type="button" id="_sqCancel" style="flex:1;padding:0.75rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">Cancelar</button>
-                    <button type="button" id="_sqOk" style="flex:1.4;padding:0.75rem;border-radius:10px;border:none;background:linear-gradient(135deg,#ff7a1a,#e8420a);color:#fff;font-size:0.95rem;font-weight:700;cursor:pointer;">Seguir</button>
+                    <button type="button" id="_sqCancel" class="informes-action-btn" style="flex:1;">Cancelar</button>
+                    <button type="button" id="_sqOk" class="informes-action-btn informes-action-btn--primary" style="flex:1.4;">Seguir</button>
                 </div>
             </div>`;
         document.body.appendChild(overlay);
@@ -10633,7 +10633,7 @@ function _renderCarouselPanel() {
                 <p style="font-size:0.72rem;font-weight:700;color:#ff9a50;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 7px;">Título de sección</p>
                 <div style="display:flex;gap:8px;align-items:center;">
                     <input id="carouselTitleInput" type="text" value="${currentCarouselTitle.replace(/"/g, '&quot;')}" placeholder="Ej: Combos Futboleros" style="flex:1;background:rgba(0,0,0,0.30);border:1.5px solid rgba(255,122,26,0.30);border-radius:8px;padding:8px 12px;color:#eef4ff;font-size:0.85rem;outline:none;" maxlength="60">
-                    <button id="carouselTitleSaveBtn" type="button" style="padding:8px 16px;background:linear-gradient(135deg,#ff7a00,#e84800);border:none;border-radius:8px;color:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;white-space:nowrap;">Guardar</button>
+                    <button id="carouselTitleSaveBtn" type="button" class="informes-action-btn informes-action-btn--primary">Guardar</button>
                 </div>
                 <p style="font-size:0.68rem;color:var(--admin-muted);margin:5px 0 0;">Se muestra encima del carrusel en el menú digital.</p>
             </div>
@@ -30561,8 +30561,8 @@ function _showCerrarCajaConfirm(onAccept) {
             </p>
             <p style="margin:0 0 1.25rem;color:rgba(255,255,255,0.4);font-size:0.78rem;">${fechaHora}</p>
             <div style="display:flex;gap:0.75rem;">
-                <button id="_cerrarCajaCancelBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.9rem;cursor:pointer;">Cancelar</button>
-                <button id="_cerrarCajaAcceptBtn" style="flex:1;padding:0.7rem;border-radius:10px;border:none;background:#e53935;color:#fff;font-size:0.9rem;font-weight:700;cursor:pointer;">Sí, cerrar caja</button>
+                <button id="_cerrarCajaCancelBtn" class="informes-action-btn" style="flex:1;">Cancelar</button>
+                <button id="_cerrarCajaAcceptBtn" class="informes-action-btn informes-action-btn--danger-solid" style="flex:1;">Sí, cerrar caja</button>
             </div>
         </div>`;
 
@@ -30614,8 +30614,8 @@ function _showFeedbackCierreGate(orders, onDone) {
             <div>${rows}</div>
             <p id="_fbcEstado" style="margin:0.9rem 0 0.6rem;color:#fbbf24;font-size:0.82rem;"></p>
             <div style="display:flex;gap:0.75rem;">
-                <button type="button" id="_fbcCancel" style="flex:1;padding:0.7rem;border-radius:10px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);cursor:pointer;">Volver</button>
-                <button type="button" id="_fbcContinuar" disabled style="flex:1.4;padding:0.7rem;border-radius:10px;border:none;background:#e53935;color:#fff;font-weight:700;cursor:pointer;opacity:0.45;">Continuar a cerrar caja</button>
+                <button type="button" id="_fbcCancel" class="informes-action-btn" style="flex:1;">Volver</button>
+                <button type="button" id="_fbcContinuar" disabled class="informes-action-btn informes-action-btn--danger-solid" style="flex:1.4;">Continuar a cerrar caja</button>
             </div>
             <button type="button" id="_fbcOmitir" style="margin-top:0.7rem;background:none;border:none;color:rgba(255,255,255,0.35);font-size:0.74rem;text-decoration:underline;cursor:pointer;">Omitir y cerrar sin enviar</button>
         </div>`;
@@ -30919,7 +30919,7 @@ function _updateCajaEstadoUI() {
                 <div style="font-size:2.8rem;line-height:1;">🔒</div>
                 <p style="color:#fff;font-size:1.05rem;font-weight:700;margin:0;">Caja cerrada</p>
                 <p style="color:rgba(255,255,255,0.45);font-size:0.82rem;margin:0;text-align:center;max-width:260px;">${esMesero ? 'Pídele al cajero que abra la caja para tomar pedidos' : 'Abre la caja para comenzar la jornada'}</p>
-                ${esMesero ? '' : '<button type="button" id="_posCajaBlockerAbrirBtn" style="margin-top:4px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;padding:8px 18px;font-size:0.85rem;">📂 Abrir Caja</button>'}`;
+                ${esMesero ? '' : '<button type="button" id="_posCajaBlockerAbrirBtn" class="informes-action-btn informes-action-btn--primary" style="margin-top:4px;">📂 Abrir Caja</button>'}`;
             posCard.appendChild(blocker);
             blocker.querySelector('#_posCajaBlockerAbrirBtn')?.addEventListener('click', () => _showAbrirCajaModal());
         }

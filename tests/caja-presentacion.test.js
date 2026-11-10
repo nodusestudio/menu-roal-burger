@@ -100,3 +100,12 @@ test('las ventanas de pago con diseño propio (gasto, caja chica, abrir caja) co
         assert.ok(m && /informes-action-btn/.test(m[0]) && !/style=/.test(m[0]), `${id} usa un rol de botón`);
     }
 });
+
+test('los botones de las ventanas de confirmar / cerrar caja / feedback usan roles, no colores pegados a mano', () => {
+    for (const id of ['_gcCancelBtn', '_gcAcceptBtn', '_gpCancelBtn', '_gpAcceptBtn', '_sqCancel', '_sqOk', '_cerrarCajaCancelBtn', '_cerrarCajaAcceptBtn', '_fbcCancel', '_fbcContinuar', '_posCajaBlockerAbrirBtn', 'carouselTitleSaveBtn']) {
+        const m = js.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`));
+        assert.ok(m, `no existe ${id}`);
+        assert.match(m[0], /informes-action-btn/, `${id} debe usar un rol`);
+        assert.ok(!/background/.test(m[0]), `${id} no debe llevar color pegado a mano`);
+    }
+});
