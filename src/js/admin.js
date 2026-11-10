@@ -6318,6 +6318,7 @@ async function _posCanjearCuponFid(codigo) {
         if (!snap.exists) throw new Error(`No encuentro el cupón ${codigo}. Revisa que esté bien escrito.`);
         const x = snap.data() || {};
         if (x.estado === 'canjeado') throw new Error(`El cupón ${codigo} ya fue canjeado${x.canjeadoPedido ? ` (pedido ${x.canjeadoPedido})` : ''}.`);
+        if (x.estado === 'anulado') throw new Error(`El cupón ${codigo} fue reemplazado por uno nuevo: pídele al cliente el código más reciente.`);
         if (_tsMs(x.venceAt) < Date.now()) throw new Error(`El cupón ${codigo} está vencido.`);
         const cambios = { estado: 'canjeado', canjeadoAt: firebase.firestore.FieldValue.serverTimestamp(), canjeadoVia: 'pos' };
         // Invitación de referido: al canjearla, queda lista la recompensa de quien invitó (se envía desde Feedback → Referidos).
@@ -13075,6 +13076,7 @@ function _fidGuardarEnvio(cliente, motivo, { codigo = '', beneficio = '', dias =
 
 function _fidEstadoCupon(k) {
     if (k.estado === 'canjeado') return 'canjeado';
+    if (k.estado === 'anulado') return 'anulado';
     return _tsMs(k.venceAt) < Date.now() ? 'vencido' : 'activo';
 }
 
@@ -13254,7 +13256,7 @@ function _fidAtenderHtml() {
                 <div class="met-user-name-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(r.orderCode)} · ${escapeHtml(fecha(r.ts))}</div>
                 <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · ` : ''}${detalle}${hecho ? ' · <span style="color:#34d399;font-weight:700">✅ Atendido</span>' : ''}${r.q4 ? `<br>💬 ${escapeHtml(r.q4)}` : ''}</div>
             </div>
-            ${phone ? `<button type="button" class="${hecho ? 'ghost-button' : 'feedback-pending-btn'}" ${hecho ? 'style="padding:6px 10px" ' : ''}data-fid-atender="${escapeHtml(r.id)}" data-fid-atender-tipo="${_fidAtenderVista}">${hecho ? 'Volver a copiar' : (_fidAtenderVista === 'baja' ? 'Copiar disculpa + cupón' : 'Copiar pedido de reseña')}</button>` : ''}
+            ${phone ? `<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button type="button" class="${hecho ? 'ghost-button' : 'feedback-pending-btn'}" ${hecho ? 'style="padding:6px 10px" ' : ''}data-fid-atender="${escapeHtml(r.id)}" data-fid-atender-tipo="${_fidAtenderVista}">${hecho ? 'Volver a copiar' : (_fidAtenderVista === 'baja' ? 'Copiar disculpa + cupón' : 'Copiar pedido de reseña')}</button>${hecho && _fidAtenderVista === 'baja' ? `<button type="button" class="feedback-pending-btn" style="padding:6px 10px" data-fid-regenerar="${escapeHtml(r.id)}" title="Crea un mensaje y un cupón nuevos; el anterior queda anulado">🔄 Regenerar</button>` : ''}</div>` : ''}
         </div>`;
     }).join('');
     const chips = [['baja', `⚠️ Mala calificación (${nf(bajas.length - bajas.filter((r) => disculpadas.has(r.id)).length)} por atender)`], ['resena', `⭐ Pedir reseña (${nf(felices.filter((r) => !resenadas.has(r.id)).length)})`]]
@@ -13292,7 +13294,7 @@ function _fidAtender(clic) {
     }
     // Ya atendido: se vuelve a copiar el mismo mensaje con el mismo cupón (sin crear otro).
     if (yaHecho) {
-        const previo = _fidCupones.find((k) => k.encuestaId === id);
+        const previo = _fidCupones.filter((k) => k.encuestaId === id && k.estado !== 'anulado').sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt))[0];
         const prodPrevio = previo && previo.productoId ? productsState.find((p) => p.id === previo.productoId) : null;
         const diasPrevio = previo ? Math.max(1, Math.round((_tsMs(previo.venceAt) - _tsMs(previo.creadoAt)) / 86400000)) : (Number(_fidCfg.vigenciaDias) || 3);
         const copiadoPrevio = copyTextToClipboard(_fidMensajeDisculpa(r, previo?.gravedad || 'medio', prodPrevio, previo?.codigo || '', diasPrevio, previo?.beneficio));
@@ -13304,7 +13306,7 @@ function _fidAtender(clic) {
 
 // Ventana de revisión: muestra qué dijo el cliente, qué tan grave fue, el obsequio que sugiere el sistema (se puede cambiar)
 // y el mensaje final (se puede editar). Solo al confirmar se crea el cupón y se registra el envío.
-function _fidAbrirDisculpa(r, cliente) {
+function _fidAbrirDisculpa(r, cliente, regenerar = false) {
     document.getElementById('_fidDisculpaOverlay')?.remove();
     const orden = [..._fbArchOrders, ...ordersState].find((o) => o.id === r.id) || null;
     const ficha = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === _sqPhoneKey(r.phone));
@@ -13320,7 +13322,7 @@ function _fidAbrirDisculpa(r, cliente) {
     overlay.id = '_fidDisculpaOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
     overlay.innerHTML = `<div style="background:#1e1e2e;border:1.5px solid rgba(255,140,40,0.55);border-radius:18px;padding:1.3rem 1.3rem 1.1rem;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.55);color:#fff;text-align:left">
-        <h3 style="margin:0 0 4px;font-size:1.1rem">⚠️ Compensar a ${escapeHtml(r.name || 'el cliente')}</h3>
+        <h3 style="margin:0 0 4px;font-size:1.1rem">${regenerar ? '🔄 Regenerar la compensación de' : '⚠️ Compensar a'} ${escapeHtml(r.name || 'el cliente')}</h3>
         <p style="margin:0 0 10px;font-size:0.82rem;opacity:0.65">Pedido ${escapeHtml(r.orderCode)}${orden ? ` · ${escapeHtml(formatMoney(orden.total))}` : ''}${ficha ? ` · ${ficha.totalOrders} pedido${ficha.totalOrders === 1 ? '' : 's'} en total` : ''}</p>
         ${r.q4 ? `<div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:0.88rem">💬 «${escapeHtml(r.q4)}»</div>` : ''}
         <div style="border:1.5px solid ${nivel.color};border-radius:12px;padding:9px 11px;margin-bottom:12px">
@@ -13352,9 +13354,20 @@ function _fidAbrirDisculpa(r, cliente) {
         const prod = prodActual();
         // El copiado va primero (el navegador solo deja escribir al portapapeles durante el clic); el registro sigue en segundo plano.
         const copiado = copyTextToClipboard(ta.value);
+        // Regenerar: el cupón anterior de esta encuesta, si sigue activo, queda anulado (no pueden existir dos).
+        if (regenerar) {
+            _fidCupones.filter((k) => k.encuestaId === r.id && k.motivo === 'disculpa' && _fidEstadoCupon(k) === 'activo').forEach((k) => {
+                const ref = firebaseDb.collection('cupones_fidelizacion').doc(k.codigo);
+                k.estado = 'anulado';
+                firebaseDb.runTransaction(async (tx) => {
+                    const snap = await tx.get(ref);
+                    if (snap.exists && snap.data().estado === 'activo') tx.update(ref, { estado: 'anulado', anuladoAt: firebase.firestore.FieldValue.serverTimestamp(), reemplazadoPor: codigo });
+                }).catch((err) => showNotice(`No se pudo anular el cupón anterior ${k.codigo}: ${err.message || 'error'}`, 'error'));
+            });
+        }
         _fidGuardarEnvio(cliente, 'disculpa', {
             codigo, beneficio: prod ? `${prod.nombre} gratis` : _fidCfg.disculpaOferta, dias, productoId: prod ? prod.id : '',
-            envioExtra: { encuestaId: r.id, gravedad: g.nivel }, cuponExtra: { encuestaId: r.id, gravedad: g.nivel }
+            envioExtra: { encuestaId: r.id, gravedad: g.nivel, ...(regenerar ? { regenerado: true } : {}) }, cuponExtra: { encuestaId: r.id, gravedad: g.nivel }
         });
         overlay.remove();
         copiado.then((ok) => showNotice(ok ? `Disculpa con cupón lista para ${r.name || 'el cliente'}.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
@@ -13568,7 +13581,7 @@ function _fbRenderFid(body) {
         canj.forEach((k) => { const v = (porTel.get(_sqPhoneKey(k.telefono)) || []).find((o) => o.ts >= _tsMs(k.creadoAt)); if (v) ventas += v.total; });
         const chips = [['todos', 'Todos'], ['activo', 'Activos'], ['canjeado', 'Canjeados'], ['vencido', 'Vencidos']]
             .map(([n, l]) => `<button type="button" class="rango-btn${_fidCupEstado === n ? ' active' : ''}" data-fid-cup-estado="${n}">${l}</button>`).join('');
-        const BADGE = { activo: ['🟢 Activo', '#34d399'], canjeado: ['✅ Canjeado', '#60a5fa'], vencido: ['⌛ Vencido', '#9ca3af'] };
+        const BADGE = { activo: ['🟢 Activo', '#34d399'], canjeado: ['✅ Canjeado', '#60a5fa'], vencido: ['⌛ Vencido', '#9ca3af'], anulado: ['🚫 Anulado (reemplazado)', '#9ca3af'] };
         const fechaCorta = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short' });
         const filas = lista.slice(0, 150).map((k) => {
             const est = _fidEstadoCupon(k);
@@ -13666,6 +13679,13 @@ function _fidClick(e) {
     if (vistaBtn) { _fidAtenderVista = vistaBtn.dataset.fidAtenderVista; renderMetricasFeedback(); return true; }
     const atBtn = t.closest('[data-fid-atender]');
     if (atBtn) { _fidAtender(atBtn); return true; }
+    const regen = t.closest('[data-fid-regenerar]');
+    if (regen) {
+        const r = _fbResponses.find((x) => x.id === regen.dataset.fidRegenerar);
+        if (!r) return true;
+        _fidAbrirDisculpa(r, { id: r.clientId, customerName: r.name, customerPhoneDigits: String(r.phone || '').replace(/\D/g, '') }, true);
+        return true;
+    }
 
     const invitar = t.closest('[data-fid-invitar]');
     if (invitar) {
@@ -13776,6 +13796,7 @@ function _fidClick(e) {
         const est = _fidEstadoCupon(k);
         if (est === 'canjeado') return decir(`El cupón ${codigo} ya fue canjeado${k.canjeadoPedido ? ` (pedido ${k.canjeadoPedido})` : ''}.`, false), true;
         if (est === 'vencido') return decir(`El cupón ${codigo} está vencido.`, false), true;
+        if (est === 'anulado') return decir(`El cupón ${codigo} fue reemplazado por uno nuevo: pídele al cliente el código más reciente.`, false), true;
         const ahora = firebase.firestore.Timestamp.now();
         k.estado = 'canjeado'; k.canjeadoAt = ahora; k.canjeadoPedido = pedido;
         firebaseDb.collection('cupones_fidelizacion').doc(codigo).update({ estado: 'canjeado', canjeadoAt: ahora, canjeadoPedido: pedido })
