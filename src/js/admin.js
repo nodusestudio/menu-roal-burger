@@ -2953,6 +2953,7 @@ const NAV2_GRUPOS = [
 const NAV2_STORAGE_KEY = 'roal_admin_menu';
 const _nav2Abiertos = new Set();
 const _nav2Ultimo = {};
+const _nav2Plegados = new Set(); // grupos que el usuario cerró con la flechita (aunque sean el grupo activo)
 
 function _nav2Modo() {
     try {
@@ -2976,6 +2977,7 @@ function _nav2Ir(itemId) {
     const viejo = _nav2Viejo(f.it.target);
     if (!viejo) return;
     _nav2Ultimo[f.g.id] = f.it.id;
+    _nav2Plegados.delete(f.g.id);
     viejo.click();
     if (f.it.seccion) document.querySelector(`[data-section-tab="${f.it.seccion}"][data-section-scope="${_nav2Ambito(f.it)}"]`)?.click();
     _nav2Sync();
@@ -3004,7 +3006,7 @@ function _nav2Sync() {
         b.classList.toggle('active', activo);
         const lista = host.querySelector(`[data-nav2-lista="${gid}"]`);
         if (lista) {
-            const abierto = activo || _nav2Abiertos.has(gid);
+            const abierto = !_nav2Plegados.has(gid) && (activo || _nav2Abiertos.has(gid));
             lista.hidden = !abierto;
             b.setAttribute('aria-expanded', String(abierto));
         }
@@ -3057,10 +3059,20 @@ function setupNav2() {
         const gid = b.dataset.nav2Grupo;
         const g = NAV2_GRUPOS.find((x) => x.id === gid);
         if (!g) return;
-        if (window.innerWidth >= 1024) { _nav2Ir(_nav2Ultimo[gid] || g.items[0].id); return; }
-        // Celular: tocar el grupo solo lo abre o lo cierra, para elegir el elemento sin que el menú se cierre.
-        if (_nav2Abiertos.has(gid)) _nav2Abiertos.delete(gid); else _nav2Abiertos.add(gid);
-        _nav2Sync();
+        // La flechita ▾ SIEMPRE solo muestra u oculta la lista del grupo (aunque sea el grupo en que estás).
+        const lista = host.querySelector(`[data-nav2-lista="${gid}"]`);
+        const abierto = !!lista && !lista.hidden;
+        const alternar = () => {
+            if (abierto) { _nav2Plegados.add(gid); _nav2Abiertos.delete(gid); }
+            else { _nav2Plegados.delete(gid); _nav2Abiertos.add(gid); }
+            _nav2Sync();
+        };
+        if (e.target.closest('.nav2-flecha')) { alternar(); return; }
+        // Tocar el nombre del grupo: en el escritorio abre su último elemento; si ya estás en ese grupo, muestra/oculta la lista.
+        // En el celular solo muestra/oculta, para elegir el elemento sin que el menú se cierre.
+        const esActivo = !!_nav2Activo() && _nav2Activo().g.id === gid;
+        if (window.innerWidth >= 1024 && !esActivo) { _nav2Ir(_nav2Ultimo[gid] || g.items[0].id); return; }
+        alternar();
     });
     // Cuando otro código cambia de pestaña interna de Informes o de Configuración (p. ej. "Ir a Caja Diaria"), el menú lo refleja.
     document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-section-tab]')) setTimeout(_nav2Sync, 0); });

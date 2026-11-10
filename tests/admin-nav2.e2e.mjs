@@ -114,6 +114,26 @@ try {
   ok(await pag.locator('[data-nav2-item="config.seguridad"]').evaluate((e) => e.classList.contains('active')), 'si otro código abre la pestaña Seguridad, el menú resalta «Seguridad»');
   await pag.screenshot({ path: `${out}/nav2-6-config.png` });
 
+  // Flechitas: muestran / ocultan la lista de cada sección (también la del grupo en que estás)
+  await pag.locator('[data-nav2-grupo="clientes"]').click();
+  ok(await pag.locator('[data-nav2-lista="clientes"]').isVisible(), 'Clientes muestra su lista (Clientes · Feedback · Fuera del Menú)');
+  await pag.locator('[data-nav2-item="clientes.feedback"]').click();
+  ok(await pag.evaluate(() => activeAccordionSection) === 'feedback', 'Clientes › Feedback abre el panel de Feedback');
+  await pag.locator('[data-nav2-grupo="clientes"] .nav2-flecha').click();
+  ok(await pag.locator('[data-nav2-lista="clientes"]').isHidden(), 'la flechita OCULTA la lista del grupo activo');
+  ok(await pag.evaluate(() => activeAccordionSection) === 'feedback', '…sin cambiar de pantalla');
+  await pag.locator('[data-nav2-grupo="clientes"] .nav2-flecha').click();
+  ok(await pag.locator('[data-nav2-lista="clientes"]').isVisible(), 'la flechita vuelve a MOSTRAR la lista');
+  await pag.locator('[data-nav2-grupo="clientes"]').click();
+  ok(await pag.locator('[data-nav2-lista="clientes"]').isHidden(), 'tocar el nombre del grupo en que estás también oculta la lista');
+  await pag.locator('[data-nav2-grupo="caja"] .nav2-flecha').click();
+  ok(await pag.locator('[data-nav2-lista="caja"]').isVisible() && await pag.evaluate(() => activeAccordionSection) === 'feedback', 'la flechita de OTRO grupo abre su lista sin cambiar de pantalla');
+  await pag.locator('[data-nav2-grupo="caja"] .nav2-flecha').click();
+  ok(await pag.locator('[data-nav2-lista="caja"]').isHidden(), '…y la vuelve a ocultar');
+  await pag.locator('[data-nav2-grupo="clientes"]').click();
+  await pag.locator('[data-nav2-item="clientes.clientes"]').click();
+  ok(await pag.locator('[data-nav2-lista="clientes"]').isVisible(), 'al elegir un elemento del grupo, su lista vuelve a verse');
+
   // interruptor al menú anterior
   await pag.locator('#adminMenuSwitchBtn').click();
   ok(await pag.locator('#adminAccordionNav > .admin-accordion-trigger[data-accordion-target="pedidos"]').isVisible(), 'el interruptor devuelve el menú anterior');
