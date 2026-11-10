@@ -40,6 +40,21 @@ r = calcularSaldosHistorial({ cierres: [cierreA], methodKeys: M, gastos: [{ tipo
 eq([r.porMetodo.efectivo, r.otro, r.totalNeto, r.egresos], [930, 120, 1050, 100], 'ajuste mueve saldo y total, no es ingreso ni egreso');
 eq(totalNetoLibroContable({ cierres: [cierreA], gastos: [{ tipo: 'ajuste', porMetodo: { efectivo: 30 } }] }), 1000, 'Libro Contable (hoy) no suma ajustes');
 
+// ── Opciones que cubren los dos usos (Historial y modal de Traslado) ──
+{
+    const t1 = { tipo: 'traslado', methodFrom: 'efectivo', methodTo: 'bancolombia', monto: 50, registradoAt: 5000 };   // fuera de cierre, "jornada abierta"
+    const t2 = { tipo: 'traslado', methodFrom: 'efectivo', methodTo: 'bancolombia', monto: 20, registradoAt: 3000 };   // fuera de cierre, anterior a la apertura
+    let r1 = calcularSaldosHistorial({ cierres: [cierreA], methodKeys: M, gastos: [t1, t2] });
+    eq([r1.porMetodo.efectivo, r1.porMetodo.bancolombia], [830, 70], 'sin opciones: cuentan todos los traslados que no están horneados en un cierre');
+    r1 = calcularSaldosHistorial({ cierres: [cierreA], methodKeys: M, gastos: [t1, t2], trasladosDesdeMsExcluidos: 4000 });
+    eq([r1.porMetodo.efectivo, r1.porMetodo.bancolombia], [880, 20], 'con la jornada abierta desde 4000: se ignora el traslado de la jornada abierta (ya cuenta en Caja de hoy)');
+    // Con los cierres FILTRADOS por fechas, el traslado horneado en un cierre fuera del filtro no se debe volver a contar
+    r1 = calcularSaldosHistorial({ cierres: [], todosLosCierres: [cierreA], methodKeys: M, gastos: [trasDentro] });
+    eq([r1.porMetodo.efectivo, r1.porMetodo.bancolombia, r1.totalNeto], [0, 0, 0], 'con cierres filtrados, `todosLosCierres` evita contar dos veces un traslado ya horneado');
+    r1 = calcularSaldosHistorial({ cierres: [], methodKeys: M, gastos: [trasDentro] });
+    eq([r1.porMetodo.efectivo, r1.porMetodo.bancolombia], [-50, 50], 'sin `todosLosCierres` (cierres filtrados) SÍ se contaría: por eso el Historial pasa siempre todos los cierres');
+}
+
 // ── Golden master contra el dinero real (lo que se ve en pantalla) ──
 const ruta = new URL('../../../herramientas/baseline-dinero/crudo-ultimo.json', import.meta.url);
 if (existsSync(ruta)) {

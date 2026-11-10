@@ -797,3 +797,28 @@ Los 6 modales con estructura propia (gasto, traslado, ajustar saldos, caja chica
 
 ## 64. Pendiente de la Fase 5
 Los 3 modales de dinero con diseño propio de «pago» (**gasto** — 2 pasos, **caja chica** y **abrir caja**), ~79 botones con estilo en línea en plantillas JS, un solo juego de íconos, y el formato de dinero del menú público y del agente.
+
+---
+---
+
+# PARTE 16 — Una sola cuenta de saldos (la última copia, eliminada)
+
+## 65. El problema
+El saldo por método se calculaba en **tres** lugares: el bucle del **Historial de Cajas**, `_computeHistoricoSumMethod` (la usan **Traslado** y **Ajustar saldos**) y el módulo puro `saldos.js` (solo vigilaba). Si una regla se cambiaba en una y no en las otras, la pantalla de cierres y la ventana donde se **escriben ajustes de dinero** podían discrepar.
+
+## 66. Qué se hizo
+- **`saldos.js` es ahora la única cuenta.** Dos opciones nuevas cubren los dos usos reales: `todosLosCierres` (para que un Historial filtrado por fechas no cuente dos veces un traslado ya horneado en un cierre) y `trasladosDesdeMsExcluidos` (el modal de Traslado ignora los de la jornada abierta, que ya cuentan en Caja de hoy).
+- `_computeHistoricoSumMethod` (Traslado, Ajustar saldos) y `renderLibroCierres` (Historial) **delegan** en ella. El bucle del Historial solo agrupa los días para pintar; ya no suma saldos.
+- **Si el módulo no carga, se falla en voz alta** («recarga la página») en lugar de mostrar saldos en cero: un ajuste hecho sobre ceros falsos habría escrito un dato incorrecto.
+- El **filtro de fechas del Historial** (desde/hasta) usaba medianoche en la zona del navegador; ahora son días completos en hora de Colombia.
+- El «candado en vivo» del Historial se quitó (ya no hay dos cuentas que comparar); el del **Libro Contable** sigue, porque esa pantalla suma por su cuenta.
+
+## 67. Prueba de que NO cambió nada (la más fuerte hasta ahora)
+- **Lo pintado por el Historial es byte a byte idéntico antes y después** (24.527 caracteres: historia completa + rango de agosto), con los 129 cierres y 824 movimientos reales, ejecutando el `renderLibroCierres` **real** en un navegador (`tests/historial-cierres.e2e.mjs`, 11 comprobaciones: tarjetas, pie TOTALES, orden de tarjetas, filtro por fechas).
+- La función vieja y el módulo nuevo dan **lo mismo en 10 casos** (5 aperturas de caja × con/sin jornada abierta) con los 14 traslados reales.
+- `saldos.test.js` (+4 casos de las opciones nuevas). Foto del dinero **idéntica**. 161 pruebas del despliegue + navegador (menú 26, gastos 19, Libro Contable 9, botones 15, ventanas 24, Historial 11), todas en verde.
+
+## 68. Cálculos de dinero que quedan duplicados (conocidos y vigilados)
+- **Libro Contable** suma por su cuenta (por días) y compara con `saldos.js` en vivo y en `tests/libro-contable.e2e.mjs`.
+- **Caja de hoy** (`_cajaDiariaSumMethod`) calcula la jornada abierta: es otro concepto (aún no hay cierre), y se hornea en el cierre al cerrar.
+- **Cuenta de cobro / conciliación bancaria**: copias SYNC con servidor y FODI, comparadas por sus propias pruebas.

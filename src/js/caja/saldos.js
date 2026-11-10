@@ -44,9 +44,14 @@ export function trasladoEnCierreCerrado(t, cierres) {
  * @param {object[]} p.cierres            documentos de cierres_caja
  * @param {object[]} p.gastos             documentos de gastos_caja (cualquier tipo: aquí se separan)
  * @param {string[]} p.methodKeys         ids de los métodos de pago vigentes (Configuración → Tipos de Pago)
+ * @param {object[]} [p.todosLosCierres]  TODOS los cierres (para saber qué traslados ya están horneados en uno); por defecto `cierres`.
+ *                                       Hace falta cuando `cierres` viene filtrado por fechas.
+ * @param {number}   [p.trasladosDesdeMsExcluidos] si > 0, se ignoran los traslados hechos desde ese instante (la jornada abierta:
+ *                                       ya cuentan en Caja de hoy). Lo usa el modal de Traslado; el Historial y Ajustar saldos no lo usan.
  * @returns {{porMetodo:object, otro:number, totalNeto:number, ingresos:number, egresos:number}}
  */
-export function calcularSaldosHistorial({ cierres, gastos, methodKeys }) {
+export function calcularSaldosHistorial({ cierres, gastos, methodKeys, todosLosCierres, trasladosDesdeMsExcluidos = 0 }) {
+    const ventana = todosLosCierres || cierres;
     const externos = gastos.filter((g) => g.tipo === 'externo');
     const traslados = gastos.filter((g) => g.tipo === 'traslado');
     const ajustes = gastos.filter((g) => g.tipo === 'ajuste');
@@ -76,7 +81,8 @@ export function calcularSaldosHistorial({ cierres, gastos, methodKeys }) {
     });
 
     traslados.forEach((t) => {
-        if (trasladoEnCierreCerrado(t, cierres)) return;
+        if (trasladoEnCierreCerrado(t, ventana)) return;
+        if (trasladosDesdeMsExcluidos > 0 && _tsMs(t.registradoAt) >= trasladosDesdeMsExcluidos) return;
         const amt = _num(t.monto);
         if (enLista(t.methodFrom)) porMetodo[t.methodFrom] -= amt; else if (t.methodFrom) otro -= amt;
         if (enLista(t.methodTo)) porMetodo[t.methodTo] += amt; else if (t.methodTo) otro += amt;

@@ -31111,39 +31111,17 @@ function _trasladoEnCierreCerrado(t, cierresList) {
 // includeOpenJornada: por defecto los traslados de la jornada abierta se excluyen (ya cuentan en
 // Caja Diaria); el modal "Ajustar saldos" los incluye para coincidir con las tarjetas del Historial.
 function _computeHistoricoSumMethod(includeOpenJornada = false) {
+    // UNA sola cuenta de saldos: la del módulo src/js/caja/saldos.js (la misma del Historial de Cajas). Si no cargó, NO se inventan
+    // saldos en cero (un ajuste hecho sobre ellos sería incorrecto): se falla en voz alta.
+    if (!window.CajaSaldos) throw new Error('El módulo de saldos no cargó: recarga la página (Ctrl+Shift+R).');
     const methodKeys = getPaymentMethods().map((m) => m.id);
-    const OTRO = OTRO_PAYMENT_METHOD.id;
-    const sum = {};
-    methodKeys.forEach((k) => { sum[k] = 0; });
-    // Saldo "Otro": todo lo guardado bajo métodos que ya no existen en Configuración (más los
-    // gastos y traslados anotados contra "Otro"). Es lo que el modal de Traslado ofrece mover.
-    sum[OTRO] = 0;
-    const addTo = (k, delta) => { if (methodKeys.includes(k)) sum[k] += delta; else if (k) sum[OTRO] += delta; };
-    _cierresCajaState.forEach((c) => {
-        const nM = c.methodTotals || {};
-        methodKeys.forEach((k) => { sum[k] += Number(nM[k] || 0); });
-        Object.entries(nM).forEach(([k, v]) => { if (!methodKeys.includes(k)) sum[OTRO] += Number(v || 0); });
-        sum[OTRO] += _cierreDescuadreSinMetodo(c); // igual que las tarjetas del Historial
+    const r = window.CajaSaldos.calcularSaldosHistorial({
+        cierres: _cierresCajaState,
+        gastos: [..._gastosExternosState, ..._trasladosState, ..._ajustesSaldoState],
+        methodKeys,
+        trasladosDesdeMsExcluidos: (!includeOpenJornada && cajaAperturaAt) ? cajaAperturaAt : 0
     });
-    _gastosExternosState.forEach((g) => {
-        const mk = g.paymentMethod;
-        const amt = Number(g.monto || 0);
-        if (mk && amt) addTo(mk, -amt);
-    });
-    _trasladosState.forEach((t) => {
-        if (_trasladoEnCierreCerrado(t, _cierresCajaState)) return;
-        // Traslado de la jornada de hoy aún abierta: ya está contado en _cajaDiariaSumMethod.
-        const tms = _tsMs(t.registradoAt);
-        if (!includeOpenJornada && cajaAperturaAt && tms >= cajaAperturaAt) return;
-        const amt = Number(t.monto || 0);
-        addTo(t.methodFrom, -amt);
-        addTo(t.methodTo, amt);
-    });
-    // Ajustes de saldo: diferencia por método registrada a mano (no es ingreso ni gasto).
-    _ajustesSaldoState.forEach((a) => {
-        Object.entries(a.porMetodo || {}).forEach(([k, v]) => addTo(k, Number(v || 0)));
-    });
-    return sum;
+    return { ...r.porMetodo, [OTRO_PAYMENT_METHOD.id]: r.otro };
 }
 
 async function loadCierresCaja() {
@@ -31222,9 +31200,9 @@ function _applyDatePreset(rowId, fromInputId, toInputId, presetBtn, onApplied) {
 function _getCierresFilterRange() {
     const fromVal = document.getElementById('cierresDateFrom')?.value || '';
     const toVal   = document.getElementById('cierresDateTo')?.value   || '';
-    const from = fromVal ? new Date(`${fromVal}T00:00:00`) : null;
-    // Si solo hay inicio, muestra ese único día (fin = mismo día)
-    const to = toVal ? new Date(`${toVal}T23:59:59`) : from ? new Date(`${fromVal}T23:59:59`) : null;
+    const from = fromVal ? new Date(_inicioDiaBogotaMs(fromVal)) : null;
+    // Si solo hay inicio, muestra ese único día (fin = mismo día). Días completos en hora de Colombia.
+    const to = toVal ? new Date(_inicioDiaBogotaMs(toVal) + 86399000) : from ? new Date(_inicioDiaBogotaMs(fromVal) + 86399000) : null;
     return { from, to };
 }
 
@@ -31334,12 +31312,15 @@ async function renderLibroCierres() {
         const DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
         // Acumuladores
-        const sumTotals = {};
-        methodKeys.forEach((k) => { sumTotals[k] = 0; });
-        let sumOtro = 0;
-        let grandSumTotal = 0;
-        let grandSumEgresos = 0;
-        let grandSumIngresos = 0;
+        // Los saldos y totales salen del módulo único (src/js/caja/saldos.js), el MISMO que usan Traslado y Ajustar saldos:
+        // una sola cuenta, no tres. Más abajo solo se agrupan los días para PINTAR.
+        if (!window.CajaSaldos) throw new Error('El módulo de saldos no cargó: recarga la página (Ctrl+Shift+R).');
+        const _saldos = window.CajaSaldos.calcularSaldosHistorial({ cierres, gastos: [...gastosExternos, ...trasladosHistorial, ...ajustesHistorial], methodKeys, todosLosCierres: _cierresCajaState });
+        const sumTotals = { ..._saldos.porMetodo };
+        const sumOtro = _saldos.otro;
+        const grandSumTotal = _saldos.totalNeto;
+        const grandSumEgresos = _saldos.egresos;
+        const grandSumIngresos = _saldos.ingresos;
 
         // Agrupar gastos externos por día de calendario (hora local, no UTC)
         const _localDayKey = (ms) => _diaBogota(ms);
@@ -31404,67 +31385,27 @@ async function renderLibroCierres() {
                 methodKeys.forEach((k) => {
                     dg.ingM[k] += Number(iM[k] || 0);
                     dg.gasM[k] += Number(gM[k] || 0);
-                    sumTotals[k] += Number(nM[k] || 0);
                 });
                 // Métodos ya eliminados de Configuración: no se pierden, se agrupan en "Otro".
                 Object.entries(iM).forEach(([k, v]) => { if (!methodKeys.includes(k)) dg.ingOtro += Number(v || 0); });
                 Object.entries(gM).forEach(([k, v]) => { if (!methodKeys.includes(k)) dg.gasOtro += Number(v || 0); });
-                Object.entries(nM).forEach(([k, v]) => { if (!methodKeys.includes(k)) sumOtro += Number(v || 0); });
-                // Descuadre viejo (pago dividido editado después de cobrado): está en el Total
-                // Neto pero en ningún método — se muestra en "Otro" para que cuadre.
-                sumOtro += _cierreDescuadreSinMetodo(entry);
                 const gT = Number(entry.gastosTotal || 0);
                 const gNet = Number(entry.grandTotal || 0);
                 const ingT = Number(entry.ingresosTotal ?? entry.grandTotal ?? 0);
                 dg.ingT += ingT;
                 dg.gasT += gT;
                 dg.net  += gNet;
-                grandSumIngresos += ingT;
-                grandSumEgresos  += gT;
-                grandSumTotal    += gNet;
             } else if (entry._tipo === 'gastos_dia') {
                 methodKeys.forEach((k) => { dg.gasM[k] += Number(entry._totByMethod[k] || 0); });
                 const amt = entry._totalAmt;
                 dg.gasT += amt;
                 dg.net  -= amt;
-                Object.entries(entry._totByMethod).forEach(([k, a]) => {
-                    if (methodKeys.includes(k)) { sumTotals[k] = (sumTotals[k] || 0) - a; }
-                    else { dg.gasOtro += a; sumOtro -= a; }
-                });
-                grandSumEgresos += amt;
-                grandSumTotal   -= amt;
-            } else if (entry._tipo === 'traslado') {
-                const t = entry._data;
-                // Si esta jornada ya cerró, el traslado quedó horneado en el methodTotals
-                // del cierre (ver cerrarCaja()) — contarlo aquí también lo duplicaría.
-                if (_trasladoEnCierreCerrado(t, _cierresCajaState)) return;
-                const tAmt = Number(t.monto || 0);
-                if (methodKeys.includes(t.methodFrom)) sumTotals[t.methodFrom] = (sumTotals[t.methodFrom] || 0) - tAmt; else if (t.methodFrom) sumOtro -= tAmt;
-                if (methodKeys.includes(t.methodTo))   sumTotals[t.methodTo]   = (sumTotals[t.methodTo]   || 0) + tAmt; else if (t.methodTo) sumOtro += tAmt;
-            } else if (entry._tipo === 'ajuste') {
-                // Ajuste de saldo: mueve el saldo por método (y el Total Neto, que aquí es el saldo
-                // total) pero NO cuenta como ingreso ni como egreso.
-                Object.entries(entry._data.porMetodo || {}).forEach(([k, v]) => {
-                    const n = Number(v || 0);
-                    if (methodKeys.includes(k)) sumTotals[k] = (sumTotals[k] || 0) + n; else sumOtro += n;
-                    grandSumTotal += n;
-                });
+                Object.entries(entry._totByMethod).forEach(([k, a]) => { if (!methodKeys.includes(k)) dg.gasOtro += a; });
             }
         });
 
         // Los días van del más reciente al más antiguo por su FECHA (un cierre olvidado, hecho al otro día, no debe descolocar el orden).
         _dayOrder.sort((a, b) => (a === '_nd') - (b === '_nd') || (a < b ? 1 : a > b ? -1 : 0));
-
-        // ── CANDADO DE DINERO (Fase 1): el módulo puro hace la misma cuenta; si algún día difiere de lo que
-        // se pintó, queda aviso en la consola (F12) sin tocar lo que ve el usuario. Solo sin filtro de fechas.
-        try {
-            if (!from && !to && window.CajaSaldos) {
-                const ref = window.CajaSaldos.calcularSaldosHistorial({ cierres, gastos: [...gastosExternos, ...trasladosHistorial, ...ajustesHistorial], methodKeys });
-                const dif = [...methodKeys.map((k) => [k, ref.porMetodo[k], sumTotals[k]]), ['otro', ref.otro, sumOtro], ['totalNeto', ref.totalNeto, grandSumTotal]]
-                    .filter(([, a, b]) => Math.round(Number(a || 0)) !== Math.round(Number(b || 0)));
-                if (dif.length) console.error('[Caja] Los saldos del módulo puro NO coinciden con la pantalla del Historial:', dif);
-            }
-        } catch (e) { console.warn('[Caja] No se pudo verificar los saldos:', e); }
 
         // ── PASO 2: Renderizar por grupo de día ──
         tbody.innerHTML = _dayOrder.map((dk) => {
