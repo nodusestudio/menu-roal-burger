@@ -881,3 +881,9 @@ Modelo tomado de Square, Toast y Loyverse: el cajón del turno maneja solo **efe
 - Al guardar se re-valida el efectivo contra la caja (por si se cerró desde otro equipo).
 - Verificación: `gasto-origen.test.js` + `gastos-pendientes.test.js` (21), e2e gasto-origen (18), resto de e2e en verde. La foto del dinero solo difiere por un gasto real nuevo registrado en producción entre corridas; el código no altera saldos.
 - Siguiente: Caja de hoy como turno de efectivo (efectivo esperado) y conteo al cierre con diferencia.
+
+# Parte 21 — Turno de efectivo: esperado y conteo al cierre (Fase 7b)
+- **Caja de hoy** muestra «💵 Efectivo que debe haber en el cajón» = fondo de apertura + efectivo neto de la jornada (ventas − gastos ± traslados). Lo digital se muestra aparte, como informativo.
+- **Al confirmar el cierre** se pide contar el efectivo (se puede omitir). Se guarda en el cierre `efectivoEsperado`, `efectivoContado` y `diferenciaEfectivo` (negativo = faltó, positivo = sobró). Son campos nuevos: no cambian `methodTotals`, `grandTotal` ni ningún saldo.
+- Verificación: `tests/efectivo-esperado.test.js` (5), `tests/efectivo-esperado.e2e.mjs` (8, Chromium), resto de e2e en verde; foto del dinero idéntica.
+- Pendiente: mostrar la diferencia en el Historial de Cajas y en el ticket de cierre.

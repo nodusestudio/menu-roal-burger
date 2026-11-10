@@ -28699,6 +28699,18 @@ let _gastoSubcategoria = null;
 // traslado no es un gasto real — la plata no sale del negocio). Antes esta misma lógica
 // de "cuáles gastos son de esta jornada" + "cuáles son traslados" estaba copiada casi
 // igual en renderCajaDiaria() y cerrarCaja().
+// SYNC:efectivo-esperado:inicio
+// Turno de efectivo (como Square/Toast): esperado en el cajón = fondo con que se abrió + efectivo neto de la jornada (ventas − gastos ± traslados).
+// Lo digital (Bancolombia, Nequi, Bold…) no está en el cajón: solo se muestra como informativo.
+function efectivoEsperado(fondo, sumMethod, efectivoId) {
+    const f = Math.max(0, Math.round(Number(fondo) || 0));
+    const ef = Math.round(Number((sumMethod || {})[efectivoId || 'efectivo']) || 0);
+    let digital = 0;
+    Object.keys(sumMethod || {}).forEach((k) => { if (k !== (efectivoId || 'efectivo')) digital += Math.round(Number(sumMethod[k]) || 0); });
+    return { fondo: f, efectivoNeto: ef, esperado: f + ef, digital };
+}
+// SYNC:efectivo-esperado:fin
+
 function _splitGastosDeJornada() {
     const todayStr = _diaBogota();
     const deLaJornada = _gastosCajaState.filter((g) => {
@@ -30179,6 +30191,7 @@ function renderCajaDiaria() {
     // Saldo neto por método de la jornada abierta — lo usa el modal de Traslado para saber
     // cuánta plata hay disponible para mover ahora mismo (ver _cajaDiariaSumMethod arriba).
     _cajaDiariaSumMethod = { ...sumMethod, [OTRO_PAYMENT_METHOD.id]: sumOtro };
+    _renderEfectivoEsperado(sumMethod);
 
     // Totales al pie
     if (footEl) {
@@ -30200,6 +30213,17 @@ function renderCajaDiaria() {
             <td class="foot-total" style="color:${gtColor};">${gtSign}${formatMoney(Math.abs(grandTotal))}</td>
         </tr>`;
     }
+}
+
+function _renderEfectivoEsperado(sumMethod) {
+    const el = document.getElementById('cajaEfectivoEsperado');
+    if (!el) return;
+    if (!(cajaAperturaAt > 0)) { el.hidden = true; el.innerHTML = ''; return; }
+    const r = efectivoEsperado(_cajaFondoInicial, sumMethod, 'efectivo');
+    const signo = (v) => (v < 0 ? '−' : '') + formatMoney(Math.abs(v));
+    el.hidden = false;
+    el.innerHTML = `<div class="ee-titulo">💵 Efectivo que debe haber en el cajón <strong>${signo(r.esperado)}</strong></div>
+        <div class="ee-detalle">Fondo ${signo(r.fondo)} + efectivo de la jornada ${signo(r.efectivoNeto)} (ventas − gastos ± traslados). Lo digital (${signo(r.digital)}) no está en el cajón.</div>`;
 }
 
 document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', async () => {
@@ -30504,9 +30528,57 @@ document.getElementById('cierreReprintBtn')?.addEventListener('click', async () 
     if (_cierrePrintHtml) await _printCierreTicket(_cierrePrintHtml);  // _cierrePrintData ya está seteado
 });
 
+// SYNC:conteo-cierre:inicio
+// Diferencia del conteo: contado − esperado (negativo = faltó plata, positivo = sobró). Solo informativo: no toca ningún total.
+function conteoDiferencia(esperado, contado) { return Math.round(Number(contado) || 0) - Math.round(Number(esperado) || 0); }
+// SYNC:conteo-cierre:fin
+
+// Pide contar el efectivo del cajón antes de cerrar. Devuelve el monto contado, o null si se omite.
+function _pedirConteoEfectivo(esperado) {
+    return new Promise((resolve) => {
+        document.getElementById('_conteoEfectivoOverlay')?.remove();
+        const ov = document.createElement('div');
+        ov.id = '_conteoEfectivoOverlay';
+        ov.className = 'vd-overlay';
+        ov.innerHTML = `<div class="vd-card"><button type="button" class="vd-x" data-ce-skip aria-label="Cerrar">×</button>
+            <h3 class="vd-title">💵 Cuenta el efectivo del cajón</h3>
+            <p class="vd-text">Debe haber <strong>${escapeHtml(formatMoney(esperado))}</strong> (fondo + efectivo de la jornada). Cuenta los billetes y monedas y escribe el total.</p>
+            <div class="vd-body"><input id="_ceMonto" class="vd-input" inputmode="numeric" placeholder="Efectivo contado" autocomplete="off">
+            <div id="_ceDif" class="vd-hint"></div>
+            <button type="button" class="informes-action-btn informes-action-btn--primary vd-btn" data-ce-ok>Registrar conteo</button>
+            <button type="button" class="informes-action-btn vd-btn" data-ce-skip>Cerrar sin contar</button></div></div>`;
+        document.body.appendChild(ov);
+        const inp = ov.querySelector('#_ceMonto');
+        const val = () => { const d = String(inp.value).replace(/\D/g, ''); return d === '' ? null : Number(d); };
+        const fin = (v) => { ov.remove(); resolve(v); };
+        inp.addEventListener('input', () => {
+            const v = val();
+            inp.value = v === null ? '' : v.toLocaleString('es-CO');
+            const dif = v === null ? null : conteoDiferencia(esperado, v);
+            ov.querySelector('#_ceDif').textContent = dif === null ? '' : (dif === 0 ? '✅ Cuadra exacto' : (dif < 0 ? `⚠️ Faltan ${formatMoney(-dif)}` : `ℹ️ Sobran ${formatMoney(dif)}`));
+        });
+        ov.addEventListener('click', (e) => {
+            if (e.target.closest('[data-ce-ok]')) { const v = val(); if (v === null) { inp.focus(); return; } fin(v); }
+            else if (e.target.closest('[data-ce-skip]')) fin(null);
+        });
+        inp.focus();
+    });
+}
+
 document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async () => {
     if (!_pendingCierreDoc) return;
     const { closureDoc, closureId, ticketHtml, dateStr, timeStr } = _pendingCierreDoc;
+
+    // Conteo del efectivo (opcional): queda guardado en el cierre con su diferencia; no cambia ningún total.
+    if (!closureDoc.efectivoContado && closureDoc.efectivoContado !== 0) {
+        const _esperado = efectivoEsperado(closureDoc.fondoInicial, closureDoc.methodTotals, 'efectivo').esperado;
+        const _contado = await _pedirConteoEfectivo(_esperado);
+        if (_contado !== null) {
+            closureDoc.efectivoEsperado = _esperado;
+            closureDoc.efectivoContado = _contado;
+            closureDoc.diferenciaEfectivo = conteoDiferencia(_esperado, _contado);
+        }
+    }
 
     // Deshabilitar primero para evitar doble clic mientras se abre selector BT o se imprime
     const confirmBtn = document.getElementById('cierreCajaConfirmBtn');

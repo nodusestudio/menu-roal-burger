@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261106-2018">
+    <link rel="stylesheet" href="style.css?v=20261110-1725">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -12137,6 +12137,10 @@
         .gasto-origen--info { border-color: rgba(96,165,250,0.45); background: rgba(96,165,250,0.09); }
         .gasto-origen--warn { border-color: rgba(251,191,36,0.55); background: rgba(251,191,36,0.10); color: #fde68a; }
         .dpm-method-saldo { display: block; font-size: 0.62rem; font-weight: 600; opacity: 0.65; margin-top: 2px; white-space: nowrap; }
+        .ee-panel { margin: 8px 12px 0; padding: 9px 12px; border-radius: 12px; background: rgba(34,197,94,0.10); border: 1px solid rgba(34,197,94,0.30); }
+        .ee-titulo { font-size: 0.9rem; color: rgba(255,255,255,0.9); display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+        .ee-titulo strong { color: #6ee7b7; font-size: 1.05rem; }
+        .ee-detalle { margin-top: 3px; font-size: 0.74rem; color: rgba(255,255,255,0.6); }
         .gasto-fuente-titulo { grid-column: 1 / -1; margin: 6px 2px 0; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.2px; color: rgba(255,255,255,0.78); }
         .gasto-fuente-titulo small { font-weight: 500; opacity: 0.6; }
         .dpm-method-btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -14692,6 +14696,7 @@
                                                     <strong data-cc-summary-amount>$0</strong>
                                                 </div>
                                             </div>
+                                            <div id="cajaEfectivoEsperado" class="ee-panel" hidden></div>
                                             <div class="table-scroll-hint">⇆ Desliza para ver todo</div>
                                             <div class="caja-ledger-wrap">
                                                 <table class="caja-ledger-table">
@@ -17439,19 +17444,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261106-2018"></script>
+    <script defer src="firebase-config.js?v=20261110-1725"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261106-2018"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261110-1725"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261106-2018"></script>
-    <script defer src="admin.js?v=20261106-2018"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-1725"></script>
+    <script defer src="admin.js?v=20261110-1725"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
