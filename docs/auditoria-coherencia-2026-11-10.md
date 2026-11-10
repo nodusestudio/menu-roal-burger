@@ -780,3 +780,20 @@ Capturas de Clientes, Configuración, Finanzas y Cupones con los estilos reales;
 
 ## 61. Lo que sigue pendiente de la Fase 5
 Los 6 modales con estructura propia (gasto, traslado, ajustar saldos, caja chica, abrir caja, categorías) y los botones con estilos pegados a mano dentro de plantillas JS (~79); un solo juego de íconos; formato de dinero del menú público y del agente.
+
+---
+---
+
+# PARTE 15 — Fase 5c: ventanas de dinero con una sola estructura
+
+## 62. Qué se hizo
+**Traslado**, **Ajustar saldos**, **«La caja está cerrada»** y **«Gastos pendientes»** se construían cada una con ~12 estilos pegados a mano (anchos 360/380/440 px, paddings y botones de colores distintos: índigo, ámbar). Ahora comparten **una estructura**: `vd-overlay` (fondo) → `vd-card` (tarjeta de esquinas 20 px, fondo oscuro) → `vd-x` (×) → `vd-title` → `vd-text` → campos `vd-input` con su `vd-label` → botón de confirmar con el **rol principal (naranja)** y los secundarios en gris.
+- Se conservan **todos los ids** (`trasladoFrom/To/Monto/ConfirmBtn/CloseBtn`, `ajusteSaldosClose/Confirm/Nota`, `data-ajuste-method`, `gcDesc/gcMonto`, `data-gc/data-gp`…): los manejadores y los cálculos no se tocaron.
+- Traslado ahora explica en una línea que «el total no cambia: solo cambia dónde está». Los campos tienen su etiqueta asociada (clic en la etiqueta enfoca el campo).
+- Los botones desactivados se ven desactivados (`opacity .5`) con una regla común, en vez de manejar la opacidad en JS.
+
+## 63. Verificación
+`tests/ventanas-dinero.e2e.mjs` (**24** comprobaciones en Chromium real con el **código real** de las 4 ventanas): estructura común, esquinas/fondo idénticos y sin estilos pegados, se cierran con × y tocando fuera, ids conservados, roles de botón, y el cálculo en vivo de «Ajustar saldos» (+$ 21.300 de ejemplo). Capturas revisadas. `tests/caja-presentacion.test.js` (11) vigila la estructura. 161 pruebas del despliegue + navegador (menú 26, gastos 19, Libro Contable 9, botones 15) + saldos/días, en verde. Foto del dinero **idéntica**.
+
+## 64. Pendiente de la Fase 5
+Los 3 modales de dinero con diseño propio de «pago» (**gasto** — 2 pasos, **caja chica** y **abrir caja**), ~79 botones con estilo en línea en plantillas JS, un solo juego de íconos, y el formato de dinero del menú público y del agente.

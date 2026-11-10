@@ -28744,32 +28744,30 @@ function _gpAlCambiarCaja() {
 }
 
 function _gpCerrarOverlay(id) { document.getElementById(id)?.remove(); }
-const _gpEstiloCaja = 'background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.5rem;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);position:relative;color:#fff;';
-const _gpEstiloInput = 'background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:9px 10px;font-size:0.88rem;outline:none;width:100%;box-sizing:border-box;';
 
 function openGastoCajaCerradaModal() {
     _gpCerrarOverlay('gastoCerradaModal');
     const overlay = document.createElement('div');
     overlay.id = 'gastoCerradaModal';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
-    overlay.innerHTML = `<div style="${_gpEstiloCaja}">
-        <button type="button" data-gc="cerrar" aria-label="Cerrar" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;">×</button>
-        <h3 style="margin:0 0 8px;font-size:1.02rem;font-weight:700;">🔒 La caja está cerrada</h3>
-        <p style="margin:0 0 14px;font-size:0.82rem;line-height:1.45;color:rgba(255,255,255,0.65);">Los gastos solo se registran con la caja abierta, para que cada peso quede en el cierre del día correcto. Puedes dejar un <strong>recordatorio</strong>: te lo muestro al abrir la próxima caja y lo registras con un toque.</p>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-            <label for="gcDesc" style="font-size:0.78rem;color:rgba(255,255,255,0.55);">¿Qué hay que registrar?</label>
-            <input id="gcDesc" type="text" maxlength="100" placeholder="Ej. Pollo y papas del proveedor" autocomplete="off" style="${_gpEstiloInput}">
-            <label for="gcMonto" style="font-size:0.78rem;color:rgba(255,255,255,0.55);">Monto <span style="opacity:.6;">(opcional)</span></label>
-            <input id="gcMonto" type="text" inputmode="numeric" placeholder="0" autocomplete="off" style="${_gpEstiloInput}">
-            <button type="button" data-gc="guardar" disabled style="margin-top:6px;padding:10px;background:rgba(255,180,60,0.22);color:#ffd79a;border:1px solid rgba(255,180,60,0.5);border-radius:10px;font-weight:700;cursor:pointer;opacity:.5;">Dejar recordatorio</button>
-            <button type="button" data-gc="abrir" style="padding:9px;background:rgba(34,197,94,0.16);color:#86efac;border:1px solid rgba(34,197,94,0.4);border-radius:10px;font-weight:600;cursor:pointer;">Abrir la caja ahora</button>
+    overlay.className = 'vd-overlay';
+    overlay.innerHTML = `<div class="vd-card">
+        <button type="button" data-gc="cerrar" class="vd-x" aria-label="Cerrar">×</button>
+        <h3 class="vd-title">🔒 La caja está cerrada</h3>
+        <p class="vd-text">Los gastos solo se registran con la caja abierta, para que cada peso quede en el cierre del día correcto. Puedes dejar un <strong>recordatorio</strong>: te lo muestro al abrir la próxima caja y lo registras con un toque.</p>
+        <div class="vd-body">
+            <label class="vd-label" for="gcDesc">¿Qué hay que registrar?</label>
+            <input id="gcDesc" class="vd-input" type="text" maxlength="100" placeholder="Ej. Pollo y papas del proveedor" autocomplete="off">
+            <label class="vd-label" for="gcMonto">Monto <span style="opacity:.6;">(opcional)</span></label>
+            <input id="gcMonto" class="vd-input" type="text" inputmode="numeric" placeholder="0" autocomplete="off">
+            <button type="button" data-gc="guardar" class="informes-action-btn informes-action-btn--primary vd-btn" disabled>Dejar recordatorio</button>
+            <button type="button" data-gc="abrir" class="informes-action-btn vd-btn">Abrir la caja ahora</button>
         </div>
     </div>`;
     document.body.appendChild(overlay);
     const desc = overlay.querySelector('#gcDesc');
     const monto = overlay.querySelector('#gcMonto');
     const guardar = overlay.querySelector('[data-gc="guardar"]');
-    const validar = () => { const ok = desc.value.trim().length >= 2; guardar.disabled = !ok; guardar.style.opacity = ok ? '1' : '.5'; };
+    const validar = () => { guardar.disabled = desc.value.trim().length < 2; };
     desc.addEventListener('input', validar);
     monto.addEventListener('input', () => {
         const n = monto.value.replace(/\D/g, '');
@@ -28803,18 +28801,18 @@ function openGastosPendientesModal() {
     if (!_gastosPendientes.length) return;
     const overlay = document.createElement('div');
     overlay.id = 'gastosPendientesModal';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.className = 'vd-overlay';
     const filas = () => _gastosPendientes.map((g) => `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,0.08);">
             <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.88rem;overflow-wrap:anywhere;">${escapeHtml(g.descripcion)}</div>
-                <div style="font-size:0.74rem;color:rgba(255,255,255,0.5);">${g.monto > 0 ? formatMoney(g.monto) : 'Sin monto'}${g.creadoAt ? ' · ' + new Date(g.creadoAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : ''}</div></div>
-            <button type="button" data-gp="registrar" data-id="${escapeHtml(g.id)}" style="padding:7px 12px;background:rgba(34,197,94,0.18);color:#86efac;border:1px solid rgba(34,197,94,0.4);border-radius:9px;font-weight:700;cursor:pointer;font-size:0.8rem;">Registrar</button>
-            <button type="button" data-gp="descartar" data-id="${escapeHtml(g.id)}" aria-label="Descartar" style="padding:7px 10px;background:rgba(239,68,68,0.12);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);border-radius:9px;cursor:pointer;font-size:0.8rem;">✕</button>
+                <div class="vd-hint">${g.monto > 0 ? formatMoney(g.monto) : 'Sin monto'}${g.creadoAt ? ' · ' + new Date(g.creadoAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : ''}</div></div>
+            <button type="button" data-gp="registrar" data-id="${escapeHtml(g.id)}" class="informes-action-btn informes-action-btn--primary">Registrar</button>
+            <button type="button" data-gp="descartar" data-id="${escapeHtml(g.id)}" class="informes-action-btn" aria-label="Descartar">✕</button>
         </div>`).join('');
     const pintar = () => {
-        overlay.innerHTML = `<div style="${_gpEstiloCaja}max-height:80vh;overflow:auto;">
-            <button type="button" data-gp="cerrar" aria-label="Cerrar" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;">×</button>
-            <h3 style="margin:0 0 4px;font-size:1.02rem;font-weight:700;">🔔 Gastos pendientes por registrar</h3>
-            <p style="margin:0 0 6px;font-size:0.78rem;color:rgba(255,255,255,0.55);">Se registran en la caja que está abierta ahora.</p>${filas()}</div>`;
+        overlay.innerHTML = `<div class="vd-card">
+            <button type="button" data-gp="cerrar" class="vd-x" aria-label="Cerrar">×</button>
+            <h3 class="vd-title">🔔 Gastos pendientes por registrar</h3>
+            <p class="vd-text" style="margin-bottom:6px;">Se registran en la caja que está abierta ahora.</p>${filas()}</div>`;
     };
     pintar();
     document.body.appendChild(overlay);
@@ -28875,23 +28873,20 @@ function openTrasladoModal(existingData = null, existingId = null) {
 
     const overlay = document.createElement('div');
     overlay.id = 'trasladoMetodoModal';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
-    overlay.innerHTML = `<div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.75rem;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);position:relative;">
-        <button type="button" id="trasladoCloseBtn" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
-        <h3 style="margin:0 0 20px;font-size:1rem;font-weight:700;color:#fff;">🔄 ${isEdit ? 'Editar traslado' : 'Traslado entre cuentas'}</h3>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-            <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Desde (origen)</label>
-            <select id="trasladoFrom" style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
-            <div id="trasladoFromBalance" style="font-size:0.74rem;color:rgba(255,255,255,0.4);margin-top:-6px;padding-left:2px;"></div>
-            <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Monto a trasladar</label>
-            <input id="trasladoMonto" type="text" inputmode="numeric" placeholder="500.000"
-                style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">
-            <label style="font-size:0.78rem;color:rgba(255,255,255,0.5);">Hacia (destino)</label>
-            <select id="trasladoTo" style="background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;">${optHtml}</select>
-            <button type="button" id="trasladoConfirmBtn"
-                style="margin-top:8px;padding:10px;background:rgba(99,102,241,0.22);color:#a5b4fc;border:1px solid rgba(99,102,241,0.45);border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;">
-                Confirmar traslado
-            </button>
+    overlay.className = 'vd-overlay';
+    overlay.innerHTML = `<div class="vd-card">
+        <button type="button" id="trasladoCloseBtn" class="vd-x" aria-label="Cerrar">×</button>
+        <h3 class="vd-title">🔄 ${isEdit ? 'Editar traslado' : 'Traslado entre cuentas'}</h3>
+        <p class="vd-text">Pasa plata de una cuenta a otra. El total no cambia: solo cambia dónde está.</p>
+        <div class="vd-body">
+            <label class="vd-label" for="trasladoFrom">Desde (origen)</label>
+            <select id="trasladoFrom" class="vd-input">${optHtml}</select>
+            <div id="trasladoFromBalance" class="vd-hint"></div>
+            <label class="vd-label" for="trasladoMonto">Monto a trasladar</label>
+            <input id="trasladoMonto" class="vd-input" type="text" inputmode="numeric" placeholder="500.000" autocomplete="off">
+            <label class="vd-label" for="trasladoTo">Hacia (destino)</label>
+            <select id="trasladoTo" class="vd-input">${optHtml}</select>
+            <button type="button" id="trasladoConfirmBtn" class="informes-action-btn informes-action-btn--primary vd-btn">Confirmar traslado</button>
         </div>
     </div>`;
     document.body.appendChild(overlay);
@@ -28986,7 +28981,7 @@ async function openAjusteSaldosModal() {
     const calc = _computeHistoricoSumMethod(true);
     const methods = [...getPaymentMethods(), OTRO_PAYMENT_METHOD];
     const fmtSigned = (v) => `${v < 0 ? '−' : ''}${formatMoney(Math.abs(v))}`;
-    const inputStyle = 'width:120px;background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:7px 9px;font-size:0.88rem;text-align:right;outline:none;';
+    const inputStyle = 'width:120px;text-align:right;';
 
     const rowsHtml = methods.map((m) => {
         const c = Number(calc[m.id] || 0);
@@ -28996,7 +28991,7 @@ async function openAjusteSaldosModal() {
                 <div style="font-size:0.88rem;font-weight:700;color:#fff;">${m.icon} ${escapeHtml(m.label)}</div>
                 <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);">Sistema: <span style="color:${color};font-weight:700;">${c === 0 ? '$0' : fmtSigned(c)}</span></div>
             </div>
-            <input type="text" inputmode="numeric" placeholder="Saldo real" autocomplete="off" data-ajuste-method="${escapeHtml(m.id)}" style="${inputStyle}">
+            <input type="text" inputmode="numeric" placeholder="Saldo real" autocomplete="off" data-ajuste-method="${escapeHtml(m.id)}" class="vd-input" style="${inputStyle}">
             <div></div>
             <div data-ajuste-delta="${escapeHtml(m.id)}" style="font-size:0.72rem;text-align:right;min-height:1em;color:rgba(255,255,255,0.4);"></div>
         </div>`;
@@ -29004,16 +28999,16 @@ async function openAjusteSaldosModal() {
 
     const overlay = document.createElement('div');
     overlay.id = 'ajusteSaldosModal';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
-    overlay.innerHTML = `<div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.5rem;max-width:440px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.65);position:relative;">
-        <button type="button" id="ajusteSaldosClose" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;" aria-label="Cerrar">×</button>
-        <h3 style="margin:0 0 6px;font-size:1rem;font-weight:700;color:#fff;">⚖️ Ajustar saldos</h3>
-        <p style="margin:0 0 10px;font-size:0.78rem;line-height:1.45;color:rgba(255,255,255,0.55);">Escribe cuánto hay <strong>realmente</strong> en cada cuenta. Solo se guarda la diferencia como un ajuste: <strong>no cuenta como ingreso ni como gasto</strong>. Deja vacío lo que no quieras cambiar.</p>
-        ${cajaAperturaAt ? '<p style="margin:0 0 10px;font-size:0.74rem;line-height:1.4;color:#fbbf24;">La caja de hoy está abierta: sus movimientos aún no están en estos saldos y se sumarán al cerrarla. Escribe el saldo real sin contarlos.</p>' : ''}
+    overlay.className = 'vd-overlay';
+    overlay.innerHTML = `<div class="vd-card vd-card--md">
+        <button type="button" id="ajusteSaldosClose" class="vd-x" aria-label="Cerrar">×</button>
+        <h3 class="vd-title">⚖️ Ajustar saldos</h3>
+        <p class="vd-text">Escribe cuánto hay <strong>realmente</strong> en cada cuenta. Solo se guarda la diferencia como un ajuste: <strong>no cuenta como ingreso ni como gasto</strong>. Deja vacío lo que no quieras cambiar.</p>
+        ${cajaAperturaAt ? '<p class="vd-aviso">La caja de hoy está abierta: sus movimientos aún no están en estos saldos y se sumarán al cerrarla. Escribe el saldo real sin contarlos.</p>' : ''}
         ${rowsHtml}
-        <label style="display:block;margin-top:12px;font-size:0.78rem;color:rgba(255,255,255,0.5);">Nota (opcional)</label>
-        <input id="ajusteSaldosNota" type="text" maxlength="200" placeholder="Ej: saldos iniciales / conteo del 21 de septiembre" autocomplete="off" style="width:100%;margin-top:4px;background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:8px 10px;font-size:0.85rem;outline:none;box-sizing:border-box;">
-        <button type="button" id="ajusteSaldosConfirm" style="margin-top:14px;width:100%;padding:10px;background:rgba(99,102,241,0.22);color:#a5b4fc;border:1px solid rgba(99,102,241,0.45);border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;">Guardar ajuste</button>
+        <label class="vd-label" for="ajusteSaldosNota" style="display:block;margin-top:12px;">Nota (opcional)</label>
+        <input id="ajusteSaldosNota" class="vd-input" type="text" maxlength="200" placeholder="Ej: saldos iniciales / conteo del 21 de septiembre" autocomplete="off" style="margin-top:4px;">
+        <button type="button" id="ajusteSaldosConfirm" class="informes-action-btn informes-action-btn--primary vd-btn" style="margin-top:14px;">Guardar ajuste</button>
     </div>`;
     document.body.appendChild(overlay);
 

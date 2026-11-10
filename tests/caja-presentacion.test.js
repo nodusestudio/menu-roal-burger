@@ -74,3 +74,15 @@ test('ningún botón de guardar es verde (el rol «principal» es naranja) y los
     assert.match(html, /button\.cat-new-save-btn \{ background: linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
     assert.match(html, /id="margenMinimoInput" class="admin-input"/);
 });
+
+test('las ventanas de dinero (traslado, ajustar saldos, caja cerrada, pendientes) usan la estructura común y no estilos pegados a mano', () => {
+    for (const id of ['trasladoMetodoModal', 'ajusteSaldosModal', 'gastoCerradaModal', 'gastosPendientesModal']) {
+        const i = js.indexOf(`overlay.id = '${id}';`);
+        assert.ok(i > 0, id);
+        const tramo = js.slice(i, i + 400);
+        assert.match(tramo, /overlay\.className = 'vd-overlay';/, `${id} debe usar vd-overlay`);
+        assert.ok(!/overlay\.style\.cssText/.test(tramo), `${id} no debe llevar estilos pegados a mano`);
+    }
+    assert.ok(!js.includes('_gpEstiloCaja') && !js.includes('_gpEstiloInput'));
+    assert.match(html, /\.vd-card \{ position: relative;/);
+});
