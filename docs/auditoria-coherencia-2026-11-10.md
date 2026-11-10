@@ -855,3 +855,20 @@ El menú ☰ «Acciones del pedido» solo existía dentro del ticket (había que
 
 ## 73. Verificación
 `tests/menu-tarjeta.e2e.mjs` (**22** comprobaciones en Chromium real con el código real de `createOrderCard`, del menú y del desplegable; estable en 3 corridas seguidas): ☰ en cada tarjeta, dentro y sin chocar, compacto, menú completo, dentro de la pantalla, no selecciona, Escape, editar productos y teléfono llegan al ticket con su campo, copiar mensaje, «Pedir domiciliario» solo en domicilios, «Cambiar mesa» solo en mesas. Capturas revisadas. No verificado con tu sesión real: la mesa ocupada del mapa (solo se comprobó su código) y el comportamiento en celular.
+
+---
+---
+
+# PARTE 19 — «¿De dónde sale la plata?» al registrar un gasto
+
+## 74. El problema (captura del dueño, 10-nov)
+Se registró un gasto de $10.209 por **Bancolombia** y en Caja de hoy salió −$10.209 en esa columna **sin que hoy hubiera entrado nada por Bancolombia**. El formulario no decía de dónde salía esa plata. (Contablemente es correcto —el saldo de Bancolombia es lo de hoy más lo de días anteriores—, pero no se veía ni se avisaba.)
+## 75. Qué se hizo
+- Cada método del formulario muestra lo **disponible** (hoy + saldo de días anteriores), p. ej. «Bancolombia · Disp. $ 723.325».
+- Al elegir método y monto aparece un aviso que **dice de dónde sale**: 💵 *de lo que entró hoy* (verde) · 📅 *mixto: una parte de hoy y el resto del saldo de días anteriores* (azul) · 📅 *«Hoy no ha entrado plata por Bancolombia: este gasto sale del saldo de días anteriores ($ 723.325)»* (azul) · ⚠️ *«No alcanza… quedaría en −$X»* (ámbar). También en pago dividido (una línea por método).
+- Si **no alcanza**, antes de registrar se pide confirmación («El saldo no alcanza… ¿Registrar de todos modos?»).
+- El gasto guarda **`origen`** (`hoy` / `mixto` / `saldo_anterior`) y `desdeSaldoAnterior` (y `saldoInsuficiente`): campos **solo informativos y nuevos**; el monto, el método, el tipo `caja` y todos los saldos son exactamente los de siempre.
+- En **Caja de hoy**, la fila del gasto lleva la marca «📅 saldo anterior $X» cuando salió (en todo o en parte) del saldo de días anteriores.
+- Los saldos se refrescan en segundo plano al abrir el formulario, para que «Disp.» y el aviso usen datos al día.
+## 76. Verificación
+`tests/gasto-origen.test.js` (9: el caso real, hoy alcanza, mixto, hoy en negativo, no alcanza, entradas raras, solo informativo, confirmación) y `tests/gasto-origen.e2e.mjs` (**11** en Chromium real con los números reales: hoy efectivo $19.000 / Bancolombia $0, saldo anterior efectivo $878.700 / Bancolombia $723.325). Capturas revisadas. Todas las pruebas del despliegue y de navegador en verde. No cambia ningún saldo ni total.

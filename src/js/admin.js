@@ -28581,6 +28581,49 @@ async function saveGasto(gasto) {
     await docRef.set({ ...gasto, registradoAt: firestoreNow() });
 }
 
+// ── ¿DE DÓNDE SALE LA PLATA DE UN GASTO? ──────────────────────────────────────────────────────────────────────────
+// Un gasto resta del saldo de su MÉTODO (efectivo, Bancolombia…). Ese saldo es lo que entró HOY por ese método más el saldo de días
+// anteriores. Si hoy no ha entrado nada por ese método, el gasto sale del saldo de días anteriores: el formulario lo dice y el
+// gasto guarda `origen` (hoy / mixto / saldo_anterior) y `desdeSaldoAnterior` para que se vea después en Caja de hoy.
+// SYNC:origen-gasto:inicio
+function gastoOrigen(monto, hoyNeto, saldoAnterior) {
+    const m = Math.round(Number(monto) || 0);
+    const hoyReal = Math.round(Number(hoyNeto) || 0);   // neto de hoy en ese método (puede ser negativo si ya se gastó más de lo que entró)
+    const ant = Math.round(Number(saldoAnterior) || 0);
+    const hoy = Math.max(0, hoyReal);
+    const deHoy = Math.min(m, hoy);
+    const desdeSaldoAnterior = m - deHoy;
+    const disponible = hoyReal + ant;
+    return {
+        monto: m, hoy, hoyReal, saldoAnterior: ant, disponible, deHoy, desdeSaldoAnterior,
+        origen: desdeSaldoAnterior === 0 ? 'hoy' : (deHoy === 0 ? 'saldo_anterior' : 'mixto'),
+        insuficiente: m > disponible, faltante: Math.max(0, m - disponible)
+    };
+}
+// SYNC:origen-gasto:fin
+function _gastoOrigenDe(metodo, monto) {
+    return gastoOrigen(monto, (_cajaDiariaSumMethod || {})[metodo], (_historicoSumMethod || {})[metodo]);
+}
+function _gastoOrigenTexto(metodo, o) {
+    const m = findPaymentMethodOrOtro(metodo);
+    const nombre = m ? `${m.icon} ${m.label}` : metodo;
+    if (o.insuficiente) return { clase: 'warn', texto: `⚠️ No alcanza: en ${nombre} hay ${formatMoney(o.disponible)} (hoy ${formatMoney(o.hoyReal)} + días anteriores ${formatMoney(o.saldoAnterior)}) y este gasto es de ${formatMoney(o.monto)}. El saldo quedaría en −${formatMoney(o.faltante)}.` };
+    if (o.origen === 'hoy') return { clase: 'ok', texto: `💵 Sale de lo que entró hoy en ${nombre} (hoy hay ${formatMoney(o.hoy)}).` };
+    if (o.origen === 'mixto') return { clase: 'info', texto: `📅 Hoy en ${nombre} solo hay ${formatMoney(o.hoy)}: ${formatMoney(o.deHoy)} sale de hoy y ${formatMoney(o.desdeSaldoAnterior)} del saldo de días anteriores (${formatMoney(o.saldoAnterior)}).` };
+    return { clase: 'info', texto: `📅 Hoy no ha entrado plata por ${nombre}: este gasto sale del saldo de días anteriores (${formatMoney(o.saldoAnterior)}).` };
+}
+function _gastoActualizarOrigen() {
+    const el = document.getElementById('gastoOrigenInfo');
+    if (!el) return;
+    const monto = _gastoMontoTotal();
+    const partes = _gastoSplitOn ? _gastoSplitPartes().map((p) => ({ metodo: p.method, monto: p.amount })) : (_gastoSelectedMethod ? [{ metodo: _gastoSelectedMethod, monto }] : []);
+    const lineas = partes.filter((p) => p.monto > 0).map((p) => _gastoOrigenTexto(p.metodo, _gastoOrigenDe(p.metodo, p.monto)));
+    if (!lineas.length) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    el.className = 'gasto-origen gasto-origen--' + (lineas.some((l) => l.clase === 'warn') ? 'warn' : lineas.some((l) => l.clase === 'info') ? 'info' : 'ok');
+    el.innerHTML = lineas.map((l) => `<div>${escapeHtml(l.texto)}</div>`).join('');
+}
+
 function renderGastoMethodButtons() {
     const grid = document.getElementById('gastoMethodsGrid');
     if (!grid) return;
@@ -28590,8 +28633,10 @@ function renderGastoMethodButtons() {
         `<button type="button" class="dpm-method-btn" data-gasto-method="${m.id}"${m.id === OTRO_PAYMENT_METHOD.id ? ' title="Saldo de métodos de pago anteriores que ya no existen en Configuración"' : ''}>
             <span class="dpm-method-icon">${m.icon}</span>
             <span>${m.label}</span>
+            <small class="dpm-method-saldo" title="Lo que hay hoy más el saldo de días anteriores">Disp. ${formatMoney(Number((_historicoSumMethod || {})[m.id] || 0) + Number((_cajaDiariaSumMethod || {})[m.id] || 0))}</small>
         </button>`
     ).join('');
+    if (_gastoSelectedMethod) grid.querySelector(`[data-gasto-method="${_gastoSelectedMethod}"]`)?.classList.add('dpm-method-btn--active');
 }
 
 // Pago dividido: un solo gasto (ej. un sueldo) repartido entre varios métodos. Se guarda un
@@ -28655,9 +28700,11 @@ function _updateGastoConfirmState() {
         const { falta } = _gastoSplitResumen();
         btn.disabled = !(monto > 0 && falta === 0 && _gastoSplitPartes().length > 0);
         _updateGastoSplitStatus();
+        _gastoActualizarOrigen();
         return;
     }
     btn.disabled = !(monto > 0 && _gastoSelectedMethod);
+    _gastoActualizarOrigen();
 }
 
 // Chips de subcategoría del paso 2 del modal de gasto — ordenadas alfabéticamente y con la
@@ -28956,6 +29003,8 @@ function openGastoModal(prefill) {
     if (!(cajaAperturaAt > 0)) { openGastoCajaCerradaModal(); return; }
     _gastoPrefill = prefill && typeof prefill.descripcion === 'string' ? prefill : null;
     _gastoPendienteEnCurso = _gastoPrefill ? (_gastoPrefill.pendienteId || null) : null;
+    // Los saldos acumulados se refrescan en segundo plano: así «Disp.» y «de dónde sale» usan datos al día.
+    loadCierresCaja().then(() => { renderGastoMethodButtons(); _gastoActualizarOrigen(); }).catch(() => { /* sin red: se usan los últimos saldos conocidos */ });
     _gastoSelectedMethod = null;
     _gastoCategoriaId = null;
     _gastoSubcategoria = null;
@@ -29513,9 +29562,27 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
         };
         // Un documento por método (con `grupoId` común si fue dividido): los saldos por método
         // y los informes siguen leyendo paymentMethod/monto sin cambios.
+        const _origenes = (partes.length > 1 ? partes.map((p) => ({ metodo: p.method, monto: p.amount })) : [{ metodo: partes.length === 1 ? partes[0].method : _gastoSelectedMethod, monto }])
+            .map((p) => ({ ...p, o: _gastoOrigenDe(p.metodo, p.monto) }));
+        const _noAlcanza = _origenes.filter((x) => x.o.insuficiente);
+        if (_noAlcanza.length) {
+            const si = await showConfirmModal({
+                title: 'El saldo no alcanza',
+                message: _noAlcanza.map((x) => _gastoOrigenTexto(x.metodo, x.o).texto).join(' ') + ' ¿Registrar de todos modos?',
+                confirmText: 'Registrar de todos modos'
+            });
+            if (!si) return;
+        }
         const docs = partes.length > 1
             ? partes.map((p, i) => ({ ...base, id: `${gastoId}_${i + 1}`, grupoId: gastoId, monto: p.amount, montoTotal: monto, paymentMethod: p.method }))
             : [{ ...base, id: gastoId, monto, paymentMethod: partes.length === 1 ? partes[0].method : _gastoSelectedMethod }];
+        // De dónde salió la plata (solo informativo: no cambia ningún saldo ni total). Se guarda ANTES de que el saldo de hoy cambie.
+        docs.forEach((d) => {
+            const o = _gastoOrigenDe(d.paymentMethod, d.monto);
+            d.origen = o.origen;
+            if (o.desdeSaldoAnterior > 0) d.desdeSaldoAnterior = o.desdeSaldoAnterior;
+            if (o.insuficiente) d.saldoInsuficiente = true;
+        });
         const gasto = partes.length > 1
             ? { ...base, id: gastoId, monto, paymentMethod: 'split', partes }
             : docs[0];
@@ -29850,7 +29917,8 @@ function renderCajaDiaria() {
             const gastoId = escapeHtml(g.id || '');
             const gastoTicketBtn = gastoId ? `<button type="button" class="mini-btn" data-gasto-ticket="${gastoId}" title="Ver e imprimir ticket" style="font-size:0.62rem;padding:0px 5px;margin-left:6px;">🖨️</button>` : '';
             const gastoDelBtn = gastoId ? `<button type="button" class="mini-btn remove" data-gasto-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:0px 5px;margin-left:2px;">🗑️</button>` : '';
-            const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}${gastoTicketBtn}${gastoDelBtn}`;
+            const origenStr = Number(g.desdeSaldoAnterior) > 0 ? ` <span class="gasto-origen-chip" title="Hoy no había suficiente en este método: ${escapeHtml(formatMoney(Number(g.desdeSaldoAnterior)))} salió del saldo de días anteriores">📅 saldo anterior ${escapeHtml(formatMoney(Number(g.desdeSaldoAnterior)))}</span>` : '';
+            const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}${origenStr}${gastoTicketBtn}${gastoDelBtn}`;
 
             rows.push(`<tr>
                 <td class="col-left" style="color:#fca5a5;">${hora}</td>
