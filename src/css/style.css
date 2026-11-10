@@ -9435,3 +9435,9 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
     border: 1px solid rgba(255, 255, 255, 0.28);
     color: inherit;
 }
+
+/* Cifras de dinero en las tablas de caja: nunca se parten en dos líneas ("−$" arriba y el monto abajo). */
+#libroCierresList td:not(.col-left),
+#libroCierresFoot td,
+#lcBody td:not(.col-left),
+#lcFoot td { white-space: nowrap; }

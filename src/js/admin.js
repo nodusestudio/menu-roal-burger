@@ -13494,7 +13494,7 @@ function renderMetricasProductos(period) {
         // Solo ventas reales: excluye anulados/voided y pedidos que nunca llegaron a pagarse
         // (mismo criterio que ya usa renderCajaDiaria) -- sin esto, un pedido anulado seguía
         // sumando al ranking de "más vendidos" y a los ingresos del catálogo para siempre.
-        if (order.voided || order.anulado) continue;
+        if (isOrderVoided(order)) continue;
         // isOrderPaid = el mismo criterio de Caja Diaria: un pedido web con el medio elegido pero sin cobrar ni cerrar
         // (paymentMethod puesto por el cliente) ya no cuenta como venta en el ranking.
         if (order.source === 'cuenta_por_cobrar') continue;
@@ -13771,7 +13771,7 @@ function renderMetricsPos() {
     // pedidos anulados o todavia pendientes de cobro.
     const posOrdersAll = _metricsOrdersOrFallback().filter(o =>
         (o.isAdminOrder || o.source === 'admin_pos')
-        && !o.voided && !o.anulado
+        && !isOrderVoided(o)
         && o.paymentMethod && o.paymentMethod !== 'pendiente'
     );
     // Selector de fechas estándar: resumen y gráficos siguen el rango; las tarjetas fijas Hoy/Semana/Mes usan todos.
@@ -14076,6 +14076,24 @@ function formatMoney(value) {
 // para ese cálculo evita que una copia quede desactualizada respecto a las demás.
 function _tsMs(value) {
     return value?.toMillis ? value.toMillis() : Number(value || 0);
+}
+
+// ÚNICA forma de obtener "el día" de un instante: día de calendario en hora de Colombia (UTC−5, sin horario de
+// verano) como 'AAAA-MM-DD'. Nunca usar toISOString() directo (da el día UTC: desde las 7 p. m. ya es "mañana")
+// ni la zona del navegador. Sin argumento = ahora.
+function _diaBogota(ms) {
+    const t = (ms === undefined || ms === null) ? Date.now() : Number(ms);
+    return new Date(t - 5 * 3600000).toISOString().slice(0, 10);
+}
+// Instante que decide a qué DÍA pertenece un cierre: cuando se ABRIÓ la caja, no cuando se cerró (regla del dueño:
+// una caja olvidada que se cierra al otro día al mediodía sigue siendo del día en que se vendió).
+function _cierreDiaMs(c) {
+    return _tsMs(c?.aperturaAt) || _tsMs(c?.closedAt) || 0;
+}
+// Un pedido anulado puede venir marcado con `voided` o con `anulado` (dos banderas para lo mismo): esta es la
+// única forma de preguntarlo.
+function isOrderVoided(order) {
+    return !!(order && (order.voided || order.anulado));
 }
 
 function formatOrderTime(value) {
@@ -15869,7 +15887,7 @@ function renderSalesDayBanner() {
     const aperturaHoy = cajaAperturaAt && aperturaHoyStr === todayStr;
     const paidOrders = ordersState.filter((o) => {
         if (o.voided || o.anulado) return false;
-        if (!isOrderPaid(o) || esPorCobrar(o)) return false;
+        if (!isOrderPaidReal(o)) return false;
         const paidMs = _tsMs(o.paidAt);
         if (!paidMs) return false;
         const _paidDate = new Date(paidMs);
@@ -16005,7 +16023,7 @@ function buildCierresExportRows(cierres) {
     // export es por cierre, así que el gasto del día se atribuye al ÚLTIMO cierre de ese
     // día (el que cierra la jornada, mayor closedAt) y los cierres anteriores del mismo
     // día quedan en 0. Así la columna suma exacto contra la fila de TOTALES del export.
-    const _localDayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const _localDayKey = (ms) => _diaBogota(ms); // día en hora Colombia (mismo criterio que la pantalla)
     const gastosPorDia = {};
     (_gastosExternosState || []).forEach((g) => {
         const ms = _tsMs(g.registradoAt);
@@ -16017,7 +16035,7 @@ function buildCierresExportRows(cierres) {
     cierres.forEach((c) => {
         const ms = _tsMs(c.closedAt);
         if (!ms) return;
-        const dk = _localDayKey(ms);
+        const dk = _localDayKey(_cierreDiaMs(c)); // el día de un cierre es el de su apertura
         if (ms > (maxClosedMsPorDia[dk] || 0)) maxClosedMsPorDia[dk] = ms;
     });
     const _diaReclamado = new Set();
@@ -16035,7 +16053,7 @@ function buildCierresExportRows(cierres) {
         row.total_neto = Number(c.grandTotal ?? (bruto - row.egresos));
 
         const cMs = _tsMs(c.closedAt);
-        const dk = cMs ? _localDayKey(cMs) : null;
+        const dk = cMs ? _localDayKey(_cierreDiaMs(c)) : null;
         let gastosDia = 0;
         if (dk && !_diaReclamado.has(dk) && cMs === maxClosedMsPorDia[dk]) {
             gastosDia = gastosPorDia[dk] || 0;
@@ -16058,7 +16076,7 @@ function exportCierresHistorial(format) {
     };
     let cierres = [..._cierresCajaState];
     if (from || to) {
-        cierres = cierres.filter((c) => inRange(_tsMs(c.closedAt)));
+        cierres = cierres.filter((c) => inRange(_cierreDiaMs(c)));
     }
     if (!cierres.length) {
         showNotice('No hay cierres en el historial para exportar con el filtro actual.', 'error');
@@ -16079,8 +16097,8 @@ function exportCierresHistorial(format) {
     // desaparecer del export van como filas propias "Gastos sin cierre asociado" (una por día).
     // Así SÍ suman en la fila de TOTALES y la columna "Resultado neto real" sigue cuadrando
     // celda por celda contra el total. Se acotan al mismo rango de fechas que los cierres.
-    const _localDayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-    const _diasConCierre = new Set(cierres.map((c) => _tsMs(c.closedAt)).filter(Boolean).map(_localDayKey));
+    const _localDayKey = (ms) => _diaBogota(ms); // día en hora Colombia (mismo criterio que la pantalla)
+    const _diasConCierre = new Set(cierres.map((c) => _cierreDiaMs(c)).filter(Boolean).map(_localDayKey));
     const _huerfanosPorDia = {};
     (_gastosExternosState || []).forEach((g) => {
         const ms = _tsMs(g.registradoAt);
@@ -19365,7 +19383,7 @@ async function _cxcCargar() {
     const mapa = new Map();
     a.docs.forEach((d) => mapa.set(d.id, { ...normalizeOrder({ id: d.id, ...d.data() }), _col: ORDERS_COLLECTION }));
     b.docs.forEach((d) => mapa.set(d.id, { ...normalizeOrder({ id: d.id, ...d.data() }), _col: ORDERS_ARCHIVE_COLLECTION }));
-    _cxcOrdenes = [...mapa.values()].filter((o) => !o.anulado && !o.voided).sort((x, y) => _tsMs(y.createdAt) - _tsMs(x.createdAt));
+    _cxcOrdenes = [...mapa.values()].filter((o) => !isOrderVoided(o)).sort((x, y) => _tsMs(y.createdAt) - _tsMs(x.createdAt));
 }
 
 function _cxcRender() {
@@ -27347,12 +27365,12 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate, opts = 
             try { await reloadDataAndRender(); } catch (_) { /* se refresca solo */ }
             return;
         }
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = _diaBogota();
         const paidSinceApertura = ordersState.filter((o) => {
             if (!o.paidAt) return false;
             const ms = typeof o.paidAt.toMillis === 'function' ? o.paidAt.toMillis() : Number(o.paidAt);
             if (cajaAperturaAt) return ms >= cajaAperturaAt;
-            return new Date(ms).toISOString().split('T')[0] === todayStr;
+            return _diaBogota(ms) === todayStr;
         }).length;
 
         // paymentUpdate trae paidAt como FieldValue.serverTimestamp() (un sentinela, no un
@@ -28170,12 +28188,12 @@ let _gastoFromHistorial = false;
 // de "cuáles gastos son de esta jornada" + "cuáles son traslados" estaba copiada casi
 // igual en renderCajaDiaria() y cerrarCaja().
 function _splitGastosDeJornada() {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = _diaBogota();
     const deLaJornada = _gastosCajaState.filter((g) => {
         if (g.tipo === 'externo' || g.tipo === 'ajuste') return false;
         const ms = _tsMs(g.registradoAt);
         if (cajaAperturaAt) return ms >= cajaAperturaAt;
-        return new Date(ms).toISOString().split('T')[0] === todayStr;
+        return _diaBogota(ms) === todayStr;
     });
     return {
         gastos: deLaJornada.filter((g) => g.tipo !== 'traslado'),
@@ -29084,7 +29102,7 @@ function renderCajaDiaria() {
 
     // Filtrar cobros de la jornada actual; usa deliveredAt como fallback de timestamp
     const allPaid = ordersState.filter((o) => {
-        if (!isOrderPaid(o) || esPorCobrar(o)) return false;
+        if (!isOrderPaidReal(o)) return false;
         const ts = o.paidAt || o.deliveredAt || o.createdAt;
         const paidMs = _tsMs(ts);
         if (!paidMs) return false;
@@ -29761,14 +29779,14 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
         document.getElementById('cierreSidePanel')?.setAttribute('hidden', '');
 
         // Re-derivar pedidos pagados de la jornada cerrada para eliminar los procesados
-        const _todayStr2 = new Date().toISOString().split('T')[0];
+        const _todayStr2 = _diaBogota();
         const paid = ordersState.filter((o) => {
             if (!isOrderPaid(o)) return false;
             const ts = o.paidAt || o.deliveredAt || o.createdAt;
             const ms = _tsMs(ts);
             if (!ms) return false;
             if (_aperturaAnterior) return ms >= _aperturaAnterior;
-            return new Date(ms).toISOString().split('T')[0] === _todayStr2;
+            return _diaBogota(ms) === _todayStr2;
         });
 
         // Archivar (no borrar) los pedidos procesados de la jornada cerrada: se copian a
@@ -29934,16 +29952,16 @@ async function cerrarCaja() {
 
     try {
         const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
+        const todayStr = _diaBogota(today.getTime());
 
         // Mismo filtro que renderCajaDiaria; usa deliveredAt como fallback de timestamp
         const paid = ordersState.filter((o) => {
-            if (!isOrderPaid(o) || esPorCobrar(o)) return false;
+            if (!isOrderPaidReal(o)) return false;
             const ts = o.paidAt || o.deliveredAt || o.createdAt;
             const ms = _tsMs(ts);
             if (!ms) return false;
             if (cajaAperturaAt) return ms >= cajaAperturaAt;
-            return new Date(ms).toISOString().split('T')[0] === todayStr;
+            return _diaBogota(ms) === todayStr;
         });
 
         if (!paid.length) {
@@ -30044,12 +30062,13 @@ async function cerrarCaja() {
         const cfg = brandingState || {};
 
         const closedAt = firestoreNow();
-        const closureId = `cierre_${todayStr}_${Date.now()}`;
+        const diaCierre = cajaAperturaAt ? _diaBogota(cajaAperturaAt) : todayStr; // día de la jornada (cuándo se abrió), hora Colombia
+        const closureId = `cierre_${diaCierre}_${Date.now()}`;
 
         const closureDoc = {
             id: closureId,
             closedAt,
-            date: todayStr,
+            date: diaCierre,
             aperturaAt: cajaAperturaAt || null,
             aperturaBy: _cajaAperturaBy || '',
             fondoInicial: _cajaFondoInicial || 0,
@@ -30887,7 +30906,7 @@ async function renderLibroCierres() {
             return true;
         };
         if (from || to) {
-            cierres = cierres.filter((c) => _inRange(_tsMs(c.closedAt)));
+            cierres = cierres.filter((c) => _inRange(_cierreDiaMs(c)));
             gastosExternos = gastosExternos.filter((g) => _inRange(_tsMs(g.registradoAt)));
             trasladosHistorial = trasladosHistorial.filter((t) => _inRange(_tsMs(t.registradoAt)));
             ajustesHistorial = ajustesHistorial.filter((a) => _inRange(_tsMs(a.registradoAt)));
@@ -30914,7 +30933,7 @@ async function renderLibroCierres() {
         let grandSumIngresos = 0;
 
         // Agrupar gastos externos por día de calendario (hora local, no UTC)
-        const _localDayKey = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+        const _localDayKey = (ms) => _diaBogota(ms);
         const _gasByDay = {};
         gastosExternos.forEach((g) => {
             const ms = _tsMs(g.registradoAt);
@@ -30949,14 +30968,14 @@ async function renderLibroCierres() {
             return tsB - tsA;
         });
 
-        const _dayOf = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+        const _dayOf = (ms) => _diaBogota(ms);
 
         // ── PASO 1: Agrupar entradas por día y acumular totales globales ──
         const _dayGroups = {};
         const _dayOrder  = [];
         allEntries.forEach((entry) => {
             const ms = entry._tipo === 'cierre'
-                ? (_tsMs(entry.closedAt))
+                ? _cierreDiaMs(entry)
                 : (entry._ts || 0);
             const dk = ms ? _dayOf(ms) : '_nd';
             if (!_dayGroups[dk]) {
@@ -31024,13 +31043,27 @@ async function renderLibroCierres() {
             }
         });
 
+        // Los días van del más reciente al más antiguo por su FECHA (un cierre olvidado, hecho al otro día, no debe descolocar el orden).
+        _dayOrder.sort((a, b) => (a === '_nd') - (b === '_nd') || (a < b ? 1 : a > b ? -1 : 0));
+
+        // ── CANDADO DE DINERO (Fase 1): el módulo puro hace la misma cuenta; si algún día difiere de lo que
+        // se pintó, queda aviso en la consola (F12) sin tocar lo que ve el usuario. Solo sin filtro de fechas.
+        try {
+            if (!from && !to && window.CajaSaldos) {
+                const ref = window.CajaSaldos.calcularSaldosHistorial({ cierres, gastos: [...gastosExternos, ...trasladosHistorial, ...ajustesHistorial], methodKeys });
+                const dif = [...methodKeys.map((k) => [k, ref.porMetodo[k], sumTotals[k]]), ['otro', ref.otro, sumOtro], ['totalNeto', ref.totalNeto, grandSumTotal]]
+                    .filter(([, a, b]) => Math.round(Number(a || 0)) !== Math.round(Number(b || 0)));
+                if (dif.length) console.error('[Caja] Los saldos del módulo puro NO coinciden con la pantalla del Historial:', dif);
+            }
+        } catch (e) { console.warn('[Caja] No se pudo verificar los saldos:', e); }
+
         // ── PASO 2: Renderizar por grupo de día ──
         tbody.innerHTML = _dayOrder.map((dk) => {
             const dg = _dayGroups[dk];
             const groupId = `dayg_${dk.replace(/-/g, '')}`;
             const dayMs = dg.ms;
-            const diaStr = dayMs ? DIAS[new Date(dayMs).getDay()] : '—';
-            const dl = dayMs ? new Date(dayMs).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : dk;
+            const diaStr = dayMs ? DIAS[new Date(dk + 'T12:00:00Z').getUTCDay()] : '—';
+            const dl = dayMs ? new Date(dk + 'T12:00:00Z').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : dk;
 
             const daySepRow = `<tr style="background:rgba(255,255,255,0.022);border-top:2px solid rgba(255,255,255,0.1);"><td colspan="${totalCols}" style="padding:5px 14px 4px;font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.32);font-weight:700;">${dl}</td></tr>`;
 
@@ -31407,10 +31440,7 @@ function _renderLcTable() {
     const getEgr = (c) => Number(c.gastosTotal   ?? 0);
 
     const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-    const dayOf = (ms) => {
-        const d = new Date(ms);
-        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    };
+    const dayOf = (ms) => _diaBogota(ms);
 
     // Agrupar por día de calendario
     const dayGroups = {};
@@ -31423,7 +31453,8 @@ function _renderLcTable() {
 
     _cierresCajaState.forEach((c) => {
         const ms = getMs(c); if (!ms) return;
-        const dg = addDay(dayOf(ms), ms);
+        const msDia = _cierreDiaMs(c) || ms; // el día del cierre es el de su apertura
+        const dg = addDay(dayOf(msDia), msDia);
         dg.cierres.push(c);
         dg.ingT += getIng(c);
         dg.gasT += getEgr(c);
@@ -31471,9 +31502,9 @@ function _renderLcTable() {
 
     lcBody.innerHTML = dayOrder.map((dk) => {
         const dg = dayGroups[dk];
-        const d  = new Date(dg.ms);
-        const diaStr = DIAS[d.getDay()];
-        const fecha  = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const d  = new Date(dk + 'T12:00:00Z');
+        const diaStr = DIAS[d.getUTCDay()];
+        const fecha  = d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
         const gid    = `lcday_${dk.replace(/-/g, '')}`;
         const netC   = dg.netT >= 0 ? '#ff9540' : '#fca5a5';
 
@@ -32165,7 +32196,7 @@ document.getElementById('ticketPreviewModal')?.addEventListener('click', async (
 
 // Pre-load today in date filters and auto-load on tab open
 (function initTicketsDateDefaults() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _diaBogota();
     const fromEl = document.getElementById('ticketsDateFrom');
     const toEl   = document.getElementById('ticketsDateTo');
     if (fromEl && !fromEl.value) fromEl.value = today;

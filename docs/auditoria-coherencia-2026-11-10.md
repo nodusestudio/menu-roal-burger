@@ -512,3 +512,43 @@ de CSS y puede ir en la Fase 1.
   `gastos_externos 8e07c5ce78388b3d` · `traslados ec70683c0a9e2251` · `ajustes 35aeb1d63d0d169b`.
   (Las de caja chica y estado de caja cambian a diario: no son de historial.)
 - `admin.js` todavía no usa el módulo; pasa a delegar en él en la Fase 1.
+
+---
+---
+
+# PARTE 6 — Fase 1 (una sola verdad de cálculo): hecha en código, sin desplegar
+
+## 26. Correcciones a lo dicho antes (por honestidad)
+- **§9 estaba equivocado en un punto:** las ventas de Métricas **no** sufren el corrimiento UTC (usan `rangoMs`, que ya es hora Bogotá).
+  Las líneas `11552-11592` que cité son el **tráfico de visitas web**, que `tracking.js` guarda con fecha UTC y el panel lee con la misma
+  (coherentes entre sí; solo hace que "visitas de hoy" se reinicie a las 7 p. m.). No toca dinero; se deja para una fase posterior.
+- `20237` (`_cdAddDays`) usa `Date.UTC` a propósito para sumar días: no es un error.
+- **Los sitios UTC que sí afectaban** eran 5: 4 en el flujo de caja (cobro, gastos de jornada, preparar cierre, archivar al cerrar) cuando
+  la caja no está abierta, y el filtro por defecto de **Tickets** (después de las 7 p. m. mostraba "mañana", o sea vacío).
+
+## 27. Qué se cambió (archivos: `src/js/admin.js`, `admin.html`, `src/css/style.css`, `src/js/caja/saldos.js`)
+| # | Cambio | Efecto en el dinero |
+|---|---|---|
+| 1 | `_diaBogota(ms)`: única forma de obtener "el día" (hora Colombia). Reemplaza los 5 usos de `toISOString()` | Ninguno en totales; corrige el día con la caja cerrada y el filtro de Tickets |
+| 2 | `_cierreDiaMs(c)`: el día de un cierre es el de su **apertura** (regla del dueño) | **Solo reagrupa**: Historial de Cajas, Libro Contable, filtro de fechas y exports por día |
+| 3 | `isOrderVoided(o)` en los 3 sitios que miraban `voided` y `anulado` juntos | Igual que antes (mismo criterio exacto) |
+| 4 | `!isOrderPaid(o) \|\| esPorCobrar(o)` → `!isOrderPaidReal(o)` (3 sitios) | Equivalencia exacta |
+| 5 | Cierres **nuevos**: `date` e id del cierre usan el día de apertura en hora Colombia (antes UTC del cierre) | Solo etiqueta de documentos nuevos; los viejos no se tocan |
+| 6 | Cifras de dinero de las tablas de caja con `white-space:nowrap` | Solo visual: ya no se parten en dos líneas |
+| 7 | **Candado en vivo:** el Historial compara su propia suma con `saldos.js` y, si difieren, avisa en consola (F12) | Ninguno; no cambia lo que se ve |
+
+## 28. Verificación hecha
+- Foto del dinero después de los cambios vs antes: **idéntica** (huellas y totales). No se escribió nada en Firestore.
+- Reagrupación medida con los 129 cierres reales: **20 cierres (15 %) cambian de día** (los que se abren un día y se cierran otro, p. ej. abierto 2-nov,
+  cerrado 3-nov 11:56 a. m.). La suma total por día **antes = después = $65.889.870**; cambia el reparto entre días (36 días), no el total.
+- `saldos.test.js` (19 comprobaciones) y `calculos.test.js` en verde. Pruebas que ya fallaban antes de tocar nada (`cupon-editor`, `cupon-pana`,
+  `firestore.rules`, `loyalty-cancellation`, `mesero-auth`, `whatsapp-links`): **mismos conteos de falla antes y después** (necesitan emulador o ya estaban rotas).
+- Compila con esbuild sin errores.
+- **No verificado:** el panel en pantalla (exige iniciar sesión); falta comprobarlo con la sesión del dueño tras el despliegue.
+
+## 29. Lo que queda de la Fase 1 (a propósito, por requerir datos o decisión)
+- **Lecturas de total** (`Number(o.total||0)` ≈16 sitios vs `getOrderDisplayTotal`): difieren solo en pedidos sin `total`; se unifican cuando la foto confirme
+  que ningún pedido real carece de `total` (si hay alguno, cambiaría una suma y se avisa antes).
+- **Escritura de las dos banderas** (`anulado`/`voided`): hoy se lee con un solo criterio; escribir siempre ambas es un cambio de datos nuevos → decidir.
+- **Constantes de negocio compartidas** ($2.000 empaque, $7.000 combo, valor del punto) y **un solo `formatCOP`**: tocan menú público, servidor y agente; van en su propio paso con pruebas de paridad.
+- El módulo `saldos.js` **verifica** pero aún no **pinta**; pasará a pintar en la Fase 4 (Movimientos unificados).

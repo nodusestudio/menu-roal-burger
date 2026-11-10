@@ -104,3 +104,9 @@ export function totalNetoLibroContable({ cierres, gastos }) {
     const ext = gastos.filter((g) => g.tipo === 'externo').reduce((s, g) => s + _num(g.monto), 0);
     return ing - (egr + ext);
 }
+
+// Puente para admin.js (script clásico): lo usa SOLO como verificación en vivo del Historial de Cajas
+// (renderLibroCierres compara su cuenta con esta; si difieren, avisa en la consola). No pinta nada.
+if (typeof window !== 'undefined') {
+    window.CajaSaldos = { calcularSaldosHistorial, totalNetoLibroContable, cierreDescuadreSinMetodo, trasladoEnCierreCerrado };
+}
