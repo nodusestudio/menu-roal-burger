@@ -25,7 +25,7 @@ test('Configuración: las descripciones usan .card-desc, no estilos en línea', 
     assert.ok((config.match(/class="card-desc"/g) || []).length >= 8);
 });
 test('Configuración: los botones de acción usan el juego de roles (no clases sueltas)', () => {
-    for (const id of ['horarioSaveBtn', 'buttonSaveBtn', 'bizSaveBarBtn', 'newCatGastoSaveBtn']) {
+    for (const id of ['buttonSaveBtn', 'bizSaveBarBtn', 'newCatGastoSaveBtn']) {
         assert.match(config, new RegExp(`<button[^>]*(?:id="${id}"[^>]*class="informes-action-btn informes-action-btn--primary"|class="informes-action-btn informes-action-btn--primary"[^>]*id="${id}")`), id);
     }
     for (const id of ['bizChangePasswordBtn', 'supervisorPinSaveBtn']) assert.match(config, new RegExp(`<button[^>]*class="informes-action-btn"[^>]*id="${id}"`), id);
@@ -52,4 +52,14 @@ test('los botones mini y de retraer no llevan tamaño de letra ni relleno en lí
 test('los botones de la ventana del ticket de gasto usan los roles, no un fondo pegado a mano', () => {
     assert.match(html, /class="informes-action-btn informes-action-btn--primary" id="gastoTicketPreviewPrintBtn"/);
     assert.match(html, /class="informes-action-btn" id="gastoTicketPreviewCloseBtn2"/);
+});
+
+test('Configuración: Negocio y Horario se ven BLOQUEADOS con «Editar» y vuelven al modo guardado al guardar o cancelar', () => {
+    assert.match(js, /function initFormBloqueado\(formEl, opts\)/);
+    assert.match(js, /const brandingLock = initFormBloqueado\(brandingForm, \{ onCancel: \(\) => renderBrandingForm\(\) \}\);/);
+    assert.match(js, /const horarioLock = initFormBloqueado\(horarioFormEl, \{ onCancel: \(\) => renderHorarioForm\(\) \}\);/);
+    assert.match(js, /brandingLock\.lock\(\);/);
+    assert.match(js, /horarioLock\.lock\(\);/);
+    assert.ok(!/id="horarioSaveBtn"[^>]*class=/.test(html) && /id="horarioSaveBtn" hidden/.test(html), 'el botón viejo de guardar horario queda oculto (lo reemplaza «Guardar cambios»)');
+    assert.ok(html.includes('.form-bloqueable.is-locked'));
 });

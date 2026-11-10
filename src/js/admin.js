@@ -27138,6 +27138,53 @@ function initDirtyForm(formEl, saveBtnId) {
     return { markClean, markDirty };
 }
 
+// SYNC:form-bloqueado:inicio
+// Modo lectura / edición (como Stripe, Square, Atlassian, PatternFly): la información se ve BLOQUEADA, con un botón «Editar»;
+// al editar aparecen «Cancelar» y «Guardar cambios»; al guardar (o cancelar) vuelve al modo guardado.
+function initFormBloqueado(formEl, opts) {
+    if (!formEl) return { lock() {}, unlock() {}, isEditing: () => false };
+    const o = opts || {};
+    const bar = document.createElement('div');
+    bar.className = 'lock-bar';
+    bar.innerHTML = '<span class="lock-estado"></span><span class="lock-acciones">'
+        + '<button type="button" class="informes-action-btn" data-lock="editar">✏️ Editar</button>'
+        + '<button type="button" class="informes-action-btn" data-lock="cancelar" hidden>Cancelar</button>'
+        + '<button type="button" class="informes-action-btn informes-action-btn--primary" data-lock="guardar" hidden disabled>Guardar cambios</button></span>';
+    formEl.insertBefore(bar, formEl.firstChild);
+    formEl.classList.add('form-bloqueable');
+    const q = (k) => bar.querySelector(`[data-lock="${k}"]`);
+    const campos = () => [...formEl.querySelectorAll('input, select, textarea')].filter((c) => c.type !== 'hidden' && c.type !== 'submit');
+    let editando = false;
+    function aplicar() {
+        formEl.classList.toggle('is-locked', !editando);
+        formEl.classList.toggle('is-editing', editando);
+        campos().forEach((c) => {
+            if (c.dataset.lockReadonly === '1') return;
+            if (!c.dataset.ph && c.placeholder) c.dataset.ph = c.placeholder;
+            c.disabled = !editando;
+            if (c.dataset.ph) c.placeholder = editando ? c.dataset.ph : 'Sin definir';
+            if (!editando && c.type !== 'checkbox' && c.type !== 'radio') c.title = c.value || '';
+        });
+        q('editar').hidden = editando; q('cancelar').hidden = !editando; q('guardar').hidden = !editando; q('guardar').disabled = true;
+        bar.querySelector('.lock-estado').textContent = editando ? '✏️ Editando — los cambios se aplican al pulsar «Guardar cambios»' : '🔒 Guardado';
+        bar.classList.toggle('is-editing', editando);
+    }
+    const api = {
+        isEditing: () => editando,
+        lock() { editando = false; aplicar(); },
+        unlock() { editando = true; aplicar(); const p = campos().find((c) => !c.disabled && c.type !== 'checkbox'); if (p) p.focus(); },
+    };
+    q('editar').addEventListener('click', () => api.unlock());
+    q('cancelar').addEventListener('click', () => { if (o.onCancel) o.onCancel(); api.lock(); });
+    q('guardar').addEventListener('click', () => formEl.requestSubmit());
+    const sucio = () => { if (editando) q('guardar').disabled = false; };
+    formEl.addEventListener('input', sucio); formEl.addEventListener('change', sucio);
+    formEl.addEventListener('keydown', (e) => { if (e.key === 'Escape' && editando) { e.stopPropagation(); q('cancelar').click(); } });
+    api.lock();
+    return api;
+}
+// SYNC:form-bloqueado:fin
+
 const brandingDirty = initDirtyForm(brandingForm, 'brandingSaveBtn');
 
 // ── Save bar del panel Negocio ─────────────────────────────────────────────
@@ -27145,8 +27192,7 @@ const _bizSaveBar = document.getElementById('bizSaveBar');
 const _bizSaveBarBtn = document.getElementById('bizSaveBarBtn');
 function _bizShowSaveBar() { if (_bizSaveBar) _bizSaveBar.hidden = false; }
 function _bizHideSaveBar() { if (_bizSaveBar) _bizSaveBar.hidden = true; }
-brandingForm.addEventListener('input', _bizShowSaveBar);
-brandingForm.addEventListener('change', _bizShowSaveBar);
+const brandingLock = initFormBloqueado(brandingForm, { onCancel: () => renderBrandingForm() });
 if (_bizSaveBarBtn) _bizSaveBarBtn.addEventListener('click', () => brandingForm.requestSubmit());
 
 // ── Cambio de contraseña (Firebase Auth) ───────────────────────────────────
@@ -27303,6 +27349,7 @@ brandingForm.addEventListener('submit', async (event) => {
         renderBrandingForm();
         brandingDirty.markClean();
         _bizHideSaveBar();
+        brandingLock.lock();
         showNotice('Informacion del negocio guardada.', 'ok');
     } catch (error) {
         showNotice(`No se pudo guardar la configuracion: ${error.message || 'Error inesperado.'}`, 'error');
@@ -27311,6 +27358,7 @@ brandingForm.addEventListener('submit', async (event) => {
 
 const horarioFormEl = document.getElementById('horarioForm');
 const horarioDirty = initDirtyForm(horarioFormEl, 'horarioSaveBtn');
+const horarioLock = initFormBloqueado(horarioFormEl, { onCancel: () => renderHorarioForm() });
 if (horarioFormEl) {
     horarioFormEl.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -27338,6 +27386,7 @@ if (horarioFormEl) {
             horarioState = { ...horarioState, ...payload };
             renderHorarioForm();
             horarioDirty.markClean();
+            horarioLock.lock();
             showNotice('Horario guardado correctamente.', 'ok');
         } catch (error) {
             showNotice(`No se pudo guardar el horario: ${error.message || 'Error inesperado.'}`, 'error');

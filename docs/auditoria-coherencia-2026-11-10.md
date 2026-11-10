@@ -898,3 +898,12 @@ Modelo tomado de Square, Toast y Loyverse: el cajón del turno maneja solo **efe
 - Pendiente de la regla: aplicar el mismo recorrido a las demás secciones (Catálogo, Clientes, Comunicación, Informes) y a los botones con estilos en línea restantes (~40).
 - (Parte 22, ronda 2) La compactación de tarjetas (14 px), encabezados, descripciones y campos (34 px) ahora aplica a TODAS las secciones del admin, no solo a Configuración. Un solo tamaño pequeño de botón (`mini-btn`, `card-collapse-btn`: 24–26 px) para acciones dentro de tablas y listas; se quitaron los tamaños en línea de esos botones y los de la ventana del ticket de gasto pasaron a roles. Tests: `regla-interfaz.test.js` (9), `regla-interfaz.e2e.mjs` (9). Herramienta `herramientas/captura-tarjetas.mjs` para revisar tarjetas de todo el admin.
 - Pendiente: botones con estilos en línea que son de layout (flex, márgenes) y las pantallas con diseño propio (POS, FODI flotante, cobro QR).
+
+# Parte 23 — Configuración en modo lectura / edición
+Patrón tomado de Stripe (botón «Editar» por sección), Square, Atlassian (inline edit: vista de lectura → edición) y PatternFly (Guardar o Cancelar devuelven a solo lectura).
+- **Negocio** y **Horario** se abren BLOQUEADOS: valores como texto, vacío = «Sin definir», estado «🔒 Guardado» y un botón «✏️ Editar».
+- Al editar: «Cancelar» (o Esc) descarta y «Guardar cambios» (deshabilitado hasta que haya un cambio) guarda; en ambos casos vuelve al modo guardado.
+- Se retiró la barra flotante de «cambios sin guardar» de Negocio y el botón «Guardar horario» suelto.
+- Función única `initFormBloqueado` (bloque `SYNC:form-bloqueado`) reutilizable para cualquier formulario futuro.
+- Pruebas: `tests/form-bloqueado.e2e.mjs` (11, Chromium) + `regla-interfaz.test.js` (10).
+- Pendiente: aplicar el mismo patrón a otros formularios fijos si el dueño lo pide (Seguridad, Menú público).

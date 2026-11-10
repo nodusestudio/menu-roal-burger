@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261110-1815">
+    <link rel="stylesheet" href="style.css?v=20261110-1832">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -15094,7 +15094,7 @@
                                             <textarea id="horarioMensajeCierre" name="horarioMensajeCierre" rows="3" class="admin-textarea" placeholder="Ej: Disculpa, en este momento estamos cerrados. Nuestro horario es de 4:00 P.M. a 10:00 P.M."></textarea>
                                         </div>
                                         <div id="horarioEstadoActual" class="horario-estado-badge"></div>
-                                        <button type="submit" class="informes-action-btn informes-action-btn--primary" id="horarioSaveBtn" disabled>Guardar horario</button>
+                                        <button type="submit" id="horarioSaveBtn" hidden aria-hidden="true" disabled></button>
                                     </form>
                                 </div>
                             </article>
@@ -17005,6 +17005,23 @@
     [data-section-scope="configuracion"] .biz-save-bar { padding: 8px 12px; margin-top: 8px; }
     .admin-field > button { align-self: flex-start; }
     [data-section-scope="configuracion"] .range-wrap { max-width: 360px; }
+    /* ── Modo lectura / edición de formularios (Configuración): bloqueado con «Editar» → editar → «Guardar cambios» vuelve a bloqueado ── */
+    .lock-bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+    .lock-estado { font-size: 0.76rem; color: var(--admin-muted); }
+    .lock-bar.is-editing .lock-estado { color: #fbbf24; }
+    .lock-acciones { display: inline-flex; gap: 8px; }
+    .lock-acciones [hidden] { display: none; }
+    .form-bloqueable.is-locked .admin-field input:not([type="checkbox"]), .form-bloqueable.is-locked .admin-field select, .form-bloqueable.is-locked .admin-textarea {
+        background: transparent; border-color: transparent; padding-left: 0; padding-right: 0; color: #fff; -webkit-text-fill-color: #fff; opacity: 1;
+        font-weight: 600; min-height: 24px; text-overflow: ellipsis; appearance: none; -webkit-appearance: none; resize: none; cursor: default;
+    }
+    .form-bloqueable.is-locked .admin-field input::placeholder, .form-bloqueable.is-locked .admin-textarea::placeholder { color: rgba(255,255,255,0.35); font-style: italic; font-weight: 400; -webkit-text-fill-color: rgba(255,255,255,0.35); }
+    .form-bloqueable.is-locked .admin-field select { background-image: none; }
+    .form-bloqueable.is-locked .horario-dia-chip { opacity: 0.55; cursor: default; }
+    .form-bloqueable.is-locked .horario-dia-chip:has(input:checked) { opacity: 1; border-color: rgba(255,149,64,0.55); background: rgba(255,122,26,0.12); }
+    .form-bloqueable.is-locked .horario-dia-chip input { display: none; }
+    .form-bloqueable.is-locked .biz-section:last-of-type { border-bottom: none; }
+    .form-bloqueable.is-editing .admin-field input:not([type="checkbox"]), .form-bloqueable.is-editing .admin-field select, .form-bloqueable.is-editing .admin-textarea { border-color: rgba(255,149,64,0.35); }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17535,19 +17552,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261110-1815"></script>
+    <script defer src="firebase-config.js?v=20261110-1832"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261110-1815"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261110-1832"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-1815"></script>
-    <script defer src="admin.js?v=20261110-1815"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-1832"></script>
+    <script defer src="admin.js?v=20261110-1832"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
