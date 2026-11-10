@@ -739,3 +739,22 @@ En vez de fusionar paneles (riesgo sin necesidad), **cada pestaña interna de Co
 - `tests/admin-nav2.test.js` (11): las **9** pestañas de Configuración cubiertas exactamente una vez (Categorías en Caja), nombres y conteos.
 - `tests/admin-nav2.e2e.mjs` (**26** comprobaciones en Chromium real): se añadió Configuración (abrir, 8 elementos, Horario abre su panel, barra interna oculta, Caja › Categorías abre el panel de Configuración y resalta Caja, resaltado cuando otro código abre Seguridad). Capturas revisadas.
 - **146** pruebas del despliegue + gastos (19) + Libro Contable (9) + botones (15) + saldos/días, en verde. No cambia ningún dato.
+
+---
+---
+
+# PARTE 13 — Cálculos duplicados: constantes con una sola fuente, paridad de precios y lectura única del total (hecha)
+
+## 54. Constantes de dinero: una sola fuente
+Antes, el empaque del 2×1 ($2.000), el extra de combo ($7.000) y el valor del punto (10 COP) estaban **escritos a mano** en 2 o 3 archivos, con comentarios «SYNC» que apuntaban a **números de línea ya obsoletos**.
+Ahora la **única fuente es `src/js/script-v2.js`**; en cada build `scripts/extract-agent-constants.js` las copia a `functions/agent/geofence-data.json` (de donde las lee `functions/pricing.js`) y sincroniza `PROMO_2X1_INCREMENTO_AMOUNT` dentro de `admin.js` (igual que ya se hacía con las zonas de domicilio). Valores sin cambio: 2000 · 7000 · 10 · domicilio base 6000.
+Los 9 comentarios `SYNC: script-v2.js:NNNN` de `pricing.js` ahora nombran la **función** equivalente, y el servidor exporta sus ayudantes para la prueba de paridad.
+
+## 55. Paridad de precios cliente ↔ servidor (nueva prueba, `tests/precios-paridad.test.js`, 10)
+Carga las funciones **reales** del menú público y del servidor y exige que den **exactamente lo mismo**: `normalizeCategoryKey`, la tabla de combos con papas por imagen, las opciones de Entradas / Bebidas y adicionales / Burger clásicas / Salchipapa, y `resolveStaticOptionPrice` en **372 combinaciones** producto × categoría. Resultado: **idénticas**, con **una sola diferencia deliberada** (ENTRADAS sin ninguna opción: el cliente devuelve 0 y el servidor `null` = «no sé el piso», no recorta), que la prueba permite y limita. Si alguien cambia un precio en un lado y no en el otro, la prueba falla.
+
+## 56. El total de un pedido, leído de una sola forma
+Se midió con los **1.298 pedidos reales** (72 activos + 1.226 archivados): `getOrderDisplayTotal` y `Number(total||0)` dan **la misma suma, $63.998.200** (1 pedido sin total numérico, que da 0 en ambas). Con esa prueba en la mano, las 5 sumas del panel (Métricas POS, ticket promedio, ingresos, por teléfono, Hoy/Semana/Mes) pasaron a `getOrderDisplayTotal`. **Queda a propósito:** `_posAjustesResumen` (copia exacta de `functions/fodiAjustes.js`; la prueba `fodi-ajustes` las compara) y la cuenta de cobro (`Number(total)||Number(subtotal)`, para no alterar montos de cuentas ya emitidas).
+
+## 57. Verificación
+157 pruebas del despliegue (todas en verde) + menú (26) + gastos (19) + Libro Contable (9) + botones (15) + saldos/días. Foto del dinero **idéntica**. Las 4 pruebas `barrio-especial-fee` necesitan el emulador de Firestore (`PERMISSION_DENIED`, ya fallaban antes: ambientales, no de este cambio).

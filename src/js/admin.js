@@ -191,7 +191,7 @@ const OPENING_AD_DOC_ID = 'anuncio_apertura';
 const PROMOCIONES_COLLECTION = 'promociones';
 const COMBOS_ESPECIALES_COLLECTION = 'combos_especiales';
 const PROMOS_2X1_COLLECTION = 'promos_2x1';
-const PROMO_2X1_INCREMENTO_AMOUNT = 2000; // SYNC: script-v2.js:17, functions/pricing.js
+const PROMO_2X1_INCREMENTO_AMOUNT = 2000; // generado en cada build desde src/js/script-v2.js (scripts/extract-agent-constants.js): no editar a mano
 const UPGRADES_CONFIG_DOC_ID = 'acompañamientos';
 const DEFAULT_HORARIO = {
     aperturaHora: 16, aperturaMinuto: 0,
@@ -11738,7 +11738,7 @@ function _periodStats(orders, unit) {
         const ts = o.createdAt.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt);
         return ts >= startMs;
     });
-    return { count: filtered.length, revenue: filtered.reduce((s,o) => s + Number(o.total||0), 0) };
+    return { count: filtered.length, revenue: filtered.reduce((s,o) => s + getOrderDisplayTotal(o), 0) };
 }
 
 // ── helper: extraer hora/día de una orden ──────────────────────────────────
@@ -12651,7 +12651,7 @@ function _fbPedidosPorTel() {
         const ts = _orderTs(o);
         if (!k || !ts) return;
         if (!porTel.has(k)) porTel.set(k, []);
-        porTel.get(k).push({ id: o.id, ts, total: Number(o.total || 0) });
+        porTel.get(k).push({ id: o.id, ts, total: getOrderDisplayTotal(o) });
     });
     porTel.forEach((arr) => arr.sort((a, b) => a.ts - b.ts));
     return porTel;
@@ -13915,7 +13915,7 @@ function _posAjustesResumen(orders) {
     const porQuien = new Map(), porConcepto = new Map();
     const suma = (m, k, monto) => { const g = m.get(k) || { n: 0, monto: 0 }; g.n++; g.monto += monto; m.set(k, g); };
     orders.forEach((o) => {
-        ventaNeta += Number(o.total || 0);
+        ventaNeta += Number(o.total || 0); // se deja igual a propósito: es copia exacta de functions/fodiAjustes.js (SYNC) y el test las compara
         (o.items || []).forEach((it) => {
             if (!_posEsAjuste(it)) return;
             const monto = Math.abs(Number(it.subtotal != null ? it.subtotal : Number(it.unitPrice || 0) * Number(it.quantity || 1)));
@@ -13997,9 +13997,9 @@ function renderMetricsPos() {
     const posOrders = posOrdersAll.filter((o) => { const ts = _orderTs(o); return ts ? (ts >= rangoPos.desde && ts < rangoPos.hasta) : rangoState('pos').preset === 'todo'; });
     const posClients = (clientsState || []).slice().sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0));
 
-    const totalRev   = posOrders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const totalRev   = posOrders.reduce((s, o) => s + getOrderDisplayTotal(o), 0);
     const avgTicket  = posOrders.length ? Math.round(totalRev / posOrders.length) : 0;
-    const maxTicket  = posOrders.length ? Math.max(...posOrders.map(o => Number(o.total || 0))) : 0;
+    const maxTicket  = posOrders.length ? Math.max(...posOrders.map(o => getOrderDisplayTotal(o))) : 0;
     const uniqueClients = new Set(posOrders.map(o => o.customerPhone).filter(Boolean)).size || posClients.length;
 
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -14134,7 +14134,7 @@ function _renderMetricsUserDetail(container, orders, phone) {
         return;
     }
 
-    const total = orders.reduce((s, o) => s + Number(o.total || 0), 0);
+    const total = orders.reduce((s, o) => s + getOrderDisplayTotal(o), 0);
     const firstDate = orders.length
         ? new Date(orders[orders.length - 1]?.createdAt?.seconds
             ? orders[orders.length - 1].createdAt.seconds * 1000

@@ -49,3 +49,11 @@ test('los menús desplegables conservan los ids de los botones (los manejadores 
         assert.ok(js.includes(`'${id}'`), `${id} debe seguir teniendo manejador`);
     }
 });
+
+test('el total de un pedido se lee de UNA sola forma en las sumas del panel (getOrderDisplayTotal)', () => {
+    // Medido con los 1.298 pedidos reales: las dos formas daban exactamente lo mismo ($63.998.200); ahora no pueden separarse.
+    // (única excepción: _posAjustesResumen, copia exacta de functions/fodiAjustes.js; tests/fodi-ajustes.test.js las compara)
+    const sueltas = codigo.filter((l) => /Number\(o\.total ?\|\| ?0\)/.test(l) && !l.includes('ventaNeta +='));
+    assert.deepEqual(sueltas, [], 'usar getOrderDisplayTotal(o)');
+    assert.ok((js.match(/getOrderDisplayTotal\(o\)/g) || []).length >= 5);
+});

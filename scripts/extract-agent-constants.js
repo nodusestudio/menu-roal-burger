@@ -57,7 +57,11 @@ function main() {
     const data = {
         DELIVERY_CENTER_COORDINATES: extractLiteral(source, 'DELIVERY_CENTER_COORDINATES'),
         DELIVERY_GEOFENCE_ZONES: extractLiteral(source, 'DELIVERY_GEOFENCE_ZONES'),
-        DELIVERY_FEE_AMOUNT: extractLiteral(source, 'DELIVERY_FEE_AMOUNT')
+        DELIVERY_FEE_AMOUNT: extractLiteral(source, 'DELIVERY_FEE_AMOUNT'),
+        // Constantes de dinero: ÚNICA fuente = src/js/script-v2.js. Servidor (pricing.js) y panel (admin.js) las toman de aquí en cada build.
+        PROMO_2X1_INCREMENTO_AMOUNT: extractLiteral(source, 'PROMO_2X1_INCREMENTO_AMOUNT'),
+        COMBO_EXTRA_PRICE: extractLiteral(source, 'COMBO_EXTRA_PRICE'),
+        LOYALTY_POINT_VALUE_COP: extractLiteral(source, 'LOYALTY_POINT_VALUE_COP')
     };
 
     if (!Array.isArray(data.DELIVERY_GEOFENCE_ZONES) || !data.DELIVERY_GEOFENCE_ZONES.length) {
@@ -76,9 +80,11 @@ function main() {
     const adminZones = data.DELIVERY_GEOFENCE_ZONES.map(({ name, fee, label, polygon }) => ({ name, fee, label, polygon }));
     const adminSource = fs.readFileSync(ADMIN_FILE, 'utf8');
     const adminSourceUpdated = replaceLiteral(adminSource, 'ADMIN_DELIVERY_ZONES', JSON.stringify(adminZones));
-    if (adminSourceUpdated !== adminSource) {
-        fs.writeFileSync(ADMIN_FILE, adminSourceUpdated, 'utf8');
-        console.log(`admin.js: ADMIN_DELIVERY_ZONES sincronizado (${adminZones.length} zonas).`);
+    // El empaque del 2x1 también vive en el panel (POS): misma fuente única.
+    const adminSourceFinal = replaceLiteral(adminSourceUpdated, 'PROMO_2X1_INCREMENTO_AMOUNT', String(data.PROMO_2X1_INCREMENTO_AMOUNT));
+    if (adminSourceFinal !== adminSource) {
+        fs.writeFileSync(ADMIN_FILE, adminSourceFinal, 'utf8');
+        console.log(`admin.js: ADMIN_DELIVERY_ZONES y PROMO_2X1_INCREMENTO_AMOUNT sincronizados (${adminZones.length} zonas).`);
     }
 }
 

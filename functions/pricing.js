@@ -20,9 +20,11 @@ const { fetchAllSellableItems, findProductByName } = require('./agent/tools');
 const orderLogic = require('./agent/orderLogic');
 
 const MISMATCH_LOG_TOLERANCE = 50; // COP — por debajo de esto, solo redondeos, no se loguea
-const LOYALTY_POINT_VALUE_COP = 10; // 100 puntos = $1.000 COP — tasa de canje de puntos de lealtad
+// Constantes de dinero: ÚNICA fuente = src/js/script-v2.js (el build las extrae a este JSON; ver scripts/extract-agent-constants.js).
+const KONSTANTES = require('./agent/geofence-data.json');
+const LOYALTY_POINT_VALUE_COP = KONSTANTES.LOYALTY_POINT_VALUE_COP; // 10 COP por punto: 100 puntos = $1.000
 
-// SYNC: script-v2.js:8091-8097
+// SYNC: src/js/script-v2.js → normalizeCategoryKey (tests/precios-paridad.test.js lo comprueba)
 function normalizeCategoryKey(value) {
     return String(value || '')
         .toLowerCase()
@@ -46,7 +48,7 @@ function parseLocalizedPrice(value) {
 // (`${productName} - ${optionItem.label}`, ver script-v2.js:7135) — por eso el match es por
 // "el productName normalizado INCLUYE el label normalizado", no una igualdad exacta.
 
-// SYNC: script-v2.js:6800-6819
+// SYNC: src/js/script-v2.js → getEntradaOptions (tests/precios-paridad.test.js lo comprueba)
 function getEntradaOptions(productName) {
     const n = normalizeCategoryKey(productName);
     if (n.includes('papas')) {
@@ -65,7 +67,7 @@ function getEntradaOptions(productName) {
     return [];
 }
 
-// SYNC: script-v2.js:6821-6857
+// SYNC: src/js/script-v2.js → getBebidasYAdicionalesOptions (tests/precios-paridad.test.js lo comprueba)
 function getBebidasYAdicionalesOptions(productName) {
     const n = normalizeCategoryKey(productName);
     if (n.includes('adicion')) {
@@ -101,7 +103,7 @@ function getBebidasYAdicionalesOptions(productName) {
     return [];
 }
 
-// SYNC: script-v2.js:4222-4235
+// SYNC: src/js/script-v2.js → getBurgerClasicasOptions (tests/precios-paridad.test.js lo comprueba)
 function getBurgerClasicasOptions(productName) {
     const n = normalizeCategoryKey(productName);
     if (!n.includes('normal')) return [];
@@ -113,7 +115,7 @@ function getBurgerClasicasOptions(productName) {
     ];
 }
 
-// SYNC: script-v2.js:4237-4248
+// SYNC: src/js/script-v2.js → getSalchipapaOptions (tests/precios-paridad.test.js lo comprueba)
 function getSalchipapaOptions(productName) {
     const n = normalizeCategoryKey(productName);
     if (!n.includes('super')) return [];
@@ -123,7 +125,7 @@ function getSalchipapaOptions(productName) {
     ];
 }
 
-// SYNC: script-v2.js:4184-4220
+// SYNC: src/js/script-v2.js → resolveStaticOptionPrice (tests/precios-paridad.test.js lo comprueba)
 function resolveStaticOptionPrice(productName, categoryName) {
     const normalizedCategoryName = normalizeCategoryKey(categoryName);
     const normalizedProductName = normalizeCategoryKey(productName);
@@ -162,7 +164,7 @@ function resolveStaticOptionPrice(productName, categoryName) {
     return null;
 }
 
-// SYNC: script-v2.js:3651-3656
+// SYNC: src/js/script-v2.js → COMBOS_CON_PAPAS_IMAGE_PRICES (tests/precios-paridad.test.js lo comprueba)
 const COMBOS_CON_PAPAS_IMAGE_PRICES = {
     './combosconpapasybebidas/comboburgernormal.png': { 1: 21000, 2: 38000, 3: 57000, 4: 73000 },
     './combosconpapasybebidas/comboburgerpapuda.png': { 1: 27000, 2: 48000, 3: 70000, 4: 91000 },
@@ -173,7 +175,7 @@ const COMBOS_CON_PAPAS_IMAGE_PRICES_NORMALIZED = Object.fromEntries(
     Object.entries(COMBOS_CON_PAPAS_IMAGE_PRICES).map(([k, v]) => [normalizeImagePathForCompare(k), v])
 );
 
-// SYNC: script-v2.js:4250-4318 (solo la rama de combo-con-papas por imagen; las ramas de
+// SYNC: src/js/script-v2.js → resolveManualImagePrice (solo la rama de combo-con-papas por imagen; las ramas de
 // URLs de Firebase Storage no aplican acá porque orderOptions.imagePath ya llega como el path
 // local stripped, ver _stripHeavyImageForOrder en buildCartOrderItems)
 function resolveManualImagePrice(orderOptions) {
@@ -186,7 +188,7 @@ function resolveManualImagePrice(orderOptions) {
     return price === undefined ? null : Number(price);
 }
 
-// SYNC: script-v2.js:3919-3927 / 3904-3907 — combos mixtos hardcodeados por nombre
+// SYNC: src/js/script-v2.js → combos mixtos (por nombre) — combos mixtos hardcodeados por nombre
 function resolveCombosMixtosPrice(productName, categoryName) {
     if (!normalizeCategoryKey(categoryName).includes('combos mixtos')) return null;
     const n = normalizeCategoryKey(productName);
@@ -197,8 +199,8 @@ function resolveCombosMixtosPrice(productName, categoryName) {
     return null;
 }
 
-const COMBO_EXTRA_PRICE = 7000; // SYNC: script-v2.js:3638
-const PROMO_2X1_INCREMENTO_AMOUNT = 2000; // SYNC: script-v2.js:17
+const COMBO_EXTRA_PRICE = KONSTANTES.COMBO_EXTRA_PRICE;
+const PROMO_2X1_INCREMENTO_AMOUNT = KONSTANTES.PROMO_2X1_INCREMENTO_AMOUNT;
 
 // Aplica a una línea el porcentaje de descuento que el SERVIDOR verificó para ella (ver
 // resolveServerDiscountRate) -- nunca el discountRate ni la marca recommendedDiscount que mande el
@@ -590,5 +592,7 @@ module.exports = {
     computeLoyaltyRedemptionForItems,
     fetchLoyaltyPointsBalance,
     LOYALTY_POINT_VALUE_COP,
-    isLoyaltyEligibleItem
+    isLoyaltyEligibleItem,
+    // Para tests/precios-paridad.test.js (compara con las mismas funciones del menú público)
+    _paridad: { normalizeCategoryKey, getEntradaOptions, getBebidasYAdicionalesOptions, getBurgerClasicasOptions, getSalchipapaOptions, resolveStaticOptionPrice, COMBOS_CON_PAPAS_IMAGE_PRICES, COMBO_EXTRA_PRICE, PROMO_2X1_INCREMENTO_AMOUNT }
 };
