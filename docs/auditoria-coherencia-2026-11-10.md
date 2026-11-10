@@ -657,3 +657,26 @@ Los filtros «desde / hasta» de **Tickets** y de **Gastos** usaban medianoche e
 - `tests/fodi-gastos-pendientes.test.js` (4). Total de las pruebas que exige el despliegue: **138 en verde**.
 - Foto del dinero antes/después: **idéntica** (no se escribió nada del dinero).
 - **No verificado con datos reales:** el flujo completo con tu sesión (abrir/cerrar caja real, registrar un gasto real).
+
+---
+---
+
+# PARTE 10 — Fase 4: un solo Total Neto en Movimientos (Libro Contable) y Cierres (hecha)
+
+## 42. El problema (decisión 1 del dueño: «el saldo real es el del Historial»)
+Con los mismos datos, el **Historial de Cajas** mostraba **$1.602.025** y el **Libro Contable** **−$402.220**. La diferencia, **$2.004.245**, eran exactamente los 2 Ajustes de saldo (efectivo +869.100, Bancolombia +1.035.145, Nequi +100.000), que el Libro Contable ignoraba.
+
+## 43. Qué se hizo
+- El Libro Contable (ahora titulado **Movimientos**) incluye los Ajustes de saldo en su cuenta, igual que el Historial: el **Total Neto del pie = suma de los días = Total Neto del Historial**.
+- Línea propia visible **«⚖️ AJUSTES DE SALDO +$2.004.245»** en el pie, para que se vea de dónde sale y que **no es ingreso ni egreso**: Ingresos ($76.832.900) y Egresos (−$77.235.120) **no cambian**.
+- Cada ajuste aparece en el detalle de su día («⚖️ Ajuste de saldo · hora», con lo que movió cada método).
+- **Candado en vivo:** el Libro Contable compara su Total Neto con el del módulo puro (`saldos.js`); si algún día difieren, aviso en consola.
+- **Un nombre por pantalla** (el del menú = el del título): Caja de hoy · Movimientos · Cierres · Ventas (antes «Caja Diaria», «Libro Contable», «Historial de Cajas», «Tickets cobrados»).
+
+## 44. Verificación
+- `tests/libro-contable.e2e.mjs` (9 comprobaciones en **Chromium real** con el código real de `_renderLcTable`): casos de reglas y, con la **foto real del dinero**, Total Neto **$1.602.025**, Ajustes **+$2.004.245**, Ingresos **$76.832.900**, Egresos **−$77.235.120**, y el candado sin avisos.
+- 138 pruebas del despliegue + las de navegador (menú 18, gastos 19) + `saldos` y `dias` en verde. Foto del dinero antes/después **idéntica** (solo cambia lo que se muestra).
+
+## 45. Lo que se dejó para después
+- **Una sola lista** que mezcle ventas cerradas, gastos, traslados y ajustes con filtro por tipo (hoy Movimientos y Gastos son dos vistas del mismo dinero, ambas ya cuadradas con Cierres). Es una mejora de comodidad, no de exactitud; conviene decidirla con el uso real.
+- Fases 5 (botones, modales, formato) y 6 (Configuración) siguen pendientes.

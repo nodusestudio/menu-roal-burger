@@ -31835,7 +31835,7 @@ function _renderLcTable() {
     const dayGroups = {};
     const dayOrder  = [];
     const addDay = (dk, ms) => {
-        if (!dayGroups[dk]) { dayGroups[dk] = { dk, ms, cierres: [], extGastos: [], traslados: [], ingT: 0, gasT: 0, netT: 0 }; dayOrder.push(dk); }
+        if (!dayGroups[dk]) { dayGroups[dk] = { dk, ms, cierres: [], extGastos: [], traslados: [], ajustes: [], ingT: 0, gasT: 0, netT: 0 }; dayOrder.push(dk); }
         if (ms > dayGroups[dk].ms) dayGroups[dk].ms = ms;
         return dayGroups[dk];
     };
@@ -31869,11 +31869,32 @@ function _renderLcTable() {
         dg.traslados.push({ ...t, _ms: ms });
     });
 
+    // Ajustes de saldo: mueven el saldo y el Total Neto, pero NO son ingreso ni egreso (igual que en el Historial de Cajas).
+    // Sin esto, el Libro Contable daba un Total Neto distinto al Historial para el mismo dinero.
+    let totalAjustes = 0;
+    _ajustesSaldoState.forEach((a) => {
+        const ms = _tsMs(a.registradoAt);
+        if (!ms) return;
+        const dg = addDay(dayOf(ms), ms);
+        const monto = Object.values(a.porMetodo || {}).reduce((sum, v) => sum + Number(v || 0), 0);
+        dg.ajustes.push({ ...a, _ms: ms, _monto: monto });
+        dg.netT += monto;
+        totalAjustes += monto;
+    });
+
     dayOrder.sort((a, b) => dayGroups[b].ms - dayGroups[a].ms);
 
     const totalIng = dayOrder.reduce((s, dk) => s + dayGroups[dk].ingT, 0);
     const totalEgr = dayOrder.reduce((s, dk) => s + dayGroups[dk].gasT, 0);
-    const totalNet = totalIng - totalEgr;
+    const totalNet = dayOrder.reduce((s, dk) => s + dayGroups[dk].netT, 0); // = Total Neto del Historial de Cajas
+
+    // Candado de dinero: la misma cuenta hecha por el módulo puro (el que reproduce el Historial) debe dar igual.
+    try {
+        if (window.CajaSaldos) {
+            const ref = window.CajaSaldos.calcularSaldosHistorial({ cierres: _cierresCajaState, gastos: [..._gastosExternosState, ..._trasladosState, ..._ajustesSaldoState], methodKeys: getPaymentMethods().map((m) => m.id) });
+            if (Math.round(ref.totalNeto) !== Math.round(totalNet)) console.error('[Caja] El Total Neto del Libro Contable NO coincide con el del módulo puro:', { libro: totalNet, modulo: ref.totalNeto });
+        }
+    } catch (e) { console.warn('[Caja] No se pudo verificar el Libro Contable:', e); }
 
     if (lcHead) lcHead.innerHTML = `<tr>
         <th class="col-left">Fecha</th>
@@ -31951,6 +31972,23 @@ function _renderLcTable() {
                     <td></td>
                 </tr>`;
             }),
+            ...dg.ajustes.map((a) => {
+                const hora = new Date(a._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+                const partes = Object.entries(a.porMetodo || {}).filter(([, v]) => Number(v)).map(([k, v]) => {
+                    const m = findPaymentMethodOrOtro(k);
+                    return `${m ? escapeHtml(m.label) : escapeHtml(k)} ${Number(v) > 0 ? '+' : '−'}${formatMoney(Math.abs(Number(v)))}`;
+                }).join(' · ');
+                return `<tr class="lc-det-row" data-gid="${gid}" style="display:none;background:rgba(250,204,21,0.05);font-size:0.82rem;">
+                    <td class="col-left" style="padding-left:24px;color:rgba(255,255,255,0.55);">
+                        <span style="font-size:0.68rem;color:#fde68a;display:block;">⚖️ Ajuste de saldo · ${hora}</span>
+                        ${partes || 'Sin detalle'}
+                    </td>
+                    <td style="color:var(--admin-muted);">—</td>
+                    <td style="color:var(--admin-muted);">—</td>
+                    <td style="color:#fde68a;">${a._monto < 0 ? '−' : '+'}${formatMoney(Math.abs(a._monto))}</td>
+                    <td></td>
+                </tr>`;
+            }),
             ...dg.traslados.map((t) => {
                 const hora = new Date(t._ms).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
                 const methods = getPaymentMethods();
@@ -31974,7 +32012,13 @@ function _renderLcTable() {
         return mainRow + detailRows;
     }).join('');
 
-    if (lcFoot) lcFoot.innerHTML = `<tr>
+    if (lcFoot) lcFoot.innerHTML = (totalAjustes !== 0 ? `<tr>
+        <td class="col-left foot-label" title="Correcciones de saldo hechas con «Ajustar saldos»: mueven el saldo, no son ingreso ni egreso">⚖️ AJUSTES DE SALDO</td>
+        <td></td>
+        <td></td>
+        <td class="foot-total" style="color:#fde68a;">${totalAjustes < 0 ? '−' : '+'}${formatMoney(Math.abs(totalAjustes))}</td>
+        <td></td>
+    </tr>` : '') + `<tr>
         <td class="col-left foot-label">TOTAL HISTÓRICO</td>
         <td class="foot-entrada">${formatMoney(totalIng)}</td>
         <td class="foot-salida">${totalEgr > 0 ? `−${formatMoney(totalEgr)}` : '$0'}</td>

@@ -94,9 +94,9 @@ export function calcularSaldosHistorial({ cierres, gastos, methodKeys }) {
 }
 
 /**
- * Total Neto "estilo Libro Contable" (hoy): ingresos − egresos, SIN ajustes de saldo ni descuadres.
- * Se deja aquí solo para medir la diferencia con el Historial; la Fase 4 hace que ambos muestren el mismo
- * saldo y que el Libro Contable agregue una línea visible "Ajustes de saldo".
+ * Total Neto "estilo Libro Contable ANTERIOR" (hasta la Fase 4): ingresos − egresos, SIN ajustes de saldo.
+ * Se deja aquí solo como referencia para medir la diferencia que había con el Historial. Desde la Fase 4 el Libro Contable
+ * muestra el mismo Total Neto que el Historial (calcularSaldosHistorial.totalNeto) más una línea visible "Ajustes de saldo".
  */
 export function totalNetoLibroContable({ cierres, gastos }) {
     const ing = cierres.reduce((s, c) => s + _num(c.ingresosTotal ?? 0), 0);
