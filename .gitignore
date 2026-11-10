@@ -35,3 +35,6 @@ herramientas/voz-pagos/*.zip
 herramientas/voz-pagos/*.log
 herramientas/voz-pagos/estado.txt
 herramientas/voz-pagos-ROAL.zip
+
+# Fotos del dinero (datos financieros reales): nunca al repositorio
+herramientas/baseline-dinero/
