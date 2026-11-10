@@ -13166,6 +13166,73 @@ function _fidAtenderPendientes() {
     return _fbResponses.filter((r) => r.requiere && !atendidas.has(r.id)).length;
 }
 
+// ── Disculpa inteligente: qué tan grave fue la queja y qué obsequio conviene ───────────────────────────
+// El sistema puntúa la respuesta (calificaciones + palabras del comentario + qué tan valioso es el cliente), la clasifica
+// en leve / medio / grave y propone un obsequio proporcional. El dueño lo acepta o lo cambia antes de copiar el mensaje.
+const FID_PALABRAS_GRAVES = /(intoxic|enferm|vomit|diarrea|\bpelo\b|cabello|crud[oa]|sucio|asco|pl[aá]stico|vidrio|insecto|cucaracha|podrid|descompuest|mal olor|alergi)/i;
+const FID_PALABRAS_MEDIAS = /(fr[ií][oa]\b|demor|tard[oó]|lent[oa]\b|equivoc|falt[oó]|incompleto|no lleg|mal servicio|grosero|maltrat|\bseco\b|quemad|salad[oa]|ins[ií]pid|sin sabor|poca carne|peque[ñn]o)/i;
+const FID_CATEGORIAS_OBSEQUIO = /(bebida|papa|acompa|postre|adicion|salsa|complement|gaseosa|jugo)/i;
+const FID_NIVELES = {
+    leve: { etiqueta: 'Leve', color: '#fbbf24', fraccion: 0.25, texto: 'Un detalle para que vuelva con buena cara.' },
+    medio: { etiqueta: 'Media', color: '#fb923c', fraccion: 0.5, texto: 'Una compensación clara por la mala experiencia.' },
+    grave: { etiqueta: 'Grave', color: '#f87171', fraccion: 1, texto: 'Reponerle lo que no salió bien: es lo mínimo para recuperarlo.' }
+};
+
+function _fidSugerirObsequio({ q1 = '', q2 = '', q3 = '', comentario = '', totalPedido = 0, totalOrdersCliente = 0, totalGastado = 0 } = {}) {
+    let puntos = 0;
+    const razones = [];
+    if (q1 === 'no_convencio') { puntos += 3; razones.push('Dijo que el sabor no lo convenció'); } else if (q1 === 'normalita') { puntos += 1; razones.push('Le pareció normalito'); }
+    if (q2 === 'mal') { puntos += 3; razones.push('Calificó el servicio como malo'); } else if (q2 === 'mejorable') { puntos += 1; razones.push('Dijo que el servicio se puede mejorar'); }
+    if (q3 === 'no') { puntos += 1; razones.push('Cree que no volvería a pedir'); }
+    const c = String(comentario || '');
+    if (FID_PALABRAS_GRAVES.test(c)) { puntos += 6; razones.push('Su comentario menciona un problema serio (higiene, salud o producto en mal estado)'); } else if (FID_PALABRAS_MEDIAS.test(c)) { puntos += 2; razones.push('Su comentario menciona un problema concreto (frío, demora, error o faltante)'); } else if (c.trim().length >= 60) { puntos += 1; razones.push('Escribió un comentario largo: le importó'); }
+    if (Number(totalOrdersCliente) >= 5 || Number(totalGastado) >= 150000) { puntos += 1; razones.push('Es cliente frecuente: vale la pena recuperarlo'); }
+    const nivel = puntos >= 6 ? 'grave' : (puntos >= 3 ? 'medio' : 'leve');
+    const valorObjetivo = Math.min(30000, Math.max(3000, Math.round(((Number(totalPedido) || 0) * FID_NIVELES[nivel].fraccion) / 500) * 500));
+    return { nivel, puntos, razones, valorObjetivo };
+}
+
+// Producto sugerido: (1) el regalo fijo de la configuración, si lo hay; (2) en una queja grave, reponer lo que pidió;
+// (3) un producto de acompañamiento/bebida cuyo precio se acerque al valor objetivo (una parte de lo que pagó).
+function _fidElegirObsequio(nivel, valorObjetivo, orden, regaloFijoId, productos) {
+    const activos = (productos || []).filter((p) => p && p.id && Number(p.precio) > 0 && p.estado !== 'paused' && p.estado !== 'inactive' && p.activo !== false);
+    const porId = (id) => activos.find((p) => p.id === id) || null;
+    if (regaloFijoId && porId(regaloFijoId) && nivel !== 'grave') return { producto: porId(regaloFijoId), motivo: 'Es el regalo fijo que dejaste en la configuración.' };
+    if (nivel === 'grave' && orden && Array.isArray(orden.items)) {
+        const principal = orden.items
+            .filter((i) => !i.cortesia && Number(i.unitPrice) > 0 && porId(String(i.productId || '').split('::')[0]))
+            .sort((a, b) => Number(b.subtotal || 0) - Number(a.subtotal || 0))[0];
+        if (principal) return { producto: porId(String(principal.productId).split('::')[0]), motivo: 'Es lo que pidió: se lo reponemos sin costo.' };
+    }
+    const preferidos = activos.filter((p) => FID_CATEGORIAS_OBSEQUIO.test(String(p.categoria || '')));
+    const base = preferidos.length ? preferidos : activos;
+    if (!base.length) return { producto: null, motivo: 'No hay productos para sugerir: queda la compensación en texto.' };
+    const cabe = base.filter((p) => Number(p.precio) <= valorObjetivo * 1.25).sort((a, b) => Number(b.precio) - Number(a.precio));
+    const elegido = cabe[0] || base.slice().sort((a, b) => Number(a.precio) - Number(b.precio))[0];
+    return { producto: elegido, motivo: `Su valor (${Number(elegido.precio).toLocaleString('es-CO')}) es proporcional a lo que pagó y a la gravedad.` };
+}
+
+// Cómo se nombra el producto dentro del mensaje ("una hamburguesa Normal", "un pepito Mix", "Papas fritas").
+function _fidNombreEnMensaje(p) {
+    if (!p) return '';
+    const cat = String(p.categoria || '').toUpperCase();
+    const nombre = String(p.nombre || '').trim();
+    if (/^BURGER/.test(cat) && !/burger|hamburg/i.test(nombre)) return `una hamburguesa ${nombre}`;
+    if (/PEPITO/.test(cat) && !/pepito/i.test(nombre)) return `un pepito ${nombre}`;
+    return nombre;
+}
+
+function _fidMensajeDisculpa(r, nivel, producto, codigo, dias, ofertaTexto) {
+    const nombre = String(r.name || '').trim().split(/\s+/)[0];
+    const motivo = (r.motivos && r.motivos[0]) ? r.motivos[0] : 'tu experiencia no fue la mejor';
+    const nom = _fidNombreEnMensaje(producto);
+    const oferta = producto
+        ? (nivel === 'grave' ? `Queremos reponerte lo que no salió bien: ${nom} va por nuestra cuenta en tu próximo pedido.`
+            : (nivel === 'medio' ? `Queremos compensarte: te regalamos ${nom} en tu próximo pedido.` : `Queremos compensarte con ${nom} de cortesía en tu próximo pedido.`))
+        : `Queremos compensarte: ${ofertaTexto || _fidCfg.disculpaOferta}.`;
+    return `Hola${nombre ? ` ${nombre}` : ''}, te escribimos de ROAL BURGER. Gracias por contarnos tu opinión: sentimos mucho que ${motivo}. ${oferta} Tu código personal: ${codigo} (válido ${dias} días). ${nivel === 'grave' ? 'Si prefieres, te llamamos para escucharte. ' : ''}¿Nos cuentas qué pasó para corregirlo? 🙏`;
+}
+
 let _fidAtenderVista = 'baja'; // baja | resena
 let _fidAtenderQ = '';
 
@@ -13223,14 +13290,76 @@ function _fidAtender(clic) {
         renderMetricasFeedback();
         return;
     }
+    // Ya atendido: se vuelve a copiar el mismo mensaje con el mismo cupón (sin crear otro).
+    if (yaHecho) {
+        const previo = _fidCupones.find((k) => k.encuestaId === id);
+        const prodPrevio = previo && previo.productoId ? productsState.find((p) => p.id === previo.productoId) : null;
+        const diasPrevio = previo ? Math.max(1, Math.round((_tsMs(previo.venceAt) - _tsMs(previo.creadoAt)) / 86400000)) : (Number(_fidCfg.vigenciaDias) || 3);
+        const copiadoPrevio = copyTextToClipboard(_fidMensajeDisculpa(r, previo?.gravedad || 'medio', prodPrevio, previo?.codigo || '', diasPrevio, previo?.beneficio));
+        copiadoPrevio.then((ok) => showNotice(ok ? 'Mensaje copiado otra vez.' : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
+        return;
+    }
+    _fidAbrirDisculpa(r, cliente);
+}
+
+// Ventana de revisión: muestra qué dijo el cliente, qué tan grave fue, el obsequio que sugiere el sistema (se puede cambiar)
+// y el mensaje final (se puede editar). Solo al confirmar se crea el cupón y se registra el envío.
+function _fidAbrirDisculpa(r, cliente) {
+    document.getElementById('_fidDisculpaOverlay')?.remove();
+    const orden = [..._fbArchOrders, ...ordersState].find((o) => o.id === r.id) || null;
+    const ficha = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === _sqPhoneKey(r.phone));
+    const general = r.tipo === 'general';
+    const g = _fidSugerirObsequio({ q1: r.q1, q2: general ? r.q2 : '', q3: general ? r.q3 : '', comentario: r.q4, totalPedido: orden ? orden.total : 0, totalOrdersCliente: ficha ? ficha.totalOrders : 0, totalGastado: ficha ? ficha.totalSpent : 0 });
+    const sug = _fidElegirObsequio(g.nivel, g.valorObjetivo, orden, _fidCfg.disculpaProductoId, productsState);
     const dias = Number(_fidCfg.vigenciaDias) || 3;
-    const previo = yaHecho ? _fidCupones.find((k) => k.encuestaId === id) : null;
-    const codigo = previo ? previo.codigo : _fidNuevoCodigo(r.name);
-    const motivo = (r.motivos && r.motivos[0]) ? r.motivos[0] : 'tu experiencia no fue la mejor';
-    const copiado = copyTextToClipboard(`Hola${saludo}, te escribimos de ROAL BURGER. Gracias por contarnos tu opinión: sentimos mucho que ${motivo}. Queremos compensarte: ${_fidCfg.disculpaOferta}. Tu código personal: ${codigo} (válido ${dias} días). ¿Nos cuentas qué pasó para corregirlo? 🙏`);
-    if (!yaHecho) _fidGuardarEnvio(cliente, 'disculpa', { codigo, beneficio: _fidCfg.disculpaOferta, dias, productoId: _fidCfg.disculpaProductoId, envioExtra: { encuestaId: id }, cuponExtra: { encuestaId: id } });
-    copiado.then((ok) => showNotice(ok ? `Disculpa con cupón lista para ${r.name || 'el cliente'}.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
-    renderMetricasFeedback();
+    const codigo = _fidNuevoCodigo(r.name);
+    const nivel = FID_NIVELES[g.nivel];
+    const prods = (productsState || []).filter((p) => p && p.id && p.nombre && Number(p.precio) > 0).slice()
+        .sort((a, b) => String(a.categoria || '').localeCompare(String(b.categoria || ''), 'es') || String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    const overlay = document.createElement('div');
+    overlay.id = '_fidDisculpaOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.innerHTML = `<div style="background:#1e1e2e;border:1.5px solid rgba(255,140,40,0.55);border-radius:18px;padding:1.3rem 1.3rem 1.1rem;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.55);color:#fff;text-align:left">
+        <h3 style="margin:0 0 4px;font-size:1.1rem">⚠️ Compensar a ${escapeHtml(r.name || 'el cliente')}</h3>
+        <p style="margin:0 0 10px;font-size:0.82rem;opacity:0.65">Pedido ${escapeHtml(r.orderCode)}${orden ? ` · ${escapeHtml(formatMoney(orden.total))}` : ''}${ficha ? ` · ${ficha.totalOrders} pedido${ficha.totalOrders === 1 ? '' : 's'} en total` : ''}</p>
+        ${r.q4 ? `<div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:0.88rem">💬 «${escapeHtml(r.q4)}»</div>` : ''}
+        <div style="border:1.5px solid ${nivel.color};border-radius:12px;padding:9px 11px;margin-bottom:12px">
+            <div style="font-weight:800;color:${nivel.color}">Gravedad: ${nivel.etiqueta} <span style="opacity:.6;font-weight:400">(${g.puntos} punto${g.puntos === 1 ? '' : 's'})</span></div>
+            <div style="font-size:0.82rem;opacity:.85;margin:2px 0 4px">${escapeHtml(nivel.texto)}</div>
+            <ul style="margin:0;padding-left:18px;font-size:0.8rem;opacity:.8">${(g.razones.length ? g.razones : ['Calificación baja sin más detalles']).map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
+        </div>
+        <label style="display:block;font-size:0.82rem;margin-bottom:4px">🎁 Obsequio sugerido <span style="opacity:.6">— ${escapeHtml(sug.motivo)}</span></label>
+        <select id="fidDisculpaSel" class="admin-input" style="width:100%;margin-bottom:10px"><option value="">Sin producto (solo la disculpa)</option>${prods.map((p) => `<option value="${escapeHtml(p.id)}"${sug.producto && sug.producto.id === p.id ? ' selected' : ''}>${escapeHtml(p.nombre)} — ${escapeHtml(String(p.categoria || ''))} · ${escapeHtml(formatMoney(p.precio))}</option>`).join('')}</select>
+        <label style="display:block;font-size:0.82rem;margin-bottom:4px">Mensaje (puedes editarlo)</label>
+        <textarea id="fidDisculpaMsg" class="admin-input" rows="6" style="width:100%;resize:vertical"></textarea>
+        <div style="display:flex;gap:10px;margin-top:12px">
+            <button type="button" class="ghost-button" id="fidDisculpaCancel" style="flex:1;padding:.65rem">Cancelar</button>
+            <button type="button" class="feedback-pending-btn" id="fidDisculpaOk" style="flex:1.6;padding:.65rem">Copiar y registrar</button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const sel = overlay.querySelector('#fidDisculpaSel');
+    const ta = overlay.querySelector('#fidDisculpaMsg');
+    let editado = false;
+    const prodActual = () => (sel.value ? productsState.find((p) => p.id === sel.value) || null : null);
+    const pintar = () => { if (!editado) ta.value = _fidMensajeDisculpa(r, g.nivel, prodActual(), codigo, dias); };
+    ta.addEventListener('input', () => { editado = true; });
+    sel.addEventListener('change', () => { editado = false; pintar(); });
+    pintar();
+    overlay.querySelector('#fidDisculpaCancel').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#fidDisculpaOk').addEventListener('click', () => {
+        const prod = prodActual();
+        // El copiado va primero (el navegador solo deja escribir al portapapeles durante el clic); el registro sigue en segundo plano.
+        const copiado = copyTextToClipboard(ta.value);
+        _fidGuardarEnvio(cliente, 'disculpa', {
+            codigo, beneficio: prod ? `${prod.nombre} gratis` : _fidCfg.disculpaOferta, dias, productoId: prod ? prod.id : '',
+            envioExtra: { encuestaId: r.id, gravedad: g.nivel }, cuponExtra: { encuestaId: r.id, gravedad: g.nivel }
+        });
+        overlay.remove();
+        copiado.then((ok) => showNotice(ok ? `Disculpa con cupón lista para ${r.name || 'el cliente'}.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
+        renderMetricasFeedback();
+    });
 }
 
 let _fidRefQ = '';
