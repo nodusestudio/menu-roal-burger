@@ -57,3 +57,20 @@ test('el total de un pedido se lee de UNA sola forma en las sumas del panel (get
     assert.deepEqual(sueltas, [], 'usar getOrderDisplayTotal(o)');
     assert.ok((js.match(/getOrderDisplayTotal\(o\)/g) || []).length >= 5);
 });
+
+test('una etiqueta de estado no se disfraza de botón (nada «disabled» con clase de botón de acción)', () => {
+    const falsos = [...html.matchAll(/<button[^>]*class="[^"]*(section-save-btn|section-action-btn)[^"]*"[^>]*\bdisabled\b[^>]*>/g)].map((m) => m[0]);
+    assert.deepEqual(falsos, [], 'usar <span class="status-chip">');
+    assert.ok(html.includes('class="status-chip"'));
+});
+
+test('las familias de botones comparten forma y tipografía (un solo bloque de roles)', () => {
+    assert.match(html, /\.section-action-btn, \.section-save-btn, \.preview-refresh-btn \{\s*border-radius: 9px;/);
+    assert.match(html, /\.section-action-btn\.primary \{ background: linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
+    assert.match(html, /\.admin-button \{ font-family: 'Space Grotesk'/);
+});
+
+test('ningún botón de guardar es verde (el rol «principal» es naranja) y los campos de texto no quedan en blanco', () => {
+    assert.match(html, /button\.cat-new-save-btn \{ background: linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
+    assert.match(html, /id="margenMinimoInput" class="admin-input"/);
+});

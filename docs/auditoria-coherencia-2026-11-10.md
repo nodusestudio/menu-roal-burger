@@ -758,3 +758,25 @@ Se midió con los **1.298 pedidos reales** (72 activos + 1.226 archivados): `get
 
 ## 57. Verificación
 157 pruebas del despliegue (todas en verde) + menú (26) + gastos (19) + Libro Contable (9) + botones (15) + saldos/días. Foto del dinero **idéntica**. Las 4 pruebas `barrio-especial-fee` necesitan el emulador de Firestore (`PERMISSION_DENIED`, ya fallaban antes: ambientales, no de este cambio).
+
+---
+---
+
+# PARTE 14 — Fase 5b: las familias de botones del resto del panel, unificadas por rol
+
+## 58. Qué se hizo
+Las familias más usadas (`section-action-btn` 30 en HTML + 51 en JS, `admin-button` 12, `section-save-btn`, `preview-refresh-btn`, `cat-new-save-btn`) tenían **cada una su forma**: píldora, rectángulo, tipografía Oswald en mayúsculas, verde, azul… Ahora comparten **un solo bloque de roles** (mismo radio 9 px, tipografía Space Grotesk 700, sin mayúsculas forzadas):
+- **Secundario** (por defecto): Actualizar, Exportar, Limpiar, Unir duplicados, Importar…
+- **Principal** (naranja): `+ Agregar cliente`, `+ Nuevo costo`, `Guardar`, `Crear producto`… (`.primary`, `.admin-button`, y el **«Guardar» que era verde**).
+- **Delicado** (rojo): Cerrar caja (de la Fase 5).
+
+## 59. Dos arreglos de fondo
+- **Etiquetas que parecían botones:** «Clientes guardados en Firebase» y «Sincronizado en tiempo real» (×2) eran `<button disabled>`. Ahora son `status-chip` (punto verde, no clicables).
+- **Campo blanco puro:** el % de «Margen mínimo» en Finanzas no tenía estilo y salía blanco (regla del dueño: nunca blanco puro). Ahora usa `admin-input`.
+- «Importar» (índigo, rol aparte) pasó a secundario.
+
+## 60. Verificación
+Capturas de Clientes, Configuración, Finanzas y Cupones con los estilos reales; `tests/caja-presentacion.test.js` (10) vigila que no haya etiquetas disfrazadas de botón, que las familias compartan el bloque de roles y que ningún «guardar» sea verde. 160 pruebas del despliegue + navegador (menú 26, gastos 19, Libro Contable 9, botones 15) + saldos/días, todas en verde. Solo CSS/HTML: no toca datos.
+
+## 61. Lo que sigue pendiente de la Fase 5
+Los 6 modales con estructura propia (gasto, traslado, ajustar saldos, caja chica, abrir caja, categorías) y los botones con estilos pegados a mano dentro de plantillas JS (~79); un solo juego de íconos; formato de dinero del menú público y del agente.
