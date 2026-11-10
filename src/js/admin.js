@@ -30362,6 +30362,17 @@ let _cierrePrintHtml = '';
 let _pendingCierreDoc = null;
 let _cierrePrintData = null; // {c, dateStr, timeStr} para reimpresión BT
 
+function _conteoCierreHtml(c, modo) {
+    const r = conteoResumen(c);
+    if (!r) return '';
+    const col = r.estado === 'cuadra' ? '#6ee7b7' : (r.estado === 'falta' ? '#fca5a5' : '#fbbf24');
+    const txt = r.estado === 'cuadra' ? '✅ Cuadra exacto' : (r.estado === 'falta' ? `⚠️ Faltaron ${formatMoney(-r.dif)}` : `ℹ️ Sobraron ${formatMoney(r.dif)}`);
+    const pad = modo === 'ticket' ? 'margin-top:10px;padding-top:8px;border-top:1px dashed #3a2e26;font-size:12px;' : 'padding:10px 20px;border-top:1px solid rgba(255,255,255,0.08);font-size:0.82rem;';
+    return `<div class="cierre-conteo" style="${pad}"><div style="display:flex;justify-content:space-between;"><span>Efectivo esperado</span><span>${formatMoney(r.esperado)}</span></div>
+        <div style="display:flex;justify-content:space-between;"><span>Efectivo contado</span><span>${formatMoney(r.contado)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-weight:700;color:${col};"><span>${txt}</span></div></div>`;
+}
+
 function buildCierreESCPOSData(c, dateStr, timeStr) {
     const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
     const COLS = _btCols();
@@ -30461,6 +30472,13 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
     wc('SALDO NETO CAJA', (grandTotal < 0 ? '-' : '') + formatMoney(Math.abs(grandTotal)));
     pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
     sep2();
+    const _cr = conteoResumen(c);
+    if (_cr) {
+        wc('Efectivo esperado', formatMoney(_cr.esperado));
+        wc('Efectivo contado', formatMoney(_cr.contado));
+        wc(_cr.estado === 'cuadra' ? 'Cuadra exacto' : (_cr.estado === 'falta' ? 'FALTAN' : 'SOBRAN'), _cr.estado === 'cuadra' ? formatMoney(0) : formatMoney(Math.abs(_cr.dif)));
+        sep2();
+    }
 
     pb(ESC, 0x61, 0x01, LF);
     wl('DOCUMENTO INTERNO - NO FISCAL');
@@ -30531,6 +30549,13 @@ document.getElementById('cierreReprintBtn')?.addEventListener('click', async () 
 // SYNC:conteo-cierre:inicio
 // Diferencia del conteo: contado − esperado (negativo = faltó plata, positivo = sobró). Solo informativo: no toca ningún total.
 function conteoDiferencia(esperado, contado) { return Math.round(Number(contado) || 0) - Math.round(Number(esperado) || 0); }
+// Datos del conteo de un cierre para mostrarlos (null si ese cierre no se contó).
+function conteoResumen(c) {
+    if (!c || c.efectivoContado === undefined || c.efectivoContado === null) return null;
+    const esperado = Math.round(Number(c.efectivoEsperado) || 0), contado = Math.round(Number(c.efectivoContado) || 0);
+    const dif = Number.isFinite(Number(c.diferenciaEfectivo)) ? Math.round(Number(c.diferenciaEfectivo)) : conteoDiferencia(esperado, contado);
+    return { esperado, contado, dif, estado: dif === 0 ? 'cuadra' : (dif < 0 ? 'falta' : 'sobra') };
+}
 // SYNC:conteo-cierre:fin
 
 // Pide contar el efectivo del cajón antes de cerrar. Devuelve el monto contado, o null si se omite.
@@ -30567,7 +30592,7 @@ function _pedirConteoEfectivo(esperado) {
 
 document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async () => {
     if (!_pendingCierreDoc) return;
-    const { closureDoc, closureId, ticketHtml, dateStr, timeStr } = _pendingCierreDoc;
+    let { closureDoc, closureId, ticketHtml, dateStr, timeStr } = _pendingCierreDoc;
 
     // Conteo del efectivo (opcional): queda guardado en el cierre con su diferencia; no cambia ningún total.
     if (!closureDoc.efectivoContado && closureDoc.efectivoContado !== 0) {
@@ -30577,6 +30602,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
             closureDoc.efectivoEsperado = _esperado;
             closureDoc.efectivoContado = _contado;
             closureDoc.diferenciaEfectivo = conteoDiferencia(_esperado, _contado);
+            ticketHtml = _buildCierreTicketHtml(closureDoc, dateStr, timeStr); // el ticket ya incluye el conteo
         }
     }
 
@@ -30793,6 +30819,7 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
                 </tr>
             </table>
         </div>
+        ${_conteoCierreHtml(c, 'ticket')}
 
         <div style="text-align:center;margin-top:14px;font-size:10px;color:#6a5a4a;border-top:1px dashed #3a2e26;padding-top:8px;letter-spacing:0.5px;">
             DOCUMENTO INTERNO — NO FISCAL<br>
@@ -32568,6 +32595,7 @@ function _openCierreDetalleModal(c) {
                 ${arqueoRows || `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin movimientos</div>`}
             </div>
         </div>
+        ${_conteoCierreHtml(c, 'detalle')}
         <!-- Footer total neto -->
         <div style="padding:14px 20px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:rgba(255,149,64,0.05);">
             <span style="font-size:0.9rem;font-weight:700;color:rgba(255,255,255,0.8);text-transform:uppercase;letter-spacing:0.5px;">💰 Saldo Neto Caja</span>

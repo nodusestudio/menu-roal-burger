@@ -887,3 +887,4 @@ Modelo tomado de Square, Toast y Loyverse: el cajón del turno maneja solo **efe
 - **Al confirmar el cierre** se pide contar el efectivo (se puede omitir). Se guarda en el cierre `efectivoEsperado`, `efectivoContado` y `diferenciaEfectivo` (negativo = faltó, positivo = sobró). Son campos nuevos: no cambian `methodTotals`, `grandTotal` ni ningún saldo.
 - Verificación: `tests/efectivo-esperado.test.js` (5), `tests/efectivo-esperado.e2e.mjs` (8, Chromium), resto de e2e en verde; foto del dinero idéntica.
 - Pendiente: mostrar la diferencia en el Historial de Cajas y en el ticket de cierre.
+- (Parte 21, cierre) La diferencia del conteo ahora se ve en el ticket de cierre (vista previa y ESC/POS) y en el detalle del cierre del Historial de Cajas (esperado / contado / «Faltaron» o «Sobraron» o «Cuadra exacto»). Cierres sin conteo se ven igual que antes. Tests: `efectivo-esperado.test.js` (7).
