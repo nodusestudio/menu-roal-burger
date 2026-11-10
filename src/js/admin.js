@@ -18608,7 +18608,7 @@ function _ticketDetalleLineas(item, { categoria = true } = {}) {
     const partes = opt.split(/\s+\|\s+/).filter((p) => p && !/si es para (llevar|domicilio)/i.test(p));
     const esPromo2x1 = partes.some((p) => /PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p));
     partes
-        .filter((p) => !(esPromo2x1 && /^\s*solo la burger\s*$/i.test(p)))
+        .filter((p) => !/^\s*solo (la )?burger\s*$/i.test(p)) // "Solo la burger" siempre sobra: es lo normal
         .forEach((p) => {
             if (/PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p)) { out.push({ t: 'opt', x: 'PROMOCIÓN 2×1: incluye 2 burgers por el precio de 1' }); return; }
             // "Sin tomate, sin cebolla" / "Con La Jeva (BBQ)" / "Poca salsa" es lo que cocina NO debe pasar por alto: va como nota resaltada
@@ -18732,6 +18732,56 @@ function createEscPosLineBuilder(pb, COLS) {
     return { ww, wl, wc, wh, blank, sep, sep2 };
 }
 
+// Ticket impreso: una burger pedida "en combo" llega como optionLabel "1 persona + Postobon 250ml (colombiana, manzana) ×2".
+// Devuelve null si el ítem no es un combo de variante; si lo es: nombre de la variante, sabores de la bebida por unidad
+// (o el nombre de la bebida si no tiene sabor) y el resto del detalle (nota, "sin ...") sin la parte del combo.
+function _ticketParseCombo(item) {
+    if (!item || item.parentItemKey || item.isComboEspecial || /CUPONES EXCLUSIVOS/i.test(item.categoryName || '')) return null;
+    const partes = String(item.optionLabel || '').trim().split(/\s+\|\s+/).filter(Boolean);
+    const segs = (partes[0] || '').split(/\s+\+\s+/).map((s) => s.trim()).filter(Boolean);
+    if (segs.length < 2) return null;
+    const sabores = [];
+    segs.slice(1).forEach((seg) => {
+        const m = seg.match(/^(.*?)(?:\s*\(([^)]*)\))?(?:\s*[×x]\s*\d+)?\s*$/);
+        const nombre = (m && m[1] ? m[1] : seg).trim();
+        const lista = m && m[2] ? m[2].split(',').map((s) => s.trim()).filter(Boolean) : [];
+        if (lista.length) sabores.push(...lista); else if (nombre) sabores.push(nombre);
+    });
+    return { variante: segs[0], sabores, resto: partes.slice(1) };
+}
+
+// "colombiana x3, manzana x2": cuenta cada sabor por las unidades pedidas.
+function _ticketSaboresTexto(conteo) {
+    return Object.keys(conteo).map((k) => (conteo[k] > 1 ? `${k} x${conteo[k]}` : k)).join(', ');
+}
+
+// Para el ticket impreso: las burgers en combo se juntan en UN bloque ("5x Burger en combo (colombiana x3, manzana x2)")
+// aunque cada una lleve otra bebida, y quedan aparte de las que van solas. Los ítems con combos/adicionales anidados no se tocan.
+function _ticketAgruparCombos(grupos) {
+    const out = [];
+    const porClave = new Map();
+    grupos.forEach((g, idx) => {
+        const combo = _ticketParseCombo(g);
+        const tieneHijos = !!(grupos[idx + 1] && grupos[idx + 1].parentItemKey);
+        if (!combo) { out.push(g); return; }
+        const q = Number(g.quantity || 1);
+        const conteo = {};
+        combo.sabores.forEach((s) => { conteo[s] = (conteo[s] || 0) + q; });
+        const base = { ...g, _combo: combo, _conteo: conteo };
+        const clave = tieneHijos ? null : [g.productName, g.categoryName, g.unitPrice, combo.variante, combo.resto.join('|')].join('|');
+        if (clave && porClave.has(clave)) {
+            const dest = porClave.get(clave);
+            dest.quantity = Number(dest.quantity || 0) + q;
+            dest.subtotal = Number(dest.subtotal || 0) + Number(g.subtotal || 0);
+            Object.keys(conteo).forEach((s) => { dest._conteo[s] = (dest._conteo[s] || 0) + conteo[s]; });
+        } else {
+            out.push(base);
+            if (clave) porClave.set(clave, base);
+        }
+    });
+    return out;
+}
+
 function buildESCPOSData(order) {
     const ESC = 0x1B; const GS = 0x1D; const LF = 0x0A;
     const COLS = _btCols();
@@ -18781,13 +18831,20 @@ function buildESCPOSData(order) {
     // cliente) muestre el mismo detalle real del pedido en vez de listar cada unidad suelta.
     // Cada producto es un bloque: línea del producto (cantidad, nombre y precio), sus detalles uno por línea con guion,
     // y lo que lleva (combo, adicionales) con "+" y su precio. Una línea en blanco separa un bloque del siguiente.
-    const _grupos = _groupOrderItemsForDisplay(order.items || []);
+    const _grupos = _ticketAgruparCombos(_groupOrderItemsForDisplay(order.items || []));
     _grupos.forEach((item, idx) => {
         const esHijo = !!item.parentItemKey;
         const precio = Number(item.subtotal) > 0 ? formatMoney(item.subtotal) : (Number(item.subtotal) < 0 ? '-' + formatMoney(Math.abs(item.subtotal)) : (esHijo ? 'incl.' : formatMoney(item.subtotal)));
         if (esHijo) wh('   + ', `${item.quantity}x ${item.productName}`, precio);
-        else wh(String(item.quantity).padStart(2) + 'x ', item.productName, precio);
-        _ticketDetalleLineas(item, { categoria: false }).forEach((d) => {
+        else if (item._combo) {
+            const sab = _ticketSaboresTexto(item._conteo);
+            wh(String(item.quantity).padStart(2) + 'x ', `${item.productName} en combo${sab ? ` (${sab})` : ''}`, precio);
+        } else wh(String(item.quantity).padStart(2) + 'x ', item.productName, precio);
+        // En un combo la variante y la bebida ya van en el título: solo queda el resto (nota, "sin ...").
+        const _itemDet = item._combo
+            ? { ...item, optionLabel: item._combo.resto.join(' | '), note: item._combo.resto.join(' | ') }
+            : item;
+        _ticketDetalleLineas(_itemDet, { categoria: false }).forEach((d) => {
             const pfx = esHijo ? '       - ' : '    - ';
             const txt = d.t === 'cortesia' ? '*** CORTESIA ***' : d.t === 'beb' ? 'Beb: ' + d.x : d.x;
             const resalta = d.t === 'cortesia' || /^(sin|poca|con)\b/i.test(d.x);
