@@ -17,9 +17,35 @@ const CUESTIONARIOS = {
     general: {
         q1: Q1,
         q2: ['excelente', 'bien', 'mejorable', 'mal'], // servicio / entrega
-        q3: ['seguro', 'tal_vez', 'no']                // ¿volvería a pedir?
+        q3: ['seguro', 'tal_vez', 'no']                // ¿volvería a pedir? (YA NO se pregunta; solo existe en respuestas viejas)
     }
 };
+
+// Preguntas de seguimiento de la encuesta de fidelización (solo 'general'): dependen de la respuesta anterior.
+//  · q1d: si el sabor fue normalito/malo → «¿qué falló?»; si fue bueno → «¿qué fue lo que más te gustó?»
+//  · q2d: si el servicio/entrega fue mejorable/malo → «¿qué pasó?»
+const Q1_BAJO = ['normalita', 'no_convencio'];
+const Q2_BAJO = ['mejorable', 'mal'];
+const Q1D_FALLO = {
+    fria: 'llegó fría', pequena: 'porción pequeña', poco_sabor: 'poco sabor', presentacion: 'mala presentación',
+    grasosa: 'muy grasosa o salada', pan: 'el pan', carne: 'la carne', incompleto: 'faltó algo del pedido'
+};
+const Q1D_GUSTO = {
+    carne: 'la carne', salsas: 'las salsas', pan: 'el pan', papas: 'las papas', tamano: 'el tamaño',
+    presentacion: 'la presentación', precio: 'el precio'
+};
+const Q2D_PROBLEMA = {
+    demora: 'se demoró', incompleto: 'llegó incompleto', trato: 'trato del domiciliario', sin_aviso: 'no avisó que llegaba',
+    costo_domicilio: 'costo del domicilio', error: 'se equivocaron en el pedido'
+};
+
+// Deja solo valores permitidos y sin repetir (máximo los que existan). Siempre devuelve un arreglo.
+function filtrarMulti(valor, permitidos) {
+    const lista = Array.isArray(valor) ? valor : [];
+    const out = [];
+    lista.forEach((v) => { const s = String(v || ''); if (Object.prototype.hasOwnProperty.call(permitidos, s) && !out.includes(s)) out.push(s); });
+    return out;
+}
 
 const DIAS_POR_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -53,17 +79,26 @@ function validarRespuestasFeedback(tipo, data) {
     if (!data || data.consentimiento !== true) return { ok: false, error: 'Marca la casilla de autorización para enviar tu opinión.' };
     const q1 = String((data && data.q1) || '');
     const q2 = String((data && data.q2) || '');
-    const q3 = String((data && data.q3) || '');
-    if (!cuest.q1.includes(q1) || !cuest.q2.includes(q2) || !cuest.q3.includes(q3)) {
-        return { ok: false, error: 'Responde las 3 primeras preguntas.' };
+    let q3 = String((data && data.q3) || '');
+    const general = tipo === 'general';
+    // En fidelización ya no se pregunta si volvería: q3 queda vacío (o un valor viejo válido, por compatibilidad).
+    if (general && !q3) q3 = '';
+    const q3Ok = general ? (q3 === '' || cuest.q3.includes(q3)) : cuest.q3.includes(q3);
+    if (!cuest.q1.includes(q1) || !cuest.q2.includes(q2) || !q3Ok) {
+        return { ok: false, error: general ? 'Responde las preguntas de sabor y de servicio.' : 'Responde las 3 primeras preguntas.' };
     }
     const q4 = String((data && data.q4) || '').trim().slice(0, 500);
     let cumple = '';
-    if (tipo === 'general') {
+    let q1d = [];
+    let q2d = [];
+    if (general) {
         cumple = normalizarCumple(data && data.cumple);
         if (cumple === null) return { ok: false, error: 'La fecha de cumpleaños no es válida.' };
+        // El seguimiento solo vale si corresponde a la respuesta anterior (lo que falló solo si el sabor fue bajo, etc.).
+        q1d = filtrarMulti(data && data.q1d, Q1_BAJO.includes(q1) ? Q1D_FALLO : Q1D_GUSTO);
+        q2d = Q2_BAJO.includes(q2) ? filtrarMulti(data && data.q2d, Q2D_PROBLEMA) : [];
     }
-    return { ok: true, value: { q1, q2, q3, q4, cumple, consentimiento: true } };
+    return { ok: true, value: { q1, q2, q3, q4, cumple, q1d, q2d, consentimiento: true } };
 }
 
 // Motivos por los que una respuesta pide atención inmediata (para disculparse y recuperar al cliente). [] = todo bien.
@@ -73,10 +108,15 @@ function motivosCalificacionBaja(tipo, v) {
     if (tipo === 'general' && v) {
         if (v.q2 === 'mejorable' || v.q2 === 'mal') motivos.push(v.q2 === 'mal' ? 'el servicio fue malo' : 'el servicio se puede mejorar');
         if (v.q3 === 'no') motivos.push('cree que no volvería a pedir');
+        // Detalle de lo que falló (para que el aviso diga el porqué, no solo «el sabor no lo convenció»).
+        const fallo = (Array.isArray(v.q1d) && Q1_BAJO.includes(v.q1) ? v.q1d : []).map((k) => Q1D_FALLO[k]).filter(Boolean);
+        if (fallo.length) motivos.push(`sabor: ${fallo.join(', ')}`);
+        const prob = (Array.isArray(v.q2d) ? v.q2d : []).map((k) => Q2D_PROBLEMA[k]).filter(Boolean);
+        if (prob.length) motivos.push(`servicio: ${prob.join(', ')}`);
     }
     return motivos;
 }
 
 const CONSENTIMIENTO_VERSION = '2026-11-04';
 
-module.exports = { motivosCalificacionBaja, CONSENTIMIENTO_VERSION, CUESTIONARIOS, feedbackTipoDePedido, itemEs2x1, normalizarCumple, validarRespuestasFeedback };
+module.exports = { Q1D_FALLO, Q1D_GUSTO, Q2D_PROBLEMA, motivosCalificacionBaja, CONSENTIMIENTO_VERSION, CUESTIONARIOS, feedbackTipoDePedido, itemEs2x1, normalizarCumple, validarRespuestasFeedback };

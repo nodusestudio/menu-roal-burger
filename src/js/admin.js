@@ -12183,6 +12183,24 @@ const FB_Q2 = { instagram: ['📸', 'Instagram'], whatsapp: ['💬', 'WhatsApp']
 const FB_Q2_GEN = { excelente: ['🌟', 'Excelente'], bien: ['👍', 'Bien'], mejorable: ['🤏', 'Se puede mejorar'], mal: ['👎', 'Mal'] };
 const FB_Q3_GEN = { seguro: ['🙌', 'Seguro que vuelve'], tal_vez: ['🤔', 'Tal vez'], no: ['😬', 'Creo que no'] };
 const FB_Q3 = { si: ['✅', 'Sí instaló la app'], no: ['❌', 'No la instaló'], no_sabia: ['🤔', 'No sabía'] };
+// Seguimiento de la fidelización (mismas claves que functions/feedbackTipo.js): qué falló, qué gustó y qué pasó con el servicio.
+const FB_Q1D_FALLO = { fria: ['🥶', 'Llegó fría'], pequena: ['🤏', 'Porción pequeña'], poco_sabor: ['😶', 'Poco sabor'], presentacion: ['🎨', 'Mala presentación'], grasosa: ['🛢️', 'Muy grasosa o salada'], pan: ['🍞', 'El pan'], carne: ['🥩', 'La carne'], incompleto: ['📦', 'Faltó algo del pedido'] };
+const FB_Q1D_GUSTO = { carne: ['🥩', 'La carne'], salsas: ['🧴', 'Las salsas'], pan: ['🍞', 'El pan'], papas: ['🍟', 'Las papas'], tamano: ['📏', 'El tamaño'], presentacion: ['🎨', 'La presentación'], precio: ['💰', 'El precio'] };
+const FB_Q2D_PROBLEMA = { demora: ['⏱️', 'Se demoró'], incompleto: ['📦', 'Llegó incompleto'], trato: ['🙁', 'Trato del domiciliario'], sin_aviso: ['📵', 'No avisó que llegaba'], costo_domicilio: ['💸', 'Costo del domicilio'], error: ['🔀', 'Se equivocaron en el pedido'] };
+const _fbBajo = (r) => r.q1 === 'normalita' || r.q1 === 'no_convencio';
+// Texto con el detalle de una respuesta de fidelización (qué falló / qué gustó / qué pasó con el servicio). Respuestas viejas: su «volvería».
+function _fbDetalleHtml(r) {
+    const nom = (map, lista) => (lista || []).map((k) => (map[k] ? map[k][1] : k)).join(', ');
+    const partes = [];
+    if (r.q1d && r.q1d.length) partes.push(`${_fbBajo(r) ? 'Falló' : 'Le gustó'}: ${nom(_fbBajo(r) ? FB_Q1D_FALLO : FB_Q1D_GUSTO, r.q1d)}`);
+    if (r.q2d && r.q2d.length) partes.push(`Servicio: ${nom(FB_Q2D_PROBLEMA, r.q2d)}`);
+    if (!partes.length && r.q3) partes.push(`Volvería: ${FB_Q3_GEN[r.q3]?.[1] || r.q3}`);
+    return partes.map((p) => ` · ${escapeHtml(p)}`).join('');
+}
+// Cuenta cuántas respuestas marcaron cada motivo (una respuesta puede marcar varios).
+function _fbCountMulti(rows, key, labels) {
+    return Object.keys(labels).map((val) => ({ val, n: rows.filter((r) => Array.isArray(r[key]) && r[key].includes(val)).length }));
+}
 let _fbUnsubs = [];
 let _fbResponses = [];
 let _fbReqActive = [];
@@ -12217,7 +12235,7 @@ function _fbAttach() {
                 const x = d.data();
                 return {
                     id: d.id, orderCode: String(x.orderCode || ''), name: String(x.customerName || ''), phone: String(x.customerPhone || ''),
-                    tipo: x.tipo === 'general' ? 'general' : 'quindio', cumple: String(x.cumple || ''), clientId: String(x.clientId || ''), requiere: x.requiereAtencion === true, motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [], q1: x.q1, q2: x.q2, q3: x.q3, q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
+                    tipo: x.tipo === 'general' ? 'general' : 'quindio', cumple: String(x.cumple || ''), clientId: String(x.clientId || ''), requiere: x.requiereAtencion === true, motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [], q1: x.q1, q2: x.q2, q3: x.q3, q1d: Array.isArray(x.q1d) ? x.q1d : [], q2d: Array.isArray(x.q2d) ? x.q2d : [], q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
                 };
             });
             renderMetricasFeedback();
@@ -12272,7 +12290,17 @@ function _fbBuildReport(rows, solicitudes) {
     const general = _fbTipo === 'general';
     bloque('Sabor y calidad', 'q1', FB_Q1);
     bloque(M.t2, 'q2', M.q2);
-    bloque(M.t3, 'q3', M.q3);
+    if (!general) bloque(M.t3, 'q3', M.q3);
+    else {
+        const motivos = (titulo, key, labels, base) => {
+            lines.push(`## ${titulo} (${base.length} respuestas)`);
+            _fbCountMulti(base, key, labels).sort((a, b) => b.n - a.n).forEach((c) => lines.push(`- ${labels[c.val][1]}: ${c.n} (${_fbPct(c.n, base.length)}%)`));
+            lines.push('');
+        };
+        motivos('Qué falló (sabor normalito o malo)', 'q1d', FB_Q1D_FALLO, rows.filter(_fbBajo));
+        motivos('Qué fue lo que más gustó', 'q1d', FB_Q1D_GUSTO, rows.filter((r) => !_fbBajo(r)));
+        motivos('Qué pasó con el servicio o la entrega', 'q2d', FB_Q2D_PROBLEMA, rows.filter((r) => r.q2 === 'mejorable' || r.q2 === 'mal'));
+    }
 
     lines.push(general ? '## Satisfacción con el sabor según el servicio' : '## Satisfacción por canal de origen');
     Object.keys(M.q2).forEach((k) => {
@@ -12286,8 +12314,13 @@ function _fbBuildReport(rows, solicitudes) {
     if (general) {
         const mal = rows.filter((r) => r.q2 === 'mejorable' || r.q2 === 'mal').length;
         if (_fbPct(mal, total) >= 20) obs.push(`El ${_fbPct(mal, total)}% calificó el servicio/entrega como mejorable o malo: revisar tiempos y trato en esos pedidos.`);
-        const vuelve = rows.filter((r) => r.q3 === 'seguro').length;
-        obs.push(`${_fbPct(vuelve, total)}% dice que seguro vuelve a pedir; ${_fbPct(rows.filter((r) => r.q3 === 'no').length, total)}% cree que no.`);
+        const bajos = rows.filter(_fbBajo);
+        const topFallo = _fbCountMulti(bajos, 'q1d', FB_Q1D_FALLO).sort((a, b) => b.n - a.n)[0];
+        if (topFallo && topFallo.n) obs.push(`Lo que más falla cuando el sabor no convence: ${FB_Q1D_FALLO[topFallo.val][1].toLowerCase()} (${topFallo.n} de ${bajos.length}).`);
+        const topGusto = _fbCountMulti(rows.filter((r) => !_fbBajo(r)), 'q1d', FB_Q1D_GUSTO).sort((a, b) => b.n - a.n)[0];
+        if (topGusto && topGusto.n) obs.push(`Lo que más gusta: ${FB_Q1D_GUSTO[topGusto.val][1].toLowerCase()} (${topGusto.n} respuestas): destacarlo en redes.`);
+        const topServ = _fbCountMulti(rows, 'q2d', FB_Q2D_PROBLEMA).sort((a, b) => b.n - a.n)[0];
+        if (topServ && topServ.n) obs.push(`Problema de servicio más repetido: ${FB_Q2D_PROBLEMA[topServ.val][1].toLowerCase()} (${topServ.n} respuestas).`);
         const cumples = rows.filter((r) => r.cumple).length;
         if (cumples) obs.push(`${cumples} cliente${cumples === 1 ? '' : 's'} dejó su cumpleaños para sorprenderlo.`);
     }
@@ -12307,10 +12340,14 @@ function _fbBuildReport(rows, solicitudes) {
 function _fbCsv(rows) {
     const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const M = _fbMaps();
-    const head = ['fecha', 'pedido', 'cliente', 'telefono', 'sabor_calidad', M.col2, M.col3, 'sugerencia', ...(_fbTipo === 'general' ? ['cumpleanos'] : [])];
+    const gen = _fbTipo === 'general';
+    const head = ['fecha', 'pedido', 'cliente', 'telefono', 'sabor_calidad', ...(gen ? ['sabor_detalle', M.col2, 'servicio_detalle'] : [M.col2, M.col3]), 'sugerencia', ...(gen ? ['cumpleanos'] : [])];
+    const nomMulti = (map, lista) => (lista || []).map((k) => (map[k] ? map[k][1] : k)).join(' | ');
     const body = rows.map((r) => [
         r.ts ? new Date(r.ts).toLocaleString('es-CO', { timeZone: 'America/Bogota' }) : '', r.orderCode, r.name, r.phone,
-        FB_Q1[r.q1]?.[1] || r.q1, M.q2[r.q2]?.[1] || r.q2, M.q3[r.q3]?.[1] || r.q3, r.q4, ...(_fbTipo === 'general' ? [r.cumple] : [])
+        FB_Q1[r.q1]?.[1] || r.q1,
+        ...(gen ? [nomMulti(_fbBajo(r) ? FB_Q1D_FALLO : FB_Q1D_GUSTO, r.q1d), M.q2[r.q2]?.[1] || r.q2, nomMulti(FB_Q2D_PROBLEMA, r.q2d)] : [M.q2[r.q2]?.[1] || r.q2, M.q3[r.q3]?.[1] || r.q3]),
+        r.q4, ...(gen ? [r.cumple] : [])
     ].map(cell).join(','));
     return `﻿${[head.map(cell).join(','), ...body].join('\r\n')}`;
 }
@@ -12467,7 +12504,7 @@ function renderMetricasFeedback() {
             <div class="met-avatar">${FB_Q1[r.q1]?.[0] || '❔'}</div>
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(FB_Q1[r.q1]?.[1] || r.q1)}</div>
-                <div class="met-user-meta-v2">${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${_fbTipo === 'general' ? 'Servicio' : 'Se enteró por'} ${escapeHtml(M.q2[r.q2]?.[1] || r.q2)} · ${_fbTipo === 'general' ? 'Volvería' : 'App'}: ${escapeHtml(M.q3[r.q3]?.[1] || r.q3)}${r.cumple ? ` · 🎂 ${escapeHtml(r.cumple)}` : ''} · ${escapeHtml(fmt(r.ts))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}</div>
+                <div class="met-user-meta-v2">${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${_fbTipo === 'general' ? 'Servicio' : 'Se enteró por'} ${escapeHtml(M.q2[r.q2]?.[1] || r.q2)}${_fbTipo === 'general' ? _fbDetalleHtml(r) : ` · App: ${escapeHtml(M.q3[r.q3]?.[1] || r.q3)}`}${r.cumple ? ` · 🎂 ${escapeHtml(r.cumple)}` : ''} · ${escapeHtml(fmt(r.ts))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}</div>
             </div>
         </div>`).join('');
         return `<p class="met-empty-note" style="text-align:left;margin:0 0 6px">${nf(filtered.length)} respuesta${filtered.length === 1 ? '' : 's'}</p>${html || '<p class="met-empty-note">No hay respuestas con esos filtros.</p>'}`;
@@ -12477,7 +12514,7 @@ function renderMetricasFeedback() {
     // Una sola sección visible a la vez (mismo modelo de pestañas internas que Configuración).
     const tab = ['seguimiento', 'metricas', 'respuestas', 'descargas'].includes(_fbTab) ? _fbTab : 'seguimiento';
     const TABS = [['seguimiento', '📅', 'Seguimiento'], ['metricas', '📊', 'Métricas'], ['respuestas', '💬', 'Respuestas'], ['descargas', '⬇️', 'Descargas']];
-    const navTipo = _fbNavTipoHtml(`<p class="admin-hint" style="margin:6px 0 10px">${_fbTipo === 'general' ? 'Encuesta para quienes NO pidieron el 2×1: sabor, servicio, si volverían y su cumpleaños. El aviso sale en Recepción de Pedidos como «Fidelización pendiente».' : 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).'}</p>`);
+    const navTipo = _fbNavTipoHtml(`<p class="admin-hint" style="margin:6px 0 10px">${_fbTipo === 'general' ? 'Encuesta para quienes NO pidieron el 2×1: sabor (qué falló o qué gustó), servicio (qué pasó), qué mejorar y su cumpleaños. El aviso sale en Recepción de Pedidos como «Fidelización pendiente».' : 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).'}</p>`);
     const nav = navTipo + `<article class="admin-card menu-section-card" style="padding-bottom:0">
         <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Feedback">
             ${TABS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${tab === id ? ' active' : ''}" data-fb-tab="${id}" role="tab" aria-selected="${tab === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
@@ -12527,10 +12564,14 @@ function renderMetricasFeedback() {
             <div class="met-analytics-grid">
                 <div class="met-analytics-card"><div class="met-analytics-title">¿Qué tal el sabor y la calidad?</div><div id="fbQ1Chart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">${M.c2}</div><div id="fbQ2Chart"></div></div>
-                <div class="met-analytics-card"><div class="met-analytics-title">${M.c3}</div><div id="fbQ3Chart"></div></div>
+                ${_fbTipo === 'general'
+        ? `<div class="met-analytics-card"><div class="met-analytics-title">🔧 Qué falló (sabor normalito o malo) · ${nf(rows.filter(_fbBajo).length)} resp.</div><div id="fbQ1dFalloChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">👍 Qué fue lo que más gustó · ${nf(rows.filter((r) => !_fbBajo(r)).length)} resp.</div><div id="fbQ1dGustoChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">🛵 Qué pasó con el servicio o la entrega · ${nf(rows.filter((r) => r.q2 === 'mejorable' || r.q2 === 'mal').length)} resp.</div><div id="fbQ2dChart"></div></div>`
+        : `<div class="met-analytics-card"><div class="met-analytics-title">${M.c3}</div><div id="fbQ3Chart"></div></div>`}
                 <div class="met-analytics-card"><div class="met-analytics-title">Respuestas por día</div><div id="fbDayChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">${M.x2}</div><div id="fbCruceChart"></div></div>
-                <div class="met-analytics-card"><div class="met-analytics-title">${M.x3}</div><div id="fbCruceAppChart"></div></div>
+                ${_fbTipo === 'general' ? '' : `<div class="met-analytics-card"><div class="met-analytics-title">${M.x3}</div><div id="fbCruceAppChart"></div></div>`}
             </div>
         </article>`;
     const secRespuestas = `
@@ -12551,10 +12592,17 @@ function renderMetricasFeedback() {
     if (tab === 'metricas') {
         _renderBarChart('fbQ1Chart', chartData('q1', FB_Q1), '#ff7a1a');
         _renderBarChart('fbQ2Chart', chartData('q2', M.q2), '#a78bfa');
-        _renderBarChart('fbQ3Chart', chartData('q3', M.q3), '#60a5fa');
+        if (_fbTipo === 'general') {
+            const multi = (key, labels, base) => _fbCountMulti(base, key, labels).sort((a, b) => b.n - a.n).map((c) => ({ label: `${labels[c.val][0]} ${labels[c.val][1]} · ${_fbPct(c.n, base.length)}%`, val: c.n }));
+            _renderBarChart('fbQ1dFalloChart', multi('q1d', FB_Q1D_FALLO, rows.filter(_fbBajo)), '#f87171');
+            _renderBarChart('fbQ1dGustoChart', multi('q1d', FB_Q1D_GUSTO, rows.filter((r) => !_fbBajo(r))), '#4ade80');
+            _renderBarChart('fbQ2dChart', multi('q2d', FB_Q2D_PROBLEMA, rows.filter((r) => r.q2 === 'mejorable' || r.q2 === 'mal')), '#fbbf24');
+        } else {
+            _renderBarChart('fbQ3Chart', chartData('q3', M.q3), '#60a5fa');
+            _renderBarChart('fbCruceAppChart', cruceApp, '#fbbf24');
+        }
         _renderBarChart('fbDayChart', dayData, '#34d399');
         _renderBarChart('fbCruceChart', cruce, '#4ade80');
-        _renderBarChart('fbCruceAppChart', cruceApp, '#fbbf24');
     }
 
     _fbBind(body);

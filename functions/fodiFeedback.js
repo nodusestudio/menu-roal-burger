@@ -7,10 +7,11 @@ const ETIQ_Q2 = { instagram: 'Instagram', whatsapp: 'WhatsApp', amigo: 'Amigo', 
 const ETIQ_Q3 = { si: 'Sí instaló la app', no: 'No la instaló', no_sabia: 'No sabía de la app' };
 const ETIQ_Q2_GEN = { excelente: 'Excelente', bien: 'Bien', mejorable: 'Se puede mejorar', mal: 'Mal' };
 const ETIQ_Q3_GEN = { seguro: 'Seguro que vuelve', tal_vez: 'Tal vez', no: 'Creo que no' };
-const { feedbackTipoDePedido } = require('./feedbackTipo');
+const { feedbackTipoDePedido, Q1D_FALLO, Q1D_GUSTO, Q2D_PROBLEMA } = require('./feedbackTipo');
 const DOS_HORAS_MS = 2 * 3600e3;
 const MAX_EDAD_PENDIENTE_MS = { quindio: 24 * 3600e3, general: 7 * 24 * 3600e3 }; // fidelización: hasta 7 días
 
+const BAJO = ['normalita', 'no_convencio'];
 const pct = (n, t) => (t ? Math.round((n / t) * 100) : 0);
 const enmascarar = (tel) => { const t = String(tel || ''); return t.length > 4 ? `***${t.slice(-4)}` : t; };
 const ms = (v) => (v && typeof v.toMillis === 'function' ? v.toMillis() : Number(v) || 0);
@@ -22,6 +23,14 @@ function distribucion(filas, clave, etiquetas) {
         const n = filas.filter((f) => f[clave] === k).length;
         return { opcion: etiquetas[k], respuestas: n, porcentaje: pct(n, filas.length) };
     });
+}
+
+// Cuántas respuestas marcaron cada motivo (pueden marcar varios), de mayor a menor.
+function contarMotivos(filas, clave, etiquetas) {
+    return Object.keys(etiquetas).map((k) => {
+        const n = filas.filter((f) => Array.isArray(f[clave]) && f[clave].includes(k)).length;
+        return { motivo: etiquetas[k], respuestas: n, porcentaje: pct(n, filas.length) };
+    }).sort((a, b) => b.respuestas - a.respuestas);
 }
 
 async function feedbackClientes(db, args = {}) {
@@ -96,7 +105,7 @@ async function feedbackClientes(db, args = {}) {
     const snap = await db.collection('encuestas_pedido').orderBy('createdAt', 'desc').limit(2000).get();
     const filas = snap.docs.filter((d) => (d.data().tipo || 'quindio') === tipo).map((d) => {
         const x = d.data();
-        return { pedido: x.orderCode || d.id, cliente: String(x.customerName || ''), tel: String(x.customerPhone || ''), q1: x.q1, q2: x.q2, q3: x.q3, q4: String(x.q4 || '').trim(), puntos: Number(x.pointsAwarded) || 0, t: ms(x.createdAt) };
+        return { pedido: x.orderCode || d.id, cliente: String(x.customerName || ''), tel: String(x.customerPhone || ''), q1: x.q1, q2: x.q2, q3: x.q3, q1d: Array.isArray(x.q1d) ? x.q1d : [], q2d: Array.isArray(x.q2d) ? x.q2d : [], q4: String(x.q4 || '').trim(), puntos: Number(x.pointsAwarded) || 0, t: ms(x.createdAt) };
     });
 
     if (parte === 'sugerencias') {
@@ -107,7 +116,7 @@ async function feedbackClientes(db, args = {}) {
     if (parte === 'respuestas') {
         return {
             total: filas.length,
-            respuestas: filas.slice(0, 40).map((f) => ({ cliente: f.cliente || 'Cliente', telefono: enmascarar(f.tel), pedido: f.pedido, sabor_calidad: ETIQ_Q1[f.q1] || f.q1, [tipo === 'general' ? 'servicio' : 'se_entero_por']: E2[f.q2] || f.q2, [tipo === 'general' ? 'volveria' : 'app']: E3[f.q3] || f.q3, sugerencia: f.q4.slice(0, 200), fecha: fechaBogota(f.t) })),
+            respuestas: filas.slice(0, 40).map((f) => ({ cliente: f.cliente || 'Cliente', telefono: enmascarar(f.tel), pedido: f.pedido, sabor_calidad: ETIQ_Q1[f.q1] || f.q1, [tipo === 'general' ? 'servicio' : 'se_entero_por']: E2[f.q2] || f.q2, ...(tipo === 'general' ? { que_fallo_o_gusto: (f.q1d || []).map((k) => (BAJO.includes(f.q1) ? Q1D_FALLO : Q1D_GUSTO)[k] || k).join(', '), problema_servicio: (f.q2d || []).map((k) => Q2D_PROBLEMA[k] || k).join(', ') } : { app: E3[f.q3] || f.q3 }), sugerencia: f.q4.slice(0, 200), fecha: fechaBogota(f.t) })),
             nota: filas.length > 40 ? 'Se muestran las 40 más recientes.' : undefined
         };
     }
@@ -125,7 +134,7 @@ async function feedbackClientes(db, args = {}) {
         tipo: tipo === 'general' ? 'Fidelización (pedidos sin 2×1)' : 'Sabe a Quindío (pedidos con 2×1)',
         sabor_calidad: distribucion(filas, 'q1', ETIQ_Q1),
         ...(tipo === 'general'
-            ? { servicio_entrega: distribucion(filas, 'q2', E2), volveria_a_pedir: distribucion(filas, 'q3', E3), cumpleanos_recogidos: snap.docs.filter((d) => (d.data().tipo || 'quindio') === 'general' && d.data().cumple).length }
+            ? { servicio_entrega: distribucion(filas, 'q2', E2), motivos_que_fallaron: contarMotivos(filas.filter((f) => BAJO.includes(f.q1)), 'q1d', Q1D_FALLO), motivos_que_gustaron: contarMotivos(filas.filter((f) => !BAJO.includes(f.q1)), 'q1d', Q1D_GUSTO), problemas_de_servicio: contarMotivos(filas.filter((f) => f.q2 === 'mejorable' || f.q2 === 'mal'), 'q2d', Q2D_PROBLEMA), cumpleanos_recogidos: snap.docs.filter((d) => (d.data().tipo || 'quindio') === 'general' && d.data().cumple).length }
             : { como_se_enteraron: distribucion(filas, 'q2', E2), app_instalada: distribucion(filas, 'q3', E3) }),
         satisfaccion_por_grupo: porCanal,
         nota: 'Satisfacción = Brutal 10/10 + Muy buena. Con pocas respuestas los porcentajes no son concluyentes: dilo.'

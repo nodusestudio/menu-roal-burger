@@ -71,3 +71,28 @@ test('calificación baja: motivos por tipo de encuesta', () => {
     assert.equal(motivosCalificacionBaja('general', { q1: 'normalita', q2: 'mal', q3: 'no' }).length, 3);
     assert.equal(motivosCalificacionBaja('general', { q1: 'brutal', q2: 'mejorable', q3: 'tal_vez' }).length, 1);
 });
+
+test('fidelización: ya no se pregunta si volvería (q3 vacío vale) y llegan los seguimientos', () => {
+    const ok = validarRespuestasFeedback('general', { q1: 'no_convencio', q2: 'mal', q1d: ['fria', 'pan'], q2d: ['demora'], q4: 'más rápido', consentimiento: true });
+    assert.equal(ok.ok, true);
+    assert.equal(ok.value.q3, '');
+    assert.deepEqual(ok.value.q1d, ['fria', 'pan']);
+    assert.deepEqual(ok.value.q2d, ['demora']);
+});
+
+test('el seguimiento solo vale si corresponde a la respuesta anterior y descarta lo desconocido', () => {
+    // Sabor bueno → lista «qué gustó»; «fria» no existe ahí. Servicio bueno → q2d se descarta.
+    const r = validarRespuestasFeedback('general', { q1: 'brutal', q2: 'bien', q1d: ['carne', 'fria', 'carne', 'x'], q2d: ['demora'], consentimiento: true });
+    assert.deepEqual(r.value.q1d, ['carne']);
+    assert.deepEqual(r.value.q2d, []);
+    // Sabor bajo → lista «qué falló».
+    assert.deepEqual(validarRespuestasFeedback('general', { q1: 'normalita', q2: 'bien', q1d: ['salsas', 'fria'], consentimiento: true }).value.q1d, ['fria']);
+    // Quindío no guarda seguimientos.
+    assert.deepEqual(validarRespuestasFeedback('quindio', { q1: 'brutal', q2: 'web', q3: 'si', q1d: ['carne'], consentimiento: true }).value.q1d, []);
+});
+
+test('el aviso de calificación baja dice qué falló', () => {
+    const m = motivosCalificacionBaja('general', { q1: 'normalita', q2: 'mal', q1d: ['fria'], q2d: ['demora', 'trato'] });
+    assert.ok(m.includes('sabor: llegó fría'));
+    assert.ok(m.includes('servicio: se demoró, trato del domiciliario'));
+});

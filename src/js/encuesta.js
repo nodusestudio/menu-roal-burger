@@ -37,15 +37,42 @@ const PREGUNTAS_GENERAL = [
     {
         key: 'q2', titulo: '¿Y el servicio y la entrega?',
         opciones: [['excelente', '🌟', 'Excelente'], ['bien', '👍', 'Bien'], ['mejorable', '🤏', 'Se puede mejorar'], ['mal', '👎', 'Mal']]
-    },
-    {
-        key: 'q3', titulo: '¿Volverías a pedir con nosotros?',
-        opciones: [['seguro', '🙌', 'Seguro que sí'], ['tal_vez', '🤔', 'Tal vez'], ['no', '😬', 'Creo que no']]
     }
 ];
+// Preguntas de seguimiento (solo fidelización): aparecen según lo que respondió antes. Varias opciones a la vez.
+// Las claves deben coincidir con functions/feedbackTipo.js (el servidor descarta lo que no esté allí).
+const SEG_Q1_FALLO = {
+    key: 'q1d', multi: true, titulo: '¿Qué falló? (puedes marcar varias)',
+    opciones: [['fria', '🥶', 'Llegó fría'], ['pequena', '🤏', 'Porción pequeña'], ['poco_sabor', '😶', 'Poco sabor'], ['presentacion', '🎨', 'Mala presentación'],
+        ['grasosa', '🛢️', 'Muy grasosa o salada'], ['pan', '🍞', 'El pan'], ['carne', '🥩', 'La carne'], ['incompleto', '📦', 'Faltó algo del pedido']]
+};
+const SEG_Q1_GUSTO = {
+    key: 'q1d', multi: true, titulo: '¡Qué bueno! ¿Qué fue lo que más te gustó? (puedes marcar varias)',
+    opciones: [['carne', '🥩', 'La carne'], ['salsas', '🧴', 'Las salsas'], ['pan', '🍞', 'El pan'], ['papas', '🍟', 'Las papas'],
+        ['tamano', '📏', 'El tamaño'], ['presentacion', '🎨', 'La presentación'], ['precio', '💰', 'El precio']]
+};
+const SEG_Q2_PROBLEMA = {
+    key: 'q2d', multi: true, titulo: '¿Qué pasó con el servicio o la entrega? (puedes marcar varias)',
+    opciones: [['demora', '⏱️', 'Se demoró'], ['incompleto', '📦', 'Llegó incompleto'], ['trato', '🙁', 'Trato del domiciliario'],
+        ['sin_aviso', '📵', 'No avisó que llegaba'], ['costo_domicilio', '💸', 'Costo del domicilio'], ['error', '🔀', 'Se equivocaron en el pedido']]
+};
+const Q1_BAJO = ['normalita', 'no_convencio'];
+const Q2_BAJO = ['mejorable', 'mal'];
 let tipo = 'quindio';
 let PREGUNTAS = PREGUNTAS_QUINDIO;
-let TOTAL_PASOS = PREGUNTAS.length + 1; // 3 de un clic + sugerencia
+
+// Lista de pasos de un clic según las respuestas actuales (en fidelización cambia sobre la marcha).
+function pasosActuales() {
+    if (tipo !== 'general') return PREGUNTAS_QUINDIO;
+    const lista = [PREGUNTAS_GENERAL[0]];
+    if (respuestas.q1) lista.push(Q1_BAJO.includes(respuestas.q1) ? SEG_Q1_FALLO : SEG_Q1_GUSTO);
+    lista.push(PREGUNTAS_GENERAL[1]);
+    if (Q2_BAJO.includes(respuestas.q2)) lista.push(SEG_Q2_PROBLEMA);
+    return lista;
+}
+// ¿Algo salió mal? Cambia la última pregunta: mejorar vs. agregar.
+const huboQueja = () => Q1_BAJO.includes(respuestas.q1) || Q2_BAJO.includes(respuestas.q2);
+const totalPasos = () => pasosActuales().length + 1; // pasos de un clic + sugerencia
 
 const respuestas = {};
 let paso = 0;
@@ -90,40 +117,63 @@ function estadoMensaje(emoji, titulo, texto, conBoton = true) {
 }
 
 function progreso() {
-    return `<div class="en-progreso" aria-hidden="true">${Array.from({ length: TOTAL_PASOS }, (_, i) => `<i class="${i <= paso ? 'on' : ''}"></i>`).join('')}</div>`;
+    const total = totalPasos();
+    return `<div class="en-progreso" aria-hidden="true">${Array.from({ length: total }, (_, i) => `<i class="${i <= paso ? 'on' : ''}"></i>`).join('')}</div>`;
 }
 
 function pintarPaso() {
-    if (paso < PREGUNTAS.length) {
-        const p = PREGUNTAS[paso];
+    const pasos = pasosActuales();
+    const TOTAL_PASOS = pasos.length + 1;
+    if (paso < pasos.length) {
+        const p = pasos[paso];
+        const sel = Array.isArray(respuestas[p.key]) ? respuestas[p.key] : [respuestas[p.key]];
         pintar(`<div class="en-paso">
             ${progreso()}
-            <p class="en-kicker">Pregunta ${paso + 1} de ${TOTAL_PASOS}</p>
+            <p class="en-kicker">Pregunta ${paso + 1} de ${TOTAL_PASOS}${p.multi ? ' · opcional' : ''}</p>
             <h1 class="en-h">${esc(p.titulo)}</h1>
             <div class="en-opciones" role="group" aria-label="${esc(p.titulo)}">
-                ${p.opciones.map(([val, em, label]) => `<button type="button" class="en-op${respuestas[p.key] === val ? ' sel' : ''}" data-val="${val}"><span class="em" aria-hidden="true">${em}</span>${esc(label)}</button>`).join('')}
+                ${p.opciones.map(([val, em, label]) => `<button type="button" class="en-op${sel.includes(val) ? ' sel' : ''}" data-val="${val}"${p.multi ? ' aria-pressed="' + sel.includes(val) + '"' : ''}><span class="em" aria-hidden="true">${em}</span>${esc(label)}</button>`).join('')}
             </div>
+            ${p.multi ? '<button type="button" class="en-btn" id="enSigue" style="margin-top:12px">Continuar →</button>' : ''}
             ${paso > 0 ? '<button type="button" class="en-atras" id="enAtras">← Volver</button>' : ''}
         </div>`);
         app.querySelectorAll('.en-op').forEach((btn) => btn.addEventListener('click', () => {
+            if (p.multi) { // varias opciones: se marcan y desmarcan; avanza con «Continuar»
+                const lista = Array.isArray(respuestas[p.key]) ? respuestas[p.key].slice() : [];
+                const i = lista.indexOf(btn.dataset.val);
+                if (i >= 0) lista.splice(i, 1); else lista.push(btn.dataset.val);
+                respuestas[p.key] = lista;
+                btn.classList.toggle('sel', i < 0);
+                btn.setAttribute('aria-pressed', String(i < 0));
+                return;
+            }
+            const anterior = respuestas[p.key];
             respuestas[p.key] = btn.dataset.val;
+            // Si cambia la rama (de «me gustó» a «no me gustó» o al revés) se borra el detalle que ya no aplica.
+            if (anterior && anterior !== btn.dataset.val) {
+                if (p.key === 'q1' && Q1_BAJO.includes(anterior) !== Q1_BAJO.includes(btn.dataset.val)) delete respuestas.q1d;
+                if (p.key === 'q2' && !Q2_BAJO.includes(btn.dataset.val)) delete respuestas.q2d;
+            }
             btn.classList.add('sel');
             setTimeout(() => { paso += 1; pintarPaso(); }, 180); // un clic y avanza
         }));
+        document.getElementById('enSigue')?.addEventListener('click', () => { paso += 1; pintarPaso(); });
         document.getElementById('enAtras')?.addEventListener('click', () => { paso -= 1; pintarPaso(); });
         return;
     }
 
     const general = tipo === 'general';
+    const queja = general && huboQueja();
     const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
     const [cm, cd] = String(respuestas.cumple || '').split('-');
     pintar(`<div class="en-paso">
         ${progreso()}
-        <p class="en-kicker">Pregunta ${TOTAL_PASOS} de ${TOTAL_PASOS} · opcional</p>
-        <h1 class="en-h">${general ? '¿Qué te gustaría que agregáramos o mejoráramos?' : '¿Qué le mejorarías a la Trifásica?'}</h1>
-        <p class="en-sub">${general ? 'Un producto, un sabor, el servicio… lo que quieras.' : 'Y si quieres, cuéntanos qué otro producto te gustaría ver en promo.'}</p>
+        <p class="en-kicker">Pregunta ${totalPasos()} de ${totalPasos()} · opcional</p>
+        <h1 class="en-h">${queja ? '¿Qué podríamos hacer para mejorar?' : general ? '¿Qué te gustaría que agregáramos o mejoráramos?' : '¿Qué le mejorarías a la Trifásica?'}</h1>
+        <p class="en-sub">${queja ? 'Lamentamos que no haya sido perfecto. Cuéntanos y lo arreglamos.' : general ? 'Un producto, un sabor, el servicio… lo que quieras.' : 'Y si quieres, cuéntanos qué otro producto te gustaría ver en promo.'}</p>
         <textarea class="en-texto" id="enSugerencia" maxlength="500" placeholder="Escribe aquí (puedes dejarlo vacío)" aria-label="Sugerencias"></textarea>
-        ${general ? `<p class="en-sub" style="margin-top:14px">🎂 ¿Cuándo es tu cumpleaños? Queremos sorprenderte (opcional).</p>
+        ${general ? `<p class="en-sub" style="margin-top:14px">📲 Muy pronto lanzamos nuestra App: <strong>descárgala</strong> y entra a premios y descuentos especiales.</p>
+        <p class="en-sub" style="margin-top:6px">🎂 ¿Cuándo es tu cumpleaños? Déjanos tu fecha y te tendremos un detalle o descuento especial ese día (opcional).</p>
         <div style="display:flex;gap:8px;justify-content:center;margin-bottom:6px">
             <select id="enCumpleDia" class="en-texto" style="width:auto;min-height:0;padding:10px 12px" aria-label="Día de cumpleaños"><option value="">Día</option>${Array.from({ length: 31 }, (_, i) => `<option value="${String(i + 1).padStart(2, '0')}"${cd === String(i + 1).padStart(2, '0') ? ' selected' : ''}>${i + 1}</option>`).join('')}</select>
             <select id="enCumpleMes" class="en-texto" style="width:auto;min-height:0;padding:10px 12px" aria-label="Mes de cumpleaños"><option value="">Mes</option>${meses.map((m, i) => `<option value="${String(i + 1).padStart(2, '0')}"${cm === String(i + 1).padStart(2, '0') ? ' selected' : ''}>${m}</option>`).join('')}</select>
@@ -205,7 +255,6 @@ async function iniciar() {
         if (st.state !== 'ok') return estadoMensaje('🍔', 'Encuesta no disponible', 'Este link no está activo. Si crees que es un error, escríbenos por WhatsApp.');
         tipo = st.tipo === 'general' ? 'general' : 'quindio';
         PREGUNTAS = tipo === 'general' ? PREGUNTAS_GENERAL : PREGUNTAS_QUINDIO;
-        TOTAL_PASOS = PREGUNTAS.length + 1;
         pintarPaso();
     } catch (e) {
         pintar(`<div class="en-centro">
