@@ -13224,15 +13224,28 @@ function _fidNombreEnMensaje(p) {
     return nombre;
 }
 
+// Frase en segunda persona según lo que calificó mal (los motivos que guarda el servidor están en tercera persona).
+function _fidFraseMotivo(motivos) {
+    const m = (motivos || []).join(' | ');
+    if (/servicio fue malo/.test(m)) return 'el servicio no haya sido el que mereces';
+    if (/no lo convenci/.test(m)) return 'el sabor de tu pedido no te haya convencido';
+    if (/servicio se puede mejorar/.test(m)) return 'el servicio no haya sido el mejor';
+    if (/normalito/.test(m)) return 'tu pedido no te haya sabido tan bien como esperabas';
+    return 'tu experiencia no haya sido la que esperabas';
+}
+
+// Todo por chat (nunca se ofrece una llamada). Con saltos de línea y *negrita* de WhatsApp.
 function _fidMensajeDisculpa(r, nivel, producto, codigo, dias, ofertaTexto) {
     const nombre = String(r.name || '').trim().split(/\s+/)[0];
-    const motivo = (r.motivos && r.motivos[0]) ? r.motivos[0] : 'tu experiencia no fue la mejor';
     const nom = _fidNombreEnMensaje(producto);
     const oferta = producto
         ? (nivel === 'grave' ? `Queremos reponerte lo que no salió bien: ${nom} va por nuestra cuenta en tu próximo pedido.`
-            : (nivel === 'medio' ? `Queremos compensarte: te regalamos ${nom} en tu próximo pedido.` : `Queremos compensarte con ${nom} de cortesía en tu próximo pedido.`))
-        : `Queremos compensarte: ${ofertaTexto || _fidCfg.disculpaOferta}.`;
-    return `Hola${nombre ? ` ${nombre}` : ''}, te escribimos de ROAL BURGER. Gracias por contarnos tu opinión: sentimos mucho que ${motivo}. ${oferta} Tu código personal: ${codigo} (válido ${dias} días). ${nivel === 'grave' ? 'Si prefieres, te llamamos para escucharte. ' : ''}¿Nos cuentas qué pasó para corregirlo? 🙏`;
+            : (nivel === 'medio' ? `Para compensarte, te regalamos ${nom} en tu próximo pedido.` : `Como detalle de nuestra parte, te regalamos ${nom} en tu próximo pedido.`))
+        : `Para compensarte: ${ofertaTexto || _fidCfg.disculpaOferta}.`;
+    const cierre = nivel === 'grave'
+        ? 'Cuéntanos por aquí, con calma, qué pasó: queremos corregirlo contigo. 💬'
+        : '¿Nos cuentas por aquí qué pasó? Tu respuesta nos ayuda a corregirlo. 💬';
+    return `Hola${nombre ? ` ${nombre}` : ''} 👋, te escribimos de ROAL BURGER.\n\nGracias por contarnos tu opinión. Sentimos mucho que ${_fidFraseMotivo(r.motivos)}; no es lo que queremos para ti. 🙏\n\n${oferta} 🎁\nTu código personal: *${codigo}* (válido ${dias} días).\n\n${cierre}`;
 }
 
 let _fidAtenderVista = 'baja'; // baja | resena
@@ -28750,6 +28763,10 @@ function gastoOrigen(monto, hoyNeto, saldoAnterior) {
         insuficiente: m > disponible, faltante: Math.max(0, m - disponible)
     };
 }
+// Cómo lo hacen Square, Toast y Loyverse: el CAJÓN del turno maneja solo EFECTIVO (pay-out con motivo, solo con el turno abierto);
+// lo que se paga desde el banco / Nequi / Bold se registra contra la CUENTA en cualquier momento y no mueve el cajón.
+function gastoEsEfectivo(metodo) { return String(metodo) === 'efectivo'; }
+function gastoTipoPorMetodo(metodo) { return gastoEsEfectivo(metodo) ? 'caja' : 'externo'; } // 'caja' = del turno · 'externo' = desde una cuenta
 // SYNC:origen-gasto:fin
 function _gastoOrigenDe(metodo, monto) {
     return gastoOrigen(monto, (_cajaDiariaSumMethod || {})[metodo], (_historicoSumMethod || {})[metodo]);
@@ -28779,13 +28796,28 @@ function renderGastoMethodButtons() {
     if (!grid) return;
     // Se agrega "Otro" al final: sin esta opción no había cómo descontar un gasto del dinero que
     // quedó en el saldo "Otro" (métodos de pago eliminados de Configuración).
-    grid.innerHTML = [...getEnabledPaymentMethods(), OTRO_PAYMENT_METHOD].map((m) =>
-        `<button type="button" class="dpm-method-btn" data-gasto-method="${m.id}"${m.id === OTRO_PAYMENT_METHOD.id ? ' title="Saldo de métodos de pago anteriores que ya no existen en Configuración"' : ''}>
+    const todos = [...getEnabledPaymentMethods(), OTRO_PAYMENT_METHOD];
+    const cajaAbierta = cajaAperturaAt > 0;
+    if (_gastoSelectedMethod && gastoEsEfectivo(_gastoSelectedMethod) && !cajaAbierta) _gastoSelectedMethod = null;
+    const boton = (m) => {
+        const sinCaja = gastoEsEfectivo(m.id) && !cajaAbierta;
+        const titulo = sinCaja ? 'La caja está cerrada: el efectivo solo se paga con la caja abierta'
+            : (m.id === OTRO_PAYMENT_METHOD.id ? 'Saldo de métodos de pago anteriores que ya no existen en Configuración' : '');
+        return `<button type="button" class="dpm-method-btn" data-gasto-method="${m.id}"${sinCaja ? ' disabled' : ''}${titulo ? ` title="${titulo}"` : ''}>
             <span class="dpm-method-icon">${m.icon}</span>
             <span>${m.label}</span>
-            <small class="dpm-method-saldo" title="Lo que hay hoy más el saldo de días anteriores">Disp. ${formatMoney(Number((_historicoSumMethod || {})[m.id] || 0) + Number((_cajaDiariaSumMethod || {})[m.id] || 0))}</small>
-        </button>`
-    ).join('');
+            <small class="dpm-method-saldo" title="Lo que hay hoy más el saldo de días anteriores">${sinCaja ? 'Caja cerrada' : `Disp. ${formatMoney(Number((_historicoSumMethod || {})[m.id] || 0) + Number((_cajaDiariaSumMethod || {})[m.id] || 0))}`}</small>
+        </button>`;
+    };
+    const efectivo = todos.filter((m) => gastoEsEfectivo(m.id));
+    const cuentas = todos.filter((m) => !gastoEsEfectivo(m.id));
+    grid.innerHTML = (efectivo.length ? `<div class="gasto-fuente-titulo">💵 Del cajón <small>(efectivo, con la caja abierta)</small></div>${efectivo.map(boton).join('')}` : '')
+        + `<div class="gasto-fuente-titulo">🏦 Desde una cuenta <small>(no pasa por el cajón; se puede registrar con la caja cerrada)</small></div>${cuentas.map(boton).join('')}`;
+    const nota = document.getElementById('gastoFuenteNota');
+    if (nota) {
+        nota.hidden = cajaAbierta;
+        nota.innerHTML = cajaAbierta ? '' : '🔒 La caja está cerrada: <strong>el efectivo solo se paga con la caja abierta</strong>. Lo que salió de una cuenta (Bancolombia, Nequi…) sí se puede registrar ahora. ¿Fue en efectivo? <button type="button" class="informes-action-btn" data-gasto-recordar>Dejar recordatorio</button>';
+    }
     if (_gastoSelectedMethod) grid.querySelector(`[data-gasto-method="${_gastoSelectedMethod}"]`)?.classList.add('dpm-method-btn--active');
 }
 
@@ -29149,8 +29181,7 @@ function openGastosPendientesModal() {
 }
 
 function openGastoModal(prefill) {
-    // Regla del dueño: los gastos solo se registran con la caja abierta.
-    if (!(cajaAperturaAt > 0)) { openGastoCajaCerradaModal(); return; }
+    // Efectivo = cajón del turno (solo con la caja abierta); las cuentas (Bancolombia, Nequi…) se registran en cualquier momento.
     _gastoPrefill = prefill && typeof prefill.descripcion === 'string' ? prefill : null;
     _gastoPendienteEnCurso = _gastoPrefill ? (_gastoPrefill.pendienteId || null) : null;
     // Los saldos acumulados se refrescan en segundo plano: así «Disp.» y «de dónde sale» usan datos al día.
@@ -29440,6 +29471,8 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
         return;
     }
 
+    if (e.target.closest('[data-gasto-recordar]')) { closeGastoModal(); openGastoCajaCerradaModal(); return; }
+
     const methodBtn = e.target.closest('[data-gasto-method]');
     if (methodBtn) {
         document.querySelectorAll('[data-gasto-method]').forEach((b) => b.classList.remove('dpm-method-btn--active'));
@@ -29696,10 +29729,13 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
 
     try {
         const gastoId = `gasto_${Date.now()}`;
-        // La caja pudo cerrarse (desde otro equipo) mientras se llenaba el formulario: no se guarda un gasto huérfano.
-        if (!(cajaAperturaAt > 0)) {
-            closeGastoModal();
-            showNotice('La caja se cerró mientras registrabas el gasto. Déjalo como recordatorio y regístralo al abrir la próxima caja.', 'error');
+        // El efectivo sale del cajón del turno: exige la caja abierta (pudo cerrarse desde otro equipo mientras se llenaba el formulario).
+        // Lo que sale de una cuenta no depende de la caja.
+        const _hayEfectivo = partes.length > 1 ? partes.some((p) => gastoEsEfectivo(p.method)) : gastoEsEfectivo(partes.length === 1 ? partes[0].method : _gastoSelectedMethod);
+        if (_hayEfectivo && !(cajaAperturaAt > 0)) {
+            showNotice('La caja está cerrada: el efectivo solo se paga con la caja abierta. Elige una cuenta o déjalo como recordatorio.', 'error');
+            renderGastoMethodButtons();
+            _updateGastoConfirmState();
             return;
         }
         const base = {
@@ -29707,9 +29743,9 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             subcategoria: _gastoSubcategoria || '',
             descripcion,
             registradoAt: Date.now(),
-            cajaAperturaAt,
-            tipo: 'caja',
         };
+        // tipo 'caja' = del turno abierto (entra al cierre) · tipo 'externo' = desde una cuenta (resta directo del saldo de esa cuenta).
+        const _segunMetodo = (metodo) => (gastoTipoPorMetodo(metodo) === 'caja' ? { cajaAperturaAt, tipo: 'caja' } : { cajaAperturaAt: null, tipo: 'externo' });
         // Un documento por método (con `grupoId` común si fue dividido): los saldos por método
         // y los informes siguen leyendo paymentMethod/monto sin cambios.
         const _origenes = (partes.length > 1 ? partes.map((p) => ({ metodo: p.method, monto: p.amount })) : [{ metodo: partes.length === 1 ? partes[0].method : _gastoSelectedMethod, monto }])
@@ -29724,8 +29760,8 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             if (!si) return;
         }
         const docs = partes.length > 1
-            ? partes.map((p, i) => ({ ...base, id: `${gastoId}_${i + 1}`, grupoId: gastoId, monto: p.amount, montoTotal: monto, paymentMethod: p.method }))
-            : [{ ...base, id: gastoId, monto, paymentMethod: partes.length === 1 ? partes[0].method : _gastoSelectedMethod }];
+            ? partes.map((p, i) => ({ ...base, ..._segunMetodo(p.method), id: `${gastoId}_${i + 1}`, grupoId: gastoId, monto: p.amount, montoTotal: monto, paymentMethod: p.method }))
+            : [{ ...base, ..._segunMetodo(partes.length === 1 ? partes[0].method : _gastoSelectedMethod), id: gastoId, monto, paymentMethod: partes.length === 1 ? partes[0].method : _gastoSelectedMethod }];
         // De dónde salió la plata (solo informativo: no cambia ningún saldo ni total). Se guarda ANTES de que el saldo de hoy cambie.
         docs.forEach((d) => {
             const o = _gastoOrigenDe(d.paymentMethod, d.monto);
@@ -29734,7 +29770,7 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             if (o.insuficiente) d.saldoInsuficiente = true;
         });
         const gasto = partes.length > 1
-            ? { ...base, id: gastoId, monto, paymentMethod: 'split', partes }
+            ? { ...base, tipo: docs.some((d) => d.tipo === 'caja') ? 'caja' : 'externo', id: gastoId, monto, paymentMethod: 'split', partes }
             : docs[0];
         for (const d of docs) await saveGasto(d);
         // Informes → Gastos lee de _gastosCajaState sin importar el tipo/origen, así que
@@ -32249,7 +32285,7 @@ function _renderLcTable() {
                 const desc = parts.length ? parts.map(escapeHtml).join(' · ') : 'Sin descripción';
                 return `<tr class="lc-det-row" data-gid="${gid}" style="display:none;background:rgba(252,165,165,0.04);font-size:0.82rem;">
                     <td class="col-left" style="padding-left:24px;color:rgba(255,255,255,0.55);">
-                        <span style="font-size:0.68rem;color:#fca5a5;display:block;">Gasto externo · ${hora}</span>
+                        <span style="font-size:0.68rem;color:#fca5a5;display:block;">Gasto desde cuenta · ${hora}</span>
                         ${desc}
                     </td>
                     <td style="color:var(--admin-muted);">—</td>
