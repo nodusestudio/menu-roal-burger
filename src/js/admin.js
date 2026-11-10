@@ -20169,6 +20169,7 @@ function resetButtonForm() {
     }
     buttonConfigForm.reset();
     buttonEditIdInput.value = '';
+    const _bfw = document.getElementById('buttonFormWrap'); if (_bfw) _bfw.hidden = true;
     if (buttonSaveBtn) {
         buttonSaveBtn.textContent = 'Guardar boton';
     }
@@ -20197,6 +20198,7 @@ function setButtonForm(button) {
     buttonConfigForm.buttonSoundEnabled.checked = button.soundEnabled;
 
     buttonEditIdInput.value = button.id;
+    const _bfw2 = document.getElementById('buttonFormWrap'); if (_bfw2) _bfw2.hidden = false;
     if (buttonSaveBtn) {
         buttonSaveBtn.textContent = 'Actualizar boton';
     }
@@ -27062,6 +27064,9 @@ if (buttonConfigForm) {
     });
 }
 
+document.getElementById('buttonAddBtn')?.addEventListener('click', () => { resetButtonForm(); const w = document.getElementById('buttonFormWrap'); if (w) w.hidden = false; document.getElementById('buttonId')?.focus(); });
+document.getElementById('buttonCancelBtn')?.addEventListener('click', () => resetButtonForm());
+
 if (buttonConfigList) {
     buttonConfigList.addEventListener('click', async (event) => {
         const target = event.target;
@@ -27196,6 +27201,26 @@ const brandingLock = initFormBloqueado(brandingForm, { onCancel: () => renderBra
 if (_bizSaveBarBtn) _bizSaveBarBtn.addEventListener('click', () => brandingForm.requestSubmit());
 
 // ── Cambio de contraseña (Firebase Auth) ───────────────────────────────────
+// SYNC:sec-cambiar:inicio
+// Datos sensibles (contraseña, PIN): se ven como resumen y un botón «Cambiar»; los campos aparecen solo al cambiar y
+// se esconden de nuevo al guardar o cancelar.
+function initSecCambiar(clave) {
+    const resumen = document.querySelector(`[data-sec="${clave}"]`);
+    const editor = document.querySelector(`[data-sec-editor="${clave}"]`);
+    if (!resumen || !editor) return { abrir() {}, cerrar() {} };
+    const api = {
+        abrir() { resumen.hidden = true; editor.hidden = false; const f = editor.querySelector('input'); if (f) f.focus(); },
+        cerrar() { editor.hidden = true; resumen.hidden = false; editor.querySelectorAll('input').forEach((i) => { i.value = ''; }); },
+    };
+    resumen.querySelector(`[data-sec-abrir="${clave}"]`)?.addEventListener('click', api.abrir);
+    editor.querySelector(`[data-sec-cancelar="${clave}"]`)?.addEventListener('click', api.cerrar);
+    editor.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); api.cerrar(); } });
+    return api;
+}
+// SYNC:sec-cambiar:fin
+const _secPass = initSecCambiar('password');
+const _secPin = initSecCambiar('pin');
+
 document.getElementById('bizChangePasswordBtn')?.addEventListener('click', async () => {
     const statusEl = document.getElementById('bizPasswordStatus');
     const btn = document.getElementById('bizChangePasswordBtn');
@@ -27237,6 +27262,7 @@ document.getElementById('bizChangePasswordBtn')?.addEventListener('click', async
         document.getElementById('bizCurrentPassword').value = '';
         document.getElementById('bizNewPassword').value = '';
         document.getElementById('bizConfirmPassword').value = '';
+        _secPass.cerrar();
     } catch (err) {
         const msg = err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential'
             ? 'La contraseña actual es incorrecta.'
@@ -27275,6 +27301,8 @@ function renderSupervisorPinField() {
     if (!input) return;
     // El campo siempre arranca vacío — el PIN real ya no se trae al cliente.
     if (document.activeElement !== input) input.value = '';
+    const _res = document.getElementById('supervisorPinResumen');
+    if (_res) _res.textContent = _supervisorPinConfigured ? '•••• (configurado)' : 'Sin configurar';
     input.placeholder = _supervisorPinConfigured
         ? '•••• (configurado — escribe uno nuevo para cambiarlo)'
         : '0000 (sin configurar)';
@@ -27303,6 +27331,7 @@ document.getElementById('supervisorPinSaveBtn')?.addEventListener('click', async
         if (input) input.value = '';
         show('PIN de supervisor actualizado.', 'ok');
         renderSupervisorPinField();
+        _secPin.cerrar();
     } catch (err) {
         show(`Error al guardar: ${err.message || 'intenta de nuevo.'}`, 'error');
     } finally {

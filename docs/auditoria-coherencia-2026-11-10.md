@@ -907,3 +907,4 @@ Patrón tomado de Stripe (botón «Editar» por sección), Square, Atlassian (in
 - Función única `initFormBloqueado` (bloque `SYNC:form-bloqueado`) reutilizable para cualquier formulario futuro.
 - Pruebas: `tests/form-bloqueado.e2e.mjs` (11, Chromium) + `regla-interfaz.test.js` (10).
 - Pendiente: aplicar el mismo patrón a otros formularios fijos si el dueño lo pide (Seguridad, Menú público).
+- (Parte 23, ronda 2) **Seguridad**: contraseña y PIN se ven como resumen («••••••••», «•••• (configurado)») con botón «Cambiar»; los campos aparecen solo al cambiar y se esconden y vacían al guardar, cancelar o Esc; el correo vinculado queda como texto. **Menú público**: la lista de botones va primero; el formulario aparece solo tras «+ Agregar botón» o «Editar» y se esconde al guardar o cancelar. Función `initSecCambiar` (`SYNC:sec-cambiar`). Tests: `seguridad-menu.e2e.mjs` (8) + `regla-interfaz.test.js` (11).

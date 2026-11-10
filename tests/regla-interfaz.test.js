@@ -28,7 +28,7 @@ test('Configuración: los botones de acción usan el juego de roles (no clases s
     for (const id of ['buttonSaveBtn', 'bizSaveBarBtn', 'newCatGastoSaveBtn']) {
         assert.match(config, new RegExp(`<button[^>]*(?:id="${id}"[^>]*class="informes-action-btn informes-action-btn--primary"|class="informes-action-btn informes-action-btn--primary"[^>]*id="${id}")`), id);
     }
-    for (const id of ['bizChangePasswordBtn', 'supervisorPinSaveBtn']) assert.match(config, new RegExp(`<button[^>]*class="informes-action-btn"[^>]*id="${id}"`), id);
+    for (const id of ['bizChangePasswordBtn', 'supervisorPinSaveBtn']) assert.match(config, new RegExp(`<button[^>]*class="informes-action-btn informes-action-btn--primary"[^>]*id="${id}"`), id);
 });
 test('los botones renderizados por JS en Configuración no llevan relleno/ancho/tamaño en línea', () => {
     const malos = (js.match(/<button\b[^>]*class="(?:ghost-button|admin-button)[^"]*"[^>]*>/g) || []).filter((b) => /style="[^"]*(padding|font-size|width:100%|grid-column|margin-top)/.test(b));
@@ -62,4 +62,14 @@ test('Configuración: Negocio y Horario se ven BLOQUEADOS con «Editar» y vuelv
     assert.match(js, /horarioLock\.lock\(\);/);
     assert.ok(!/id="horarioSaveBtn"[^>]*class=/.test(html) && /id="horarioSaveBtn" hidden/.test(html), 'el botón viejo de guardar horario queda oculto (lo reemplaza «Guardar cambios»)');
     assert.ok(html.includes('.form-bloqueable.is-locked'));
+});
+
+test('Seguridad y Menú público: resumen + «Cambiar», y formulario tras «Agregar/Editar»', () => {
+    assert.match(js, /function initSecCambiar\(clave\)/);
+    assert.match(js, /const _secPass = initSecCambiar\('password'\);/);
+    assert.match(js, /_secPass\.cerrar\(\);/);
+    assert.match(js, /_secPin\.cerrar\(\);/);
+    assert.ok(html.includes('id="buttonFormWrap" hidden') && html.includes('id="buttonAddBtn"'));
+    assert.match(js, /_bfw\.hidden = true/);
+    assert.match(js, /_bfw2\.hidden = false/);
 });

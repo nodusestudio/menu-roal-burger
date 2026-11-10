@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261110-1832">
+    <link rel="stylesheet" href="style.css?v=20261110-1846">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -15250,8 +15250,11 @@
                             <article class="admin-card">
                                 <div class="card-head">
                                     <h2>Menú público</h2>
+                                    <button type="button" class="informes-action-btn informes-action-btn--primary" id="buttonAddBtn">+ Agregar botón</button>
                                 </div>
                                 <div class="card-body">
+                                    <div id="buttonConfigList" class="stack-list"></div>
+                                    <div id="buttonFormWrap" hidden>
                                     <form id="buttonConfigForm" class="admin-form">
                                         <div class="admin-field">
                                             <label for="buttonId">ID del boton</label>
@@ -15331,9 +15334,9 @@
                                             </label>
                                         </div>
                                         <input type="hidden" id="buttonEditId" name="buttonEditId" value="">
-                                        <button type="submit" class="informes-action-btn informes-action-btn--primary" id="buttonSaveBtn">Guardar boton</button>
+                                        <div class="admin-field full sec-acciones"><button type="submit" class="informes-action-btn informes-action-btn--primary" id="buttonSaveBtn">Guardar boton</button><button type="button" class="informes-action-btn" id="buttonCancelBtn">Cancelar</button></div>
                                     </form>
-                                    <div id="buttonConfigList" class="stack-list stack-list-top-14"></div>
+                                    </div>
                                 </div>
                             </article>
                         </div>
@@ -15358,7 +15361,9 @@
                                                 <label>Correo vinculado</label>
                                                 <input type="email" id="bizCurrentEmail" readonly placeholder="Cargando...">
                                             </div>
-                                            <div class="admin-field">
+                                            <div class="sec-resumen full" data-sec="password"><span class="sec-valor">Contraseña <strong>••••••••</strong></span><button type="button" class="informes-action-btn" data-sec-abrir="password">Cambiar contraseña</button></div>
+                                            <div class="sec-editor full" data-sec-editor="password" hidden>
+<div class="admin-field">
                                                 <label>Contraseña actual</label>
                                                 <input type="password" id="bizCurrentPassword" placeholder="Tu contraseña actual" autocomplete="current-password">
                                             </div>
@@ -15370,8 +15375,8 @@
                                                 <label>Confirmar nueva contraseña</label>
                                                 <input type="password" id="bizConfirmPassword" placeholder="Repite la nueva contraseña" autocomplete="new-password">
                                             </div>
-                                            <div class="admin-field full">
-                                                <button type="button" class="informes-action-btn" id="bizChangePasswordBtn">Actualizar contraseña</button>
+                                            
+                                            <div class="admin-field full sec-acciones"><button type="button" class="informes-action-btn informes-action-btn--primary" id="bizChangePasswordBtn">Actualizar contraseña</button><button type="button" class="informes-action-btn" data-sec-cancelar="password">Cancelar</button></div>
                                             </div>
                                             <div id="bizPasswordStatus" class="biz-pass-status" hidden></div>
                                         </div>
@@ -15386,12 +15391,13 @@
                                             </div>
                                         </div>
                                         <div class="biz-fields">
+                                            <div class="sec-resumen full" data-sec="pin"><span class="sec-valor">PIN de 4 dígitos <strong id="supervisorPinResumen">••••</strong></span><button type="button" class="informes-action-btn" data-sec-abrir="pin">Cambiar PIN</button></div>
+                                            <div class="sec-editor full" data-sec-editor="pin" hidden>
                                             <div class="admin-field">
                                                 <label>PIN de 4 dígitos</label>
-                                                <input type="password" id="supervisorPinInput" inputmode="numeric" maxlength="4" placeholder="0000 (sin configurar)" autocomplete="off">
+<input type="password" id="supervisorPinInput" inputmode="numeric" maxlength="4" placeholder="0000 (sin configurar)" autocomplete="off">
                                             </div>
-                                            <div class="admin-field full">
-                                                <button type="button" class="informes-action-btn" id="supervisorPinSaveBtn">Guardar PIN</button>
+                                            <div class="admin-field full sec-acciones"><button type="button" class="informes-action-btn informes-action-btn--primary" id="supervisorPinSaveBtn">Guardar PIN</button><button type="button" class="informes-action-btn" data-sec-cancelar="pin">Cancelar</button></div>
                                             </div>
                                             <div id="supervisorPinStatus" class="biz-pass-status" hidden></div>
                                         </div>
@@ -17022,6 +17028,14 @@
     .form-bloqueable.is-locked .horario-dia-chip input { display: none; }
     .form-bloqueable.is-locked .biz-section:last-of-type { border-bottom: none; }
     .form-bloqueable.is-editing .admin-field input:not([type="checkbox"]), .form-bloqueable.is-editing .admin-field select, .form-bloqueable.is-editing .admin-textarea { border-color: rgba(255,149,64,0.35); }
+    /* Datos sensibles (contraseña, PIN): resumen con «Cambiar»; los campos aparecen solo al cambiar */
+    .sec-resumen { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+    .sec-valor { font-size: 0.84rem; color: var(--admin-muted); } .sec-valor strong { color: #fff; margin-left: 6px; letter-spacing: 1px; }
+    .sec-editor { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--ui-gap) 12px; align-items: start; }
+    .sec-editor[hidden], .sec-resumen[hidden], #buttonFormWrap[hidden] { display: none; }
+    .sec-acciones { display: flex; flex-direction: row; gap: 8px; }
+    #buttonFormWrap { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.07); }
+    .biz-section--security .admin-field input[readonly] { background: transparent; border-color: transparent; padding-left: 0; opacity: 1; font-weight: 600; min-height: 24px; }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17552,19 +17566,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261110-1832"></script>
+    <script defer src="firebase-config.js?v=20261110-1846"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261110-1832"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261110-1846"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-1832"></script>
-    <script defer src="admin.js?v=20261110-1832"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-1846"></script>
+    <script defer src="admin.js?v=20261110-1846"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
