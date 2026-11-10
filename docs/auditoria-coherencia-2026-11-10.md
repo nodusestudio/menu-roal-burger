@@ -888,3 +888,11 @@ Modelo tomado de Square, Toast y Loyverse: el cajón del turno maneja solo **efe
 - Verificación: `tests/efectivo-esperado.test.js` (5), `tests/efectivo-esperado.e2e.mjs` (8, Chromium), resto de e2e en verde; foto del dinero idéntica.
 - Pendiente: mostrar la diferencia en el Historial de Cajas y en el ticket de cierre.
 - (Parte 21, cierre) La diferencia del conteo ahora se ve en el ticket de cierre (vista previa y ESC/POS) y en el detalle del cierre del Historial de Cajas (esperado / contado / «Faltaron» o «Sobraron» o «Cuadra exacto»). Cierres sin conteo se ven igual que antes. Tests: `efectivo-esperado.test.js` (7).
+
+# Parte 22 — Regla única de interfaz + Configuración compacta
+- **Regla (bloque «REGLA ÚNICA DE INTERFAZ» en `admin.html`)**: un solo botón (alto 32 px, relleno 14, radio 9, Space Grotesk .8rem/700) para TODAS las familias (`informes-action-btn`, `section-action-btn`, `admin-button`, `ghost-button`, `biz-*`, `cat-new-save-btn`, `ticket-bt-btn`, y los de mesero/subcategoría en Configuración). El rol decide el color: secundario · principal (naranja) · delicado (rojo sólido) · peligro suave · discreto. Variables de espacio `--ui-gap 8`, `--ui-pad 14`, `--ui-sec 12`, `--ui-field-h 34`.
+- **Vista**: tarjeta → encabezado → descripción corta (`.card-desc`) → campos en rejilla adaptable → acciones a la izquierda, nunca a todo el ancho.
+- **Configuración** (9 pestañas): tarjetas de 14 px, campos de 34 px, secciones de 12 px, descripciones de 0.76rem; Negocio pasa de ~1000 a ~480 px de alto; el aviso vacío del horario ya no ocupa espacio; los botones «+ Agregar…» ya no ocupan todo el ancho.
+- Se quitaron 20 botones con estilos en línea (relleno, tamaño, ancho) de `admin.js` y 6 párrafos con estilos en línea del HTML.
+- Pruebas: `tests/regla-interfaz.test.js` (6) y `tests/regla-interfaz.e2e.mjs` (7, Chromium: 14 familias de botones miden y se ven igual). Herramienta `herramientas/captura-config.mjs` para capturar las pestañas.
+- Pendiente de la regla: aplicar el mismo recorrido a las demás secciones (Catálogo, Clientes, Comunicación, Informes) y a los botones con estilos en línea restantes (~40).

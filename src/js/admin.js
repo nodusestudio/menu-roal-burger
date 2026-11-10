@@ -4295,12 +4295,12 @@ function renderCierresProgramados() {
                     <input type="text" id="cpFormMotivo" class="pm-form-input" placeholder="ej: Cerrado por festivo. Volvemos mañana." maxlength="140">
                 </div>
                 <div class="pm-form-actions">
-                    <button type="button" class="admin-button" id="cpFormSaveBtn" style="grid-column:auto;">Guardar</button>
+                    <button type="button" class="admin-button" id="cpFormSaveBtn">Guardar</button>
                     <button type="button" class="ghost-button" id="cpFormCancelBtn">Cancelar</button>
                 </div>
             </div>
         </div>
-        <button type="button" class="ghost-button" id="cpAddBtn" style="margin-top:14px;width:100%;">+ Programar cierre</button>
+        <button type="button" class="informes-action-btn cfg-add-btn" id="cpAddBtn">+ Programar cierre</button>
     `;
 
     panel.querySelectorAll('[data-cp-edit]').forEach((btn) => {
@@ -4646,7 +4646,7 @@ function _buildVariantesHTML(opt) {
                 </div>
                 <div class="upgrades-add-sub-row">
                     <input type="text" class="admin-input upgrade-add-sub-input" placeholder="Ej: Coca-Cola" data-v-idx="${vi}">
-                    <button type="button" class="ghost-button upgrade-add-sub-btn" data-v-idx="${vi}" style="font-size:0.78rem;padding:5px 10px;white-space:nowrap;">+ Agregar</button>
+                    <button type="button" class="ghost-button upgrade-add-sub-btn" data-v-idx="${vi}">+ Agregar</button>
                 </div>
                 <div class="upgrades-copy-subs-wrap" data-copy-vi="${vi}">
                     <button type="button" class="upgrades-copy-subs-toggle ghost-button" data-v-idx="${vi}" style="font-size:0.74rem;padding:3px 8px;opacity:0.7;">⬇ Copiar de otros</button>
@@ -4838,7 +4838,7 @@ function _renderUpgradesDetailPanel(optId) {
                 <label class="upgrades-toggle-label" style="font-size:0.75rem;">
                     <input type="checkbox" id="detailOptTieneVariantes" ${opt.tiene_variantes ? 'checked' : ''}> Activar variantes
                 </label>
-                <button type="button" class="ghost-button" id="addVariantBtn" style="font-size:0.76rem;padding:4px 9px;">+ Agregar</button>
+                <button type="button" class="ghost-button" id="addVariantBtn">+ Agregar</button>
             </div>
             <div id="upgradesVariantsList">
                 ${opt.tiene_variantes
@@ -12634,7 +12634,7 @@ function _fbSeguimientoHtml() {
             const [txt, color] = BADGE[estado];
             const boton = estado === 'sin_enviar'
                 ? `<button type="button" class="feedback-pending-btn" data-fb-copy="${escapeHtml(order.id)}">Copiar mensaje</button>`
-                : (estado === 'enviado' ? `<button type="button" class="ghost-button" style="padding:6px 10px" data-fb-recopy="${escapeHtml(order.id)}">Volver a copiar</button>` : '');
+                : (estado === 'enviado' ? `<button type="button" class="ghost-button" data-fb-recopy="${escapeHtml(order.id)}">Volver a copiar</button>` : '');
             return `<div class="met-user-row-v2">
                 <div class="met-user-info-v2">
                     <div class="met-user-name-v2">${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)}</div>
@@ -12930,7 +12930,7 @@ function _fbRenderCumple(body) {
                 <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <strong>${badge}</strong>${saludado ? ' · <span style="color:#34d399;font-weight:700">✅ Saludado</span>' : ''}</div>
             </div>
             ${phone ? (saludado
-                ? `<button type="button" class="ghost-button" style="padding:6px 10px" data-cumple-recopy="${escapeHtml(c.id)}">Volver a copiar</button>`
+                ? `<button type="button" class="ghost-button" data-cumple-recopy="${escapeHtml(c.id)}">Volver a copiar</button>`
                 : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">Copiar saludo</button>`) : ''}
         </div>`;
     }).join('');
@@ -13348,7 +13348,7 @@ function _fidAbrirDisculpa(r, cliente, regenerar = false) {
         <label style="display:block;font-size:0.82rem;margin-bottom:4px">Mensaje (puedes editarlo)</label>
         <textarea id="fidDisculpaMsg" class="admin-input" rows="6" style="width:100%;resize:vertical"></textarea>
         <div style="display:flex;gap:10px;margin-top:12px">
-            <button type="button" class="ghost-button" id="fidDisculpaCancel" style="flex:1;padding:.65rem">Cancelar</button>
+            <button type="button" class="ghost-button" id="fidDisculpaCancel" style="flex:1;">Cancelar</button>
             <button type="button" class="feedback-pending-btn" id="fidDisculpaOk" style="flex:1.6;padding:.65rem">Copiar y registrar</button>
         </div>
     </div>`;
@@ -22502,8 +22502,8 @@ function _buildPromoAdminCardHTML(promo) {
             </div>
             <div class="promo-admin-card__actions">
                 <button type="button" class="promo-toggle-btn ${activo ? 'is-active' : ''}" data-promo-action="toggle" data-promo-id="${promo.id}">${activo ? '● Activo' : '○ Inactivo'}</button>
-                <button type="button" class="ghost-button" data-promo-action="edit" data-promo-id="${promo.id}" style="padding:4px 10px;font-size:0.78rem;">Editar</button>
-                <button type="button" class="ghost-button danger" data-promo-action="delete" data-promo-id="${promo.id}" style="padding:4px 10px;font-size:0.78rem;">Eliminar</button>
+                <button type="button" class="ghost-button" data-promo-action="edit" data-promo-id="${promo.id}">Editar</button>
+                <button type="button" class="ghost-button danger" data-promo-action="delete" data-promo-id="${promo.id}">Eliminar</button>
             </div>
         </div>`;
 }
@@ -22544,7 +22544,7 @@ function _buildPromoFormHTML() {
             </div>
             <div style="display:flex;gap:10px;margin-top:16px;">
                 <button type="button" class="admin-button" id="promoFormSaveBtn">Guardar</button>
-                <button type="button" class="ghost-button" id="promoFormCancelBtn" style="padding:8px 16px;">Cancelar</button>
+                <button type="button" class="ghost-button" id="promoFormCancelBtn">Cancelar</button>
             </div>
         </div>`;
 }
@@ -22799,7 +22799,7 @@ function renderCuponesUnified() {
 
     let topHTML = '';
     if (!isFormOpen && _cuponCreatingType === null) {
-        topHTML = `<button type="button" class="admin-button" id="addCuponBtn" style="margin-top:4px;">+ Agregar cupón</button>`;
+        topHTML = `<button type="button" class="admin-button" id="addCuponBtn">+ Agregar cupón</button>`;
     } else if (_cuponCreatingType === 'selector') {
         topHTML = _buildCuponTypeSelectorHTML();
     } else if (isEditingPromo) {
@@ -23008,7 +23008,7 @@ function _buildCuponTypeSelectorHTML() {
                     <small>Varios artículos con descuento especial</small>
                 </button>
             </div>
-            <button type="button" class="ghost-button" id="cuponSelectorCancelBtn" style="margin-top:12px;padding:6px 14px;font-size:0.8rem;">Cancelar</button>
+            <button type="button" class="ghost-button" id="cuponSelectorCancelBtn">Cancelar</button>
         </div>`;
 }
 
@@ -23042,8 +23042,8 @@ function _build2x1AdminCardHTML(promo) {
             </div>
             <div class="promo-admin-card__actions">
                 <button type="button" class="promo-toggle-btn ${activo ? 'is-active' : ''}" data-2x1-action="toggle" data-2x1-id="${promo.id}">${activo ? '● Activo' : '○ Inactivo'}</button>
-                <button type="button" class="ghost-button" data-2x1-action="edit" data-2x1-id="${promo.id}" style="padding:4px 10px;font-size:0.78rem;">Editar</button>
-                <button type="button" class="ghost-button danger" data-2x1-action="delete" data-2x1-id="${promo.id}" style="padding:4px 10px;font-size:0.78rem;">Eliminar</button>
+                <button type="button" class="ghost-button" data-2x1-action="edit" data-2x1-id="${promo.id}">Editar</button>
+                <button type="button" class="ghost-button danger" data-2x1-action="delete" data-2x1-id="${promo.id}">Eliminar</button>
             </div>
         </div>`;
 }
@@ -23080,7 +23080,7 @@ function _build2x1FormHTML() {
             </div>
             <div style="display:flex;gap:10px;margin-top:16px;">
                 <button type="button" class="admin-button" id="promo2x1FormSaveBtn">Guardar</button>
-                <button type="button" class="ghost-button" id="promo2x1FormCancelBtn" style="padding:8px 16px;">Cancelar</button>
+                <button type="button" class="ghost-button" id="promo2x1FormCancelBtn">Cancelar</button>
             </div>
         </div>`;
 }
@@ -23260,7 +23260,7 @@ function _buildComboFormHTML() {
         </div>
         <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
             <button type="button" class="section-save-btn" id="comboFormSaveBtn">Guardar combo</button>
-            <button type="button" class="ghost-button" id="comboFormCancelBtn" style="padding:8px 16px;">Cancelar</button>
+            <button type="button" class="ghost-button" id="comboFormCancelBtn">Cancelar</button>
         </div>
     </div>`;
 }
@@ -28407,12 +28407,12 @@ function renderPaymentConfigPanel() {
                     </div>
                 </div>
                 <div class="pm-form-actions">
-                    <button type="button" class="admin-button" id="pmFormSaveBtn" style="grid-column:auto;">Guardar</button>
+                    <button type="button" class="admin-button" id="pmFormSaveBtn">Guardar</button>
                     <button type="button" class="ghost-button" id="pmFormCancelBtn">Cancelar</button>
                 </div>
             </div>
         </div>
-        <button type="button" class="ghost-button" id="pmAddBtn" style="margin-top:14px;width:100%;">+ Agregar método</button>
+        <button type="button" class="informes-action-btn cfg-add-btn" id="pmAddBtn">+ Agregar método</button>
     `;
 
     panel.querySelectorAll('[data-pm-toggle]').forEach((cb) => {
@@ -28589,12 +28589,12 @@ function renderBarriosEspecialesPanel() {
                     <input type="number" id="beFormTarifa" class="pm-form-input" placeholder="7000" min="0" step="500">
                 </div>
                 <div class="pm-form-actions">
-                    <button type="button" class="admin-button" id="beFormSaveBtn" style="grid-column:auto;">Guardar</button>
+                    <button type="button" class="admin-button" id="beFormSaveBtn">Guardar</button>
                     <button type="button" class="ghost-button" id="beFormCancelBtn">Cancelar</button>
                 </div>
             </div>
         </div>
-        <button type="button" class="ghost-button" id="beAddBtn" style="margin-top:14px;width:100%;">+ Agregar barrio</button>
+        <button type="button" class="informes-action-btn cfg-add-btn" id="beAddBtn">+ Agregar barrio</button>
     `;
 
     panel.querySelectorAll('[data-be-toggle]').forEach((cb) => {

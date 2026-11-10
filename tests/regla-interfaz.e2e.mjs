@@ -1,0 +1,34 @@
+// Navegador real: todos los botones de las distintas familias miden y se ven igual (alto, relleno, radio, tipografía), y Configuración es compacta.
+//   node tests/regla-interfaz.e2e.mjs
+import fs from 'node:fs'; import http from 'node:http'; import path from 'node:path'; import { fileURLToPath } from 'node:url'; import { chromium } from 'playwright';
+const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const pagina = fs.readFileSync(path.join(raiz, 'admin.html'), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '').replace('</body>', `<script>
+document.body.classList.remove('admin-loading','admin-locked'); document.body.classList.add('admin-unlocked');
+const p = document.querySelector('[data-section-panel="negocio"][data-section-scope="configuracion"]'); let n = p; while (n && n !== document.body) { n.hidden = false; n.style.display = ''; if (getComputedStyle(n).display === 'none') n.style.display = 'block'; n = n.parentElement; }
+const caja = document.createElement('div'); caja.id = 'banco'; caja.setAttribute('data-section-scope', 'configuracion');
+caja.innerHTML = ['informes-action-btn','informes-action-btn informes-action-btn--primary','informes-action-btn informes-action-btn--danger-solid','section-action-btn','section-action-btn primary','admin-button','ghost-button','biz-save-btn','biz-pass-btn','cat-new-save-btn','ticket-bt-btn','mesero-action-btn','mesero-action-btn mesero-action-btn--del','cat-sub-add-btn']
+  .map((c) => '<button type="button" class="' + c + '" data-fam="' + c + '">Acción</button>').join('');
+p.appendChild(caja);
+</script></body>`);
+const archivo = path.join(raiz, '__ri.html'); fs.writeFileSync(archivo, pagina);
+const srv = http.createServer((req, res) => { const f = path.join(raiz, decodeURIComponent(req.url.split('?')[0])); if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end(); } res.writeHead(200, { 'Content-Type': f.endsWith('.css') ? 'text/css' : 'text/html' }); fs.createReadStream(f).pipe(res); }).listen(0);
+const res = []; const ok = (c, m) => res.push(`${c ? '✅' : '❌'} ${m}`);
+const nav = await chromium.launch();
+try {
+  const p = await nav.newPage({ viewport: { width: 1200, height: 800 } });
+  const errs = []; p.on('pageerror', (e) => errs.push(e.message));
+  await p.goto(`http://localhost:${srv.address().port}/__ri.html`);
+  const m = await p.evaluate(() => [...document.querySelectorAll('#banco button')].map((b) => { const c = getComputedStyle(b); const r = b.getBoundingClientRect(); return { f: b.dataset.fam, h: Math.round(r.height), pad: c.paddingLeft + '/' + c.paddingRight, rad: c.borderTopLeftRadius, fs: c.fontSize, fw: c.fontWeight, ff: c.fontFamily.split(',')[0], tt: c.textTransform }; }));
+  const uniq = (k) => [...new Set(m.map((x) => x[k]))];
+  ok(uniq('h').length === 1 && uniq('h')[0] === 32, `los ${m.length} botones de todas las familias miden lo mismo: alto ${uniq('h').join(',')} px`);
+  ok(uniq('pad').length === 1 && uniq('rad').length === 1 && uniq('fs').length === 1 && uniq('fw').length === 1 && uniq('ff').length === 1 && uniq('tt').length === 1, `mismo relleno (${uniq('pad')}), radio (${uniq('rad')}), tamaño (${uniq('fs')}), grosor (${uniq('fw')}) y tipografía`);
+  const col = await p.evaluate(() => { const g = (s) => getComputedStyle(document.querySelector(`#banco [data-fam="${s}"]`)).backgroundImage !== 'none'; return { a: g('admin-button'), b: g('biz-save-btn'), c: g('cat-new-save-btn'), d: g('section-action-btn primary'), e: g('informes-action-btn informes-action-btn--primary'), s: g('ghost-button'), s2: g('biz-pass-btn') }; });
+  ok(col.a && col.b && col.c && col.d && col.e && !col.s && !col.s2, 'los botones de guardar son todos del rol principal (naranja) y los demás secundarios');
+  const card = await p.evaluate(() => { const c = getComputedStyle(document.querySelector('[data-section-scope="configuracion"] .admin-card')); const f = document.querySelector('[data-section-scope="configuracion"] .admin-field input'); return { pad: c.paddingTop, h: Math.round(f.getBoundingClientRect().height) }; });
+  ok(card.pad === '14px', 'las tarjetas de Configuración usan el relleno de 14 px');
+  ok(card.h <= 36, `los campos son compactos (alto ${card.h} px)`);
+  const alto = await p.evaluate(() => Math.round(document.querySelector('#brandingForm').getBoundingClientRect().height));
+  ok(alto < 650, `la pestaña Negocio cabe sin tanto desplazamiento (formulario de ${alto} px; antes ~900)`);
+  ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
+} finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
+console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);
