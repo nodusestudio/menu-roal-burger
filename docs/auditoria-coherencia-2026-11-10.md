@@ -680,3 +680,32 @@ Con los mismos datos, el **Historial de Cajas** mostraba **$1.602.025** y el **L
 ## 45. Lo que se dejó para después
 - **Una sola lista** que mezcle ventas cerradas, gastos, traslados y ajustes con filtro por tipo (hoy Movimientos y Gastos son dos vistas del mismo dinero, ambas ya cuadradas con Cierres). Es una mejora de comodidad, no de exactitud; conviene decidirla con el uso real.
 - Fases 5 (botones, modales, formato) y 6 (Configuración) siguen pendientes.
+
+---
+---
+
+# PARTE 11 — Fase 5 (primera entrega): botones por rol, ventanas propias y formato de dinero único
+
+## 46. Botones por rol (empezando por Caja)
+Clase base `informes-action-btn` + modificadores de **rol**: normal = secundario · `--primary` = la acción principal de la pantalla ·
+`--danger-solid` = acción delicada · `--danger` = peligro suave · `--ghost` = discreto.
+- **Caja de hoy:** [↺ Actualizar] · [**💸 Registrar gasto**] (principal, naranja) · [**🔒 Cerrar caja**] (delicada, roja). Se quitaron los estilos pegados a mano; el «Cerrar caja» de la vista previa y «Reimprimir» usan los mismos roles.
+- **Cierres:** de **5 botones sueltos** (Excel, PDF, Traslado, Ajustar saldos + Actualizar, cada uno de otro color) a **3 controles**: [↺ Actualizar] · [⬇ Exportar ▾ → Excel, PDF] · [🔄 Mover dinero ▾ → Traslado entre cuentas, Ajustar saldos]. Los ids de los botones no cambiaron, así que los manejadores siguen funcionando.
+- **Gastos:** el botón es el mismo «💸 Registrar gasto» (un nombre por acción).
+- El panel de Cierres reserva altura para que el menú desplegable no quede recortado por la tarjeta cuando hay pocos cierres.
+
+## 47. Tarjetas del Historial (lo visto en la captura)
+**Total Neto primero y grande**, luego Ingresos, Egresos y los métodos; los métodos con saldo **$0 se atenúan** (antes Nequi $0 y Otro $0 ocupaban primera fila y el Total Neto quedaba escondido y pequeño).
+
+## 48. Ventanas propias, nada nativo
+Las **8 ventanas nativas** del navegador (`confirm`/`prompt`) de las pestañas más nuevas (Fuera del Menú, Costos, FODI memoria/base, Pagos digitales) pasaron a `showConfirmModal` / `showPromptModal`. El panel ya no usa ninguna (prueba automática lo vigila).
+
+## 49. Formato de dinero único
+26 cifras armadas a mano (`$${Number(x).toLocaleString('es-CO')}` → «$1.000») pasaron a `formatMoney` («**$ 1.000**»): una sola forma de escribir dinero en el panel (prueba automática).
+
+## 50. Verificación
+- `tests/caja-botones.e2e.mjs` (15 en **Chromium real**, estilos reales): roles, menús Exportar/Mover dinero (abrir, elegir cierra, tocar fuera cierra, abrir uno cierra el otro), ids conservados. Capturas revisadas.
+- `tests/caja-presentacion.test.js` (6) · **144** pruebas del despliegue + menú (18) + gastos (19) + Libro Contable (9) + saldos/días, todas en verde. Foto del dinero **idéntica**.
+
+## 51. Pendiente de la Fase 5 (segunda entrega)
+Los demás modales (6 estructuras distintas), los botones del resto de pestañas (Informes/Clientes/Catálogo…), íconos emoji → un juego lineal, y el `formatCurrency`/`formatCurrencyCOP` del menú público y del agente (otros archivos: cambian lo que ve el cliente, van aparte).

@@ -12076,6 +12076,23 @@
             background: rgba(99,102,241,0.18); color: #a5b4fc; border-color: rgba(99,102,241,0.45);
         }
         .informes-action-btn--accent:hover { background: rgba(99,102,241,0.28); }
+        /* Roles de botón (mismo juego para toda la pantalla de Caja): normal = secundario · --primary = la acción principal ·
+           --danger-solid = acción delicada (cerrar caja) · --danger = peligro suave · --ghost = discreto */
+        .informes-action-btn--primary { background: linear-gradient(135deg, #ff7a1a, #ff9540); color: #1a1208; border-color: transparent; }
+        .informes-action-btn--primary:hover { background: linear-gradient(135deg, #ff8a35, #ffa458); }
+        .informes-action-btn--danger-solid { background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff; border-color: transparent; }
+        .informes-action-btn--danger-solid:hover { background: linear-gradient(135deg, #f25a5a, #c52a2a); }
+        .informes-action-btn--ghost { background: transparent; }
+        /* Menú desplegable de acciones (Exportar, Mover dinero): menos botones sueltos en la barra */
+        details.act-menu { position: relative; display: inline-block; }
+        details.act-menu > summary { list-style: none; cursor: pointer; user-select: none; }
+        details.act-menu > summary::-webkit-details-marker { display: none; }
+        details.act-menu > summary::after { content: ' ▾'; opacity: 0.6; }
+        details.act-menu[open] > summary { background: rgba(255,255,255,0.14); }
+        details.act-menu .act-menu-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 210px; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: #161a2b; border: 1px solid var(--admin-border); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.5); }
+        details.act-menu .act-menu-list .informes-action-btn { width: 100%; text-align: left; }
+        /* Las tarjetas recortan su contenido (overflow:hidden): con pocos cierres el menú desplegable se cortaría, así que el panel guarda altura para él */
+        [data-section-panel="historial"] { min-height: 340px; }
 
         /* ── Ticket de detalle — Historial de Cajas ── */
         .hist-ticket { display:flex; flex-direction:column; gap:8px; padding:8px 4px 4px; }
@@ -14595,8 +14612,8 @@
                                             </div>
                                             <div style="display:flex;gap:8px;align-items:center;">
                                                 <button type="button" class="informes-action-btn" id="refreshCajaDiariaBtn">↺ Actualizar</button>
-                                                <button type="button" id="gastosBtn" class="informes-action-btn informes-action-btn--danger">💸 Gastos</button>
-                                                <button type="button" id="cerrarCajaBtn" style="font-size:0.78rem;padding:4px 14px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">🔒 Cerrar Caja</button>
+                                                <button type="button" id="gastosBtn" class="informes-action-btn informes-action-btn--primary">💸 Registrar gasto</button>
+                                                <button type="button" id="cerrarCajaBtn" class="informes-action-btn informes-action-btn--danger-solid">🔒 Cerrar caja</button>
                                             </div>
                                         </div>
                                         <div class="card-body" id="card-caja-diaria" style="padding:0;">
@@ -14634,8 +14651,8 @@
                                             </div>
                                             <div class="card-body" id="cierreSidePanelBody" style="padding:12px;"></div>
                                             <div class="card-head" style="border-top:1px solid var(--admin-border);padding:10px 16px;justify-content:flex-end;gap:8px;">
-                                                <button type="button" id="cierreReprintBtn" style="display:none;font-size:0.82rem;padding:5px 18px;background:var(--admin-accent,#ff9540);color:#111;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🖨️ Reimprimir</button>
-                                                <button type="button" id="cierreCajaConfirmBtn" style="font-size:0.82rem;padding:5px 18px;background:linear-gradient(135deg,#ef4444,#b91c1c);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;">🔒 Cerrar Caja</button>
+                                                <button type="button" id="cierreReprintBtn" class="informes-action-btn informes-action-btn--primary" style="display:none;">🖨️ Reimprimir</button>
+                                                <button type="button" id="cierreCajaConfirmBtn" class="informes-action-btn informes-action-btn--danger-solid">🔒 Cerrar caja</button>
                                             </div>
                                         </article>
                                     </aside>
@@ -14690,10 +14707,20 @@
                                             </div>
                                         </div>
                                         <button type="button" class="informes-action-btn" id="refreshLibroCierresBtn">↺ Actualizar</button>
-                                        <button type="button" class="informes-action-btn" id="exportCierresExcelBtn">⬇️ Excel</button>
-                                        <button type="button" class="informes-action-btn" id="exportCierresPdfBtn">⬇️ PDF</button>
-                                        <button type="button" id="trasladoHistorialBtn" class="informes-action-btn informes-action-btn--accent">🔄 Traslado</button>
-                                        <button type="button" id="ajusteSaldosBtn" class="informes-action-btn informes-action-btn--accent" title="Registrar el saldo real de cada cuenta (no cuenta como ingreso ni gasto)">⚖️ Ajustar saldos</button>
+                                        <details class="act-menu" id="exportMenu">
+                                            <summary class="informes-action-btn">⬇ Exportar</summary>
+                                            <div class="act-menu-list">
+                                                <button type="button" class="informes-action-btn" id="exportCierresExcelBtn">Excel</button>
+                                                <button type="button" class="informes-action-btn" id="exportCierresPdfBtn">PDF</button>
+                                            </div>
+                                        </details>
+                                        <details class="act-menu" id="moverMenu">
+                                            <summary class="informes-action-btn">🔄 Mover dinero</summary>
+                                            <div class="act-menu-list">
+                                                <button type="button" class="informes-action-btn" id="trasladoHistorialBtn" title="Pasar plata de una cuenta a otra (no cambia el total)">🔄 Traslado entre cuentas</button>
+                                                <button type="button" class="informes-action-btn" id="ajusteSaldosBtn" title="Registrar el saldo real de cada cuenta (no cuenta como ingreso ni gasto)">⚖️ Ajustar saldos</button>
+                                            </div>
+                                        </details>
                                     </div>
                                     <div class="lc-kpi-grid" id="cierresKpiGrid" style="border-top:1px solid rgba(255,255,255,0.06);"></div>
                                     <div class="card-body" style="padding:0;">
@@ -14772,7 +14799,7 @@
                             <article class="admin-card">
                                 <div class="card-head">
                                     <h2>Gastos</h2>
-                                    <button type="button" class="section-action-btn primary" id="gastosInformesNewBtn">+ Nuevo gasto</button>
+                                    <button type="button" class="informes-action-btn informes-action-btn--primary" id="gastosInformesNewBtn">💸 Registrar gasto</button>
                                 </div>
                                 <div class="card-body">
                                     <div class="gi-filter-bar">

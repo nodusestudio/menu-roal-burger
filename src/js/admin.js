@@ -3072,6 +3072,16 @@ function setupNav2() {
 }
 // SYNC:nav2:fin
 
+// SYNC:act-menu:inicio
+// Menús desplegables de acciones (<details class="act-menu">): se cierran al elegir una opción o al tocar fuera.
+document.addEventListener('click', (e) => {
+    document.querySelectorAll('details.act-menu[open]').forEach((d) => {
+        if (!d.contains(e.target) || e.target.closest('.act-menu-list button')) d.removeAttribute('open');
+    });
+});
+// SYNC:act-menu:fin
+
+
 function setupAccordion() {
     const nav = document.getElementById('adminAccordionNav');
     if (!nav) {
@@ -7335,7 +7345,7 @@ function openComboPackModal(combo = null) {
         b.presentaciones.forEach((p) => {
             const opt = document.createElement('option');
             opt.value = `${b.id}::${p.id}`;
-            opt.textContent = `${b.marca} · ${p.nombre}  (+$${Number(p.precio || 0).toLocaleString('es-CO')})`;
+            opt.textContent = `${b.marca} · ${p.nombre}  (+${formatMoney(p.precio || 0)})`;
             opt.dataset.sabores = JSON.stringify(p.sabores || []);
             if (combo?.bebida_ref_id === b.id && combo?.bebida_pres_id === p.id) opt.selected = true;
             bebidaSelect.appendChild(opt);
@@ -7842,7 +7852,7 @@ function openBurgerClasicasPosModal(productId, productName) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.style.cssText = 'padding:12px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:inherit;cursor:pointer;text-align:center;font-size:0.88rem;line-height:1.35;';
-        btn.innerHTML = `<strong style="display:block;font-size:0.9rem;">${escapeHtml(opt.label)}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${opt.price.toLocaleString('es-CO')}</span>`;
+        btn.innerHTML = `<strong style="display:block;font-size:0.9rem;">${escapeHtml(opt.label)}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">${formatMoney(opt.price)}</span>`;
         btn.addEventListener('click', () => {
             const note = [noteInput.value.trim(), extrasBar.state.sinText].filter(Boolean).join(' | ');
             const extrasElegidos = extrasBar.state.extras.slice();
@@ -7984,7 +7994,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         confirmBtn.disabled = !ready;
         confirmBtn.style.opacity = ready ? '1' : '0.45';
         confirmBtn.textContent = ready
-            ? `Agregar — $${Number(selectedVariante.precio || 0).toLocaleString('es-CO')}`
+            ? `Agregar — ${formatMoney(selectedVariante.precio || 0)}`
             : (total > 1 ? `Selecciona sabores (${filled}/${total})` : 'Selecciona el sabor');
     }
 
@@ -8048,7 +8058,7 @@ function openProductVariantesModal(productId, productName, categoryName, variant
         const bebidaLine = v.con_bebida && v.bebida_nombre
             ? `<span style="display:block;font-size:0.72rem;color:rgba(200,200,220,0.65);margin-top:2px;">🥤 ${escapeHtml(v.bebida_nombre)}${v.cantidad_bebidas > 1 ? ` ×${v.cantidad_bebidas}` : ''}</span>`
             : '';
-        btn.innerHTML = `<strong style="display:block;">${escapeHtml(v.nombre || 'Opción')}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">$${Number(v.precio || 0).toLocaleString('es-CO')}</span>${bebidaLine}`;
+        btn.innerHTML = `<strong style="display:block;">${escapeHtml(v.nombre || 'Opción')}</strong><span style="color:var(--admin-accent,#e76f00);font-weight:700;">${formatMoney(v.precio || 0)}</span>${bebidaLine}`;
         btn.addEventListener('click', () => {
             selectedVariante = v;
             selectedSabores = [];
@@ -8150,7 +8160,7 @@ function openPosBebidaModal(productId, productName, productPrice, bebidaConfig, 
         confirmBtn.disabled = !ready;
         confirmBtn.style.opacity = ready ? '1' : '0.45';
         confirmBtn.textContent = ready
-            ? `Agregar — $${Number(productPrice).toLocaleString('es-CO')}`
+            ? `Agregar — ${formatMoney(productPrice)}`
             : (cant > 1 ? `Selecciona sabores (${filled}/${cant})` : 'Selecciona el sabor');
     }
 
@@ -10256,7 +10266,7 @@ function renderProductAcompList(savedAcomp) {
 
     editProductAcompList.innerHTML = opciones.map((opt) => {
         const checked = savedIds.includes(opt.id) ? 'checked' : '';
-        const precioLabel = opt.precio > 0 ? `+$${Number(opt.precio).toLocaleString('es-CO')}` : 'Incluido';
+        const precioLabel = opt.precio > 0 ? `+${formatMoney(opt.precio)}` : 'Incluido';
         const detalle = opt.detalle ? `<span class="pedit-acomp-item-detail">${opt.detalle}</span>` : '';
         return `
             <label class="pedit-acomp-item">
@@ -10777,7 +10787,7 @@ function _cpefRenderVariantesList() {
             .filter((b) => b.estado === 'active')
             .flatMap((b) => (b.presentaciones || []).map((p) => ({
                 value: `${b.id}::${p.id}`,
-                label: `${b.marca} · ${p.nombre} (+$${Number(p.precio || 0).toLocaleString('es-CO')})`,
+                label: `${b.marca} · ${p.nombre} (+${formatMoney(p.precio || 0)})`,
                 selected: v.bebida_ref_id === b.id && v.bebida_pres_id === p.id
             })));
 
@@ -17541,7 +17551,7 @@ function renderChatRoalDetail() {
             }
             const matches = _chatRoalMenuCache.filter((p) => String(p.nombre || '').toLowerCase().includes(q)).slice(0, 8);
             productDropdownEl.innerHTML = matches.length
-                ? matches.map((p) => `<button type="button" class="chatroal-product-dropdown-item" data-product-pick="${escapeHtml(p.nombre)}">${escapeHtml(p.nombre)} <span>$${Number(p.precio || 0).toLocaleString('es-CO')}</span></button>`).join('')
+                ? matches.map((p) => `<button type="button" class="chatroal-product-dropdown-item" data-product-pick="${escapeHtml(p.nombre)}">${escapeHtml(p.nombre)} <span>${formatMoney(p.precio || 0)}</span></button>`).join('')
                 : '<div class="chatroal-product-dropdown-empty">Sin resultados</div>';
             productDropdownEl.hidden = false;
         };
@@ -24394,7 +24404,7 @@ function _ptsFillClientAddress(client) {
                 }
                 const colors = { amarilla: '#f6d743', azul: '#4aa1ff', roja: '#d32f2f', negra: '#aaa' };
                 _ptsSetZoneBadge(
-                    `✓ ${zone.label} — $${zone.fee.toLocaleString('es-CO')} (auto-detectado)`,
+                    `✓ ${zone.label} — ${formatMoney(zone.fee)} (auto-detectado)`,
                     colors[zone.name] || '#6ee7b7'
                 );
             } else {
@@ -24712,7 +24722,7 @@ async function _ptsApplyRememberedFee(addressText) {
         const feeInput = document.getElementById('ptsDeliveryFee');
         if (feeInput && (!feeInput.value || Number(feeInput.value) === 0)) feeInput.value = remembered.fee;
         _ptsSetZoneBadge(
-            `📍 $${Number(remembered.fee).toLocaleString('es-CO')} — el que sueles cobrar aquí (${remembered.vecesUsado}×)`,
+            `📍 ${formatMoney(remembered.fee)} — el que sueles cobrar aquí (${remembered.vecesUsado}×)`,
             '#6ee7b7'
         );
         return true;
@@ -24755,7 +24765,7 @@ async function _ptsSuggestDeliveryFee(addressText) {
                     feeInput.value = zone.fee;
                 }
                 const colors = { amarilla: '#f6d743', azul: '#4aa1ff', roja: '#d32f2f', negra: '#aaa' };
-                _ptsSetZoneBadge(`✓ ${zone.label} — $${zone.fee.toLocaleString('es-CO')} (auto-detectado)`, colors[zone.name] || '#6ee7b7');
+                _ptsSetZoneBadge(`✓ ${zone.label} — ${formatMoney(zone.fee)} (auto-detectado)`, colors[zone.name] || '#6ee7b7');
                 return;
             }
         } else {
@@ -24771,7 +24781,7 @@ async function _ptsSuggestDeliveryFee(addressText) {
         if (feeInput && (!feeInput.value || Number(feeInput.value) === 0)) {
             feeInput.value = remembered.fee;
         }
-        _ptsSetZoneBadge(`📍 $${Number(remembered.fee).toLocaleString('es-CO')} — ya usado antes en esta dirección`, '#6ee7b7');
+        _ptsSetZoneBadge(`📍 ${formatMoney(remembered.fee)} — ya usado antes en esta dirección`, '#6ee7b7');
         return;
     }
 
@@ -30221,7 +30231,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
     } catch (err) {
         showNotice(`Error al guardar cierre: ${err.message || 'error inesperado.'}`, 'error');
     } finally {
-        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '🔒 Cerrar Caja'; }
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '🔒 Cerrar caja'; }
     }
 });
 
@@ -30506,7 +30516,7 @@ async function cerrarCaja() {
     } catch (err) {
         showNotice(`Error al preparar cierre: ${err.message || 'error inesperado.'}`, 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🔒 Cerrar Caja'; }
+        if (btn) { btn.disabled = false; btn.textContent = '🔒 Cerrar caja'; }
     }
 }
 
@@ -31737,7 +31747,7 @@ async function renderLibroCierres() {
                 const m = methods.find((x) => x.id === k) || { label: k, icon: '' };
                 const v = sumTotals[k] || 0;
                 const color = v > 0 ? '#6ee7b7' : v < 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
-                return `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;min-width:110px;">
+                return `<div style="opacity:${v === 0 ? '0.5' : '1'};display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;min-width:110px;">
                     <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">${m.icon ? m.icon + ' ' : ''}${m.label}</span>
                     <span style="font-size:1rem;font-weight:700;color:${color};">${v < 0 ? '−' : ''}${v === 0 ? '$0' : formatMoney(Math.abs(v))}</span>
                 </div>`;
@@ -31746,7 +31756,7 @@ async function renderLibroCierres() {
             const chipOtro = hasOtro ? (() => {
                 const v = sumOtro || 0;
                 const color = v > 0 ? '#6ee7b7' : v < 0 ? '#fca5a5' : 'rgba(255,255,255,0.35)';
-                return `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;min-width:110px;" title="Montos guardados con métodos de pago que ya no existen en Configuración (p. ej. Transferencia eliminada)">
+                return `<div style="opacity:${v === 0 ? '0.5' : '1'};display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;min-width:110px;" title="Montos guardados con métodos de pago que ya no existen en Configuración (p. ej. Transferencia eliminada)">
                     <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">🧾 Otro</span>
                     <span style="font-size:1rem;font-weight:700;color:${color};">${v < 0 ? '−' : ''}${v === 0 ? '$0' : formatMoney(Math.abs(v))}</span>
                 </div>`;
@@ -31766,10 +31776,10 @@ async function renderLibroCierres() {
             const ntColor = grandSumTotal >= 0 ? '#ff9540' : '#fca5a5';
             const chipNet = `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 14px;background:rgba(255,149,64,0.07);border:1px solid rgba(255,149,64,0.22);border-radius:10px;min-width:110px;">
                 <span style="font-size:0.68rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.8px;">💰 Total Neto${ajustesHistorial.length ? ' <span title="Incluye ajustes de saldo (no son ingresos ni gastos)">⚖️</span>' : ''}</span>
-                <span style="font-size:1rem;font-weight:700;color:${ntColor};">${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</span>
+                <span style="font-size:1.5rem;font-weight:800;color:${ntColor};">${grandSumTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandSumTotal))}</span>
             </div>`;
 
-            kpiEl.innerHTML = `<div style="grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipMethod}${chipOtro}${chipIng}${chipEgr}${chipNet}</div>`;
+            kpiEl.innerHTML = `<div style="grid-column:1/-1;display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px 2px 12px;">${chipNet}${chipIng}${chipEgr}${chipMethod}${chipOtro}</div>`;
         }
     } catch (err) {
         tbody.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">Error al cargar: ${escapeHtml(err.message || 'error')}</td></tr>`;
@@ -34656,7 +34666,7 @@ function _cpanaAbrirModalReversa(codigo) {
 
 async function _cpanaDuplicar(campanaId, btn) {
     const sugerido = '';
-    const nuevoId = prompt(`ID para la copia de "${campanaId}" (déjalo vacío para generarlo solo):`, sugerido);
+    const nuevoId = await showPromptModal({ icon: '📑', title: 'Duplicar campaña', message: `ID para la copia de «${campanaId}» (déjalo vacío para generarlo solo)`, value: sugerido, confirmText: 'Duplicar' });
     if (nuevoId === null) return;
     if (btn) btn.disabled = true;
     try {
@@ -35124,7 +35134,7 @@ function _cpanaRenderPreview() {
     // La foto recién elegida (aunque siga subiendo) gana sobre la URL guardada.
     const foto = _cpanaFotoObjectUrl || c.imagenUrl;
     const fotoSrc = foto && !/^(https?:|blob:|data:|\/)/i.test(foto) ? `/${foto}` : foto;
-    const money = (n) => `$${Number(n || 0).toLocaleString('es-CO')}`;
+    const money = (n) => `${formatMoney(n || 0)}`;
     const ref = Number(String(c.precioReferencia || '').replace(/\D/g, '')) || 0;
     const items = c.composicion.map(_cpanaRenglonCliente).filter(Boolean);
     const grupos = (c.gruposOpciones || []).filter((g) => g.nombre && g.opciones.length);
@@ -35379,7 +35389,7 @@ async function _cpanaGuardar(e) {
 
 async function _cpanaEliminar() {
     if (!_cpanaEditingId) return;
-    if (!confirm(`¿Eliminar la campaña "${_cpanaEditingId}"? Solo se puede si aún no emitió ningún cupón.`)) return;
+    if (!(await showConfirmModal({ title: '¿Eliminar la campaña?', message: `«${_cpanaEditingId}». Solo se puede si aún no emitió ningún cupón.`, confirmText: 'Eliminar' }))) return;
     try {
         await firebaseFunctions.httpsCallable('guardarCampanaPana')({ accion: 'eliminar', campanaId: _cpanaEditingId });
         showNotice('Campaña eliminada.', 'ok');
@@ -39077,7 +39087,7 @@ function _costosBind() {
             }
             if (a === 'delDoc') {
                 const col = act.dataset.col, doc = _costos[col].find((x) => x.id === act.dataset.id); if (!doc) return;
-                if (!confirm(`¿Borrar "${doc.nombre}"? No se puede deshacer.`)) return;
+                if (!(await showConfirmModal({ title: '¿Borrar este registro?', message: `«${doc.nombre}». No se puede deshacer.`, confirmText: 'Borrar' }))) return;
                 try { await firebaseDb.collection(COSTOS_COLS[col]).doc(doc.id).delete(); _costos[col] = _costos[col].filter((x) => x.id !== doc.id); _costosAbierto = null; showNotice('Borrado.', 'ok'); } catch (err) { showNotice('No se pudo borrar: ' + (err.message || err), 'error'); }
                 return _costosRender();
             }
@@ -39764,7 +39774,7 @@ document.getElementById('fodiMemLista')?.addEventListener('click', async (e) => 
     const tema = it.dataset.tema;
     try {
         if (e.target.closest('.fm-save')) _fodiMemPintar(await _fodiMemLlamar({ accion: 'guardar', tema, texto: it.querySelector('.fm-txt').value }));
-        else if (e.target.closest('.fm-del')) { if (confirm(`¿Olvidar "${tema}"?`)) _fodiMemPintar(await _fodiMemLlamar({ accion: 'olvidar', tema })); }
+        else if (e.target.closest('.fm-del')) { if (await showConfirmModal({ title: '¿Olvidar este tema?', message: `«${tema}»`, confirmText: 'Olvidar' })) _fodiMemPintar(await _fodiMemLlamar({ accion: 'olvidar', tema })); }
     } catch (err) { showNotice(err.message || 'No se pudo guardar.', 'error'); }
 });
 document.getElementById('fodiMemAgregar')?.addEventListener('click', async () => {
@@ -39803,7 +39813,7 @@ document.getElementById('fodiBaseBox')?.addEventListener('click', async (e) => {
             const d = _fodiBaseDocs.find((x) => x.id === it.dataset.id); if (!d) return;
             document.getElementById('fodiBaseId').value = d.id; document.getElementById('fodiBaseTitulo').value = d.titulo; document.getElementById('fodiBaseCat').value = d.categoria; document.getElementById('fodiBaseTexto').value = d.texto;
             document.getElementById('fodiBaseTitulo').focus();
-        } else if (it && e.target.closest('.fb-del')) { if (confirm('¿Borrar este documento de la base?')) _fodiBasePintar(await _fodiBaseLlamar({ accion: 'borrar', id: it.dataset.id })); }
+        } else if (it && e.target.closest('.fb-del')) { if (await showConfirmModal({ title: '¿Borrar este documento?', message: 'Sale de la base de conocimiento de FODI.', confirmText: 'Borrar' })) _fodiBasePintar(await _fodiBaseLlamar({ accion: 'borrar', id: it.dataset.id })); }
         else if (sin && e.target.closest('.fb-sin-x')) _fodiBasePintar(await _fodiBaseLlamar({ accion: 'limpiar', id: sin.dataset.id }));
     } catch (err) { showNotice(err.message || 'No se pudo completar.', 'error'); }
 });
@@ -39903,7 +39913,7 @@ function _bancoSuscribirCobros() {
         const esperas = pagados.map((c) => Number(c.esperaSeg) || 0).filter((n) => n > 0);
         const prom = esperas.length ? Math.round(esperas.reduce((a, n) => a + n, 0) / esperas.length) : 0;
         const total = pagados.reduce((a, c) => a + (Number(c.total) || 0), 0);
-        el.textContent = `Cobros con QR: ${cs.length} · ${pagados.length - manuales} pagados solos` + (manuales ? ` · ${manuales} confirmados a mano` : '') + (cerrados ? ` · ${cerrados} cancelados o vencidos` : '') + (prom ? ` · espera promedio ${prom >= 60 ? Math.floor(prom / 60) + ' min ' + (prom % 60) + ' s' : prom + ' s'}` : '') + ` · $${total.toLocaleString('es-CO')}`;
+        el.textContent = `Cobros con QR: ${cs.length} · ${pagados.length - manuales} pagados solos` + (manuales ? ` · ${manuales} confirmados a mano` : '') + (cerrados ? ` · ${cerrados} cancelados o vencidos` : '') + (prom ? ` · espera promedio ${prom >= 60 ? Math.floor(prom / 60) + ' min ' + (prom % 60) + ' s' : prom + ' s'}` : '') + ` · ${formatMoney(total)}`;
     }, (e) => console.warn('[BANCO] cobros:', e && (e.code || e.message)));
 }
 function _bancoSuscribirLista() {
@@ -39927,7 +39937,7 @@ function _bancoPintarLista(docs) {
         const reales = docs.map((d) => d.data()).filter((x) => !x.prueba);
         const total = reales.reduce((a, x) => a + (Number(x.monto) || 0), 0);
         const pruebas = docs.length - reales.length;
-        resumen.textContent = `${_bancoTituloFiltro()}: ${reales.length} pago${reales.length === 1 ? '' : 's'} · $${total.toLocaleString('es-CO')}${pruebas ? ` · (${pruebas} de prueba, no suman)` : ''}`;
+        resumen.textContent = `${_bancoTituloFiltro()}: ${reales.length} pago${reales.length === 1 ? '' : 's'} · ${formatMoney(total)}${pruebas ? ` · (${pruebas} de prueba, no suman)` : ''}`;
     }
     if (!docs.length) { cont.innerHTML = '<p style="font-size:0.85rem;color:var(--admin-muted);">No hay pagos en esta fecha.</p>'; return; }
     cont.innerHTML = docs.map((d) => {
@@ -39941,7 +39951,7 @@ function _bancoPintarLista(docs) {
         } catch (_) { /* sin fecha aún */ }
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(128,128,128,.25);">
             <div><div style="font-weight:700;">${escapeHtml(x.nombre || '')}${x.prueba ? ' (prueba)' : ''}</div><div style="font-size:0.78rem;color:var(--admin-muted);">${escapeHtml(cuando)}</div></div>
-            <div style="font-weight:800;white-space:nowrap;">$${Number(x.monto || 0).toLocaleString('es-CO')}</div>
+            <div style="font-weight:800;white-space:nowrap;">${formatMoney(x.monto || 0)}</div>
             <div style="display:flex;gap:6px;">
                 <button type="button" class="section-action-btn" data-banco-repetir="${escapeHtml(d.id)}" title="Oír otra vez en este navegador" aria-label="Oír otra vez">🔊</button>
                 <button type="button" class="section-action-btn" data-banco-borrar="${escapeHtml(d.id)}" title="Eliminar este registro" aria-label="Eliminar este registro">🗑️</button>
@@ -39956,7 +39966,7 @@ function _bancoPintarLista(docs) {
     cont.querySelectorAll('[data-banco-borrar]').forEach((b) => b.addEventListener('click', async () => {
         const d = docs.find((z) => z.id === b.dataset.bancoBorrar); if (!d) return;
         const x = d.data();
-        if (!confirm(`¿Eliminar el registro de ${x.nombre || 'este pago'} por $${Number(x.monto || 0).toLocaleString('es-CO')}?`)) return;
+        if (!(await showConfirmModal({ title: '¿Eliminar este registro?', message: `${x.nombre || 'Este pago'} por ${formatMoney(x.monto)}.`, confirmText: 'Eliminar' }))) return;
         try { await firebaseDb.collection('avisos_banco').doc(d.id).delete(); showNotice('Registro eliminado.', 'ok'); }
         catch (e) { showNotice(`No se pudo eliminar: ${e.message || e}`, 'error'); }
     }));
@@ -39965,7 +39975,7 @@ async function _bancoBorrarPruebas() {
     try {
         const snap = await firebaseDb.collection('avisos_banco').where('prueba', '==', true).limit(100).get();
         if (snap.empty) { showNotice('No hay pagos de prueba para borrar.', 'info'); return; }
-        if (!confirm(`¿Eliminar ${snap.size} registro(s) de prueba? Los pagos reales no se tocan.`)) return;
+        if (!(await showConfirmModal({ title: `¿Eliminar ${snap.size} registro(s) de prueba?`, message: 'Los pagos reales no se tocan.', confirmText: 'Eliminar' }))) return;
         const lote = firebaseDb.batch();
         snap.docs.forEach((d) => lote.delete(d.ref));
         await lote.commit();
@@ -40012,7 +40022,7 @@ function _bancoPintarEquipos(docs) {
     const inline = document.getElementById('bancoEquiposInline');
     if (inline) inline.innerHTML = contenido;
     [caja, inline].forEach((raiz) => raiz && raiz.querySelectorAll('[data-banco-equipo-borrar]').forEach((b) => b.addEventListener('click', async () => {
-        if (!confirm(`¿Quitar "${b.dataset.bancoEquipoBorrar}" de la lista? Si ese computador vuelve a conectarse, aparece otra vez.`)) return;
+        if (!(await showConfirmModal({ title: '¿Quitar este computador de la lista?', message: `«${b.dataset.bancoEquipoBorrar}». Si vuelve a conectarse, aparece otra vez.`, confirmText: 'Quitar' }))) return;
         try { await firebaseDb.collection('banco_equipos').doc(b.dataset.bancoEquipoBorrar).delete(); }
         catch (e) { showNotice(`No se pudo quitar: ${e.message || e}`, 'error'); }
     })));
@@ -40032,7 +40042,7 @@ function _bancoIniciar() {
         const v = snap.exists ? snap.data() : {}, el = document.getElementById('bancoVigilancia');
         if (v.alerta === true) {
             const min = v.desdeMs ? Math.max(1, Math.round((Date.now() - Number(v.desdeMs)) / 60000)) : 0;
-            if (el) { el.hidden = false; el.textContent = `⚠️ ${v.pendientes} cobro${v.pendientes === 1 ? '' : 's'} por Bancolombia ($${Number(v.monto || 0).toLocaleString('es-CO')}) sin aviso del banco${min ? ' desde hace ' + min + ' min' : ''}. Revisa que lleguen los correos (Gmail / script) o que el pago sea real.`; }
+            if (el) { el.hidden = false; el.textContent = `⚠️ ${v.pendientes} cobro${v.pendientes === 1 ? '' : 's'} por Bancolombia (${formatMoney(v.monto || 0)}) sin aviso del banco${min ? ' desde hace ' + min + ' min' : ''}. Revisa que lleguen los correos (Gmail / script) o que el pago sea real.`; }
             if (_vigPrev === false) showNotice('⚠️ Hay cobros por Bancolombia sin aviso del banco. Mira la pestaña Pagos Bancolombia.', 'error');
         } else if (el) el.hidden = true;
         _vigPrev = v.alerta === true;
@@ -40085,18 +40095,18 @@ function _cqPintar() {
     c.hidden = false;
     const seg = Math.max(0, Math.round((Date.now() - x.creadoMs) / 1000));
     const reloj = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
-    const quien = (x.cliente ? ` · ${escapeHtml(x.cliente)}` : '') + (x.parcial && x.pedidoTotal ? ` · paga solo una parte (pedido $${Number(x.pedidoTotal).toLocaleString('es-CO')})` : '');
+    const quien = (x.cliente ? ` · ${escapeHtml(x.cliente)}` : '') + (x.parcial && x.pedidoTotal ? ` · paga solo una parte (pedido ${formatMoney(x.pedidoTotal)})` : '');
     const btn = (id, txt, color) => `<button type="button" id="${id}" style="flex:1;border:0;border-radius:10px;padding:9px 8px;font-weight:700;cursor:pointer;background:${color};color:#fff;">${txt}</button>`;
     if (x.estado === 'pagado') {
-        c.innerHTML = `<div style="font-weight:800;color:#7ee2a8;">✅ Pago recibido${x.pagador ? ' de ' + escapeHtml(x.pagador) : ''}</div><div style="margin-top:4px;">$${Number(x.total).toLocaleString('es-CO')}${quien} · registrando el cobro del pedido…</div>`;
+        c.innerHTML = `<div style="font-weight:800;color:#7ee2a8;">✅ Pago recibido${x.pagador ? ' de ' + escapeHtml(x.pagador) : ''}</div><div style="margin-top:4px;">${formatMoney(x.total)}${quien} · registrando el cobro del pedido…</div>`;
     } else if (st.pagoSuelto) {
         const p = st.pagoSuelto, ped = Number(x.pedidoTotal) || Number(x.total);
-        const rel = p.monto < ped ? `es menos del total del pedido ($${ped.toLocaleString('es-CO')}): quedaría como pago parcial` : (p.monto > ped ? `es más del total del pedido ($${ped.toLocaleString('es-CO')}): se registra el total` : 'es el total del pedido');
-        c.innerHTML = `<div style="font-weight:800;color:#ffd479;">💬 Llegó un pago distinto</div><div style="margin:4px 0 10px;">$${p.monto.toLocaleString('es-CO')}${p.nombre ? ' de ' + escapeHtml(p.nombre) : ''}<br><span style="opacity:.8;font-size:12px;">El cobro era de $${Number(x.total).toLocaleString('es-CO')}; ${rel}. ¿Es de este cliente?</span></div><div style="display:flex;gap:8px;">${btn('cqAceptarBtn', '✓ Sí, aplicarlo', '#2e7d32')}${btn('cqIgnorarBtn', 'No', '#555')}</div>`;
+        const rel = p.monto < ped ? `es menos del total del pedido (${formatMoney(ped)}): quedaría como pago parcial` : (p.monto > ped ? `es más del total del pedido (${formatMoney(ped)}): se registra el total` : 'es el total del pedido');
+        c.innerHTML = `<div style="font-weight:800;color:#ffd479;">💬 Llegó un pago distinto</div><div style="margin:4px 0 10px;">${formatMoney(p.monto)}${p.nombre ? ' de ' + escapeHtml(p.nombre) : ''}<br><span style="opacity:.8;font-size:12px;">El cobro era de ${formatMoney(x.total)}; ${rel}. ¿Es de este cliente?</span></div><div style="display:flex;gap:8px;">${btn('cqAceptarBtn', '✓ Sí, aplicarlo', '#2e7d32')}${btn('cqIgnorarBtn', 'No', '#555')}</div>`;
         document.getElementById('cqAceptarBtn')?.addEventListener('click', _cqAceptarPagoSuelto);
         document.getElementById('cqIgnorarBtn')?.addEventListener('click', () => { _cqEstado().pagoSuelto = null; _cqPintar(); });
     } else {
-        c.innerHTML = `<div style="font-weight:800;">📲 Esperando pago · ${reloj}</div><div style="margin:4px 0 10px;">$${Number(x.total).toLocaleString('es-CO')}${quien}<br><span style="opacity:.75;font-size:12px;">El cliente escanea el QR de la TV y paga este valor exacto.</span></div><div style="display:flex;gap:8px;">${btn('cqYaPagoBtn', '✓ Ya pagó', '#2e7d32')}${btn('cqCancelarBtn', 'Cancelar', '#c62828')}</div>`;
+        c.innerHTML = `<div style="font-weight:800;">📲 Esperando pago · ${reloj}</div><div style="margin:4px 0 10px;">${formatMoney(x.total)}${quien}<br><span style="opacity:.75;font-size:12px;">El cliente escanea el QR de la TV y paga este valor exacto.</span></div><div style="display:flex;gap:8px;">${btn('cqYaPagoBtn', '✓ Ya pagó', '#2e7d32')}${btn('cqCancelarBtn', 'Cancelar', '#c62828')}</div>`;
         document.getElementById('cqYaPagoBtn')?.addEventListener('click', _cqConfirmarManual);
         document.getElementById('cqCancelarBtn')?.addEventListener('click', () => _cqCancelar('cancelado'));
     }
@@ -40204,7 +40214,7 @@ async function _cqAplicar(x) {
             _pfEnterSplitMode();
             _pfSplitParts = [{ method: 'bancolombia', amount: Number(x.total) }, { method: null, amount: null }];
             _pfRenderSplitParts();
-            showNotice(`Llegaron $${Number(x.total).toLocaleString('es-CO')} por QR${x.pagador ? ' de ' + x.pagador : ''}. Elige cómo paga el resto ($${(Number(x.pedidoTotal) - Number(x.total)).toLocaleString('es-CO')}) y confirma.`, 'ok');
+            showNotice(`Llegaron ${formatMoney(x.total)} por QR${x.pagador ? ' de ' + x.pagador : ''}. Elige cómo paga el resto ($${(Number(x.pedidoTotal) - Number(x.total)).toLocaleString('es-CO')}) y confirma.`, 'ok');
         } else {
             const receive = x.receiveOrder === 'mesa' ? 'mesa' : (x.receiveOrder === 'true');
             await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id }, { despues: true });
@@ -40290,7 +40300,7 @@ async function _cqIniciar() {
     const parcial = total < pedidoTotal;
     const st = _cqEstado();
     if (st.cobro && st.cobro.estado === 'abierto') {
-        if (!(await showConfirmModal({ title: 'Ya hay un cobro en la TV', message: `Está esperando $${Number(st.cobro.total).toLocaleString('es-CO')}. ¿Cancelarlo y cobrar este pedido?`, confirmText: 'Sí, cambiar', cancelText: 'No', danger: false }))) return;
+        if (!(await showConfirmModal({ title: 'Ya hay un cobro en la TV', message: `Está esperando ${formatMoney(st.cobro.total)}. ¿Cancelarlo y cobrar este pedido?`, confirmText: 'Sí, cambiar', cancelText: 'No', danger: false }))) return;
         await _cqCancelar('cancelado');
     }
     _pfClose();
