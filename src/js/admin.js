@@ -30136,8 +30136,7 @@ function _getFeedbackPendingForClose() {
     const now = Date.now();
     return ordersState.filter((order) => {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
-        // Al cerrar caja solo se exige el feedback de Sabe a Quindío (2×1); la fidelización se atiende desde la sección Feedback.
-        if (!orderHas2x1ForFeedback(order)) return false;
+        // Al cerrar caja se recuerdan TODOS los feedback pendientes: Sabe a Quindío (2×1) y Fidelización (el resto).
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
@@ -30154,7 +30153,7 @@ function _showFeedbackCierreGate(orders, onDone) {
         const phone = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '');
         return `<div class="fbc-row" data-fbc-order="${escapeHtml(order.id)}" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,0.1);">
             <div style="flex:1;min-width:0;text-align:left;">
-                <div style="color:#fff;font-weight:700;font-size:0.9rem;">${escapeHtml(getOrderDisplayCustomerName(order))} <span style="opacity:0.5;font-weight:400;">· ${escapeHtml(order.code)}</span></div>
+                <div style="color:#fff;font-weight:700;font-size:0.9rem;">${escapeHtml(getOrderDisplayCustomerName(order))} <span style="opacity:0.5;font-weight:400;">· ${escapeHtml(order.code)}</span> <span style="font-size:0.7rem;font-weight:600;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);">${feedbackTipoOrden(order) === 'quindio' ? '🏆 Quindío' : '💛 Fidelización'}</span></div>
                 <button type="button" data-fbc-phone="${escapeHtml(phone)}" title="Tocar para copiar el número" style="margin-top:3px;padding:3px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.06);color:#fbbf24;font-size:0.82rem;cursor:pointer;">📋 ${escapeHtml(phone)}</button>
             </div>
             <button type="button" data-fbc-send="${escapeHtml(order.id)}" style="padding:9px 12px;border-radius:10px;border:none;background:linear-gradient(135deg,#ff7a1a,#e8420a);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer;white-space:nowrap;">Copiar mensaje</button>
