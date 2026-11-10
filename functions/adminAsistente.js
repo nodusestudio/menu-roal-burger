@@ -834,6 +834,11 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { pagador: { type: 'string', description: 'Parte del nombre de quien debe (ej. "cámara").' }, desde: { type: 'string', description: 'YYYY-MM-DD: desde cuándo mirar lo ya cobrado.' }, hasta: { type: 'string', description: 'YYYY-MM-DD.' } } }
     },
     {
+        name: 'gastos_pendientes',
+        description: 'Gastos pendientes por registrar: recordatorios que dejó el cajero al intentar registrar un gasto con la caja cerrada (los gastos solo se registran con la caja abierta). Dice cuántos hay, de qué y por cuánto. Son recordatorios: no cuentan en ningún saldo hasta que se registran.',
+        input_schema: { type: 'object', properties: {} }
+    },
+    {
         name: 'clientes_duplicados',
         description: 'Busca clientes repetidos en la base: el MISMO celular guardado en dos fichas (seguro, p. ej. con y sin el 57) y fichas con el mismo nombre completo pero otro teléfono (solo una pista: confirma con el administrador). Devuelve los grupos con pedidos, gastado y puntos de cada ficha y cuál conviene conservar. Para unirlos usa proponer_accion tipo unir_clientes. Úsala para "¿tengo clientes repetidos?", "unir duplicados".',
         input_schema: { type: 'object', properties: {} }
@@ -1194,6 +1199,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'cobros_qr') return await require('./fodiCobrosQr').cobrosQr(db, args);
         if (nombre === 'conciliacion_bancolombia') return await require('./fodiConciliacion').conciliacionBancolombia(db, args);
         if (nombre === 'cuentas_por_cobrar') return await require('./fodiCuentasPorCobrar').cuentasPorCobrar(db, args);
+        if (nombre === 'gastos_pendientes') return await require('./fodiGastosPendientes').gastosPendientes(db);
         if (nombre === 'clientes_duplicados') return await require('./clientesUnir').clientesDuplicados(db);
         if (nombre === 'velocidad_pedidos') return await require('./fodiVelocidad').velocidadPedidos(db, args);
         if (nombre === 'estado_avisos_banco') return await require('./fodiVigilancia').estadoAvisosBanco(db, args);

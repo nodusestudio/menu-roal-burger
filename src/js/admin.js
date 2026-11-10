@@ -28395,7 +28395,6 @@ let _gastosCajaState = [];
 let _gastoSelectedMethod = null;
 let _gastoCategoriaId = null;
 let _gastoSubcategoria = null;
-let _gastoFromHistorial = false;
 
 // Gastos de la jornada de caja actualmente abierta (o del día de hoy si no hay apertura
 // registrada), separados en gastos reales y traslados internos entre métodos de pago (un
@@ -28634,10 +28633,196 @@ function _gastoShowStep2(catId) {
     renderGastoMethodButtons();
     _renderGastoSplitBox();
     _updateGastoConfirmState();
+    if (_gastoPrefill) { // viene de un recordatorio: descripción y monto ya puestos
+        if (descEl) descEl.value = _gastoPrefill.descripcion || '';
+        if (montoEl) montoEl.value = Number(_gastoPrefill.monto) > 0 ? String(Math.round(_gastoPrefill.monto)).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+        _updateGastoConfirmState();
+    }
     descEl?.focus();
 }
 
-function openGastoModal() {
+// ── GASTOS: SOLO CON LA CAJA ABIERTA + RECORDATORIOS ─────────────────────────────────────────────────────────
+// Regla del dueño: un gasto solo se registra con la caja abierta, para que cada peso quede en el cierre del día correcto.
+// Si se intenta con la caja cerrada se ofrece dejar un RECORDATORIO (admin_estado/gastos_pendientes); al abrir la
+// siguiente caja aparece «Tienes N gastos pendientes» y cada uno se registra con el formulario ya lleno.
+// El recordatorio NO cuenta en ningún saldo hasta registrarse. Todo gasto nuevo es tipo 'caja'.
+// SYNC:gastos-pendientes:inicio
+function gpNormalizar(lista) {
+    return (Array.isArray(lista) ? lista : [])
+        .filter((x) => x && x.id && String(x.descripcion || '').trim())
+        .map((x) => ({
+            id: String(x.id),
+            descripcion: String(x.descripcion).trim().slice(0, 100),
+            monto: Number(x.monto) > 0 ? Math.round(Number(x.monto)) : 0,
+            creadoAt: Number(x.creadoAt) || 0,
+            creadoPor: String(x.creadoPor || '').slice(0, 80)
+        }));
+}
+function gpAgregarA(lista, item) { return gpNormalizar([...gpNormalizar(lista), item]); }
+function gpQuitarDe(lista, id) { return gpNormalizar(lista).filter((x) => x.id !== id); }
+// SYNC:gastos-pendientes:fin
+const GASTOS_PENDIENTES_DOC_ID = 'gastos_pendientes';
+let _gastosPendientes = [];
+let _gpCargado = false;
+let _gpAvisadoApertura = 0;
+let _gastoPrefill = null;
+let _gastoPendienteEnCurso = null;
+
+function _gpRef() { return firebaseDb.collection(SALES_DAY_STATE_COLLECTION).doc(GASTOS_PENDIENTES_DOC_ID); }
+async function _gpCargar() {
+    if (!firebaseDb) return;
+    try {
+        const doc = await _gpRef().get();
+        _gastosPendientes = gpNormalizar(doc.exists ? doc.data().items : []);
+        _gpCargado = true;
+    } catch (_) { /* sin red o sin permiso: se reintenta en el próximo cambio de caja */ }
+    _gpRender();
+}
+async function _gpMutar(fn) {
+    const ref = _gpRef();
+    let nueva = [];
+    await firebaseDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        nueva = gpNormalizar(fn(gpNormalizar(snap.exists ? snap.data().items : [])));
+        tx.set(ref, { items: nueva, updatedAt: firestoreNow() });
+    });
+    _gastosPendientes = nueva;
+    _gpCargado = true;
+    _gpRender();
+}
+function _gpAgregar(descripcion, monto) {
+    const quien = (typeof getCurrentAdminIdentity === 'function' ? getCurrentAdminIdentity() : '') || '';
+    return _gpMutar((lista) => gpAgregarA(lista, { id: `gp_${Date.now()}`, descripcion, monto, creadoAt: Date.now(), creadoPor: typeof quien === 'string' ? quien : '' }));
+}
+function _gpQuitar(id) { return _gpMutar((lista) => gpQuitarDe(lista, id)); }
+
+function _gpRender() {
+    const el = document.getElementById('gastosPendientesBanner');
+    if (!el) return;
+    const n = _gastosPendientes.length;
+    const visible = cajaAperturaAt > 0 && n > 0;
+    el.hidden = !visible;
+    if (!visible) { el.innerHTML = ''; return; }
+    el.innerHTML = `<span>🔔 Tienes <strong>${n}</strong> gasto${n === 1 ? '' : 's'} pendiente${n === 1 ? '' : 's'} por registrar</span><button type="button" class="informes-action-btn" id="gastosPendientesVerBtn">Ver</button>`;
+    el.querySelector('#gastosPendientesVerBtn')?.addEventListener('click', () => openGastosPendientesModal());
+}
+function _gpAvisar() {
+    const n = _gastosPendientes.length;
+    if (cajaAperturaAt > 0 && n > 0 && _gpAvisadoApertura !== cajaAperturaAt) {
+        _gpAvisadoApertura = cajaAperturaAt;
+        showNotice(`Tienes ${n} gasto${n === 1 ? '' : 's'} pendiente${n === 1 ? '' : 's'} por registrar (déjalos al día en Caja › Caja de hoy).`, 'info');
+    }
+}
+// Se llama cada vez que cambia el estado de la caja (abrir, cerrar, otro dispositivo).
+function _gpAlCambiarCaja() {
+    if (document.body.classList.contains('mesero-mode')) return;
+    if (!(cajaAperturaAt > 0)) { _gpRender(); return; }
+    if (!_gpCargado) { _gpCargar().then(_gpAvisar); return; }
+    _gpRender();
+    _gpAvisar();
+}
+
+function _gpCerrarOverlay(id) { document.getElementById(id)?.remove(); }
+const _gpEstiloCaja = 'background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.5rem;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);position:relative;color:#fff;';
+const _gpEstiloInput = 'background:#1e2235;border:1px solid rgba(255,255,255,0.14);border-radius:8px;color:#fff;padding:9px 10px;font-size:0.88rem;outline:none;width:100%;box-sizing:border-box;';
+
+function openGastoCajaCerradaModal() {
+    _gpCerrarOverlay('gastoCerradaModal');
+    const overlay = document.createElement('div');
+    overlay.id = 'gastoCerradaModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.innerHTML = `<div style="${_gpEstiloCaja}">
+        <button type="button" data-gc="cerrar" aria-label="Cerrar" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;">×</button>
+        <h3 style="margin:0 0 8px;font-size:1.02rem;font-weight:700;">🔒 La caja está cerrada</h3>
+        <p style="margin:0 0 14px;font-size:0.82rem;line-height:1.45;color:rgba(255,255,255,0.65);">Los gastos solo se registran con la caja abierta, para que cada peso quede en el cierre del día correcto. Puedes dejar un <strong>recordatorio</strong>: te lo muestro al abrir la próxima caja y lo registras con un toque.</p>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <label for="gcDesc" style="font-size:0.78rem;color:rgba(255,255,255,0.55);">¿Qué hay que registrar?</label>
+            <input id="gcDesc" type="text" maxlength="100" placeholder="Ej. Pollo y papas del proveedor" autocomplete="off" style="${_gpEstiloInput}">
+            <label for="gcMonto" style="font-size:0.78rem;color:rgba(255,255,255,0.55);">Monto <span style="opacity:.6;">(opcional)</span></label>
+            <input id="gcMonto" type="text" inputmode="numeric" placeholder="0" autocomplete="off" style="${_gpEstiloInput}">
+            <button type="button" data-gc="guardar" disabled style="margin-top:6px;padding:10px;background:rgba(255,180,60,0.22);color:#ffd79a;border:1px solid rgba(255,180,60,0.5);border-radius:10px;font-weight:700;cursor:pointer;opacity:.5;">Dejar recordatorio</button>
+            <button type="button" data-gc="abrir" style="padding:9px;background:rgba(34,197,94,0.16);color:#86efac;border:1px solid rgba(34,197,94,0.4);border-radius:10px;font-weight:600;cursor:pointer;">Abrir la caja ahora</button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const desc = overlay.querySelector('#gcDesc');
+    const monto = overlay.querySelector('#gcMonto');
+    const guardar = overlay.querySelector('[data-gc="guardar"]');
+    const validar = () => { const ok = desc.value.trim().length >= 2; guardar.disabled = !ok; guardar.style.opacity = ok ? '1' : '.5'; };
+    desc.addEventListener('input', validar);
+    monto.addEventListener('input', () => {
+        const n = monto.value.replace(/\D/g, '');
+        monto.value = n ? n.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+    });
+    overlay.addEventListener('click', async (e) => {
+        if (e.target === overlay) { overlay.remove(); return; }
+        const b = e.target.closest('[data-gc]');
+        if (!b) return;
+        if (b.dataset.gc === 'cerrar') { overlay.remove(); return; }
+        if (b.dataset.gc === 'abrir') { overlay.remove(); _showAbrirCajaModal(); return; }
+        if (b.dataset.gc === 'guardar') {
+            const texto = desc.value.trim();
+            if (texto.length < 2) return;
+            guardar.disabled = true; guardar.textContent = 'Guardando…';
+            try {
+                await _gpAgregar(texto, Number(monto.value.replace(/\./g, '')) || 0);
+                overlay.remove();
+                showNotice('Recordatorio guardado: te lo mostraré cuando abras la próxima caja.', 'ok');
+            } catch (err) {
+                guardar.disabled = false; guardar.textContent = 'Dejar recordatorio';
+                showNotice('No se pudo guardar el recordatorio: ' + (err.message || 'error'), 'error');
+            }
+        }
+    });
+    desc.focus();
+}
+
+function openGastosPendientesModal() {
+    _gpCerrarOverlay('gastosPendientesModal');
+    if (!_gastosPendientes.length) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'gastosPendientesModal';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    const filas = () => _gastosPendientes.map((g) => `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,0.08);">
+            <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:0.88rem;overflow-wrap:anywhere;">${escapeHtml(g.descripcion)}</div>
+                <div style="font-size:0.74rem;color:rgba(255,255,255,0.5);">${g.monto > 0 ? formatMoney(g.monto) : 'Sin monto'}${g.creadoAt ? ' · ' + new Date(g.creadoAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : ''}</div></div>
+            <button type="button" data-gp="registrar" data-id="${escapeHtml(g.id)}" style="padding:7px 12px;background:rgba(34,197,94,0.18);color:#86efac;border:1px solid rgba(34,197,94,0.4);border-radius:9px;font-weight:700;cursor:pointer;font-size:0.8rem;">Registrar</button>
+            <button type="button" data-gp="descartar" data-id="${escapeHtml(g.id)}" aria-label="Descartar" style="padding:7px 10px;background:rgba(239,68,68,0.12);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);border-radius:9px;cursor:pointer;font-size:0.8rem;">✕</button>
+        </div>`).join('');
+    const pintar = () => {
+        overlay.innerHTML = `<div style="${_gpEstiloCaja}max-height:80vh;overflow:auto;">
+            <button type="button" data-gp="cerrar" aria-label="Cerrar" style="position:absolute;top:10px;right:14px;background:none;border:none;color:rgba(255,255,255,0.55);font-size:1.5rem;cursor:pointer;line-height:1;">×</button>
+            <h3 style="margin:0 0 4px;font-size:1.02rem;font-weight:700;">🔔 Gastos pendientes por registrar</h3>
+            <p style="margin:0 0 6px;font-size:0.78rem;color:rgba(255,255,255,0.55);">Se registran en la caja que está abierta ahora.</p>${filas()}</div>`;
+    };
+    pintar();
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', async (e) => {
+        if (e.target === overlay) { overlay.remove(); return; }
+        const b = e.target.closest('[data-gp]');
+        if (!b) return;
+        if (b.dataset.gp === 'cerrar') { overlay.remove(); return; }
+        const g = _gastosPendientes.find((x) => x.id === b.dataset.id);
+        if (!g) return;
+        if (b.dataset.gp === 'registrar') {
+            overlay.remove();
+            openGastoModal({ descripcion: g.descripcion, monto: g.monto, pendienteId: g.id });
+            return;
+        }
+        if (b.dataset.gp === 'descartar') {
+            const si = await showConfirmModal({ title: '¿Descartar este recordatorio?', message: `«${g.descripcion}» no se registrará como gasto.`, confirmText: 'Descartar' });
+            if (!si) return;
+            try { await _gpQuitar(g.id); } catch (err) { showNotice('No se pudo descartar: ' + (err.message || 'error'), 'error'); return; }
+            if (!_gastosPendientes.length) overlay.remove(); else pintar();
+        }
+    });
+}
+
+function openGastoModal(prefill) {
+    // Regla del dueño: los gastos solo se registran con la caja abierta.
+    if (!(cajaAperturaAt > 0)) { openGastoCajaCerradaModal(); return; }
+    _gastoPrefill = prefill && typeof prefill.descripcion === 'string' ? prefill : null;
+    _gastoPendienteEnCurso = _gastoPrefill ? (_gastoPrefill.pendienteId || null) : null;
     _gastoSelectedMethod = null;
     _gastoCategoriaId = null;
     _gastoSubcategoria = null;
@@ -28652,7 +28837,8 @@ function closeGastoModal() {
     _gastoSelectedMethod = null;
     _gastoCategoriaId = null;
     _gastoSubcategoria = null;
-    _gastoFromHistorial = false;
+    _gastoPrefill = null;
+    _gastoPendienteEnCurso = null;
 }
 
 function openTrasladoModal(existingData = null, existingId = null) {
@@ -28760,13 +28946,10 @@ function openTrasladoModal(existingData = null, existingId = null) {
     });
 }
 
-document.getElementById('gastosBtn')?.addEventListener('click', openGastoModal);
+document.getElementById('gastosBtn')?.addEventListener('click', () => openGastoModal());
 // Informes → Gastos es un ledger histórico, no la jornada de hoy — igual que el botón de
 // Historial, se registra como "externo" (sin atarlo a la caja actualmente abierta).
-document.getElementById('gastosInformesNewBtn')?.addEventListener('click', () => {
-    _gastoFromHistorial = true;
-    openGastoModal();
-});
+document.getElementById('gastosInformesNewBtn')?.addEventListener('click', () => openGastoModal());
 document.getElementById('trasladoHistorialBtn')?.addEventListener('click', openTrasladoModal);
 
 // ── Ajustar saldos (Historial de Cajas) ──────────────────────────────────────────────────
@@ -29184,14 +29367,19 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
 
     try {
         const gastoId = `gasto_${Date.now()}`;
-        const fromHistorial = _gastoFromHistorial;
+        // La caja pudo cerrarse (desde otro equipo) mientras se llenaba el formulario: no se guarda un gasto huérfano.
+        if (!(cajaAperturaAt > 0)) {
+            closeGastoModal();
+            showNotice('La caja se cerró mientras registrabas el gasto. Déjalo como recordatorio y regístralo al abrir la próxima caja.', 'error');
+            return;
+        }
         const base = {
             categoria: _gastoCategoriaId || 'otros',
             subcategoria: _gastoSubcategoria || '',
             descripcion,
             registradoAt: Date.now(),
-            cajaAperturaAt: fromHistorial ? null : (cajaAperturaAt || 0),
-            tipo: fromHistorial ? 'externo' : 'caja',
+            cajaAperturaAt,
+            tipo: 'caja',
         };
         // Un documento por método (con `grupoId` común si fue dividido): los saldos por método
         // y los informes siguen leyendo paymentMethod/monto sin cambios.
@@ -29207,13 +29395,13 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
         // para el caso "no viene de Historial", y el ledger de Informes quedaba desfasado
         // hasta el próximo refresco manual).
         _gastosCajaState = [...docs, ..._gastosCajaState];
+        const pendienteId = _gastoPendienteEnCurso; // si venía de un recordatorio, se quita ahora que ya quedó registrado
         closeGastoModal();
-        if (fromHistorial) {
-            await renderLibroCierres();
-        } else {
-            renderCajaDiaria();
-        }
+        renderCajaDiaria();
         renderGastosInformes();
+        if (pendienteId) {
+            try { await _gpQuitar(pendienteId); } catch (_) { showNotice('El gasto quedó registrado, pero no pude quitar el recordatorio; quítalo a mano.', 'info'); }
+        }
         showNotice('Gasto registrado.', 'ok');
         // Un traslado entre metodos de pago no es un gasto real -- no genera ticket. Se muestra
         // la vista previa primero (con sus propios botones Imprimir/Cerrar) en vez de imprimir
@@ -30718,6 +30906,7 @@ function _updateCajaEstadoUI() {
     // "Jornada": antes solo se repintaba con el siguiente renderOrders(), y al abrir la caja
     // seguía mostrando el aviso amarillo de la jornada anterior.
     renderSalesDayBanner();
+    _gpAlCambiarCaja();
 }
 
 // ── Buscador de precio de domicilio (admin toolbar) ───────────────────────────
@@ -31618,10 +31807,6 @@ document.getElementById('cierreDrpClear')?.addEventListener('click', (e) => {
     if (t) t.value = '';
     _updateCierreDrp();
 });
-document.getElementById('gastosHistorialBtn')?.addEventListener('click', () => {
-    _gastoFromHistorial = true;
-    openGastoModal();
-});
 
 // ── Libro Contable ────────────────────────────────────────────────────────────
 let _lcActivePeriod = 'diario';
@@ -31824,12 +32009,6 @@ document.getElementById('libroCierresList')?.addEventListener('click', (e) => {
         if (c) _openCierreDetalleModal(c);
         return;
     }
-    const gastoBtn = e.target.closest('.btn-gasto-cierre');
-    if (gastoBtn) {
-        const cid = gastoBtn.dataset.cierreId;
-        const c = _cierresCajaState.find((x) => x.id === cid);
-        if (c) openCierreGastoModal(c);
-    }
 });
 
 function _openCierreDetalleModal(c) {
@@ -31971,151 +32150,6 @@ function _openCierreDetalleModal(c) {
     });
 }
 
-function openCierreGastoModal(cierre) {
-    const existing = document.getElementById('cierreGastoModal');
-    if (existing) existing.remove();
-
-    const methods = getEnabledPaymentMethods();
-    const tsMs = _tsMs(cierre.closedAt);
-    const fechaStr = tsMs ? new Date(tsMs).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' }) : cierre.date || '';
-
-    // Saldos disponibles por método (ingresos netos ya descontados gastos anteriores)
-    const methodTotals = cierre.methodTotals || {};
-    const saldosHtml = methods
-        .map((m) => {
-            const v = Number(methodTotals[m.id] || 0);
-            if (v <= 0) return '';
-            return `<div style="display:flex;justify-content:space-between;font-size:0.82rem;padding:3px 0;">
-                <span style="color:rgba(200,200,220,0.7);">${m.icon} ${escapeHtml(m.label)}</span>
-                <span class="caja-cell-entrada">${formatMoney(v)}</span>
-            </div>`;
-        }).filter(Boolean).join('') || `<div style="font-size:0.8rem;color:rgba(200,200,220,0.5);">Sin saldo disponible</div>`;
-
-    const methodOptions = methods.map((m) =>
-        `<option value="${escapeHtml(m.id)}">${m.icon} ${escapeHtml(m.label)}</option>`
-    ).join('');
-
-    const overlay = document.createElement('div');
-    overlay.id = 'cierreGastoModal';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;background:rgba(10,6,3,0.88);padding:16px;';
-
-    overlay.innerHTML = `
-        <div style="background:#1c1410;border:1.5px solid rgba(255,255,255,0.12);border-radius:18px;padding:22px 20px 18px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div>
-                    <div style="font-weight:700;font-size:1rem;color:#fff;">💸 Registrar Gasto</div>
-                    <div style="font-size:0.75rem;color:rgba(200,180,150,0.6);margin-top:2px;">Cierre · ${escapeHtml(fechaStr)}</div>
-                </div>
-                <button id="cgmClose" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:1.6rem;cursor:pointer;line-height:1;padding:0 4px;">×</button>
-            </div>
-
-            <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px;">
-                <div style="font-size:0.68rem;color:rgba(200,200,220,0.45);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Saldos disponibles</div>
-                ${saldosHtml}
-            </div>
-
-            <div style="display:flex;flex-direction:column;gap:10px;">
-                <div>
-                    <label style="font-size:0.72rem;color:rgba(200,200,220,0.55);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px;">Descripción</label>
-                    <input id="cgmDesc" type="text" placeholder="Ej: Mercado, nómina, servicios..." maxlength="120"
-                        style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.35);color:#eef4ff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 10px;font-size:0.85rem;">
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <div>
-                        <label style="font-size:0.72rem;color:rgba(200,200,220,0.55);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px;">Monto</label>
-                        <input id="cgmMonto" type="number" min="0" placeholder="0"
-                            style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.35);color:#eef4ff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 10px;font-size:0.85rem;">
-                    </div>
-                    <div>
-                        <label style="font-size:0.72rem;color:rgba(200,200,220,0.55);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px;">Método</label>
-                        <select id="cgmMethod"
-                            style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.35);color:#eef4ff;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 10px;font-size:0.85rem;">
-                            <option value="">— Método —</option>
-                            ${methodOptions}
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <button id="cgmSave" style="width:100%;padding:12px;border-radius:10px;border:none;background:#e76f00;color:#fff;font-weight:700;font-size:0.95rem;cursor:pointer;transition:opacity .15s;">Registrar gasto</button>
-        </div>`;
-
-    document.body.appendChild(overlay);
-
-    overlay.querySelector('#cgmClose').addEventListener('click', () => overlay.remove());
-    _bindOverlayClose(overlay, () => overlay.remove());
-
-    overlay.querySelector('#cgmSave').addEventListener('click', async () => {
-        const desc   = overlay.querySelector('#cgmDesc').value.trim();
-        const monto  = Number(overlay.querySelector('#cgmMonto').value) || 0;
-        const method = overlay.querySelector('#cgmMethod').value;
-
-        if (!desc)   { showNotice('Ingresa una descripción.', 'error'); return; }
-        if (monto <= 0) { showNotice('El monto debe ser mayor a 0.', 'error'); return; }
-        if (!method) { showNotice('Selecciona un método de pago.', 'error'); return; }
-
-        const saveBtn = overlay.querySelector('#cgmSave');
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Guardando…';
-
-        try {
-            // Crear gasto en gastos_caja
-            const gastoId = `gasto_cierre_${Date.now()}`;
-            const gastoDoc = {
-                id: gastoId,
-                categoria: 'otros',
-                subcategoria: 'Gasto de caja',
-                proveedor: '',
-                descripcion: desc,
-                monto,
-                paymentMethod: method,
-                registradoAt: firestoreNow(),
-                cierreId: cierre.id,
-                cajaAperturaAt: cierre.cajaAperturaAt || 0
-            };
-            await firebaseDb.collection(GASTOS_CAJA_COLLECTION).doc(gastoId).set(gastoDoc);
-
-            // Actualizar cierre en Firestore
-            const nuevosGastosDetalle = [...(cierre.gastosDetalle || []), {
-                descripcion: desc,
-                monto,
-                paymentMethod: method,
-                registradoAt: Date.now()
-            }];
-            const nuevoGastosMethod = { ...(cierre.gastosMethod || {}) };
-            nuevoGastosMethod[method] = (nuevoGastosMethod[method] || 0) + monto;
-            const nuevoGastosTotal = (Number(cierre.gastosTotal) || 0) + monto;
-
-            const nuevoMethodTotals = { ...(cierre.methodTotals || {}) };
-            nuevoMethodTotals[method] = (nuevoMethodTotals[method] || 0) - monto;
-            const nuevoGrandTotal = (Number(cierre.grandTotal) || 0) - monto;
-
-            await firebaseDb.collection(CIERRES_CAJA_COLLECTION).doc(cierre.id).update({
-                gastosDetalle: nuevosGastosDetalle,
-                gastosMethod: nuevoGastosMethod,
-                gastosTotal: nuevoGastosTotal,
-                methodTotals: nuevoMethodTotals,
-                grandTotal: nuevoGrandTotal
-            });
-
-            // Actualizar estado local
-            cierre.gastosDetalle = nuevosGastosDetalle;
-            cierre.gastosMethod  = nuevoGastosMethod;
-            cierre.gastosTotal   = nuevoGastosTotal;
-            cierre.methodTotals  = nuevoMethodTotals;
-            cierre.grandTotal    = nuevoGrandTotal;
-
-            overlay.remove();
-            showNotice('Gasto registrado y saldo actualizado.', 'ok');
-            renderLibroCierres();
-        } catch (err) {
-            showNotice(`Error: ${err.message || 'No se pudo guardar.'}`, 'error');
-            saveBtn.disabled = false;
-            saveBtn.textContent = 'Registrar gasto';
-        }
-    });
-}
-
 // ── Tickets (Informes) ────────────────────────────────────────────────────────
 let _ticketsData = [];
 
@@ -32164,8 +32198,8 @@ function renderTicketsTable(orders) {
 // cerrar), ORDERS_ARCHIVE_COLLECTION tiene las jornadas ya cerradas. Un rango de
 // fechas puede abarcar días de ambas, así que siempre se consultan las dos.
 async function loadTicketsReport(fromDate, toDate) {
-    const start = firebase.firestore.Timestamp.fromDate(new Date(fromDate + 'T00:00:00'));
-    const end   = firebase.firestore.Timestamp.fromDate(new Date(toDate + 'T23:59:59'));
+    const start = firebase.firestore.Timestamp.fromDate(new Date(_inicioDiaBogotaMs(fromDate)));
+    const end   = firebase.firestore.Timestamp.fromDate(new Date(_inicioDiaBogotaMs(toDate) + 86399000));
     const rangeQuery = (collectionName, isArchived) => firebaseDb.collection(collectionName)
         .where('createdAt', '>=', start)
         .where('createdAt', '<=', end)
@@ -33267,14 +33301,14 @@ function renderGastosInformes() {
     let gastos = _gastosCajaState.filter((g) => g.tipo !== 'traslado' && g.tipo !== 'ajuste');
 
     if (desdeVal) {
-        const desdeMs = new Date(desdeVal + 'T00:00:00').getTime();
+        const desdeMs = _inicioDiaBogotaMs(desdeVal);
         gastos = gastos.filter((g) => {
             const ms = _tsMs(g.registradoAt);
             return ms >= desdeMs;
         });
     }
     if (hastaVal) {
-        const hastaMs = new Date(hastaVal + 'T23:59:59').getTime();
+        const hastaMs = _inicioDiaBogotaMs(hastaVal) + 86399000;
         gastos = gastos.filter((g) => {
             const ms = _tsMs(g.registradoAt);
             return ms <= hastaMs;
@@ -33398,8 +33432,8 @@ function renderGastosInformes() {
 async function _gastosFetchForCurrentFilter() {
     const desdeVal = document.getElementById('gastosDesde')?.value;
     const hastaVal = document.getElementById('gastosHasta')?.value;
-    const desdeMs = desdeVal ? new Date(desdeVal + 'T00:00:00').getTime() : null;
-    const hastaMs = hastaVal ? new Date(hastaVal + 'T23:59:59').getTime() : null;
+    const desdeMs = desdeVal ? _inicioDiaBogotaMs(desdeVal) : null;
+    const hastaMs = hastaVal ? _inicioDiaBogotaMs(hastaVal) + 86399000 : null;
     await loadGastosCaja({ desdeMs, hastaMs });
     renderGastosInformes();
 }

@@ -621,3 +621,39 @@ otros ~12 flujos los pulsan por código.
 ## 35. Pendiente de esta fase → siguientes
 - Fase 3: gasto único («solo con caja abierta» + recordatorio) — cambia datos nuevos, requiere su propia prueba.
 - Fase 6: reordenar las pestañas internas de Configuración (Horario+Barrios, Meseros+Seguridad, mover Categorías de Gastos a Caja).
+
+---
+---
+
+# PARTE 9 — Fase 3: gasto único, solo con la caja abierta, con recordatorios (hecha)
+
+## 36. Qué cambia para el usuario
+- **Con la caja abierta:** el gasto se registra igual que siempre (mismo formulario) y queda en la jornada abierta (`tipo:'caja'`) → entra al cierre de ese día.
+- **Con la caja cerrada:** el botón de gasto (Caja de hoy o Caja › Gastos) ya no abre el formulario: muestra «🔒 La caja está cerrada» con dos salidas:
+  **Dejar recordatorio** (descripción + monto opcional) o **Abrir la caja ahora**.
+- **Al abrir la siguiente caja:** aparece un aviso en pantalla y una franja amarilla «🔔 Tienes N gastos pendientes por registrar» en Caja de hoy.
+  «Ver» lista los recordatorios; **Registrar** abre el formulario ya lleno (descripción y monto) y, al guardarse el gasto, el recordatorio se quita; **✕** lo descarta (con confirmación).
+- Si la caja se cierra desde otro equipo mientras se llena el formulario, el gasto **no** se guarda huérfano: se avisa y se ofrece dejarlo como recordatorio.
+
+## 37. Qué se quitó (y por qué no pierde nada)
+- El botón **«Gastos» del Historial de Cajas** (guardaba gastos «externo» sin caja).
+- El camino **«gasto olvidado dentro de un cierre ya cerrado»** (`openCierreGastoModal`), el **único** que reescribía un cierre. Su botón ya no existía en pantalla; se eliminó también el código.
+- Desde ahora **no se crean más gastos `externo`**. Los que ya existen (560 en la foto) se siguen leyendo, sumando y mostrando exactamente igual: no se tocó ningún documento.
+
+## 38. Datos nuevos (solo ese)
+`admin_estado/gastos_pendientes` → `{ items: [{ id, descripcion, monto, creadoAt, creadoPor }], updatedAt }`. Se escribe con **transacción** (dos equipos a la vez no se pisan).
+No está en `gastos_caja` ni en `cierres_caja`, así que **no cuenta en ningún saldo ni total** hasta que se registra como gasto. Las reglas de Firestore ya permitían a un admin leer/escribir `admin_estado`: no hubo que cambiarlas.
+
+## 39. FODI y métricas (regla del dueño: toda función nueva)
+- Herramienta nueva de FODI **`gastos_pendientes`** (solo lectura, `functions/fodiGastosPendientes.js`): cuántos hay, de qué, por cuánto y quién los dejó.
+- La métrica es el propio conteo/monto del recordatorio (franja del panel + FODI).
+
+## 40. Además (zona horaria, mismo criterio de la Fase 1b)
+Los filtros «desde / hasta» de **Tickets** y de **Gastos** usaban medianoche en la zona del navegador; ahora son el día completo en hora de Colombia.
+
+## 41. Verificación
+- `tests/gastos-pendientes.test.js` (11): reglas puras de los recordatorios + garantías de código (con la caja cerrada no se muestra el formulario, todo gasto nuevo es `tipo:'caja'`, ningún código escribe `externo`, nadie edita un cierre ya hecho, el recordatorio no toca `gastos_caja` ni `cierres_caja`).
+- `tests/gastos-pendientes.e2e.mjs` (19 comprobaciones en **Chromium real**, con el código real del panel y una base simulada): guardar el recordatorio, que quede quién lo dejó, que no toque saldos, «Abrir la caja ahora», aviso al abrir (sin repetirse), «Ver → Registrar» con los datos, quitar al registrar, descartar con confirmación y dos recordatorios simultáneos sin perder ninguno.
+- `tests/fodi-gastos-pendientes.test.js` (4). Total de las pruebas que exige el despliegue: **138 en verde**.
+- Foto del dinero antes/después: **idéntica** (no se escribió nada del dinero).
+- **No verificado con datos reales:** el flujo completo con tu sesión (abrir/cerrar caja real, registrar un gasto real).

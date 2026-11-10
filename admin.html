@@ -7722,6 +7722,9 @@
         .nav2-lista { display: flex; flex-direction: column; gap: 4px; margin: -2px 0 4px 14px; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, 0.10); }
         .nav2-lista[hidden] { display: none; }
         .nav2-sub { padding: 8px 12px; font-size: 0.74rem; }
+        /* Aviso de gastos pendientes (recordatorios dejados con la caja cerrada) */
+        .gp-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 12px 0; padding: 9px 12px; border-radius: 12px; background: rgba(255, 180, 60, 0.12); border: 1px solid rgba(255, 180, 60, 0.45); color: #ffd79a; font-size: 0.85rem; }
+        .gp-banner[hidden] { display: none; }
         .sidebar-footer .admin-link,
         .sidebar-footer .preview-refresh-btn {
             display: block;
@@ -14597,6 +14600,7 @@
                                             </div>
                                         </div>
                                         <div class="card-body" id="card-caja-diaria" style="padding:0;">
+                                            <div id="gastosPendientesBanner" class="gp-banner" hidden></div>
                                             <div id="ccCajaDiariaSummary" hidden style="padding:8px 12px 0;">
                                                 <div class="cc-caja-summary" id="ccCajaDiariaSummaryInner" title="Abrir Caja Chica">
                                                     <span>💰 Caja Chica (fondo)</span>
@@ -14688,7 +14692,6 @@
                                         <button type="button" class="informes-action-btn" id="refreshLibroCierresBtn">↺ Actualizar</button>
                                         <button type="button" class="informes-action-btn" id="exportCierresExcelBtn">⬇️ Excel</button>
                                         <button type="button" class="informes-action-btn" id="exportCierresPdfBtn">⬇️ PDF</button>
-                                        <button type="button" id="gastosHistorialBtn" class="informes-action-btn informes-action-btn--danger">💸 Gastos</button>
                                         <button type="button" id="trasladoHistorialBtn" class="informes-action-btn informes-action-btn--accent">🔄 Traslado</button>
                                         <button type="button" id="ajusteSaldosBtn" class="informes-action-btn informes-action-btn--accent" title="Registrar el saldo real de cada cuenta (no cuenta como ingreso ni gasto)">⚖️ Ajustar saldos</button>
                                     </div>
