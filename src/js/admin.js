@@ -1,3 +1,25 @@
+// ── HORA DE COLOMBIA EN TODO LO QUE SE MUESTRA ─────────────────────────────────────────────────────────────────
+// Toda hora o fecha que el panel escribe en pantalla (tarjetas, cierres, tickets, informes) sale en hora de Colombia,
+// aunque el computador esté en otra zona. Solo se aplica cuando el código no pide una zona propia (timeZone).
+// SYNC:zona-colombia:inicio
+(function fijarZonaHorariaColombia() {
+    const TZ = 'America/Bogota';
+    const conZona = (o) => (o && typeof o === 'object') ? (o.timeZone ? o : Object.assign({}, o, { timeZone: TZ })) : { timeZone: TZ };
+    ['toLocaleTimeString', 'toLocaleDateString', 'toLocaleString'].forEach((m) => {
+        const orig = Date.prototype[m];
+        Date.prototype[m] = function (loc, opts) { return orig.call(this, loc, conZona(opts)); };
+    });
+    const Orig = Intl.DateTimeFormat;
+    if (Orig && !Orig.__bogota) {
+        const Parche = function (loc, opts) { return new Orig(loc, conZona(opts)); };
+        Parche.prototype = Orig.prototype;
+        Parche.supportedLocalesOf = Orig.supportedLocalesOf;
+        Parche.__bogota = true;
+        Intl.DateTimeFormat = Parche;
+    }
+})();
+// SYNC:zona-colombia:fin
+
 const MAX_FEATURED = 5;
 
 const PUBLIC_CATEGORY_CATALOG = [
@@ -11509,15 +11531,15 @@ function _renderBarChart(containerId, data, color, fmt) {
 
 // ── helper: stats por período ──────────────────────────────────────────────
 function _periodStats(orders, unit) {
-    const now = new Date();
-    const start = new Date(now);
-    if (unit === 'today')      { start.setHours(0,0,0,0); }
-    else if (unit === 'week')  { start.setDate(start.getDate() - start.getDay()); start.setHours(0,0,0,0); }
-    else if (unit === 'month') { start.setDate(1); start.setHours(0,0,0,0); }
+    const hoyKey = _diaBogota();
+    let startKey = hoyKey;
+    if (unit === 'week')       startKey = _sumarDiasKey(hoyKey, -_diaSemanaBogota());
+    else if (unit === 'month') startKey = _primerDiaMesKey(hoyKey);
+    const startMs = _inicioDiaBogotaMs(startKey);
     const filtered = orders.filter(o => {
         if (!o.createdAt) return false;
         const ts = o.createdAt.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt);
-        return ts >= start.getTime();
+        return ts >= startMs;
     });
     return { count: filtered.length, revenue: filtered.reduce((s,o) => s + Number(o.total||0), 0) };
 }
@@ -13616,9 +13638,8 @@ function renderMetricsUsers() {
     appOrders.forEach(o => {
         const ts = _orderTs(o);
         if (ts) {
-            const d = new Date(ts);
-            hourMap.set(d.getHours(), (hourMap.get(d.getHours()) || 0) + 1);
-            dayMap[d.getDay()]++;
+            hourMap.set(_horaBogota(ts), (hourMap.get(_horaBogota(ts)) || 0) + 1);
+            dayMap[_diaSemanaBogota(ts)]++;
         }
         const m = o.paymentMethod || 'otro';
         payMap.set(m, (payMap.get(m) || 0) + 1);
@@ -13817,7 +13838,7 @@ function renderMetricsPos() {
 
     posOrders.forEach(o => {
         const ts = _orderTs(o);
-        if (ts) { const d = new Date(ts); hourMap.set(d.getHours(),(hourMap.get(d.getHours())||0)+1); dayMap[d.getDay()]++; }
+        if (ts) { hourMap.set(_horaBogota(ts),(hourMap.get(_horaBogota(ts))||0)+1); dayMap[_diaSemanaBogota(ts)]++; }
         const m = o.paymentMethod || 'otro';
         payMap.set(m, (payMap.get(m)||0)+1);
         const t = typeLabels[o.orderType] || o.orderType || 'Otro';
@@ -13945,7 +13966,7 @@ function _renderMetricsUserDetail(container, orders, phone) {
     orders.forEach((o) => {
         if (!o.createdAt) return;
         const ts = o.createdAt.seconds ? o.createdAt.seconds * 1000 : Number(o.createdAt);
-        const h = new Date(ts).getHours();
+        const h = _horaBogota(ts);
         hourMap.set(h, (hourMap.get(h) || 0) + 1);
     });
     const topHours = [...hourMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
@@ -14078,13 +14099,37 @@ function _tsMs(value) {
     return value?.toMillis ? value.toMillis() : Number(value || 0);
 }
 
-// ÚNICA forma de obtener "el día" de un instante: día de calendario en hora de Colombia (UTC−5, sin horario de
-// verano) como 'AAAA-MM-DD'. Nunca usar toISOString() directo (da el día UTC: desde las 7 p. m. ya es "mañana")
-// ni la zona del navegador. Sin argumento = ahora.
-function _diaBogota(ms) {
+// ── HORA DE COLOMBIA (UTC−5, sin horario de verano) ─────────────────────────────────────────────────────────
+// El negocio es de Colombia: TODO día, hora, semana o mes del panel se calcula en hora Bogotá, sin importar la zona
+// del computador o del navegador desde donde se mire (un computador en otra zona corría los días y las horas).
+// Nunca usar toISOString() directo (da el día UTC: desde las 7 p. m. ya es "mañana"), ni getHours()/getDay()/
+// getDate()/getMonth() ni new Date(año, mes, día) (usan la zona del navegador). Usar estos ayudantes.
+// SYNC:dias-bogota:inicio
+function _diaBogota(ms) { // 'AAAA-MM-DD' del día en Colombia; sin argumento = ahora
     const t = (ms === undefined || ms === null) ? Date.now() : Number(ms);
     return new Date(t - 5 * 3600000).toISOString().slice(0, 10);
 }
+function _horaBogota(ms) { // 0-23, hora del día en Colombia; sin argumento = ahora
+    const t = (ms === undefined || ms === null) ? Date.now() : Number(ms);
+    return new Date(t - 5 * 3600000).getUTCHours();
+}
+function _diaSemanaBogota(ms) { // 0 = domingo … 6 = sábado, en Colombia; sin argumento = ahora
+    const t = (ms === undefined || ms === null) ? Date.now() : Number(ms);
+    return new Date(t - 5 * 3600000).getUTCDay();
+}
+function _inicioDiaBogotaMs(key) { // instante (ms) en que EMPIEZA ese día en Colombia (00:00 Bogotá = 05:00 UTC)
+    return Date.parse(key + 'T05:00:00Z');
+}
+function _sumarDiasKey(key, n) { // 'AAAA-MM-DD' + n días (puede ser negativo)
+    const d = new Date(key + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+}
+function _primerDiaMesKey(key, mesesAdelante = 0) { // día 1 del mes de `key`, desplazado `mesesAdelante` meses
+    const [y, m] = key.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1 + mesesAdelante, 1, 12)).toISOString().slice(0, 10);
+}
+// SYNC:dias-bogota:fin
 // Instante que decide a qué DÍA pertenece un cierre: cuando se ABRIÓ la caja, no cuando se cerró (regla del dueño:
 // una caja olvidada que se cierra al otro día al mediodía sigue siendo del día en que se vendió).
 function _cierreDiaMs(c) {
@@ -15876,23 +15921,18 @@ function renderOrders() {
 }
 
 function renderSalesDayBanner() {
-    // Usar fecha local (Colombia UTC-5) en vez de toISOString() que devuelve UTC
-    const _now = new Date();
-    const todayStr = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
+    const todayStr = _diaBogota(); // día de hoy en Colombia
 
     // Pedidos cobrados HOY (el banner siempre muestra el día actual,
     // independientemente de cuándo se abrió la caja para evitar acumulación de días anteriores)
-    const _aperturaDate = cajaAperturaAt ? new Date(cajaAperturaAt) : null;
-    const aperturaHoyStr = _aperturaDate ? `${_aperturaDate.getFullYear()}-${String(_aperturaDate.getMonth()+1).padStart(2,'0')}-${String(_aperturaDate.getDate()).padStart(2,'0')}` : null;
+    const aperturaHoyStr = cajaAperturaAt ? _diaBogota(cajaAperturaAt) : null;
     const aperturaHoy = cajaAperturaAt && aperturaHoyStr === todayStr;
     const paidOrders = ordersState.filter((o) => {
         if (o.voided || o.anulado) return false;
         if (!isOrderPaidReal(o)) return false;
         const paidMs = _tsMs(o.paidAt);
         if (!paidMs) return false;
-        const _paidDate = new Date(paidMs);
-        const paidDateStr = `${_paidDate.getFullYear()}-${String(_paidDate.getMonth()+1).padStart(2,'0')}-${String(_paidDate.getDate()).padStart(2,'0')}`;
-        if (paidDateStr !== todayStr) return false;
+        if (_diaBogota(paidMs) !== todayStr) return false;
         if (aperturaHoy) return paidMs >= cajaAperturaAt;
         return true;
     });
@@ -16945,7 +16985,7 @@ function renderChatRoalSettingsPanel() {
         const horario = _instructionHorarioTipo === 'dias_horas'
             ? {
                 tipo: 'dias_horas',
-                dias: [new Date().getDay()],
+                dias: [_diaSemanaBogota()],
                 hora_inicio: document.getElementById('chatRoalInstructionHoraInicio')?.value || '00:00',
                 hora_fin: document.getElementById('chatRoalInstructionHoraFin')?.value || '23:59'
             }
@@ -26952,7 +26992,7 @@ async function initAdmin() {
 // ── Modo mesero: arranque restringido solo a "Crear Pedido" ────────────────
 // admin.html?mesero=<token> — sin cuenta de Firebase, sin sidebar/otras pestañas.
 function _getGreeting() {
-    const h = new Date().getHours();
+    const h = _horaBogota();
     if (h < 12) return 'Buenos días';
     if (h < 19) return 'Buenas tardes';
     return 'Buenas noches';
@@ -26965,8 +27005,7 @@ function _showMeseroInvalidScreen() {
 }
 
 function _todayLocalDateString() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return _diaBogota();
 }
 
 // Candado de "Abrir sesión": se muestra hasta que el mesero toca el botón — no ve Recepción
@@ -29107,10 +29146,7 @@ function renderCajaDiaria() {
         const paidMs = _tsMs(ts);
         if (!paidMs) return false;
         if (cajaAperturaAt) return paidMs >= cajaAperturaAt;
-        const _nd = new Date(); const _pd = new Date(paidMs);
-        const todayStr = `${_nd.getFullYear()}-${String(_nd.getMonth()+1).padStart(2,'0')}-${String(_nd.getDate()).padStart(2,'0')}`;
-        const paidStr = `${_pd.getFullYear()}-${String(_pd.getMonth()+1).padStart(2,'0')}-${String(_pd.getDate()).padStart(2,'0')}`;
-        return paidStr === todayStr;
+        return _diaBogota(paidMs) === _diaBogota();
     // "transferencia" generica (aun no resuelta por el cajero a Bancolombia/Nequi) se
     // cuenta aqui como Bancolombia — no debe aparecer como columna/bucket "Otro" aparte.
     }).map((o) => ({
@@ -30687,8 +30723,7 @@ function _trasladoEnCierreCerrado(t, cierresList) {
         const open = _tsMs(c.aperturaAt);
         if (open) return tms >= open && tms <= closed;
         // Cierre antiguo sin aperturaAt registrada: aproxima por día de calendario.
-        const d1 = new Date(tms), d2 = new Date(closed);
-        return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+        return _diaBogota(tms) === _diaBogota(closed);
     });
 }
 
@@ -30773,31 +30808,24 @@ async function loadCierresCaja() {
 // Atajos de fecha (Hoy/Ayer/Esta semana/Este mes) compartidos por los filtros de Historial de
 // Cajas, Tickets y Gastos. Devuelve strings YYYY-MM-DD listos para un <input type="date">.
 function _datePresetRange(preset) {
-    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const today = new Date();
+    const hoy = _diaBogota(); // todo en hora Colombia, sin importar la zona del computador
     if (preset === 'ayer') {
-        const y = new Date(today);
-        y.setDate(y.getDate() - 1);
-        return { from: fmt(y), to: fmt(y) };
+        const y = _sumarDiasKey(hoy, -1);
+        return { from: y, to: y };
     }
     if (preset === 'semana') {
-        const day = today.getDay(); // 0 = domingo
+        const day = _diaSemanaBogota(); // 0 = domingo
         const diffToMonday = day === 0 ? 6 : day - 1;
-        const monday = new Date(today);
-        monday.setDate(today.getDate() - diffToMonday);
-        return { from: fmt(monday), to: fmt(today) };
+        return { from: _sumarDiasKey(hoy, -diffToMonday), to: hoy };
     }
     if (preset === 'mes') {
-        const first = new Date(today.getFullYear(), today.getMonth(), 1);
-        return { from: fmt(first), to: fmt(today) };
+        return { from: _primerDiaMesKey(hoy), to: hoy };
     }
     if (preset === 'mesant') {
-        const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-        const last = new Date(today.getFullYear(), today.getMonth(), 0);
-        return { from: fmt(first), to: fmt(last) };
+        return { from: _primerDiaMesKey(hoy, -1), to: _sumarDiasKey(_primerDiaMesKey(hoy), -1) };
     }
     // 'hoy' y cualquier valor no reconocido caen en el día de hoy
-    return { from: fmt(today), to: fmt(today) };
+    return { from: hoy, to: hoy };
 }
 
 function _applyDatePreset(rowId, fromInputId, toInputId, presetBtn, onApplied) {
@@ -30951,7 +30979,7 @@ async function renderLibroCierres() {
                 if (mk && amt) { totByMethod[mk] = (totByMethod[mk] || 0) + amt; totalAmt += amt; }
             });
             const dObj = new Date(latestTs);
-            return { _tipo: 'gastos_dia', _ts: latestTs, _items: items, _totByMethod: totByMethod, _totalAmt: totalAmt, _d: dObj, _diaStr: DIAS[dObj.getDay()] };
+            return { _tipo: 'gastos_dia', _ts: latestTs, _items: items, _totByMethod: totByMethod, _totalAmt: totalAmt, _d: dObj, _diaStr: DIAS[_diaSemanaBogota(latestTs)] };
         });
 
         const allEntries = [
@@ -30986,7 +31014,7 @@ async function renderLibroCierres() {
             }
             const dg = _dayGroups[dk];
             if (ms > dg.ms) dg.ms = ms;
-            dg.entries.push({ ...entry, _ms: ms });
+            dg.entries.push({ ...entry, _ms: entry._tipo === 'cierre' ? _tsMs(entry.closedAt) : ms }); // la hora mostrada de un cierre es la de su cierre
 
             if (entry._tipo === 'cierre') {
                 const iM = entry.ingresosMethod || entry.methodTotals || {};
@@ -32797,9 +32825,8 @@ async function saveFinanzasConfig({ touchMargen = false } = {}) {
 // existe de ninguna forma, retiroSocioMes = 0 y todo colapsa al comportamiento anterior
 // (resultadoNetoFinal == resultadoAntesDeRetiro == el neto de siempre).
 function _finanzasVentasNetoMesEnVivo() {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+    const monthStart = _inicioDiaBogotaMs(_primerDiaMesKey(_diaBogota()));
+    const monthEnd = _inicioDiaBogotaMs(_primerDiaMesKey(_diaBogota(), 1));
     const inMonth = (ms) => ms >= monthStart && ms < monthEnd;
 
     let ventasMes = 0;
@@ -38132,7 +38159,7 @@ async function _fodiCargarUsuario() {
     return _fodiUsuario;
 }
 function _fodiSaludo(corto) {
-    const n = _fodiNombreLocal(), h = new Date().getHours();
+    const n = _fodiNombreLocal(), h = _horaBogota();
     const mom = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
     return n ? (corto ? `¡Hola, ${n}! 💛` : `${mom}, ${n} 💛`) : (corto ? '¡Hola! 💛' : `${mom} 💛`);
 }
@@ -39370,7 +39397,7 @@ document.getElementById('asistUsoBtn')?.addEventListener('click', async () => {
     if (!out) return;
     btn.disabled = true; out.textContent = 'Calculando…';
     try {
-        const d0 = new Date(Date.now() - 32 * 86400000), desde = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`;
+        const desde = _diaBogota(Date.now() - 32 * 86400000);
         // sin orderBy (pedía un índice compuesto): se filtra por id de documento (fecha) y se ordena aquí
         const snap = await firebaseDb.collection('admin_ai_usage_daily').where(firebase.firestore.FieldPath.documentId(), '>=', desde).get();
         const dias = snap.docs.map((d) => ({ dia: d.id, ...d.data() })).sort((a, b) => (a.dia < b.dia ? 1 : -1)).slice(0, 31);

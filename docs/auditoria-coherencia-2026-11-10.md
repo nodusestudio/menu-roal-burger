@@ -552,3 +552,34 @@ de CSS y puede ir en la Fase 1.
 - **Escritura de las dos banderas** (`anulado`/`voided`): hoy se lee con un solo criterio; escribir siempre ambas es un cambio de datos nuevos → decidir.
 - **Constantes de negocio compartidas** ($2.000 empaque, $7.000 combo, valor del punto) y **un solo `formatCOP`**: tocan menú público, servidor y agente; van en su propio paso con pruebas de paridad.
 - El módulo `saldos.js` **verifica** pero aún no **pinta**; pasará a pintar en la Fase 4 (Movimientos unificados).
+
+---
+---
+
+# PARTE 7 — Fase 1b: la hora de Colombia en todo el panel (hallazgo de la captura 2)
+
+## 30. CORRECCIÓN IMPORTANTE a la §22 (lo de "cierra pasada la medianoche" era una mala lectura mía)
+El cierre que se veía "03:56 a. m." **no se hizo de madrugada**. En la base de datos se cerró el **9-nov a las 21:56 hora Colombia**
+(abrió 15:06, cerró 21:56, neto $201.000). El panel lo mostraba "03:56 a. m. del martes 10" porque **el computador desde el que se mira está en otra
+zona horaria (UTC+1)** y todo el panel usaba la zona del navegador. Eso explica por qué "los días se corrían". La regla del dueño (el día es el de la
+apertura, en hora Bogotá) sigue siendo correcta y ahora además se cumple en pantalla: el cierre ya aparece como **Lunes 9 de noviembre**.
+
+El panel suponía que el navegador estaba en Colombia (un comentario del código lo decía: «Usar fecha local (Colombia UTC-5)»).
+Había ~35 sitios que dependían de eso, varios con dinero: «Ventas de hoy» del POS, «Hoy / Semana / Mes» de Métricas, el filtro Hoy/Ayer/Semana/Mes de los informes,
+«Finanzas: este mes en vivo», y la caja diaria cuando no hay apertura.
+
+## 31. Qué se corrigió
+| # | Cambio | Dinero |
+|---|---|---|
+| 1 | **Error mío de la Fase 1:** la tarjeta del cierre mostraba la hora de **apertura** (3:06 p. m.) en vez de la de **cierre** (9:56 p. m.). Corregido | Solo etiqueta |
+| 2 | Bloque `dias-bogota` (`_diaBogota`, `_horaBogota`, `_diaSemanaBogota`, `_inicioDiaBogotaMs`, `_sumarDiasKey`, `_primerDiaMesKey`): única forma de calcular día/hora/semana/mes | — |
+| 3 | Parche `zona-colombia`: todo `toLocaleTimeString/DateString/String` e `Intl.DateTimeFormat` sin zona propia sale en hora de Colombia | Solo lo que se ve |
+| 4 | Reemplazados los cálculos con la zona del navegador: banner de ventas de hoy, caja diaria sin apertura, `_periodStats` (Hoy/Semana/Mes), gráficas por hora y día de la semana, atajos Hoy/Ayer/Semana/Mes de los filtros, Finanzas «este mes en vivo», saludo, horario del chat | Solo cambia **qué instante** es «hoy / este mes» si el computador no estaba en Colombia; en un computador en Colombia da exactamente lo mismo que antes |
+| 5 | `saldos.js` y `admin.js`: el traslado dentro de un cierre antiguo sin apertura se compara por día de Colombia | Igual |
+
+Quedan sin tocar a propósito: `setDate(getDate()-30)` y `METRICS_ORDERS_LOOKBACK_DAYS` (ventanas de días, no dependen de la hora exacta) y `_metricsPeriodStart` (función sin ninguna llamada).
+
+## 32. Verificación
+- `src/js/caja/dias.test.js` simula **un computador en España** y reproduce el síntoma exacto («03:56 a. m.»); con los cambios da `09:56 p. m.`, día 9, hora 21, lunes (16 comprobaciones).
+- `saldos.test.js` sigue en verde (reproduce las tarjetas de la pantalla al peso).
+- Compila con esbuild sin errores. No se tocó ningún dato.

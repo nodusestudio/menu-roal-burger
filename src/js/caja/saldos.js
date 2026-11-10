@@ -23,7 +23,7 @@ export function cierreDescuadreSinMetodo(c) {
 /**
  * Un traslado hecho con la caja abierta queda horneado en el methodTotals del cierre de esa jornada;
  * sumarlo otra vez lo contaría dos veces. Se excluye el que cae dentro de [aperturaAt, closedAt] de un cierre.
- * Cierres antiguos sin aperturaAt: se aproxima por día de calendario (hora local, igual que el panel).
+ * Cierres antiguos sin aperturaAt: se aproxima por día de calendario en hora Colombia (igual que el panel).
  */
 export function trasladoEnCierreCerrado(t, cierres) {
     const tms = _tsMs(t.registradoAt);
@@ -33,8 +33,8 @@ export function trasladoEnCierreCerrado(t, cierres) {
         if (!closed) return false;
         const open = _tsMs(c.aperturaAt);
         if (open) return tms >= open && tms <= closed;
-        const d1 = new Date(tms), d2 = new Date(closed);
-        return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+        const dia = (ms) => new Date(ms - 5 * 3600000).toISOString().slice(0, 10); // día en hora Colombia
+        return dia(tms) === dia(closed);
     });
 }
 
