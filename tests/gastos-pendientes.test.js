@@ -45,16 +45,16 @@ test('descripción de más de 100 caracteres se recorta', () => {
     assert.equal(r[0].descripcion.length, 100);
 });
 
-test('abrir el modal de gasto con la caja cerrada NO muestra el formulario: ofrece el recordatorio', () => {
+test('con la caja cerrada el formulario SÍ se abre: el efectivo queda bloqueado y las cuentas siguen disponibles', () => {
     const f = js.slice(js.indexOf('function openGastoModal(prefill) {'));
-    const primeras = f.slice(0, 400);
-    assert.match(primeras, /if \(!\(cajaAperturaAt > 0\)\) \{ openGastoCajaCerradaModal\(\); return; \}/);
+    assert.ok(!/openGastoCajaCerradaModal\(\); return;/.test(f.slice(0, 500)), 'ya no se desvía al recordatorio: las cuentas no dependen de la caja');
+    assert.match(js, /const sinCaja = gastoEsEfectivo\(m\.id\) && !cajaAbierta;/);
+    assert.match(js, /nota\.hidden = cajaAbierta;/);
+    assert.match(js, /data-gasto-recordar/);
 });
 
-test('todo gasto nuevo se guarda como tipo "caja", de la jornada abierta; ya no se crean gastos "externo"', () => {
-    assert.ok(/cajaAperturaAt,\r?\n\s+tipo: 'caja',/.test(js), 'el gasto debe llevar la apertura y tipo caja');
-    const escritores = js.split('\n').filter((l) => /tipo:\s*'externo'/.test(l) && !/\/\/.*tipo:\s*'externo'/.test(l) && !/^\s*\/\//.test(l));
-    assert.deepEqual(escritores, [], 'ningún código (fuera de comentarios) debe escribir tipo externo');
+test('el tipo del gasto sale del método: efectivo → "caja" (turno abierto), cuentas → "externo" (sin depender de la caja)', () => {
+    assert.match(js, /gastoTipoPorMetodo\(metodo\) === 'caja' \? \{ cajaAperturaAt, tipo: 'caja' \} : \{ cajaAperturaAt: null, tipo: 'externo' \}/);
     assert.ok(!js.includes('_gastoFromHistorial'));
     assert.ok(!js.includes('fromHistorial'));
 });
@@ -71,8 +71,8 @@ test('los tres botones de gasto que quedan abren el mismo modal', () => {
     assert.ok(js.includes("document.getElementById('gastosInformesNewBtn')?.addEventListener('click', () => openGastoModal());"));
 });
 
-test('el gasto se re-valida contra la caja al guardar (por si se cerró desde otro equipo)', () => {
-    assert.match(js, /La caja se cerró mientras registrabas el gasto/);
+test('el efectivo se re-valida contra la caja al guardar (por si se cerró desde otro equipo)', () => {
+    assert.match(js, /La caja está cerrada: el efectivo solo se paga con la caja abierta\. Elige una cuenta/);
 });
 
 test('el recordatorio viaja con el estado de caja y se refresca al abrir/cerrar', () => {

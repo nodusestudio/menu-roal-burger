@@ -26,11 +26,12 @@ const getEnabledPaymentMethods = () => _metodos;
 const findPaymentMethodOrOtro = (k) => [..._metodos, OTRO_PAYMENT_METHOD].find((m) => m.id === k);
 const formatMoney = (v) => '$ ' + Number(v || 0).toLocaleString('es-CO');
 const escapeHtml = (s) => String(s);
+let cajaAperturaAt = 1700000000000;
 let _gastoSelectedMethod = null, _gastoSplitOn = false, _gastoSplitAmounts = {};
 let _cajaDiariaSumMethod = { efectivo: 19000, bancolombia: 0, nequi: 0, otro: 0 };
 let _historicoSumMethod = { efectivo: 878700, bancolombia: 723325, nequi: 0, otro: 0 };
 ${codigo}
-window.api = { render: () => renderGastoMethodButtons(), elegir: (m, monto) => { _gastoSelectedMethod = m; document.getElementById('gastoMonto').value = monto; _gastoActualizarOrigen(); }, origen: () => gastoOrigen };
+window.api = { caja: (v) => { cajaAperturaAt = v; }, render: () => renderGastoMethodButtons(), elegir: (m, monto) => { _gastoSelectedMethod = m; document.getElementById('gastoMonto').value = monto; _gastoActualizarOrigen(); }, origen: () => gastoOrigen };
 </script></body>`);
 const archivo = path.join(raiz, '__go_harness.html');
 fs.writeFileSync(archivo, pagina);
@@ -74,6 +75,20 @@ try {
   ok(await p.locator('#gastoOrigenInfo').isHidden(), 'sin monto el panel se oculta');
   await p.evaluate(() => window.api.render());
   ok(await p.locator('#gastoMethodsGrid .dpm-method-btn--active').count() === 1, 'al refrescar los saldos se conserva el método elegido');
+
+  // Efectivo = cajón del turno (solo con la caja abierta) · cuentas = en cualquier momento
+  const titulos = await p.locator('#gastoMethodsGrid .gasto-fuente-titulo').allInnerTexts();
+  ok(titulos.length === 2 && /del cajón/i.test(titulos[0]) && /desde una cuenta/i.test(titulos[1]), 'los métodos van en dos grupos: «Del cajón (efectivo)» y «Desde una cuenta»');
+  ok(await p.locator('#gastoMethodsGrid [data-gasto-method="efectivo"]').isEnabled() && await p.locator('#gastoFuenteNota').isHidden(), 'con la caja abierta el efectivo está disponible y no hay aviso');
+  await p.evaluate(() => { window.api.caja(0); window.api.elegir('efectivo', '10.000'); window.api.render(); });
+  ok(await p.locator('#gastoMethodsGrid [data-gasto-method="efectivo"]').isDisabled(), 'con la caja CERRADA el efectivo se bloquea');
+  ok(await p.locator('#gastoMethodsGrid [data-gasto-method="bancolombia"]').isEnabled() && await p.locator('#gastoMethodsGrid [data-gasto-method="nequi"]').isEnabled(), '…pero Bancolombia y Nequi siguen disponibles (no dependen del cajón)');
+  ok(/la caja está cerrada/i.test(await p.locator('#gastoFuenteNota').innerText()) && await p.locator('#gastoFuenteNota [data-gasto-recordar]').count() === 1, 'se explica por qué y se ofrece «Dejar recordatorio» para el efectivo');
+  ok((await p.locator('#gastoMethodsGrid .dpm-method-btn--active').count()) === 0, 'un efectivo que estaba elegido se des-selecciona al cerrarse la caja');
+  await p.screenshot({ path: path.join(os.tmpdir(), 'go-3-caja-cerrada.png') });
+  await p.evaluate(() => { window.api.elegir('bancolombia', '10.209'); });
+  ok(/saldo de días anteriores/.test(await texto()), 'con la caja cerrada se puede registrar desde Bancolombia y dice de dónde sale');
+  await p.evaluate(() => window.api.caja(1700000000000));
   ok(errores.length === 0, 'sin errores de JavaScript' + (errores.length ? ': ' + errores.join(' | ') : ''));
 } finally {
   await navegador.close(); srv.close();

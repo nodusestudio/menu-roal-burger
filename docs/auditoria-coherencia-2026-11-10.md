@@ -872,3 +872,12 @@ Se registró un gasto de $10.209 por **Bancolombia** y en Caja de hoy salió −
 - Los saldos se refrescan en segundo plano al abrir el formulario, para que «Disp.» y el aviso usen datos al día.
 ## 76. Verificación
 `tests/gasto-origen.test.js` (9: el caso real, hoy alcanza, mixto, hoy en negativo, no alcanza, entradas raras, solo informativo, confirmación) y `tests/gasto-origen.e2e.mjs` (**11** en Chromium real con los números reales: hoy efectivo $19.000 / Bancolombia $0, saldo anterior efectivo $878.700 / Bancolombia $723.325). Capturas revisadas. Todas las pruebas del despliegue y de navegador en verde. No cambia ningún saldo ni total.
+
+# Parte 20 — «¿Con qué se pagó?»: efectivo = cajón, cuentas = banco (Fase 7a)
+Modelo tomado de Square, Toast y Loyverse: el cajón del turno maneja solo **efectivo** (se paga con la caja abierta); lo que sale del banco, Nequi o Bold se registra contra la **cuenta** en cualquier momento y no mueve el cajón.
+- El formulario de gasto se abre aunque la caja esté cerrada. Métodos en dos grupos: «💵 Del cajón» y «🏦 Desde una cuenta».
+- Caja cerrada → el efectivo se bloquea («Caja cerrada») y se ofrece «Dejar recordatorio»; las cuentas siguen disponibles.
+- El tipo del gasto sale del método: efectivo → `caja` (entra al cierre); resto → `externo` (resta del saldo de esa cuenta). Pagos divididos: cada parte con su tipo.
+- Al guardar se re-valida el efectivo contra la caja (por si se cerró desde otro equipo).
+- Verificación: `gasto-origen.test.js` + `gastos-pendientes.test.js` (21), e2e gasto-origen (18), resto de e2e en verde. La foto del dinero solo difiere por un gasto real nuevo registrado en producción entre corridas; el código no altera saldos.
+- Siguiente: Caja de hoy como turno de efectivo (efectivo esperado) y conteo al cierre con diferencia.

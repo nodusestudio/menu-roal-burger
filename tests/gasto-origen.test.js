@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(__dirname, '../admin.html'), 'utf8');
 const a = js.indexOf('// SYNC:origen-gasto:inicio');
 const b = js.indexOf('// SYNC:origen-gasto:fin');
 assert.ok(a > 0 && b > a);
-const { gastoOrigen } = new Function(`${js.slice(a, b)}\n return { gastoOrigen };`)();
+const { gastoOrigen, gastoEsEfectivo, gastoTipoPorMetodo } = new Function(`${js.slice(a, b)}\n return { gastoOrigen, gastoEsEfectivo, gastoTipoPorMetodo };`)();
 
 test('el caso de la captura: hoy no entró nada por Bancolombia → el gasto sale del saldo de días anteriores', () => {
     const o = gastoOrigen(10209, 0, 723325);
@@ -50,13 +50,13 @@ test('entradas raras no rompen: texto, undefined y decimales', () => {
     assert.equal(gastoOrigen(0, 0, 0).origen, 'hoy');
 });
 
-test('el origen es SOLO informativo: el gasto sigue siendo tipo "caja" con el mismo monto y método', () => {
-    assert.match(js, /cajaAperturaAt,\r?\n\s+tipo: 'caja',/);
+test('el origen es SOLO informativo: no toca monto, método ni tipo del gasto', () => {
+    assert.match(js, /gastoTipoPorMetodo\(metodo\) === 'caja'/);
     const i = js.indexOf('// De dónde salió la plata (solo informativo');
     const tramo = js.slice(i, i + 700);
     assert.match(tramo, /d\.origen = o\.origen;/);
     assert.match(tramo, /d\.desdeSaldoAnterior = o\.desdeSaldoAnterior/);
-    assert.ok(!/d\.(monto|paymentMethod|tipo) *=/.test(tramo), 'no debe tocar monto, método ni tipo');
+    assert.ok(!/d\.(monto|paymentMethod|tipo) *=[^=]/.test(tramo), 'no debe tocar monto, método ni tipo');
 });
 
 test('si el saldo no alcanza se pide confirmación antes de registrar', () => {
@@ -68,4 +68,9 @@ test('Caja de hoy marca los gastos pagados con saldo de días anteriores, y el f
     assert.match(js, /gasto-origen-chip/);
     assert.ok(html.includes('id="gastoOrigenInfo"'));
     assert.match(js, /_gastoActualizarOrigen\(\);\r?\n\s+return;/);
+});
+
+test('regla del cajón: solo el efectivo es «caja» (turno); Bancolombia, Nequi, Bold y Otro son «externo» (cuenta)', () => {
+    assert.equal(gastoEsEfectivo('efectivo'), true);
+    assert.deepEqual(['efectivo', 'bancolombia', 'nequi', 'bold', 'otro'].map(gastoTipoPorMetodo), ['caja', 'externo', 'externo', 'externo', 'externo']);
 });
