@@ -7710,6 +7710,18 @@
             border-top: 1px solid rgba(255, 255, 255, 0.07);
         }
         .admin-nav-extra { display: none; } /* el botón de avisos del menú del celular; en escritorio está en el pie */
+        /* ── Menú principal nuevo (8 grupos) ── */
+        #nav2Host { display: none; }
+        body.menu-nuevo #nav2Host { display: flex; flex-direction: column; gap: 6px; }
+        body.menu-nuevo #adminAccordionNav > .admin-accordion-trigger { display: none; } /* los botones viejos siguen ahí, ocultos */
+        body.menu-nuevo nav[aria-label="Secciones de Informes"] { display: none; }      /* las pestañas de Informes pasan al menú */
+        .nav2-grupo { display: flex; align-items: center; gap: 8px; }
+        .nav2-grupo .nav2-flecha { margin-left: auto; opacity: 0.6; font-size: 0.8rem; transition: transform 0.18s ease; }
+        .nav2-grupo[aria-expanded="true"] .nav2-flecha { transform: rotate(180deg); }
+        .nav2-grupo.has-unread .nav2-flecha { margin-right: 22px; }
+        .nav2-lista { display: flex; flex-direction: column; gap: 4px; margin: -2px 0 4px 14px; padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, 0.10); }
+        .nav2-lista[hidden] { display: none; }
+        .nav2-sub { padding: 8px 12px; font-size: 0.74rem; }
         .sidebar-footer .admin-link,
         .sidebar-footer .preview-refresh-btn {
             display: block;
@@ -14220,6 +14232,8 @@
         <nav class="admin-accordion" id="adminAccordionNav">
             <!-- Solo en el menú del celular (☰), AL INICIO para no tener que bajar: el pie de la barra lateral, donde está el mismo botón, se oculta en pantallas chicas -->
             <button type="button" class="admin-nav-extra" id="adminAvisosNavBtn"><span class="nav-icon">🔔</span><span>Avisos al celular</span></button>
+            <!-- Menú principal nuevo (8 grupos): lo arma setupNav2() en admin.js. Los botones de abajo siguen existiendo (ocultos) porque otros flujos los pulsan. -->
+            <div id="nav2Host" class="nav2" role="navigation" aria-label="Menú principal"></div>
             <button type="button" class="admin-accordion-trigger active" data-accordion-target="pedidos"><span class="nav-icon">🧾</span><span>POS</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="informes"><span class="nav-icon">📊</span><span>Informes</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="menu"><span class="nav-icon">🍔</span><span>Articulos</span></button>
@@ -14251,6 +14265,7 @@
             <button type="button" class="preview-refresh-btn" id="adminAvisosPcBtn" title="Activa y prueba el cuadrito de aviso en la esquina de este computador (pedidos, chats, redes)">🖥️ Avisos del computador</button>
             <button type="button" class="preview-refresh-btn" id="adminAvisosBtn" title="Activa los avisos en este celular o computador (pedidos, chats, redes, clientes nuevos)">🔔 Avisos al celular</button>
             <button type="button" class="preview-refresh-btn" id="adminTvBtn" title="Configura y controla la pantalla de TV del local (productos, tiempos, pausa)">📺 Modo TV</button>
+            <button type="button" class="preview-refresh-btn" id="adminMenuSwitchBtn" title="Cambia entre el menú nuevo (8 grupos) y el anterior">Ver menú anterior</button>
             <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">Cerrar sesion</button>
         </div>
     </aside>

@@ -2899,6 +2899,179 @@ function markMessagesAsRead() {
     updateMessagesAttentionState();
 }
 
+// ── MENÚ PRINCIPAL NUEVO (8 grupos) ─────────────────────────────────────────────────────────────────────────────
+// Solo cambia la NAVEGACIÓN: cada elemento del menú nuevo pulsa el botón de siempre (data-accordion-target) y, si hace
+// falta, la pestaña interna de siempre (data-section-tab). Ningún panel, dato ni cálculo cambia, y los botones viejos
+// siguen en la página (ocultos) para que FODI, los avisos y los demás flujos que los pulsan sigan funcionando.
+// Interruptor: ?menu=clasico (o el botón del pie) vuelve al menú anterior; ?menu=nuevo regresa. Se recuerda en el navegador.
+// SYNC:nav2:inicio
+const NAV2_GRUPOS = [
+    { id: 'pos', icono: '🧾', etiqueta: 'POS', items: [
+        { id: 'pos.pedidos', etiqueta: 'POS', target: 'pedidos' }
+    ] },
+    { id: 'caja', icono: '💵', etiqueta: 'Caja', items: [
+        { id: 'caja.hoy', etiqueta: 'Caja de hoy', target: 'informes', seccion: 'caja-diaria' },
+        { id: 'caja.gastos', etiqueta: 'Gastos', target: 'informes', seccion: 'gastos' },
+        { id: 'caja.movimientos', etiqueta: 'Movimientos', target: 'informes', seccion: 'libro-contable' },
+        { id: 'caja.cierres', etiqueta: 'Cierres', target: 'informes', seccion: 'historial' },
+        { id: 'caja.pagos', etiqueta: 'Pagos digitales', target: 'banco' }
+    ] },
+    { id: 'informes', icono: '📊', etiqueta: 'Informes', items: [
+        { id: 'informes.ventas', etiqueta: 'Ventas', target: 'informes', seccion: 'tickets' },
+        { id: 'informes.metricas', etiqueta: 'Métricas', target: 'metricas' },
+        { id: 'informes.resultado', etiqueta: 'Resultado', target: 'finanzas' }
+    ] },
+    { id: 'catalogo', icono: '🍔', etiqueta: 'Catálogo', items: [
+        { id: 'catalogo.articulos', etiqueta: 'Artículos', target: 'menu' },
+        { id: 'catalogo.costos', etiqueta: 'Costos y recetas', target: 'costos' }
+    ] },
+    { id: 'clientes', icono: '👥', etiqueta: 'Clientes', items: [
+        { id: 'clientes.clientes', etiqueta: 'Clientes', target: 'clientes' },
+        { id: 'clientes.feedback', etiqueta: 'Feedback', target: 'feedback' },
+        { id: 'clientes.fuera', etiqueta: 'Fuera del Menú', target: 'cuponpana' }
+    ] },
+    { id: 'comunicacion', icono: '💬', etiqueta: 'Comunicación', items: [
+        { id: 'comunicacion.mensajes', etiqueta: 'Mensajes', target: 'mensajes' },
+        { id: 'comunicacion.chatroal', etiqueta: 'Chat Roal', target: 'chatroal' },
+        { id: 'comunicacion.redes', etiqueta: 'Redes', target: 'redes' }
+    ] },
+    { id: 'fodi', icono: '🤖', etiqueta: 'FODI', items: [
+        { id: 'fodi.asistente', etiqueta: 'Asistente', target: 'asistente' }
+    ] },
+    { id: 'config', icono: '⚙️', etiqueta: 'Configuración', items: [
+        { id: 'config.config', etiqueta: 'Configuración', target: 'configuracion' }
+    ] }
+];
+const NAV2_STORAGE_KEY = 'roal_admin_menu';
+const _nav2Abiertos = new Set();
+const _nav2Ultimo = {};
+
+function _nav2Modo() {
+    try {
+        const q = new URLSearchParams(window.location.search).get('menu');
+        if (q === 'clasico' || q === 'nuevo') { localStorage.setItem(NAV2_STORAGE_KEY, q); return q; }
+        return localStorage.getItem(NAV2_STORAGE_KEY) === 'clasico' ? 'clasico' : 'nuevo';
+    } catch (_) { return 'nuevo'; }
+}
+function _nav2Buscar(itemId) {
+    for (const g of NAV2_GRUPOS) { const it = g.items.find((x) => x.id === itemId); if (it) return { g, it }; }
+    return null;
+}
+function _nav2Viejo(target) {
+    return document.querySelector(`.admin-accordion-trigger[data-accordion-target="${target}"]`);
+}
+function _nav2Ir(itemId) {
+    const f = _nav2Buscar(itemId);
+    if (!f) return;
+    const viejo = _nav2Viejo(f.it.target);
+    if (!viejo) return;
+    _nav2Ultimo[f.g.id] = f.it.id;
+    viejo.click();
+    if (f.it.seccion) document.querySelector(`[data-section-tab="${f.it.seccion}"][data-section-scope="informes"]`)?.click();
+    _nav2Sync();
+}
+// Qué elemento del menú corresponde a lo que está abierto ahora (aunque lo haya abierto otro código, p. ej. FODI).
+function _nav2Activo() {
+    const target = activeAccordionSection;
+    const cand = [];
+    NAV2_GRUPOS.forEach((g) => g.items.forEach((it) => { if (it.target === target) cand.push({ g, it }); }));
+    if (cand.length > 1) {
+        const sec = document.querySelector('.menu-inner-tab.active[data-section-scope="informes"]')?.dataset.sectionTab || '';
+        return cand.find((c) => c.it.seccion === sec) || cand[0];
+    }
+    return cand[0] || null;
+}
+function _nav2Sync() {
+    const host = document.getElementById('nav2Host');
+    if (!host || !host.dataset.listo) return;
+    const act = _nav2Activo();
+    if (act) _nav2Ultimo[act.g.id] = act.it.id;
+    host.querySelectorAll('[data-nav2-item]').forEach((b) => b.classList.toggle('active', !!act && b.dataset.nav2Item === act.it.id));
+    host.querySelectorAll('[data-nav2-grupo]').forEach((b) => {
+        const gid = b.dataset.nav2Grupo;
+        const activo = !!act && act.g.id === gid;
+        b.classList.toggle('active', activo);
+        const lista = host.querySelector(`[data-nav2-lista="${gid}"]`);
+        if (lista) {
+            const abierto = activo || _nav2Abiertos.has(gid);
+            lista.hidden = !abierto;
+            b.setAttribute('aria-expanded', String(abierto));
+        }
+    });
+    const rotulo = document.getElementById('adminTopbarSection');
+    if (rotulo && act && document.body.classList.contains('menu-nuevo')) {
+        rotulo.textContent = act.g.items.length > 1 ? `${act.g.etiqueta} · ${act.it.etiqueta}` : act.g.etiqueta;
+    }
+    _nav2Insignias();
+}
+// Las insignias de "sin leer" (mensajes, pedidos, chats) las siguen poniendo los botones viejos; aquí se copian.
+function _nav2Insignias() {
+    const host = document.getElementById('nav2Host');
+    if (!host || !host.dataset.listo) return;
+    const poner = (btn, total, parpadea) => {
+        if (!btn) return;
+        btn.classList.toggle('has-unread', total > 0);
+        btn.classList.toggle('is-blinking', total > 0 && parpadea);
+        if (total > 0) btn.dataset.unreadCount = total > 99 ? '99+' : String(total); else btn.removeAttribute('data-unread-count');
+    };
+    NAV2_GRUPOS.forEach((g) => {
+        let total = 0, parpadea = false;
+        g.items.forEach((it) => {
+            const viejo = it.seccion ? null : _nav2Viejo(it.target);
+            const n = viejo && viejo.classList.contains('has-unread') ? (parseInt(viejo.dataset.unreadCount, 10) || 1) : 0;
+            const blink = !!(viejo && viejo.classList.contains('is-blinking'));
+            if (n) total += n;
+            if (blink) parpadea = true;
+            poner(host.querySelector(`.nav2-sub[data-nav2-item="${it.id}"]`), n, blink);
+        });
+        poner(host.querySelector(`[data-nav2-grupo="${g.id}"]`), total, parpadea);
+    });
+}
+function setupNav2() {
+    const host = document.getElementById('nav2Host');
+    if (!host || host.dataset.listo) return;
+    document.body.classList.toggle('menu-nuevo', _nav2Modo() === 'nuevo');
+    host.innerHTML = NAV2_GRUPOS.map((g) => {
+        if (g.items.length === 1) {
+            return `<button type="button" class="admin-accordion-trigger nav2-grupo" data-nav2-grupo="${g.id}" data-nav2-item="${g.items[0].id}"><span class="nav-icon">${g.icono}</span><span>${g.etiqueta}</span></button>`;
+        }
+        return `<button type="button" class="admin-accordion-trigger nav2-grupo" data-nav2-grupo="${g.id}" aria-expanded="false"><span class="nav-icon">${g.icono}</span><span>${g.etiqueta}</span><span class="nav2-flecha" aria-hidden="true">▾</span></button>`
+            + `<div class="nav2-lista" data-nav2-lista="${g.id}" hidden>${g.items.map((it) => `<button type="button" class="admin-accordion-trigger nav2-sub" data-nav2-item="${it.id}">${it.etiqueta}</button>`).join('')}</div>`;
+    }).join('');
+    host.dataset.listo = '1';
+    host.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        if (b.dataset.nav2Item) { _nav2Ir(b.dataset.nav2Item); return; }
+        const gid = b.dataset.nav2Grupo;
+        const g = NAV2_GRUPOS.find((x) => x.id === gid);
+        if (!g) return;
+        if (window.innerWidth >= 1024) { _nav2Ir(_nav2Ultimo[gid] || g.items[0].id); return; }
+        // Celular: tocar el grupo solo lo abre o lo cierra, para elegir el elemento sin que el menú se cierre.
+        if (_nav2Abiertos.has(gid)) _nav2Abiertos.delete(gid); else _nav2Abiertos.add(gid);
+        _nav2Sync();
+    });
+    // Cuando otro código cambia de pestaña interna de Informes (p. ej. "Ir a Caja Diaria"), el menú lo refleja.
+    document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-section-tab][data-section-scope="informes"]')) setTimeout(_nav2Sync, 0); });
+    // Insignias: se vuelven a copiar cada vez que un botón viejo cambia de clase o de contador.
+    try {
+        const obs = new MutationObserver(() => _nav2Insignias());
+        document.querySelectorAll('#adminAccordionNav > .admin-accordion-trigger[data-accordion-target]').forEach((b) => obs.observe(b, { attributes: true, attributeFilter: ['class', 'data-unread-count'] }));
+    } catch (_) { /* sin observador: las insignias se copian en cada cambio de panel */ }
+    const sw = document.getElementById('adminMenuSwitchBtn');
+    const rotularSw = () => { if (sw) sw.textContent = document.body.classList.contains('menu-nuevo') ? 'Ver menú anterior' : 'Ver menú nuevo'; };
+    rotularSw();
+    sw?.addEventListener('click', () => {
+        const nuevo = !document.body.classList.contains('menu-nuevo');
+        document.body.classList.toggle('menu-nuevo', nuevo);
+        try { localStorage.setItem(NAV2_STORAGE_KEY, nuevo ? 'nuevo' : 'clasico'); } catch (_) { /* se pierde solo al recargar */ }
+        rotularSw();
+        _nav2Sync();
+    });
+    _nav2Sync();
+}
+// SYNC:nav2:fin
+
 function setupAccordion() {
     const nav = document.getElementById('adminAccordionNav');
     if (!nav) {
@@ -2940,7 +3113,7 @@ function setupAccordion() {
         });
     }
 
-    const buttons = Array.from(nav.querySelectorAll('.admin-accordion-trigger'));
+    const buttons = Array.from(nav.querySelectorAll('.admin-accordion-trigger[data-accordion-target]'));
     const panels = Array.from(document.querySelectorAll('.admin-tab-panel'));
     const groupMap = {
         menu: ['menu'],
@@ -3033,6 +3206,8 @@ function setupAccordion() {
         if (target === 'chatroal') {
             initChatRoal();
         }
+
+        _nav2Sync();
     }
 
     // Ajusta padding-top del admin-page según altura real de barras fijas en mobile
@@ -3054,6 +3229,7 @@ function setupAccordion() {
         button.addEventListener('click', () => activateAccordion(button.dataset.accordionTarget));
     });
 
+    setupNav2();
     activateAccordion('pedidos');
 }
 

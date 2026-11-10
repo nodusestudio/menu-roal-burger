@@ -583,3 +583,41 @@ Quedan sin tocar a propósito: `setDate(getDate()-30)` y `METRICS_ORDERS_LOOKBAC
 - `src/js/caja/dias.test.js` simula **un computador en España** y reproduce el síntoma exacto («03:56 a. m.»); con los cambios da `09:56 p. m.`, día 9, hora 21, lunes (16 comprobaciones).
 - `saldos.test.js` sigue en verde (reproduce las tarjetas de la pantalla al peso).
 - Compila con esbuild sin errores. No se tocó ningún dato.
+
+---
+---
+
+# PARTE 8 — Fase 2: menú principal de 8 grupos (hecha, subida con interruptor al menú anterior)
+
+## 33. Qué se hizo
+Solo cambia la **navegación**. Cada elemento del menú nuevo pulsa el botón de siempre (`data-accordion-target`) y, si hace falta, la pestaña interna
+de siempre (`data-section-tab`). **Ningún panel, dato ni cálculo cambia.** Los 16 botones viejos siguen en la página, ocultos, porque FODI, los avisos, el cobro y
+otros ~12 flujos los pulsan por código.
+
+| Grupo | Elementos (→ panel de siempre) |
+|---|---|
+| **POS** | POS → `pedidos` |
+| **Caja** | Caja de hoy → Informes/Caja Diaria · Gastos → Informes/Gastos · Movimientos → Informes/Libro Contable · Cierres → Informes/Historial de Cajas · **Pagos digitales** → `banco` (antes «Pagos Bancolombia») |
+| **Informes** | Ventas → Informes/Tickets · Métricas → `metricas` · Resultado → `finanzas` (antes «Finanzas») |
+| **Catálogo** | Artículos → `menu` · Costos y recetas → `costos` |
+| **Clientes** | Clientes → `clientes` · Feedback → `feedback` · Fuera del Menú → `cuponpana` |
+| **Comunicación** | Mensajes → `mensajes` · Chat Roal → `chatroal` · Redes → `redes` |
+| **FODI** | Asistente → `asistente` |
+| **Configuración** | Configuración → `configuracion` (sus 9 pestañas internas se reordenan en la Fase 6) |
+
+- Las 5 pestañas internas de Informes pasan al menú (la barra interna se oculta para no duplicar).
+- **Interruptor:** botón «Ver menú anterior / Ver menú nuevo» en el pie, o `?menu=clasico` / `?menu=nuevo` en la dirección. Se recuerda en el navegador.
+- **Insignias de "sin leer"** (mensajes, pedidos, chats): las siguen poniendo los botones viejos; el menú nuevo las copia al elemento y las **suma en el grupo**.
+- **Si otro código cambia de pestaña** (FODI, «Ir a Caja Diaria»…), el menú resalta el elemento correcto.
+- **Celular:** tocar un grupo lo abre/cierra sin cerrar el menú; tocar un elemento navega y cierra.
+- Etiquetas con tildes; un nombre por función (no por proveedor).
+
+## 34. Verificación
+- `tests/admin-nav2.test.js` (9 pruebas): exactamente 8 grupos; **ningún botón viejo queda sin cubrir** (no se pierde ninguna pestaña); las 5 pestañas de Informes están cada una una sola vez; todo destino existe en `admin.html`; los botones nuevos no se mezclan con los viejos.
+- `tests/admin-nav2.e2e.mjs` (18 comprobaciones en **Chromium real** con el HTML y los estilos reales del panel): navegación de cada grupo, Cierres abre el Historial, resaltado cuando otro código cambia de pestaña, insignia 3 en Mensajes y en el grupo, interruptor al menú anterior, celular, sin errores de JavaScript.
+- 123 pruebas de las que exige el despliegue, todas en verde. No se tocó ningún dato (la foto del dinero no puede cambiar: es solo navegación).
+- **No verificado con datos reales:** el panel completo con tu sesión (la prueba usa el HTML real pero sin Firebase).
+
+## 35. Pendiente de esta fase → siguientes
+- Fase 3: gasto único («solo con caja abierta» + recordatorio) — cambia datos nuevos, requiere su propia prueba.
+- Fase 6: reordenar las pestañas internas de Configuración (Horario+Barrios, Meseros+Seguridad, mover Categorías de Gastos a Caja).
