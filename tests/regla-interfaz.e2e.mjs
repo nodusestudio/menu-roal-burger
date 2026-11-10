@@ -25,10 +25,14 @@ try {
   const col = await p.evaluate(() => { const g = (s) => getComputedStyle(document.querySelector(`#banco [data-fam="${s}"]`)).backgroundImage !== 'none'; return { a: g('admin-button'), b: g('biz-save-btn'), c: g('cat-new-save-btn'), d: g('section-action-btn primary'), e: g('informes-action-btn informes-action-btn--primary'), s: g('ghost-button'), s2: g('biz-pass-btn') }; });
   ok(col.a && col.b && col.c && col.d && col.e && !col.s && !col.s2, 'los botones de guardar son todos del rol principal (naranja) y los demás secundarios');
   const card = await p.evaluate(() => { const c = getComputedStyle(document.querySelector('[data-section-scope="configuracion"] .admin-card')); const f = document.querySelector('[data-section-scope="configuracion"] .admin-field input'); return { pad: c.paddingTop, h: Math.round(f.getBoundingClientRect().height) }; });
-  ok(card.pad === '14px', 'las tarjetas de Configuración usan el relleno de 14 px');
+  ok(card.pad === '14px', 'las tarjetas de Configuración usan el relleno de 14 px (' + card.pad + ')');
   ok(card.h <= 36, `los campos son compactos (alto ${card.h} px)`);
   const alto = await p.evaluate(() => Math.round(document.querySelector('#brandingForm').getBoundingClientRect().height));
   ok(alto < 650, `la pestaña Negocio cabe sin tanto desplazamiento (formulario de ${alto} px; antes ~900)`);
+  const fuera = await p.evaluate(() => { const c = [...document.querySelectorAll('.admin-card')].find((x) => !x.closest('[data-section-scope="configuracion"]')); return c ? getComputedStyle(c).paddingTop : 'sin tarjeta'; });
+  ok(fuera === '14px', 'las tarjetas de las demás secciones también usan el relleno de 14 px (' + fuera + ')');
+  const mini = await p.evaluate(() => { const b = document.createElement('button'); b.className = 'mini-btn'; b.textContent = 'x'; document.body.appendChild(b); const r = b.getBoundingClientRect(); return Math.round(r.height); });
+  ok(mini === 24, 'el botón compacto (tablas y listas) mide 24 px: un solo tamaño pequeño');
   ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
 } finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
 console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);

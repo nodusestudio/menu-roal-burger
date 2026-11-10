@@ -30113,8 +30113,8 @@ function renderCajaDiaria() {
             const subStr = g.subcategoria ? ` · ${escapeHtml(g.subcategoria)}` : '';
             const descStr = g.descripcion ? ` · ${escapeHtml(g.descripcion)}` : '';
             const gastoId = escapeHtml(g.id || '');
-            const gastoTicketBtn = gastoId ? `<button type="button" class="mini-btn" data-gasto-ticket="${gastoId}" title="Ver e imprimir ticket" style="font-size:0.62rem;padding:0px 5px;margin-left:6px;">🖨️</button>` : '';
-            const gastoDelBtn = gastoId ? `<button type="button" class="mini-btn remove" data-gasto-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:0px 5px;margin-left:2px;">🗑️</button>` : '';
+            const gastoTicketBtn = gastoId ? `<button type="button" class="mini-btn" data-gasto-ticket="${gastoId}" title="Ver e imprimir ticket" style="margin-left:6px;">🖨️</button>` : '';
+            const gastoDelBtn = gastoId ? `<button type="button" class="mini-btn remove" data-gasto-del="${gastoId}" title="Eliminar gasto" style="margin-left:2px;">🗑️</button>` : '';
             const origenStr = Number(g.desdeSaldoAnterior) > 0 ? ` <span class="gasto-origen-chip" title="Hoy no había suficiente en este método: ${escapeHtml(formatMoney(Number(g.desdeSaldoAnterior)))} salió del saldo de días anteriores">📅 saldo anterior ${escapeHtml(formatMoney(Number(g.desdeSaldoAnterior)))}</span>` : '';
             const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}${origenStr}${gastoTicketBtn}${gastoDelBtn}`;
 
@@ -31976,8 +31976,8 @@ async function renderLibroCierres() {
                             <span>${desc}${hora ? ` <span class="ht-muted">· ${hora}</span>` : ''}${mObj ? ` <span class="ht-muted">${mObj.icon}</span>` : ''}</span>
                             <span class="ht-egr">
                                 −${formatMoney(Number(item.monto || 0))}
-                                ${gid ? `<button type="button" class="mini-btn" data-gasto-hist-ticket="${gid}" title="Ver e imprimir ticket" style="font-size:0.62rem;padding:1px 6px;margin-left:6px;">🖨️</button>` : ''}
-                                ${gid ? `<button type="button" class="mini-btn remove" data-gasto-hist-del="${gid}" title="Eliminar gasto" style="font-size:0.62rem;padding:1px 6px;">🗑️</button>` : ''}
+                                ${gid ? `<button type="button" class="mini-btn" data-gasto-hist-ticket="${gid}" title="Ver e imprimir ticket" style="margin-left:6px;">🖨️</button>` : ''}
+                                ${gid ? `<button type="button" class="mini-btn remove" data-gasto-hist-del="${gid}" title="Eliminar gasto">🗑️</button>` : ''}
                             </span>
                         </div>`;
                     }).join('');
@@ -32001,7 +32001,7 @@ async function renderLibroCierres() {
                     return `<div class="ht-card ht-card-tras">
                         <div class="ht-card-hdr">⚖️ Ajuste de saldos${hora ? ' · ' + hora : ''}
                             <span style="float:right;white-space:nowrap;">
-                                <button type="button" class="mini-btn remove" data-ajuste-del="${aid}" title="Eliminar este ajuste" style="font-size:0.65rem;padding:1px 6px;">🗑️</button>
+                                <button type="button" class="mini-btn remove" data-ajuste-del="${aid}" title="Eliminar este ajuste">🗑️</button>
                             </span>
                         </div>
                         ${lines}
@@ -32021,8 +32021,8 @@ async function renderLibroCierres() {
                     return `<div class="ht-card ht-card-tras">
                         <div class="ht-card-hdr">🔄 Traslado${hora ? ' · ' + hora : ''}
                             <span style="float:right;white-space:nowrap;">
-                                <button type="button" class="mini-btn" data-traslado-edit="${tid}" style="font-size:0.65rem;padding:1px 6px;margin-right:2px;">✏️</button>
-                                <button type="button" class="mini-btn remove" data-traslado-del="${tid}" style="font-size:0.65rem;padding:1px 6px;">🗑️</button>
+                                <button type="button" class="mini-btn" data-traslado-edit="${tid}" style="margin-right:2px;">✏️</button>
+                                <button type="button" class="mini-btn remove" data-traslado-del="${tid}">🗑️</button>
                             </span>
                         </div>
                         <div class="ht-line">
@@ -33827,8 +33827,8 @@ function renderGastosInformes() {
             <td><span class="caja-method-badge">${method ? `${method.icon} ${escapeHtml(method.label)}` : escapeHtml(g.paymentMethod || '—')}</span></td>
             <td class="caja-cell-salida">${formatMoney(Number(g.monto || 0))}</td>
             <td>
-                ${gastoId ? `<button type="button" class="mini-btn" data-gasto-informe-ticket="${gastoId}" title="Ver e imprimir ticket" style="font-size:0.62rem;padding:1px 6px;">🖨️</button>` : ''}
-                ${gastoId ? `<button type="button" class="mini-btn remove" data-gasto-informe-del="${gastoId}" title="Eliminar gasto" style="font-size:0.62rem;padding:1px 6px;">🗑️</button>` : ''}
+                ${gastoId ? `<button type="button" class="mini-btn" data-gasto-informe-ticket="${gastoId}" title="Ver e imprimir ticket">🖨️</button>` : ''}
+                ${gastoId ? `<button type="button" class="mini-btn remove" data-gasto-informe-del="${gastoId}" title="Eliminar gasto">🗑️</button>` : ''}
             </td>
         </tr>`;
     }).join('');

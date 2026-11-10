@@ -38,3 +38,18 @@ test('los botones de guardar son del rol principal (naranja) y no ocupan todo el
     assert.match(html, /\.admin-button, \.biz-save-btn, button\.cat-new-save-btn \{\s*background: linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
     assert.match(html, /cursor: pointer; white-space: nowrap; width: auto; grid-column: auto;/);
 });
+
+test('la compactación de tarjetas y campos aplica a TODO el admin (no solo a Configuración)', () => {
+    assert.ok(html.includes('    .admin-card, .menu-inner-panel .admin-card { padding: var(--ui-pad); border-radius: 16px; }'));
+    assert.match(html, /\n    \.admin-field input, \.admin-field select \{\s*min-height: var\(--ui-field-h\)/);
+    assert.match(html, /\n    \.mini-btn \{ display: inline-flex;[^}]*min-height: 24px/);
+});
+test('los botones mini y de retraer no llevan tamaño de letra ni relleno en línea (en ningún lado)', () => {
+    const todo = html + js;
+    const malos = (todo.match(/<button\b[^>]*>/g) || []).filter((b) => /class="[^"]*\b(mini-btn|card-collapse-btn)\b/.test(b) && /style="[^"]*(padding|font-size)/.test(b));
+    assert.deepEqual(malos, []);
+});
+test('los botones de la ventana del ticket de gasto usan los roles, no un fondo pegado a mano', () => {
+    assert.match(html, /class="informes-action-btn informes-action-btn--primary" id="gastoTicketPreviewPrintBtn"/);
+    assert.match(html, /class="informes-action-btn" id="gastoTicketPreviewCloseBtn2"/);
+});
