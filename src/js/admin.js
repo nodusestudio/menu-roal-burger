@@ -24358,9 +24358,10 @@ function _ptsSetZoneBadge(text, color) {
     badge.style.display = 'block';
 }
 
-// Un valor recordado se considera confiable (y gana sobre la zona) cuando la dirección ya se
-// cobró así al menos 2 veces — un solo uso podría ser un typo del cajero.
-const DELIVERY_FEE_MEMORY_MIN_USES = 2;
+// Un valor recordado gana sobre la zona desde el PRIMER cobro: lo que el cajero puso la primera
+// vez se sugiere siempre en los siguientes pedidos a esa dirección. Si fue un error, basta
+// corregirlo en un pedido: el último valor cobrado reemplaza al recordado.
+const DELIVERY_FEE_MEMORY_MIN_USES = 1;
 
 // Si esta dirección ya tiene una tarifa recordada de >=2 pedidos, la aplica al campo y avisa.
 // Devuelve true si la aplicó (para que el llamador no siga con la detección por zona).
@@ -24387,8 +24388,8 @@ async function _ptsSuggestDeliveryFee(addressText) {
 
     _ptsSetZoneBadge('🔍 Calculando tarifa...', '#aaa');
 
-    // Primero: ¿ya cobramos un domicilio a esta dirección varias veces? Ese valor real manda
-    // sobre la zona estimada (un solo uso no, por si fue un typo — ver DELIVERY_FEE_MEMORY_MIN_USES).
+    // Primero: ¿ya cobramos un domicilio a esta dirección? Ese valor real manda
+    // sobre la zona estimada (ver DELIVERY_FEE_MEMORY_MIN_USES).
     if (await _ptsApplyRememberedFee(val)) return;
 
     // El polígono de zonas es la referencia autoritativa (la misma que usa el menú
