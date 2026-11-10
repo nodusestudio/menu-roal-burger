@@ -839,3 +839,19 @@ El saldo por método se calculaba en **tres** lugares: el bucle del **Historial 
 
 ## 71. Pendiente de la Fase 5
 ~79 botones con estilos en línea dentro de plantillas JS (lista de clientes, catálogo, tarjetas), un solo juego de íconos, y el formato de dinero del menú público y del agente.
+
+---
+---
+
+# PARTE 18 — ☰ en cada tarjeta de pedido (acceso inmediato)
+
+## 72. Qué se hizo
+El menú ☰ «Acciones del pedido» solo existía dentro del ticket (había que seleccionar el pedido primero). Ahora **cada tarjeta lleva su ☰** (Domicilios, Para llevar y las mesas), con **el mismo menú**: mensajes al cliente (copiar / WhatsApp), agregar o editar productos, nombre, teléfono, dirección, cambiar cliente o mesa, **pedir domiciliario**, medio de pago, agregar contacto y cuenta de cobro.
+- **Una sola definición de las acciones** (`buildOrderActionsMenuHtml`): el ticket y las tarjetas usan la misma función, así que no pueden diferir.
+- **Compacto, sin montarse:** el ☰ (24 px) va en la fila del nombre y el total de la tarjeta (en el escritorio la cabecera de la tarjeta está oculta, así que no agrega una fila nueva); en la mesa ocupada va en la fila de iconos de la esquina. La prueba mide que queda dentro de la tarjeta y que no choca con el nombre ni el total.
+- **El desplegable flota junto al botón** (no lo recorta la columna ni la tarjeta), se acomoda dentro de la pantalla (hacia arriba si abajo no cabe), se cierra con Escape, tocando fuera, al desplazar la lista o al tocar el mismo ☰.
+- **Las ediciones se ejecutan con la lógica de siempre:** al elegir una, se selecciona ese pedido y se pulsa la misma opción del ticket (cero lógica de edición duplicada). Copiar mensaje y «Pedir domiciliario» funcionan igual que en el ticket. Tocar el ☰ **no** selecciona la tarjeta.
+- Un mesero no ve el ☰ de pedidos ajenos.
+
+## 73. Verificación
+`tests/menu-tarjeta.e2e.mjs` (**22** comprobaciones en Chromium real con el código real de `createOrderCard`, del menú y del desplegable; estable en 3 corridas seguidas): ☰ en cada tarjeta, dentro y sin chocar, compacto, menú completo, dentro de la pantalla, no selecciona, Escape, editar productos y teléfono llegan al ticket con su campo, copiar mensaje, «Pedir domiciliario» solo en domicilios, «Cambiar mesa» solo en mesas. Capturas revisadas. No verificado con tu sesión real: la mesa ocupada del mapa (solo se comprobó su código) y el comportamiento en celular.

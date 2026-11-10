@@ -15103,13 +15103,9 @@ function openOrderContactCard(orderId) {
     window.setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
 }
 
-function buildThermalTicketMarkup(order, options = {}) {
-    const printMode = options.printMode === true;
-    // Menú hamburguesa en la esquina superior del ticket con dos secciones:
-    //  · Mensajes al cliente — Confirmación / En preparación / Entregado (Copiar + WhatsApp).
-    //  · Edición — atajos que abren en el acto el editor de productos o de un dato del cliente
-    //    (data-order-ticket-action, lo maneja el listener de #orderTicketPanel / vista previa).
-    // El toggle/cierre lo maneja un listener a nivel document (data-ticket-msg-*).
+// Menú ☰ «Acciones del pedido» (mensajes al cliente + edición + pedir domiciliario…). Lo usan el ticket y, desde la tarjeta de cada
+// pedido, el desplegable de acceso inmediato (ver _kocAbrirMenu): UNA sola definición de qué acciones tiene un pedido.
+function buildOrderActionsMenuHtml(order) {
     const _waDigits = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D+/g, '');
     const _quickMsgs = [
         { key: 'confirmacion', icon: '✅', label: 'Confirmación', text: buildOrderConfirmationMessage(order) },
@@ -15153,7 +15149,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                         <button type="button" class="ticket-msg-menu-item" data-order-id="${_oid}"${r.action ? ` data-order-ticket-action="${r.action}"` : ''}${r.cardAction ? ` data-order-card-action="${r.cardAction}"` : ''}${r.field ? ` data-edit-field="${r.field}"` : ''}>
                             ${r.icon} ${escapeHtml(r.label)}
                         </button>`;
-    const _quickMsgMenu = printMode ? '' : `
+    return `
                 <div class="ticket-msg-menu" data-ticket-msg-menu>
                     <button type="button" class="ticket-msg-menu-toggle" data-ticket-msg-toggle aria-haspopup="true" aria-expanded="false" title="Acciones del pedido">☰</button>
                     <div class="ticket-msg-menu-panel" hidden>
@@ -15172,6 +15168,17 @@ function buildThermalTicketMarkup(order, options = {}) {
                         ${_alwaysRows.map(_renderMenuItem).join('')}
                     </div>
                 </div>`;
+}
+
+function buildThermalTicketMarkup(order, options = {}) {
+    const printMode = options.printMode === true;
+    // Menú hamburguesa en la esquina superior del ticket con dos secciones:
+    //  · Mensajes al cliente — Confirmación / En preparación / Entregado (Copiar + WhatsApp).
+    //  · Edición — atajos que abren en el acto el editor de productos o de un dato del cliente
+    //    (data-order-ticket-action, lo maneja el listener de #orderTicketPanel / vista previa).
+    // El toggle/cierre lo maneja un listener a nivel document (data-ticket-msg-*).
+    const _locked = isOrderLockedForEdit(order);
+    const _quickMsgMenu = printMode ? '' : buildOrderActionsMenuHtml(order);
     const statusMeta = getOrderStatusMeta(order.status);
     const totalAmount = getOrderDisplayTotal(order);
     const deliveryText = formatMoney(order.deliveryFee != null ? order.deliveryFee : 0);
@@ -15816,6 +15823,8 @@ function createOrderCard(order) {
         }
     }
 
+    // ☰ de acciones del pedido en la propia tarjeta (acceso inmediato). Un mesero no ve el de pedidos ajenos.
+    const _kocMenuBtn = (_meseroSession && order.meseroId !== _meseroSession.id) ? '' : `<button type="button" class="koc-menu-btn" data-card-menu data-order-id="${escapeHtml(order.id)}" title="Acciones del pedido" aria-label="Acciones del pedido" aria-haspopup="true">☰</button>`;
     card.innerHTML = `
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
@@ -15832,6 +15841,7 @@ function createOrderCard(order) {
         <div class="koc-body">
             <span class="koc-name">${escapeHtml(getOrderDisplayCustomerName(order))}</span>
             <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
+            ${_kocMenuBtn}
         </div>
         ${deliveryRow}
         ${promoItemsRow}
@@ -15953,11 +15963,12 @@ function renderMesaMap(container, mesaOrders) {
         // Acciones directas sobre la mesa (sin abrir primero el ticket): ➕ agregar productos y 💰 cobrar.
         // Son <span role=button> (no <button>) porque van dentro de la tarjeta, que ya es un botón.
         const puedeActuar = !isOrderLockedForEdit(order) && !isOrderClosed(order);
-        const acciones = puedeActuar
-            ? `<span class="mesa-tile-actions">
+        const _accInner = puedeActuar ? `
                 <span class="mesa-tile-act" role="button" tabindex="0" data-tile-act="add" data-order-id="${escapeHtml(order.id)}" title="Agregar productos a la mesa ${num}" aria-label="Agregar productos a la mesa ${num}">➕</span>
                 ${(_meseroSession || isOrderPaid(order)) ? '' : `<span class="mesa-tile-act mesa-tile-act--cobrar" role="button" tabindex="0" data-tile-act="cobrar" data-order-id="${escapeHtml(order.id)}" title="Cobrar la mesa ${num}" aria-label="Cobrar la mesa ${num}">💰</span>`}
-            </span>` : '';
+            ` : '';
+        const _menuBtn = `<span class="mesa-tile-act mesa-tile-act--menu" role="button" tabindex="0" data-card-menu data-order-id="${escapeHtml(order.id)}" title="Acciones del pedido" aria-label="Acciones del pedido de la mesa ${num}" aria-haspopup="true">☰</span>`;
+        const acciones = `<span class="mesa-tile-actions">${_accInner}${_menuBtn}</span>`;
         return `<button type="button" class="mesa-map-tile is-ocupada${isSelected ? ' is-selected' : ''}" data-order-id="${escapeHtml(order.id)}">
             ${_mesaSvg(num)}<span class="mesa-map-num mesa-num-oculto">${num}</span>
             <span class="mesa-map-label">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
@@ -25938,6 +25949,9 @@ if (ordersActionRoot) {
             return;
         }
 
+        // El ☰ de la tarjeta lo maneja _kocAbrirMenu (no debe seleccionar la tarjeta).
+        if (target.closest('[data-card-menu]')) return;
+
         // Acordeon de pedidos procesados
         const processedToggle = target.closest('[data-processed-col]');
         if (processedToggle instanceof HTMLButtonElement) {
@@ -26251,6 +26265,94 @@ document.addEventListener('click', (event) => {
         }
     }
 });
+
+// ── ☰ EN CADA TARJETA: las acciones del pedido a un toque, sin abrir antes el ticket ─────────────────────────────
+// El desplegable es el MISMO menú del ticket (buildOrderActionsMenuHtml) pintado flotando junto al botón, para que no lo recorte la
+// columna ni la tarjeta. Las acciones de edición se ejecutan seleccionando el pedido y pulsando la misma opción del ticket
+// (así hay UNA sola lógica de edición); copiar mensaje y «pedir domiciliario» funcionan igual que en el ticket.
+let _kocMenuOrderId = null;
+let _kocAbiertoEn = 0;
+function _kocCerrarMenu() {
+    document.getElementById('_kocMenuPop')?.remove();
+    document.querySelectorAll('[data-card-menu][aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    _kocMenuOrderId = null;
+}
+function _kocAbrirMenu(btn) {
+    const orderId = String(btn.dataset.orderId || '').trim();
+    const order = ordersState.find((o) => o.id === orderId);
+    if (!order) return;
+    _kocCerrarMenu();
+    const tmp = document.createElement('div');
+    tmp.innerHTML = buildOrderActionsMenuHtml(order);
+    const panel = tmp.querySelector('.ticket-msg-menu-panel');
+    if (!panel) return;
+    panel.hidden = false;
+    panel.id = '_kocMenuPop';
+    panel.classList.add('koc-menu-pop');
+    document.body.appendChild(panel);
+    // Posición: pegado al botón, sin salirse de la pantalla; si abajo no cabe, se abre hacia arriba.
+    const ancho = 232;
+    const r = btn.getBoundingClientRect();
+    panel.style.left = `${Math.round(Math.min(Math.max(8, r.right - ancho), window.innerWidth - ancho - 8))}px`;
+    const abajo = window.innerHeight - r.bottom - 14;
+    const arriba = r.top - 14;
+    if (abajo < 260 && arriba > abajo) {
+        panel.style.top = 'auto';
+        panel.style.bottom = `${Math.round(window.innerHeight - r.top + 6)}px`;
+        panel.style.maxHeight = `${Math.max(160, Math.floor(arriba))}px`;
+    } else {
+        panel.style.top = `${Math.round(r.bottom + 6)}px`;
+        panel.style.maxHeight = `${Math.max(160, Math.floor(abajo))}px`;
+    }
+    btn.setAttribute('aria-expanded', 'true');
+    _kocMenuOrderId = orderId;
+    _kocAbiertoEn = Date.now();
+}
+// Ejecuta una acción de EDICIÓN del ticket sobre un pedido que quizá no estaba seleccionado.
+function _kocEjecutarAccionTicket(orderId, accion, campo) {
+    const order = ordersState.find((o) => o.id === orderId);
+    if (!order) return;
+    if (selectedOrderId !== orderId) { selectedOrderId = orderId; renderOrders(); }
+    renderOrderTicket(order, { openMobile: isMobileAdminViewport() });
+    const sel = `.ticket-msg-menu-item[data-order-ticket-action="${accion}"]${campo ? `[data-edit-field="${campo}"]` : ''}`;
+    document.getElementById('orderTicketPanel')?.querySelector(sel)?.click();
+}
+document.addEventListener('click', async (event) => {
+    const t = event.target;
+    if (!(t instanceof Element)) return;
+    const abrir = t.closest('[data-card-menu]');
+    if (abrir) {
+        event.stopPropagation();
+        const mismo = _kocMenuOrderId === String(abrir.dataset.orderId || '') && document.getElementById('_kocMenuPop');
+        if (mismo) _kocCerrarMenu(); else _kocAbrirMenu(abrir);
+        return;
+    }
+    const pop = document.getElementById('_kocMenuPop');
+    if (!pop) return;
+    if (!pop.contains(t)) { _kocCerrarMenu(); return; }
+    const copiar = t.closest('button[data-wa-copy]');
+    if (copiar) {
+        const msg = String(copiar.dataset.waCopy || '').trim();
+        _kocCerrarMenu();
+        if (msg) { await copyTextToClipboard(msg); showNotice('Mensaje copiado — pégalo en WhatsApp Web 💬', 'ok'); }
+        return;
+    }
+    const item = t.closest('.ticket-msg-menu-item[data-order-ticket-action]');
+    if (item) {
+        const id = String(item.dataset.orderId || _kocMenuOrderId || '');
+        const accion = item.dataset.orderTicketAction;
+        const campo = item.dataset.editField || '';
+        _kocCerrarMenu();
+        _kocEjecutarAccionTicket(id, accion, campo);
+        return;
+    }
+    // «Pedir domiciliario» (data-order-card-action) lo atiende el tablero; aquí solo se cierra el menú. Un enlace de WhatsApp también.
+    setTimeout(_kocCerrarMenu, 0);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') _kocCerrarMenu(); });
+window.addEventListener('resize', _kocCerrarMenu);
+// Al desplazar la lista el menú se cierra (queda flotando); se ignora el desplazamiento de ajuste justo al abrirlo (el navegador acomoda el botón).
+window.addEventListener('scroll', (e) => { const p = document.getElementById('_kocMenuPop'); if (p && !p.contains(e.target) && Date.now() - _kocAbiertoEn > 400) _kocCerrarMenu(); }, true);
 
 if (orderTicketPanel) {
     orderTicketPanel.addEventListener('click', async (event) => {
