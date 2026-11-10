@@ -2912,6 +2912,7 @@ const NAV2_GRUPOS = [
     { id: 'caja', icono: '💵', etiqueta: 'Caja', items: [
         { id: 'caja.hoy', etiqueta: 'Caja de hoy', target: 'informes', seccion: 'caja-diaria' },
         { id: 'caja.gastos', etiqueta: 'Gastos', target: 'informes', seccion: 'gastos' },
+        { id: 'caja.categorias', etiqueta: 'Categorías de gastos', target: 'configuracion', seccion: 'categorias_gastos' },
         { id: 'caja.movimientos', etiqueta: 'Movimientos', target: 'informes', seccion: 'libro-contable' },
         { id: 'caja.cierres', etiqueta: 'Cierres', target: 'informes', seccion: 'historial' },
         { id: 'caja.pagos', etiqueta: 'Pagos digitales', target: 'banco' }
@@ -2939,7 +2940,14 @@ const NAV2_GRUPOS = [
         { id: 'fodi.asistente', etiqueta: 'Asistente', target: 'asistente' }
     ] },
     { id: 'config', icono: '⚙️', etiqueta: 'Configuración', items: [
-        { id: 'config.config', etiqueta: 'Configuración', target: 'configuracion' }
+        { id: 'config.negocio', etiqueta: 'Negocio', target: 'configuracion', seccion: 'negocio' },
+        { id: 'config.horario', etiqueta: 'Horario y cierres', target: 'configuracion', seccion: 'horario' },
+        { id: 'config.barrios', etiqueta: 'Barrios especiales', target: 'configuracion', seccion: 'barrios_especiales' },
+        { id: 'config.pagos', etiqueta: 'Formas de pago', target: 'configuracion', seccion: 'metodos_pago' },
+        { id: 'config.meseros', etiqueta: 'Meseros', target: 'configuracion', seccion: 'meseros' },
+        { id: 'config.impresora', etiqueta: 'Impresora', target: 'configuracion', seccion: 'impresora' },
+        { id: 'config.publico', etiqueta: 'Menú público', target: 'configuracion', seccion: 'botones' },
+        { id: 'config.seguridad', etiqueta: 'Seguridad', target: 'configuracion', seccion: 'seguridad' }
     ] }
 ];
 const NAV2_STORAGE_KEY = 'roal_admin_menu';
@@ -2957,6 +2965,8 @@ function _nav2Buscar(itemId) {
     for (const g of NAV2_GRUPOS) { const it = g.items.find((x) => x.id === itemId); if (it) return { g, it }; }
     return null;
 }
+// Las pestañas internas de Informes y de Configuración pasan al menú: cada una es su propio elemento.
+function _nav2Ambito(item) { return item.target === 'configuracion' ? 'configuracion' : 'informes'; }
 function _nav2Viejo(target) {
     return document.querySelector(`.admin-accordion-trigger[data-accordion-target="${target}"]`);
 }
@@ -2967,7 +2977,7 @@ function _nav2Ir(itemId) {
     if (!viejo) return;
     _nav2Ultimo[f.g.id] = f.it.id;
     viejo.click();
-    if (f.it.seccion) document.querySelector(`[data-section-tab="${f.it.seccion}"][data-section-scope="informes"]`)?.click();
+    if (f.it.seccion) document.querySelector(`[data-section-tab="${f.it.seccion}"][data-section-scope="${_nav2Ambito(f.it)}"]`)?.click();
     _nav2Sync();
 }
 // Qué elemento del menú corresponde a lo que está abierto ahora (aunque lo haya abierto otro código, p. ej. FODI).
@@ -2976,7 +2986,8 @@ function _nav2Activo() {
     const cand = [];
     NAV2_GRUPOS.forEach((g) => g.items.forEach((it) => { if (it.target === target) cand.push({ g, it }); }));
     if (cand.length > 1) {
-        const sec = document.querySelector('.menu-inner-tab.active[data-section-scope="informes"]')?.dataset.sectionTab || '';
+        const ambito = target === 'configuracion' ? 'configuracion' : 'informes';
+        const sec = document.querySelector(`.menu-inner-tab.active[data-section-scope="${ambito}"]`)?.dataset.sectionTab || '';
         return cand.find((c) => c.it.seccion === sec) || cand[0];
     }
     return cand[0] || null;
@@ -3051,8 +3062,8 @@ function setupNav2() {
         if (_nav2Abiertos.has(gid)) _nav2Abiertos.delete(gid); else _nav2Abiertos.add(gid);
         _nav2Sync();
     });
-    // Cuando otro código cambia de pestaña interna de Informes (p. ej. "Ir a Caja Diaria"), el menú lo refleja.
-    document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-section-tab][data-section-scope="informes"]')) setTimeout(_nav2Sync, 0); });
+    // Cuando otro código cambia de pestaña interna de Informes o de Configuración (p. ej. "Ir a Caja Diaria"), el menú lo refleja.
+    document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('[data-section-tab]')) setTimeout(_nav2Sync, 0); });
     // Insignias: se vuelven a copiar cada vez que un botón viejo cambia de clase o de contador.
     try {
         const obs = new MutationObserver(() => _nav2Insignias());

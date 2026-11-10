@@ -709,3 +709,33 @@ Las **8 ventanas nativas** del navegador (`confirm`/`prompt`) de las pestañas m
 
 ## 51. Pendiente de la Fase 5 (segunda entrega)
 Los demás modales (6 estructuras distintas), los botones del resto de pestañas (Informes/Clientes/Catálogo…), íconos emoji → un juego lineal, y el `formatCurrency`/`formatCurrencyCOP` del menú público y del agente (otros archivos: cambian lo que ve el cliente, van aparte).
+
+---
+---
+
+# PARTE 12 — Fase 6: Configuración ordenada dentro del menú (hecha)
+
+## 52. Decisión de diseño
+En vez de fusionar paneles (riesgo sin necesidad), **cada pestaña interna de Configuración pasa a ser un elemento del menú**, con orden lógico y nombre claro, igual que ya se hizo con Informes. Los 9 paneles y sus datos no se tocan.
+
+| Antes (pestaña interna) | Ahora |
+|---|---|
+| Negocio | Configuración › **Negocio** |
+| Horario | Configuración › **Horario y cierres** (incluye cierres programados e historias de días cerrados) |
+| Barrios especiales | Configuración › **Barrios especiales** |
+| Tipos de Pago | Configuración › **Formas de pago** |
+| Meseros | Configuración › **Meseros** |
+| Impresora | Configuración › **Impresora** |
+| Botones (ambiguo) | Configuración › **Menú público** |
+| Seguridad | Configuración › **Seguridad** (al final) |
+| **Categorías de Gastos** | **Caja › Categorías de gastos**, junto a Gastos |
+
+- Menú lateral sigue en 8 grupos; **Caja = 6 elementos** (Caja de hoy · Gastos · Categorías de gastos · Movimientos · Cierres · Pagos digitales), **Configuración = 8**.
+- La barra interna de pestañas de Configuración se oculta en el menú nuevo (como la de Informes).
+- Títulos de los paneles alineados con el menú: «Formas de pago», «Menú público», «Categorías de gastos».
+- Si otro código abre una pestaña (p. ej. Seguridad), el menú resalta el elemento correcto; «Categorías de gastos» se resalta en **Caja**, no en Configuración.
+
+## 53. Verificación
+- `tests/admin-nav2.test.js` (11): las **9** pestañas de Configuración cubiertas exactamente una vez (Categorías en Caja), nombres y conteos.
+- `tests/admin-nav2.e2e.mjs` (**26** comprobaciones en Chromium real): se añadió Configuración (abrir, 8 elementos, Horario abre su panel, barra interna oculta, Caja › Categorías abre el panel de Configuración y resalta Caja, resaltado cuando otro código abre Seguridad). Capturas revisadas.
+- **146** pruebas del despliegue + gastos (19) + Libro Contable (9) + botones (15) + saldos/días, en verde. No cambia ningún dato.

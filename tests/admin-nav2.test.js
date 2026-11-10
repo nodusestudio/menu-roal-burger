@@ -47,11 +47,29 @@ test('todo elemento del menú nuevo apunta a un botón viejo que existe', () => 
     assert.deepEqual(inexistentes, []);
 });
 
+const seccionesConfig = [...html.matchAll(/data-section-tab="([a-z_-]+)" data-section-scope="configuracion"/g)].map((m) => m[1]);
+const ambitoDe = (i) => (i.target === 'configuracion' ? 'configuracion' : 'informes');
+
 test('las 5 pestañas internas de Informes están cubiertas, una sola vez cada una', () => {
     assert.deepEqual([...seccionesInformes].sort(), ['caja-diaria', 'gastos', 'historial', 'libro-contable', 'tickets']);
-    const usadas = itemsTodos.filter((i) => i.seccion).map((i) => i.seccion);
+    const usadas = itemsTodos.filter((i) => i.seccion && ambitoDe(i) === 'informes').map((i) => i.seccion);
     assert.deepEqual([...usadas].sort(), [...seccionesInformes].sort(), 'cada pestaña de Informes debe tener un elemento y solo uno');
     assert.equal(new Set(usadas).size, usadas.length);
+});
+
+test('las 9 pestañas internas de Configuración están cubiertas, una sola vez cada una (Categorías de gastos vive en Caja)', () => {
+    assert.equal(seccionesConfig.length, 9);
+    const usadas = itemsTodos.filter((i) => i.seccion && ambitoDe(i) === 'configuracion').map((i) => i.seccion);
+    assert.deepEqual([...usadas].sort(), [...seccionesConfig].sort(), 'cada pestaña de Configuración debe tener un elemento y solo uno');
+    assert.equal(new Set(usadas).size, usadas.length);
+    const cat = itemsTodos.find((i) => i.seccion === 'categorias_gastos');
+    assert.equal(cat.g, 'caja', 'Categorías de gastos debe estar en Caja, junto a Gastos');
+});
+
+test('Configuración queda con 8 elementos con nombre claro y Caja con 6', () => {
+    assert.deepEqual(GRUPOS.find((g) => g.id === 'config').items.map((i) => i.etiqueta),
+        ['Negocio', 'Horario y cierres', 'Barrios especiales', 'Formas de pago', 'Meseros', 'Impresora', 'Menú público', 'Seguridad']);
+    assert.equal(GRUPOS.find((g) => g.id === 'caja').items.length, 6);
 });
 
 test('un botón viejo sin pestaña interna no se repite en dos elementos', () => {

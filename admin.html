@@ -7715,6 +7715,7 @@
         body.menu-nuevo #nav2Host { display: flex; flex-direction: column; gap: 6px; }
         body.menu-nuevo #adminAccordionNav > .admin-accordion-trigger { display: none; } /* los botones viejos siguen ahí, ocultos */
         body.menu-nuevo nav[aria-label="Secciones de Informes"] { display: none; }      /* las pestañas de Informes pasan al menú */
+        body.menu-nuevo nav[aria-label="Secciones de Configuracion"] { display: none; } /* las pestañas de Configuración también */
         .nav2-grupo { display: flex; align-items: center; gap: 8px; }
         .nav2-grupo .nav2-flecha { margin-left: auto; opacity: 0.6; font-size: 0.8rem; transition: transform 0.18s ease; }
         .nav2-grupo[aria-expanded="true"] .nav2-flecha { transform: rotate(180deg); }
@@ -15091,7 +15092,7 @@
                         <div class="menu-inner-panel" data-section-panel="metodos_pago" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
                             <article class="admin-card">
                                 <div class="card-head">
-                                    <h2>Tipos de Pago</h2>
+                                    <h2>Formas de pago</h2>
                                     <button type="button" class="card-collapse-btn" data-collapse-target="card-metodos-pago" aria-expanded="true">Retraer</button>
                                 </div>
                                 <div class="card-body" id="card-metodos-pago">
@@ -15150,7 +15151,7 @@
                         <div class="menu-inner-panel" data-section-panel="categorias_gastos" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
                             <article class="admin-card">
                                 <div class="card-head">
-                                    <h2>Categorías de Gastos</h2>
+                                    <h2>Categorías de gastos</h2>
                                     <button type="button" class="section-action-btn primary" id="addCategoriaGastoBtn">+ Nueva categoría</button>
                                 </div>
                                 <div class="card-body">
@@ -15176,7 +15177,7 @@
                         <div class="menu-inner-panel" data-section-panel="botones" data-section-scope="configuracion" role="tabpanel" hidden style="display:none;">
                             <article class="admin-card">
                                 <div class="card-head">
-                                    <h2>Botones de Publico</h2>
+                                    <h2>Menú público</h2>
                                 </div>
                                 <div class="card-body">
                                     <form id="buttonConfigForm" class="admin-form">

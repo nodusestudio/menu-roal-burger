@@ -28,9 +28,10 @@ function activar(target) {
   _nav2Sync();
 }
 viejos.forEach((b) => b.addEventListener('click', () => activar(b.dataset.accordionTarget)));
-document.querySelectorAll('[data-section-tab][data-section-scope="informes"]').forEach((t) => t.addEventListener('click', () => {
-  document.querySelectorAll('[data-section-tab][data-section-scope="informes"]').forEach((x) => x.classList.toggle('active', x === t));
-  document.querySelectorAll('[data-section-panel][data-section-scope="informes"]').forEach((p) => { const on = p.dataset.sectionPanel === t.dataset.sectionTab; p.hidden = !on; p.style.display = on ? '' : 'none'; p.classList.toggle('active', on); });
+document.querySelectorAll('[data-section-tab][data-section-scope]').forEach((t) => t.addEventListener('click', () => {
+  const ambito = t.dataset.sectionScope;
+  document.querySelectorAll('[data-section-tab][data-section-scope="' + ambito + '"]').forEach((x) => x.classList.toggle('active', x === t));
+  document.querySelectorAll('[data-section-panel][data-section-scope="' + ambito + '"]').forEach((p) => { const on = p.dataset.sectionPanel === t.dataset.sectionTab; p.hidden = !on; p.style.display = on ? '' : 'none'; p.classList.toggle('active', on); });
 }));
 document.body.classList.remove('admin-loading','admin-locked'); document.body.classList.add('admin-unlocked');
 setupNav2();
@@ -65,7 +66,7 @@ try {
   await pag.locator('[data-nav2-grupo="caja"]').click();
   ok(await pag.evaluate(() => activeAccordionSection) === 'informes', 'Caja lleva a Informes (panel de siempre)');
   ok(await pag.locator('.nav2-sub[data-nav2-item="caja.hoy"]').evaluate((e) => e.classList.contains('active')), '«Caja de hoy» queda resaltado');
-  ok(await pag.locator('[data-nav2-lista="caja"]').isVisible(), 'el grupo Caja muestra sus 5 elementos');
+  ok(await pag.locator('[data-nav2-lista="caja"]').isVisible(), 'el grupo Caja muestra sus 6 elementos');
   await pag.waitForTimeout(450); await pag.screenshot({ path: `${out}/nav2-2-caja.png` });
 
   await pag.locator('.nav2-sub[data-nav2-item="caja.cierres"]').click();
@@ -95,6 +96,23 @@ try {
   ok(await pag.locator('[data-nav2-grupo="comunicacion"]').getAttribute('data-unread-count') === '3', '…y suma en el grupo Comunicación');
   await pag.locator('[data-nav2-grupo="comunicacion"]').click();
   await pag.waitForTimeout(450); await pag.screenshot({ path: `${out}/nav2-3-insignia.png` });
+
+  // Configuración: sus pestañas internas ahora son elementos del menú
+  await pag.locator('[data-nav2-grupo="config"]').click();
+  ok(await pag.evaluate(() => activeAccordionSection) === 'configuracion', 'Configuración abre el panel de siempre');
+  ok(await pag.locator('[data-nav2-lista="config"] .nav2-sub').count() === 8, 'Configuración muestra sus 8 elementos');
+  ok(await pag.locator('[data-nav2-item="config.negocio"]').evaluate((e) => e.classList.contains('active')), '…con «Negocio» resaltado por defecto');
+  await pag.locator('[data-nav2-item="config.horario"]').click();
+  ok(await pag.evaluate(() => { const p = document.querySelector('[data-section-panel="horario"][data-section-scope="configuracion"]'); return !p.hidden && getComputedStyle(p).display !== 'none'; }), '«Horario y cierres» abre el panel de Horario');
+  ok(await pag.locator('nav[aria-label="Secciones de Configuracion"]').isHidden(), 'las pestañas internas de Configuración quedan ocultas (están en el menú)');
+  await pag.locator('[data-nav2-grupo="caja"]').click();
+  await pag.locator('[data-nav2-item="caja.categorias"]').click();
+  ok(await pag.evaluate(() => { const p = document.querySelector('[data-section-panel="categorias_gastos"][data-section-scope="configuracion"]'); return activeAccordionSection === 'configuracion' && !p.hidden && getComputedStyle(p).display !== 'none'; }), 'Caja › Categorías de gastos abre ese panel (que vive en Configuración)');
+  ok(await pag.locator('[data-nav2-item="caja.categorias"]').evaluate((e) => e.classList.contains('active')) && await pag.locator('[data-nav2-grupo="caja"]').evaluate((e) => e.classList.contains('active')), '…y el menú resalta Caja › Categorías, no Configuración');
+  await pag.evaluate(() => { document.querySelector('.admin-accordion-trigger[data-accordion-target="configuracion"]').click(); document.querySelector('[data-section-tab="seguridad"][data-section-scope="configuracion"]').click(); });
+  await pag.waitForTimeout(50);
+  ok(await pag.locator('[data-nav2-item="config.seguridad"]').evaluate((e) => e.classList.contains('active')), 'si otro código abre la pestaña Seguridad, el menú resalta «Seguridad»');
+  await pag.screenshot({ path: `${out}/nav2-6-config.png` });
 
   // interruptor al menú anterior
   await pag.locator('#adminMenuSwitchBtn').click();
