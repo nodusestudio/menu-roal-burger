@@ -12111,6 +12111,18 @@
         .vd-input:focus { border-color: rgba(255,122,26,0.6); }
         .vd-btn { width: 100%; margin-top: 4px; text-align: center; }
         .informes-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        /* Ventanas de pago con diseño propio (Registrar gasto, Caja chica): misma tarjeta, tipografía y roles de botón que las demás.
+           (Solo #gastoModal: el cobro del POS sigue con su estilo.) */
+        #gastoModal .dpm-card { background: #14172a; border: 1.5px solid rgba(255,255,255,0.12); border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.65); -webkit-backdrop-filter: none; backdrop-filter: none; }
+        #cajaChicaModal .cc-modal-box { background: #14172a; border: 1.5px solid rgba(255,255,255,0.12); box-shadow: 0 20px 60px rgba(0,0,0,0.65); } /* (sin radio: en el celular es una hoja desde abajo) */
+        #gastoModal .dpm-btn-cancel { padding: 8px 18px; border-radius: 9px; border: 1px solid var(--admin-border); background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.85); font-size: 0.85rem; text-transform: none; letter-spacing: 0; }
+        #gastoModal .dpm-btn-cancel:hover { background: rgba(255,255,255,0.14); color: #fff; }
+        #gastoModal .dpm-btn-confirm { padding: 8px 18px; border-radius: 9px; border: 1px solid transparent; background: linear-gradient(135deg, #ff7a1a, #ff9540); color: #1a1208; font-size: 0.85rem; text-transform: none; letter-spacing: 0; box-shadow: none; }
+        #gastoModal .dpm-btn-confirm:hover:not(:disabled) { background: linear-gradient(135deg, #ff8a35, #ffa458); box-shadow: none; }
+        #cajaChicaModal .cc-modal-head h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1.02rem; font-weight: 700; letter-spacing: 0; }
+        #cajaChicaModal .cc-modal-head .vd-x { position: static; }
+        button.cc-save-btn { background: linear-gradient(135deg, #ff7a1a, #ff9540); border: 1px solid transparent; color: #1a1208; border-radius: 9px; font-size: 0.95rem; letter-spacing: 0; }
+        button.cc-save-btn:hover { background: linear-gradient(135deg, #ff8a35, #ffa458); box-shadow: none; }
         /* Etiqueta de estado (NO es un botón): «Sincronizado en tiempo real», «Clientes guardados en Firebase» */
         .status-chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
             color: rgba(255,255,255,0.75); background: rgba(34,197,94,0.10); border: 1px solid rgba(34,197,94,0.30); white-space: nowrap; }
@@ -17167,7 +17179,7 @@
         <div class="cc-modal-box">
             <div class="cc-modal-head">
                 <h2>💰 Caja Chica</h2>
-                <button type="button" id="cajaChicaCloseBtn" class="card-collapse-btn" style="font-size:0.78rem;padding:4px 12px;" aria-label="Cerrar">✕ Cerrar</button>
+                <button type="button" id="cajaChicaCloseBtn" class="vd-x" aria-label="Cerrar">×</button>
             </div>
             <div class="cc-modal-body">
                 <!-- Monedas primero -->
@@ -17345,7 +17357,7 @@
             </div>
             <div class="dpm-footer">
                 <button type="button" class="dpm-btn-cancel" id="gastoCancelBtn">Cancelar</button>
-                <button type="button" class="dpm-btn-confirm" id="gastoRegistrarBtn" disabled hidden style="background:linear-gradient(90deg,#ef4444,#b91c1c);">Registrar gasto</button>
+                <button type="button" class="dpm-btn-confirm" id="gastoRegistrarBtn" disabled hidden>Registrar gasto</button>
             </div>
         </article>
     </div>

@@ -30680,15 +30680,15 @@ async function _showAbrirCajaModal() {
 
     const overlay = document.createElement('div');
     overlay.id = '_abrirCajaOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    overlay.className = 'vd-overlay';
 
     overlay.innerHTML = `
-        <div style="background:#14172a;border:1.5px solid rgba(255,255,255,0.12);border-radius:20px;padding:1.75rem;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.65);max-height:90vh;overflow-y:auto;position:relative;">
+        <div class="vd-card" style="max-width:420px;padding:1.75rem;">
 
             <div id="_acHeader" style="text-align:center;margin-bottom:1.25rem;position:relative;">
-                <button type="button" id="_acCloseBtn" style="position:absolute;top:-4px;right:-4px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:50%;color:#fff;font-size:1.1rem;cursor:pointer;line-height:1;width:28px;height:28px;display:flex;align-items:center;justify-content:center;" aria-label="Cerrar">×</button>
+                <button type="button" id="_acCloseBtn" class="vd-x" style="top:-4px;right:-4px;" aria-label="Cerrar">×</button>
                 <div style="font-size:2rem;margin-bottom:0.3rem;">📂</div>
-                <h3 style="margin:0;color:#fff;font-size:1.1rem;font-weight:700;">Apertura de Caja</h3>
+                <h3 class="vd-title" style="margin:0;font-size:1.1rem;">Apertura de Caja</h3>
                 <p style="margin:4px 0 0;color:rgba(255,255,255,0.4);font-size:0.76rem;">${fechaStr}</p>
             </div>
 
@@ -30703,12 +30703,10 @@ async function _showAbrirCajaModal() {
                     <span style="color:#f3c56a;font-weight:700;font-size:1.1rem;">${formatMoney(savedTotal)}</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:0.6rem;">
-                    <button id="_acUsarGuardadoBtn" type="button"
-                        style="padding:0.8rem;border-radius:12px;border:none;background:linear-gradient(135deg,#f3c56a,#c8962a);color:#000;font-size:0.88rem;font-weight:700;cursor:pointer;letter-spacing:0.3px;">
+                    <button id="_acUsarGuardadoBtn" type="button" class="informes-action-btn informes-action-btn--primary vd-btn">
                         ✓ Iniciar con caja chica guardada
                     </button>
-                    <button id="_acRecontarBtn" type="button"
-                        style="padding:0.75rem;border-radius:12px;border:1.5px solid rgba(255,255,255,0.18);background:transparent;color:rgba(255,255,255,0.7);font-size:0.85rem;cursor:pointer;">
+                    <button id="_acRecontarBtn" type="button" class="informes-action-btn vd-btn">
                         🔄 Volver a contar
                     </button>
                 </div>
@@ -30742,8 +30740,7 @@ async function _showAbrirCajaModal() {
                     <span style="color:rgba(255,255,255,0.6);font-size:0.85rem;">Total contado:</span>
                     <span id="_acCountedTotal" style="color:#f3c56a;font-weight:700;font-size:1.05rem;">${formatMoney(0)}</span>
                 </div>
-                <button id="_acConfirmCountBtn" type="button"
-                    style="width:100%;padding:0.8rem;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;font-size:0.88rem;font-weight:700;cursor:pointer;margin-top:2px;">
+                <button id="_acConfirmCountBtn" type="button" class="informes-action-btn informes-action-btn--primary vd-btn">
                     ✓ Permanecer con este conteo y abrir caja
                 </button>
             </div>

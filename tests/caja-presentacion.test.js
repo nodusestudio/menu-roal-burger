@@ -86,3 +86,17 @@ test('las ventanas de dinero (traslado, ajustar saldos, caja cerrada, pendientes
     assert.ok(!js.includes('_gpEstiloCaja') && !js.includes('_gpEstiloInput'));
     assert.match(html, /\.vd-card \{ position: relative;/);
 });
+
+test('las ventanas de pago con diseño propio (gasto, caja chica, abrir caja) comparten tarjeta y roles de botón', () => {
+    assert.match(html, /#gastoModal \.dpm-card \{ background: #14172a;/);
+    assert.match(html, /#cajaChicaModal \.cc-modal-box \{ background: #14172a;/);
+    assert.match(html, /#gastoModal \.dpm-btn-confirm \{[^}]*linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
+    assert.ok(!/id="gastoRegistrarBtn"[^>]*style=/.test(html), 'Registrar gasto no lleva estilo pegado a mano (antes era rojo)');
+    assert.match(html, /id="cajaChicaCloseBtn" class="vd-x"/);
+    const i = js.indexOf("overlay.id = '_abrirCajaOverlay';");
+    assert.match(js.slice(i, i + 200), /overlay\.className = 'vd-overlay';/);
+    for (const id of ['_acUsarGuardadoBtn', '_acRecontarBtn', '_acConfirmCountBtn']) {
+        const m = js.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`));
+        assert.ok(m && /informes-action-btn/.test(m[0]) && !/style=/.test(m[0]), `${id} usa un rol de botón`);
+    }
+});

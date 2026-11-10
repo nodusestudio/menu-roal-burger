@@ -822,3 +822,20 @@ El saldo por método se calculaba en **tres** lugares: el bucle del **Historial 
 - **Libro Contable** suma por su cuenta (por días) y compara con `saldos.js` en vivo y en `tests/libro-contable.e2e.mjs`.
 - **Caja de hoy** (`_cajaDiariaSumMethod`) calcula la jornada abierta: es otro concepto (aún no hay cierre), y se hornea en el cierre al cerrar.
 - **Cuenta de cobro / conciliación bancaria**: copias SYNC con servidor y FODI, comparadas por sus propias pruebas.
+
+---
+---
+
+# PARTE 17 — Fase 5d: los modales de pago (gasto, caja chica, abrir caja) alineados
+
+## 69. Qué se hizo (sin tocar su lógica)
+- **Registrar gasto** (2 pasos) y **Caja chica** se veían distintos (tarjeta con otro color, títulos en otra tipografía, botones en MAYÚSCULAS). Se alinearon con **solo CSS**: misma tarjeta oscura con borde, título Space Grotesk, **Cancelar** secundario y **Registrar gasto / Guardar** con el rol principal (naranja). El «Registrar gasto» **ya no es rojo** (era un estilo pegado a mano); el cobro del POS no se tocó.
+- **Caja chica:** el botón «✕ Cerrar» (estilo de otra familia) pasó a la × común; el guardar es naranja principal.
+- **Abrir caja:** pasó a `vd-overlay` / `vd-card`, la × común y los roles de botón (los dos botones dorado y verde con estilo en línea ahora son principal naranja / secundario gris). **Sigue sin cerrarse al tocar fuera** (a propósito: se está contando plata y un toque accidental no debe perder el conteo; solo la ×) y la prueba lo vigila.
+- Todos los ids de botones y campos se conservaron: los manejadores y los cálculos no se tocaron.
+
+## 70. Verificación
+`tests/ventanas-dinero.e2e.mjs` ahora cubre **5 ventanas** (Traslado, Ajustar saldos, Abrir caja, Caja cerrada, Gastos pendientes) con **29** comprobaciones en Chromium real; capturas de Gasto, Caja chica y Abrir caja revisadas. `tests/caja-presentacion.test.js` (12). **162** pruebas del despliegue + navegador (menú 26, gastos 19, Libro Contable 9, botones 15, ventanas 29, Historial 11) + saldos/días, en verde. Foto del dinero **idéntica**.
+
+## 71. Pendiente de la Fase 5
+~79 botones con estilos en línea dentro de plantillas JS (lista de clientes, catálogo, tarjetas), un solo juego de íconos, y el formato de dinero del menú público y del agente.

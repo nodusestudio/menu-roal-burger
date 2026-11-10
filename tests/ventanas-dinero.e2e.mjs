@@ -21,6 +21,7 @@ const funcion = (inicio) => {
 const gp = js.slice(js.indexOf('// SYNC:gastos-pendientes:inicio'), js.indexOf('function openGastoModal(prefill) {'));
 const traslado = funcion('function openTrasladoModal(');
 const ajuste = funcion('async function openAjusteSaldosModal(');
+const abrirCaja = funcion('async function _showAbrirCajaModal(');
 
 let html = fs.readFileSync(path.join(raiz, 'admin.html'), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
 const stub = `<script>
@@ -34,17 +35,19 @@ const formatMoney = (v) => '$ ' + Number(v || 0).toLocaleString('es-CO');
 const _historicoSumMethod = { efectivo: 878700, bancolombia: 723325 }; const _cajaDiariaSumMethod = {};
 const _computeHistoricoSumMethod = () => ({ efectivo: 878700, bancolombia: 723325, nequi: 0, otro: 0 });
 const loadCierresCaja = async () => [];
-const showNotice = () => {}; const showConfirmModal = async () => true; const _showAbrirCajaModal = () => {};
+const showNotice = () => {}; const showConfirmModal = async () => true;
 const _bindOverlayClose = (ov, fn) => ov.addEventListener('click', (e) => { if (e.target === ov) fn(); });
 const saveGasto = async () => {}; const firestoreNow = () => Date.now(); const getCurrentAdminIdentity = () => 'x';
 const _store = {};
 const firebaseDb = { collection: (c) => ({ doc: (d) => ({ __k: c + '/' + d, get: async () => ({ exists: !!_store[c + '/' + d], data: () => _store[c + '/' + d] }) }) }),
   runTransaction: async (fn) => fn({ get: async (r) => ({ exists: !!_store[r.__k], data: () => _store[r.__k] }), set: (r, v) => { _store[r.__k] = JSON.parse(JSON.stringify(v)); } }) };
-const closeGastoModal = () => {}; const openGastoModal = () => {}; const renderCajaDiaria = () => {}; const renderLibroCierres = async () => {}; const renderGastosInformes = () => {};
+const _ccApplyData = () => {}; const _ccTotal = () => 150000; const _acLoadNombresUsados = async () => {}; const CC_DOC_ID = 'caja_chica_actual'; let _acNombresUsados = []; const CC_BILLETES = [2000, 5000, 10000, 20000, 50000, 100000]; const CC_MONEDAS = [50, 100, 200, 500, 1000];
+let _ccGuardadosBilletes = {}; let _ccGuardadasMonedas = {}; let _ccBilletes = {}; let _ccMonedas = {}; const _capitalizeWords = (x) => x; const closeGastoModal = () => {}; const openGastoModal = () => {}; const renderCajaDiaria = () => {}; const renderLibroCierres = async () => {}; const renderGastosInformes = () => {};
 let _gastosCajaState = []; let _cierresCajaState = [];
 ${gp}
 ${traslado}
 ${ajuste}
+${abrirCaja}
 </script>`;
 const archivo = path.join(raiz, '__vd_harness.html');
 fs.writeFileSync(archivo, html.replace('</body>', stub + '</body>'));
@@ -61,15 +64,17 @@ const navegador = await chromium.launch();
 try {
   const p = await navegador.newPage({ viewport: { width: 1100, height: 820 } });
   const errores = []; p.on('pageerror', (e) => errores.push(e.message));
+  p.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLA:', m.text()); });
   await p.goto(`http://localhost:${port}/__vd_harness.html`);
 
   const ventanas = [
     ['Traslado', 'trasladoMetodoModal', () => openTrasladoModal(), 'trasladoCloseBtn'],
     ['Ajustar saldos', 'ajusteSaldosModal', () => openAjusteSaldosModal(), 'ajusteSaldosClose'],
     ['Gasto con la caja cerrada', 'gastoCerradaModal', () => openGastoCajaCerradaModal(), null],
+    ['Abrir caja', '_abrirCajaOverlay', () => _showAbrirCajaModal(), '_acCloseBtn', false],
     ['Gastos pendientes', 'gastosPendientesModal', async () => { await _gpAgregar('Pollo', 45000); openGastosPendientesModal(); }, null]
   ];
-  for (const [nombre, id, abrir, idCerrar] of ventanas) {
+  for (const [nombre, id, abrir, idCerrar, cierraFuera = true] of ventanas) {
     await p.evaluate(abrir);
     await p.waitForSelector('#' + id);
     const info = await p.evaluate((i) => {
@@ -84,11 +89,17 @@ try {
     await p.click(`#${id} .vd-x`);
     await p.waitForSelector('#' + id, { state: 'detached' });
     ok(true, `${nombre}: se cierra con ×`);
-    // y tocando fuera
+    // y tocando fuera (Abrir caja NO: se está contando plata, un toque accidental fuera no debe perder el conteo)
     await p.evaluate(abrir); await p.waitForSelector('#' + id);
     await p.mouse.click(8, 8);
-    await p.waitForSelector('#' + id, { state: 'detached' });
-    ok(true, `${nombre}: se cierra tocando fuera`);
+    if (cierraFuera) {
+        await p.waitForSelector('#' + id, { state: 'detached' });
+        ok(true, `${nombre}: se cierra tocando fuera`);
+    } else {
+        await p.waitForTimeout(200);
+        ok(await p.locator('#' + id).count() === 1, `${nombre}: tocar fuera NO la cierra (protege el conteo de dinero); solo la ×`);
+        await p.click(`#${id} .vd-x`); await p.waitForSelector('#' + id, { state: 'detached' });
+    }
     if (idCerrar) { await p.evaluate(abrir); ok(await p.locator('#' + idCerrar).count() === 1, `${nombre}: conserva el id #${idCerrar}`); await p.click('#' + idCerrar); }
   }
 
@@ -106,7 +117,7 @@ try {
   ok(errores.length === 0, 'sin errores de JavaScript' + (errores.length ? ': ' + errores.join(' | ') : ''));
 } finally {
   await navegador.close(); srv.close();
-  fs.unlinkSync(archivo);
+  if (!process.env.KEEP) fs.unlinkSync(archivo);
 }
 console.log(res.join('\n'));
 if (res.some((r) => r.startsWith('❌'))) process.exit(1);
