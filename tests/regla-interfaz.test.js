@@ -91,3 +91,11 @@ test('POS: los botones secundarios (ticket, notas, cliente, cobro) están en la 
     assert.deepEqual(malos, []);
     assert.ok(html.includes('Tres tamaños, y solo tres'));
 });
+
+test('FORMA ÚNICA: dos radios (9 y 14 px), una animación, pestañas y menú con la misma tipografía', () => {
+    assert.ok(html.includes('FORMA ÚNICA (botones, pestañas, tarjetas, animaciones)'));
+    assert.match(html, /button:not\(#fodiFlot \*\):not\(\.ff-b\), \[role="tab"\]:not\(#fodiFlot \*\), \.menu-inner-tab, summary\.admin-accordion-trigger \{\s*border-radius: var\(--ui-radius\) !important;/);
+    assert.match(html, /transition-duration: \.15s !important/);
+    assert.match(html, /\.menu-inner-tab, \.metrics-tab-btn, \.cpana-tab, \.pts-tab, \.orders-mobile-tab, \.date-preset-btn, \.cierre-drp-btn \{/);
+    assert.match(html, /\.admin-accordion-trigger, \.nav2-sub \{ font-family: 'Space Grotesk'/);
+});

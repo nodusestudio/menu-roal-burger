@@ -46,6 +46,14 @@ try {
   ok(geo.fila <= 44, `Menú público: cada botón de la lista es UNA fila compacta (${geo.fila} px), no un bloque de varias líneas`);
   ok(geo.ancho < 120 && geo.alto <= 26, `…con botones pequeños de ${geo.ancho}×${geo.alto} px (no ocupan todo el ancho), también en ventanas de 1280 px`);
   ok(geo.retraida <= 56, `una tarjeta retraída ocupa solo ${geo.retraida} px (antes ~90)`);
+  const formas = await p.evaluate(() => {
+    const radios = {}; const trans = new Set();
+    document.querySelectorAll('button, [role="tab"], .menu-inner-tab').forEach((b) => { if (b.closest('#fodiFlot') || b.classList.contains('ff-b')) return; const c = getComputedStyle(b); radios[c.borderTopLeftRadius] = (radios[c.borderTopLeftRadius] || 0) + 1; trans.add(c.transitionDuration.split(',')[0]); });
+    return { radios, trans: [...trans] };
+  });
+  const clavesR = Object.keys(formas.radios).sort();
+  ok(clavesR.every((r) => r === '9px' || r === '14px'), 'FORMA ÚNICA: todos los botones y pestañas tienen radio 9 px (o 14 px las fichas grandes): ' + JSON.stringify(formas.radios));
+  ok(formas.trans.length === 1 && formas.trans[0] === '0.15s', 'una sola velocidad de animación (' + formas.trans.join(',') + ')');
   ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
 } finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
 console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);
