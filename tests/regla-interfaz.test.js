@@ -79,6 +79,6 @@ test('los botones de texto del HTML ya no usan familias sueltas (filtros de gast
     const sueltos = botones.filter((b) => /class="[^"]*\b(gi-filter-btn|cat-new-save-btn|pm-icon-btn)\b/.test(b));
     assert.deepEqual(sueltos, []);
     for (const id of ['gastosFilterBtn', 'gastosClearFilterBtn', 'cpanaEditorCloseBtn', 'cpanaDeleteBtn', 'margenMinimoSaveBtn', 'orderFieldEditSaveBtn', 'saveUpgradesConfigBtn']) {
-        assert.match(html, new RegExp(`<button[^>]*class="informes-action-btn[^"]*"[^>]*id="${id}"`), id);
+        assert.match(html, new RegExp(`<button[^>]*(?:class="informes-action-btn[^"]*"[^>]*id="${id}"|id="${id}"[^>]*class="informes-action-btn)`), id);
     }
 });

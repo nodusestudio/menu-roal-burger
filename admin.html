@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261110-2106">
+    <link rel="stylesheet" href="style.css?v=20261110-2107">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -16069,8 +16069,8 @@
                         <div id="newCostoFijoFormWrap" style="display:none;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
                             <input type="text" id="newCostoFijoNombre" class="cat-new-input-name" placeholder="Nombre (ej. Arriendo)" maxlength="40">
                             <input type="text" inputmode="numeric" id="newCostoFijoMonto" class="cat-new-input-name" placeholder="Monto mensual" style="max-width:150px;">
-                            <button type="button" id="newCostoFijoSaveBtn" class="cat-new-save-btn">Agregar</button>
-                            <button type="button" id="newCostoFijoCancelBtn" class="pm-icon-btn">Cancelar</button>
+                            <button type="button" id="newCostoFijoSaveBtn" class="informes-action-btn informes-action-btn--primary">Agregar</button>
+                            <button type="button" id="newCostoFijoCancelBtn" class="informes-action-btn">Cancelar</button>
                         </div>
                         <div id="costosFijosPanelWrap"><!-- render JS --></div>
                     </div>
@@ -16277,7 +16277,7 @@
                                                     <span id="cpanaFotoSubirTxt">Subir foto</span>
                                                     <input type="file" id="cpanaImagenFile" accept="image/*" hidden>
                                                 </label>
-                                                <button type="button" class="pm-icon-btn" id="cpanaFotoQuitar" hidden>Quitar</button>
+                                                <button type="button" class="informes-action-btn" id="cpanaFotoQuitar" hidden>Quitar</button>
                                             </div>
                                             <div class="cpana-progress" id="cpanaFotoProgreso" hidden><span id="cpanaFotoProgresoBar"></span></div>
                                             <p class="cpana-foto-estado" id="cpanaFotoEstado" role="status" aria-live="polite"></p>
@@ -16303,7 +16303,7 @@
                                                 <label class="cpana-mini cpana-mini--cant"><span>Cantidad</span><input type="number" id="cpanaCompCantidad" min="1" max="20" value="1"></label>
                                                 <label class="cpana-mini"><span>Variante</span><span id="cpanaCompVarianteWrap" class="cpana-variante-wrap"></span></label>
                                                 <label class="cpana-mini cpana-mini--nombre"><span>Nombre para el cliente</span><input type="text" id="cpanaCompNombreCliente" class="cpana-nombre-cliente" maxlength="50" placeholder="ej. Papas para compartir"></label>
-                                                <button type="button" class="cat-new-save-btn" id="cpanaCompAddBtn">Agregar</button>
+                                                <button type="button" class="informes-action-btn informes-action-btn--primary" id="cpanaCompAddBtn">Agregar</button>
                                             </div>
                                         </div>
                                     </div>
@@ -16328,7 +16328,7 @@
                                     <div class="admin-field full">
                                         <div class="cpana-grupo-head" aria-hidden="true"><span>Nombre del grupo</span><span>Opciones (separadas por coma)</span><span></span><span></span></div>
                                         <div id="cpanaGruposList" style="display:grid;gap:8px;"></div>
-                                        <button type="button" class="pm-icon-btn" id="cpanaGrupoAddBtn" style="margin-top:8px;align-self:flex-start;">+ Agregar grupo</button>
+                                        <button type="button" class="informes-action-btn" id="cpanaGrupoAddBtn" style="margin-top:8px;align-self:flex-start;">+ Agregar grupo</button>
                                     </div>
                                 </div>
                             </details>
@@ -16392,7 +16392,7 @@
 
                             <div class="cpana-actions-bar">
                                 <button type="submit" class="section-action-btn primary" id="cpanaSaveBtn">Guardar campaña</button>
-                                <button type="button" class="pm-icon-btn cpana-preview-btn" id="cpanaPreviewBtn">👁 Vista previa</button>
+                                <button type="button" class="informes-action-btn cpana-preview-btn" id="cpanaPreviewBtn">👁 Vista previa</button>
                                 <button type="button" class="informes-action-btn informes-action-btn--danger" id="cpanaDeleteBtn" hidden>Eliminar</button>
                             </div>
                         </form>
@@ -17589,19 +17589,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261110-2106"></script>
+    <script defer src="firebase-config.js?v=20261110-2107"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261110-2106"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261110-2107"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2106"></script>
-    <script defer src="admin.js?v=20261110-2106"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2107"></script>
+    <script defer src="admin.js?v=20261110-2107"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
