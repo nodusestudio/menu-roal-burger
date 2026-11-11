@@ -908,3 +908,10 @@ Patrón tomado de Stripe (botón «Editar» por sección), Square, Atlassian (in
 - Pruebas: `tests/form-bloqueado.e2e.mjs` (11, Chromium) + `regla-interfaz.test.js` (10).
 - Pendiente: aplicar el mismo patrón a otros formularios fijos si el dueño lo pide (Seguridad, Menú público).
 - (Parte 23, ronda 2) **Seguridad**: contraseña y PIN se ven como resumen («••••••••», «•••• (configurado)») con botón «Cambiar»; los campos aparecen solo al cambiar y se esconden y vacían al guardar, cancelar o Esc; el correo vinculado queda como texto. **Menú público**: la lista de botones va primero; el formulario aparece solo tras «+ Agregar botón» o «Editar» y se esconde al guardar o cancelar. Función `initSecCambiar` (`SYNC:sec-cambiar`). Tests: `seguridad-menu.e2e.mjs` (8) + `regla-interfaz.test.js` (11).
+
+# Parte 24 — Corrección: tarjetas retraídas y listas de Configuración (ventanas medianas)
+El dueño veía todo "gigante": su pantalla trabaja a ~1280 px CSS (zoom), donde las reglas de pantallas medianas del admin (`!important`) estiraban las filas. Causa: probé a 1440 px.
+- Tarjeta retraída ("Desplegar"): de ~90 a ~42 px (relleno 8/14, sin márgenes ni espacio vacío).
+- Filas de lista (Menú público y todo `.list-item` de Configuración): UNA fila de ~38 px con botones pequeños de 24 px a la derecha (antes: bloque de 3 líneas con botones a todo el ancho).
+- Tarjetas de formas de pago, meseros y categorías de gastos: relleno 8–12, campos de 34 px.
+- Pruebas en `regla-interfaz.e2e.mjs` ahora a 1280 px (fila ≤ 44, botón ≤ 26 de alto, tarjeta retraída ≤ 56). `herramientas/captura-config.mjs <carpeta> <ancho>` captura a cualquier ancho con filas de muestra.

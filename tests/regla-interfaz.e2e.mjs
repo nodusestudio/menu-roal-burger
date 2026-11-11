@@ -33,6 +33,19 @@ try {
   ok(fuera === '14px', 'las tarjetas de las demás secciones también usan el relleno de 14 px (' + fuera + ')');
   const mini = await p.evaluate(() => { const b = document.createElement('button'); b.className = 'mini-btn'; b.textContent = 'x'; document.body.appendChild(b); const r = b.getBoundingClientRect(); return Math.round(r.height); });
   ok(mini === 24, 'el botón compacto (tablas y listas) mide 24 px: un solo tamaño pequeño');
+  await p.setViewportSize({ width: 1280, height: 900 });
+  const geo = await p.evaluate(() => {
+    const panel = document.querySelector('[data-section-panel="botones"][data-section-scope="configuracion"]'); let n = panel; while (n && n !== document.body) { n.hidden = false; if (getComputedStyle(n).display === 'none') n.style.display = 'block'; n = n.parentElement; }
+    const L = document.getElementById('buttonConfigList');
+    L.innerHTML = '<div class="list-item"><div class="product-main"><span>📱 VER NUESTRO MENU DIGITAL</span></div><div class="muted">btn-menu | Menu modal | neon | xl</div><span class="state-pill visible">Activo</span><button class="mini-btn">Editar</button><button class="mini-btn">Pausar</button><button class="mini-btn remove">Ocultar</button><button class="mini-btn remove">Eliminar</button></div>';
+    const row = L.firstElementChild; const bs = [...row.querySelectorAll('button')].map((b) => b.getBoundingClientRect());
+    const hp = document.querySelector('[data-section-panel="horario"][data-section-scope="configuracion"]'); let m = hp; while (m && m !== document.body) { m.hidden = false; if (getComputedStyle(m).display === 'none') m.style.display = 'block'; m = m.parentElement; }
+    const card = hp.querySelector('.admin-card'); card.querySelector('.card-body').classList.add('collapsed');
+    return { fila: Math.round(row.getBoundingClientRect().height), ancho: Math.max(...bs.map((b) => Math.round(b.width))), alto: Math.max(...bs.map((b) => Math.round(b.height))), retraida: Math.round(card.getBoundingClientRect().height) };
+  });
+  ok(geo.fila <= 44, `Menú público: cada botón de la lista es UNA fila compacta (${geo.fila} px), no un bloque de varias líneas`);
+  ok(geo.ancho < 120 && geo.alto <= 26, `…con botones pequeños de ${geo.ancho}×${geo.alto} px (no ocupan todo el ancho), también en ventanas de 1280 px`);
+  ok(geo.retraida <= 56, `una tarjeta retraída ocupa solo ${geo.retraida} px (antes ~90)`);
   ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
 } finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
 console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);
