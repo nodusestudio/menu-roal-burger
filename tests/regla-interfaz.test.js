@@ -99,3 +99,10 @@ test('FORMA ÚNICA: dos radios (9 y 14 px), una animación, pestañas y menú co
     assert.match(html, /\.menu-inner-tab, \.metrics-tab-btn, \.cpana-tab, \.pts-tab, \.orders-mobile-tab, \.date-preset-btn, \.cierre-drp-btn \{/);
     assert.match(html, /\.admin-accordion-trigger, \.nav2-sub \{ font-family: 'Space Grotesk'/);
 });
+
+test('MÁRGENES: una escala; las tarjetas no llevan margen propio y el contenedor pone el espacio de 12 px', () => {
+    assert.ok(html.includes('MÁRGENES: una escala (4 · 8 · 12 · 14 · 24)'));
+    assert.ok(html.includes('.menu-inner-panel { gap: var(--ui-sec) !important; padding: var(--ui-pad) !important; }'));
+    assert.ok(html.includes('.admin-card > .card-head { margin-bottom: var(--ui-gap) !important; }'));
+    assert.ok(!html.includes('[data-section-scope="configuracion"] .admin-card + .admin-card'), 'ya no hay margen doble entre tarjetas');
+});

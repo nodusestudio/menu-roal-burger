@@ -54,6 +54,14 @@ try {
   const clavesR = Object.keys(formas.radios).sort();
   ok(clavesR.every((r) => r === '9px' || r === '14px'), 'FORMA ÚNICA: todos los botones y pestañas tienen radio 9 px (o 14 px las fichas grandes): ' + JSON.stringify(formas.radios));
   ok(formas.trans.length === 1 && formas.trans[0] === '0.15s', 'una sola velocidad de animación (' + formas.trans.join(',') + ')');
+  const esp = await p.evaluate(() => {
+    const hp = document.querySelector('[data-section-panel="horario"][data-section-scope="configuracion"]'); hp.classList.add('active'); hp.style.display = ''; hp.querySelectorAll('.card-body.collapsed').forEach((b) => b.classList.remove('collapsed'));
+    const cs = getComputedStyle(hp); const cards = [...hp.querySelectorAll(':scope > .admin-card')];
+    const sep = Math.round(cards[1].getBoundingClientRect().top - cards[0].getBoundingClientRect().bottom);
+    return { sep, pad: cs.paddingTop, margen: getComputedStyle(cards[0]).marginBottom, cab: getComputedStyle(cards[0].querySelector('.card-head')).marginBottom };
+  });
+  ok(esp.sep === 12, 'MÁRGENES: entre tarjetas siempre 12 px (' + esp.sep + ' px), puestos por el contenedor, sin margen propio (' + esp.margen + ')');
+  ok(esp.pad === '14px' && esp.cab === '8px', 'relleno de panel 14 px y 8 px entre título y contenido (' + esp.pad + ' / ' + esp.cab + ')');
   ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
 } finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
 console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);
