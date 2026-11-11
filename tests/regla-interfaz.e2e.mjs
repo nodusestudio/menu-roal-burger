@@ -62,6 +62,23 @@ try {
   });
   ok(esp.sep === 12, 'MÁRGENES: entre tarjetas siempre 12 px (' + esp.sep + ' px), puestos por el contenedor, sin margen propio (' + esp.margen + ')');
   ok(esp.pad === '14px' && esp.cab === '8px', 'relleno de panel 14 px y 8 px entre título y contenido (' + esp.pad + ' / ' + esp.cab + ')');
+  const vista = await p.evaluate(() => {
+    const set = (sel, f) => [...new Set([...document.querySelectorAll(sel)].filter((e) => !e.closest('#fodiFlot')).map((e) => f(getComputedStyle(e))))];
+    return {
+      titulos: set('.admin-card > .card-head h2, .admin-card > h2', (c) => c.fontFamily.split(',')[0] + c.fontSize + c.fontWeight),
+      th: set('table th', (c) => c.fontFamily.split(',')[0]),
+      campos: set('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=hidden]), select, textarea', (c) => c.borderTopLeftRadius),
+      modales: set('.vd-card, .category-products-modal-card, .product-edit-card, .icm-card, .pts-modal, .chm-panel, .tpv-card, .cc-modal-box, .dpm-card, .admin-auth-card', (c) => c.borderTopLeftRadius),
+      fondos: set('.category-products-modal, .product-edit-modal, .icm-backdrop, #posTicketSetupModal, #changeMesaModal, #ticketPreviewModal, #cajaChicaModal, #pfOverlay, #orderChangeClientModal, #gastoModal', (c) => c.backgroundColor),
+      pastillas: set('.state-pill', (c) => c.borderTopLeftRadius + c.fontSize),
+    };
+  });
+  ok(vista.titulos.length === 1, 'VISTA ÚNICA: todos los títulos de tarjeta iguales (' + vista.titulos.join(',') + ')');
+  ok(vista.th.length === 1 && /Space Grotesk/.test(vista.th[0]), 'todas las tablas con la misma tipografía en la cabecera (' + vista.th.join(',') + ')');
+  ok(vista.campos.length === 1 && vista.campos[0] === '9px', 'todos los campos de texto con radio 9 px (' + vista.campos.join(',') + ')');
+  ok(vista.modales.length === 1 && vista.modales[0] === '14px', 'todas las ventanas con radio 14 px (' + vista.modales.join(',') + ')');
+  ok(vista.fondos.length === 1 && /0\.72/.test(vista.fondos[0]), 'todas las ventanas con el mismo fondo oscuro (' + vista.fondos.join(',') + ')');
+  ok(vista.pastillas.length <= 1, 'una sola etiqueta de estado (' + vista.pastillas.join(',') + ')');
   ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
 } finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
 console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);

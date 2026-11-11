@@ -82,7 +82,7 @@ try {
       return { ov: ov.className, card: card.className, x: !!ov.querySelector('.vd-x'), titulo: !!ov.querySelector('.vd-title'), radio: cs.borderRadius, fondo: cs.backgroundColor, inline: ov.getAttribute('style') || '' };
     }, id);
     ok(info.ov === 'vd-overlay' && info.card.startsWith('vd-card') && info.x && info.titulo, `${nombre}: usa la estructura común (overlay + tarjeta + × + título)`);
-    ok(info.radio === '20px' && info.fondo === 'rgb(20, 23, 42)' && info.inline === '', `${nombre}: misma tarjeta (esquinas 20 px, fondo oscuro) y sin estilos pegados a mano`);
+    ok(info.radio === '14px' && info.fondo === 'rgb(20, 23, 42)' && info.inline === '', `${nombre}: misma tarjeta (esquinas 14 px, la forma única, fondo oscuro) y sin estilos pegados a mano`);
     await p.waitForTimeout(150);
     await p.screenshot({ path: path.join(os.tmpdir(), `vd-${id}.png`) });
     // cerrar con ×

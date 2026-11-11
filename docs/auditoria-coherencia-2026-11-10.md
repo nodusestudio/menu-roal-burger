@@ -930,3 +930,7 @@ El POS es táctil y de prisa, así que NO se encoge todo: la regla queda en **tr
 # Parte 27 — Márgenes: una escala
 Medido antes: separación entre tarjetas de 0, 8 y 16 px (más un margen propio de 8 px sumado al `gap` de 14 px del panel → 22 px reales en Configuración); margen del título de 8 y 12 px; relleno de panel de 18/16 px.
 Ahora (una sola escala 4 · 8 · 12 · 14 · 24): **12 px entre tarjetas**, puesto por el contenedor (`gap`) y nunca por el margen de la tarjeta; **14 px** de relleno en tarjetas y paneles; **8 px** entre título y contenido y entre filas de lista; 24 px entre bloques grandes. Probado en Chromium (`regla-interfaz.e2e.mjs`: 12 px entre tarjetas, panel 14, título 8).
+
+# Parte 28 — Vista única (títulos, tablas, ventanas, etiquetas, campos)
+Medido antes: títulos de tarjeta de 16 y 16,8 px; cabeceras de tabla con dos tipografías (una sin estilo, «Times New Roman»); ventanas con esquinas de 16, 18, 20, 22, 26 y 28 px y fondos de .65 a .88; etiquetas de estado con radios 8, 10, 20 y 999 px; campos con radios 0, 8, 9, 10 y 12 px.
+Ahora: título de tarjeta Space Grotesk 1rem/700; tablas con la misma tipografía (cabecera .7rem en mayúsculas); todas las ventanas con radio 14 px y el mismo fondo oscuro (.72); una sola etiqueta de estado (píldora 999 px, .72rem); todos los campos de texto con radio 9 px; vacíos con el mismo color y centrado. Excepción: el login (fondo .88) y el FODI flotante. Probado en Chromium (`regla-interfaz.e2e.mjs`, 20 comprobaciones); `ventanas-dinero.e2e.mjs` actualizado a 14 px.

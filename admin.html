@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261110-2206">
+    <link rel="stylesheet" href="style.css?v=20261110-2215">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -17094,6 +17094,23 @@
     /* Menú lateral: misma tipografía que las pestañas (sin mayúsculas ni espaciado de letras) */
     .admin-accordion-trigger, .nav2-sub { font-family: 'Space Grotesk', sans-serif; font-size: 0.85rem; font-weight: 700; letter-spacing: 0; text-transform: none; min-height: 38px; }
     .nav2-sub { min-height: 34px; font-size: 0.8rem; }
+
+    /* ══ VISTA ÚNICA: título de tarjeta, tablas, ventanas, vacíos, etiquetas y campos ══ */
+    .admin-card > .card-head h2, .admin-card > h2 { font-family: 'Space Grotesk', sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: .6px; text-transform: none; }
+    /* Ventanas: mismo fondo oscuro (.72) y mismo radio de 14 px (antes de 16 a 28 px y de .65 a .88) */
+    .vd-overlay, .category-products-modal, .product-edit-modal, .icm-backdrop, #posTicketSetupModal, #changeMesaModal, #ticketPreviewModal, #cajaChicaModal, #pfOverlay, #orderChangeClientModal, #gastoModal { background: rgba(0,0,0,.72) !important; }
+    .vd-card, .category-products-modal-card, .product-edit-card, .icm-card, .pts-modal, .chm-panel, .tpv-card, .cc-modal-box, .dpm-card, #pfOverlay > div, .admin-auth-card { border-radius: var(--ui-radius-lg) !important; }
+    /* Tablas: misma tipografía en cabecera y celdas */
+    table th, table td { font-family: 'Space Grotesk', sans-serif; }
+    table th { font-size: .7rem; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+    table:not(.caja-ledger-table) th { padding: 8px 12px; }
+    table:not(.caja-ledger-table) td { padding: 8px 12px; font-size: .85rem; }
+    /* Etiquetas de estado: la única píldora */
+    .state-pill, .status-chip { border-radius: 999px; font-size: .72rem; font-weight: 700; padding: 3px 10px; }
+    /* Campos de texto: un solo radio */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#fodiFlot *), select:not(#fodiFlot *), textarea:not(#fodiFlot *) { border-radius: var(--ui-radius) !important; }
+    /* Vacíos */
+    .caja-empty, .empty-state, [class$="-empty"] { text-align: center; color: rgba(184,200,232,.7); font-size: .85rem; padding: 16px; }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17624,19 +17641,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261110-2206"></script>
+    <script defer src="firebase-config.js?v=20261110-2215"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261110-2206"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261110-2215"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2206"></script>
-    <script defer src="admin.js?v=20261110-2206"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2215"></script>
+    <script defer src="admin.js?v=20261110-2215"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

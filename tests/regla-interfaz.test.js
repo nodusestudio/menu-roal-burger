@@ -106,3 +106,11 @@ test('MÁRGENES: una escala; las tarjetas no llevan margen propio y el contenedo
     assert.ok(html.includes('.admin-card > .card-head { margin-bottom: var(--ui-gap) !important; }'));
     assert.ok(!html.includes('[data-section-scope="configuracion"] .admin-card + .admin-card'), 'ya no hay margen doble entre tarjetas');
 });
+
+test('VISTA ÚNICA: título de tarjeta, tablas, ventanas, etiquetas y campos con una sola forma', () => {
+    assert.ok(html.includes('VISTA ÚNICA: título de tarjeta, tablas, ventanas, vacíos, etiquetas y campos'));
+    assert.match(html, /\.vd-overlay, \.category-products-modal, \.product-edit-modal[^{]*\{ background: rgba\(0,0,0,\.72\) !important; \}/);
+    assert.match(html, /\.vd-card, \.category-products-modal-card[^{]*\{ border-radius: var\(--ui-radius-lg\) !important; \}/);
+    assert.match(html, /table th, table td \{ font-family: 'Space Grotesk'/);
+    assert.match(html, /\.state-pill, \.status-chip \{ border-radius: 999px;/);
+});
