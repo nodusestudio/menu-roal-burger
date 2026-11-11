@@ -79,6 +79,13 @@ try {
   ok(vista.modales.length === 1 && vista.modales[0] === '14px', 'todas las ventanas con radio 14 px (' + vista.modales.join(',') + ')');
   ok(vista.fondos.length === 1 && /0\.72/.test(vista.fondos[0]), 'todas las ventanas con el mismo fondo oscuro (' + vista.fondos.join(',') + ')');
   ok(vista.pastillas.length <= 1, 'una sola etiqueta de estado (' + vista.pastillas.join(',') + ')');
+  const vacios = await p.evaluate(() => {
+    const cls = ['empty-state', 'caja-empty', 'met-empty-note', 'inbox-empty', 'upgrades-detail-empty', 'inbox-detail-empty', 'ticket-empty', 'client-empty-row', 'prod-rank-empty', 'pedit-acomp-empty', 'gasto-sub-empty', 'chatroal-product-dropdown-empty', 'category-modal-empty'];
+    return [...new Set(cls.map((c) => { const e = document.createElement('div'); e.className = c; e.textContent = 'No hay datos'; document.body.appendChild(e); const s = getComputedStyle(e); const r = [s.fontSize, s.color, s.textAlign, s.paddingTop].join('|'); e.remove(); return r; }))];
+  });
+  ok(vacios.length === 1, 'ESTADO VACÍO: los 13 tipos de «No hay…» se ven idénticos (' + vacios.join(' ; ') + ')');
+  const pie = await p.evaluate(() => { const a = document.getElementById('adminPublicLink'); const s = getComputedStyle(a); return [Math.round(a.getBoundingClientRect().height), s.borderTopLeftRadius, s.textTransform].join('|'); });
+  ok(pie === '32|9px|none', 'el enlace «Ir a público» del menú es un botón más de la familia (' + pie + ')');
   ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
 } finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
 console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);

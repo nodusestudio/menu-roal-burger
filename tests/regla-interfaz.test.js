@@ -114,3 +114,15 @@ test('VISTA ÚNICA: título de tarjeta, tablas, ventanas, etiquetas y campos con
     assert.match(html, /table th, table td \{ font-family: 'Space Grotesk'/);
     assert.match(html, /\.state-pill, \.status-chip \{ border-radius: 999px;/);
 });
+
+test('ESTADO VACÍO: los «No hay… / Sin… / Aún no…» usan la clase única y no estilos en línea (salvo el ticket impreso)', () => {
+    const malos = (js.match(/<(p|div|span|td)\b[^>]*\sstyle="[^"]*"[^>]*>(?=(No hay |Sin |Todav|A[uú]n no|No tienes))/g) || []).filter((m) => !/color:#c8c0b8/.test(m));
+    assert.deepEqual(malos, []);
+    assert.ok((js.match(/class="empty-state"/g) || []).length >= 35);
+    assert.ok(html.includes('.empty-state, .caja-empty, .met-empty-note'));
+});
+test('Menú lateral: flecha fija a la derecha, insignia a su izquierda y «Ir a público» como botón de la familia', () => {
+    assert.ok(html.includes('.nav2-grupo.has-unread::after { right: 34px;'));
+    assert.ok(html.includes('a.admin-link,'));
+    assert.ok(html.includes('>Ir a público</a>') && html.includes('>Cerrar sesión</button>'));
+});

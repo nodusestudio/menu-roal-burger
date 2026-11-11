@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261110-2215">
+    <link rel="stylesheet" href="style.css?v=20261110-2231">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -14352,13 +14352,13 @@
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
 
         <div class="sidebar-footer">
-            <a class="admin-link" id="adminPublicLink" href="/" target="_blank" rel="noopener noreferrer">Ir a Publico</a>
+            <a class="admin-link" id="adminPublicLink" href="/" target="_blank" rel="noopener noreferrer">Ir a público</a>
             <button type="button" class="preview-refresh-btn" id="adminInstallBtn" style="display:none;">📲 Descargar App</button>
             <button type="button" class="preview-refresh-btn" id="adminAvisosPcBtn" title="Activa y prueba el cuadrito de aviso en la esquina de este computador (pedidos, chats, redes)">🖥️ Avisos del computador</button>
             <button type="button" class="preview-refresh-btn" id="adminAvisosBtn" title="Activa los avisos en este celular o computador (pedidos, chats, redes, clientes nuevos)">🔔 Avisos al celular</button>
             <button type="button" class="preview-refresh-btn" id="adminTvBtn" title="Configura y controla la pantalla de TV del local (productos, tiempos, pausa)">📺 Modo TV</button>
             <button type="button" class="preview-refresh-btn" id="adminMenuSwitchBtn" title="Cambia entre el menú nuevo (8 grupos) y el anterior">Ver menú anterior</button>
-            <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">Cerrar sesion</button>
+            <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">Cerrar sesión</button>
         </div>
     </aside>
     <main class="admin-page">
@@ -16124,7 +16124,7 @@
                         <p id="bancoCobrosResumen" style="margin:0 0 8px;font-size:0.85rem;color:var(--admin-muted);"></p>
                         <div style="margin:8px 0 6px;"><button type="button" class="section-action-btn" id="bancoConcBtn" title="Compara lo que entró al banco ese día con los pedidos cobrados como Bancolombia en el POS">⚖️ Conciliar este día con los pedidos</button></div>
                         <div id="bancoConcResultado" style="font-size:0.88rem;margin-bottom:12px;"></div>
-                        <div id="bancoLista" style="margin-top:8px;"><p style="font-size:0.85rem;color:var(--admin-muted);">Todavía no hay pagos.</p></div>
+                        <div id="bancoLista" style="margin-top:8px;"><p class="empty-state">Todavía no hay pagos.</p></div>
                     </div>
                 </article>
                 <article class="admin-card">
@@ -16936,6 +16936,7 @@
     .informes-action-btn, .section-action-btn, .section-save-btn, .preview-refresh-btn, .admin-button, .ghost-button,
     .biz-save-btn, .biz-pass-btn, button.cat-new-save-btn, .ticket-bt-btn,
     .ticket-action-btn, .pos-note-cancel-btn, .pos-note-save-btn, .client-action-btn, .cd-btn,
+    a.admin-link,
     [data-section-scope="configuracion"] .mesero-action-btn, [data-section-scope="configuracion"] .cat-sub-add-btn {
         display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;
         min-height: var(--ui-btn-h); padding: 0 var(--ui-pad); border-radius: var(--ui-radius);
@@ -16945,7 +16946,7 @@
         transition: background .15s, border-color .15s;
     }
     .informes-action-btn:hover, .section-action-btn:hover, .section-save-btn:hover, .preview-refresh-btn:hover, .ghost-button:hover,
-    .biz-pass-btn:hover, .ticket-bt-btn:hover, .ticket-action-btn:hover, .pos-note-cancel-btn:hover, .client-action-btn:hover, .cd-btn:hover, [data-section-scope="configuracion"] .mesero-action-btn:hover,
+    .biz-pass-btn:hover, .ticket-bt-btn:hover, a.admin-link:hover, .ticket-action-btn:hover, .pos-note-cancel-btn:hover, .client-action-btn:hover, .cd-btn:hover, [data-section-scope="configuracion"] .mesero-action-btn:hover,
     [data-section-scope="configuracion"] .cat-sub-add-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.22); transform: none; box-shadow: none; }
     .informes-action-btn--primary, .section-action-btn.primary, .admin-button, .biz-save-btn, button.cat-new-save-btn, .pos-note-save-btn {
         background: linear-gradient(135deg, #ff7a1a, #ff9540); color: #1a1208; border-color: transparent;
@@ -17110,7 +17111,12 @@
     /* Campos de texto: un solo radio */
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not(#fodiFlot *), select:not(#fodiFlot *), textarea:not(#fodiFlot *) { border-radius: var(--ui-radius) !important; }
     /* Vacíos */
-    .caja-empty, .empty-state, [class$="-empty"] { text-align: center; color: rgba(184,200,232,.7); font-size: .85rem; padding: 16px; }
+    /* Estado vacío: un solo estilo para todos los «No hay…» / «Sin…» / «Aún no…» */
+    .empty-state, .caja-empty, .met-empty-note, .inbox-empty, .upgrades-detail-empty, .inbox-detail-empty, .ticket-empty, .client-empty-row, .prod-rank-empty, .pedit-acomp-empty, .gasto-sub-empty, .chatroal-product-dropdown-empty, .category-modal-empty { display: block; text-align: center; color: rgba(184,200,232,.7); font-size: .85rem; line-height: 1.4; font-style: normal; font-weight: 400; padding: 16px !important; margin: 0; }
+    /* Menú lateral: la flecha siempre en el mismo sitio; la insignia de pendientes va a su izquierda, centrada */
+    .nav2-grupo.has-unread { padding-right: 13px; }
+    .nav2-grupo.has-unread .nav2-flecha { margin-right: 0; }
+    .nav2-grupo.has-unread::after { right: 34px; top: 50%; transform: translateY(-50%); }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17641,19 +17647,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261110-2215"></script>
+    <script defer src="firebase-config.js?v=20261110-2231"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261110-2215"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261110-2231"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2215"></script>
-    <script defer src="admin.js?v=20261110-2215"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2231"></script>
+    <script defer src="admin.js?v=20261110-2231"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

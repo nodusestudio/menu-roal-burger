@@ -4263,7 +4263,7 @@ function renderCierresProgramados() {
                     </div>
                     ${c.motivo ? `<p style="margin:6px 0 0;font-size:0.8rem;color:var(--admin-muted);">💬 ${escapeHtml(c.motivo)}</p>` : ''}
                 </div>`;
-            }).join('') : '<p style="font-size:0.82rem;color:var(--admin-muted);margin:0;">No hay cierres programados.</p>'}
+            }).join('') : '<p class="empty-state">No hay cierres programados.</p>'}
         </div>
         <div class="pm-method-form-wrap" id="cpFormWrap" hidden>
             <div class="pm-method-form">
@@ -4746,7 +4746,7 @@ function _wireVariantInteractions(panel, optIdx) {
                     });
                 });
                 if (!available.size) {
-                    picker.innerHTML = '<span style="font-size:0.75rem;color:var(--admin-muted);">Sin sub-variantes disponibles en otros productos.</span>';
+                    picker.innerHTML = '<span class="empty-state">Sin sub-variantes disponibles en otros productos.</span>';
                 } else {
                     picker.innerHTML = [...available].map((s) =>
                         `<button type="button" class="upgrades-sub-chip upgrades-copy-sub-pick" data-sub="${escapeHtml(s)}" data-v-idx="${vi}" style="cursor:pointer;">${escapeHtml(s)} +</button>`
@@ -4844,7 +4844,7 @@ function _renderUpgradesDetailPanel(optId) {
                 ${opt.tiene_variantes
                     ? ((opt.variantes || []).length > 0
                         ? _buildVariantesHTML(opt)
-                        : '<p style="font-size:0.81rem;color:var(--admin-muted);margin:0;">Sin variantes. Usa "+ Agregar".</p>')
+                        : '<p class="empty-state">Sin variantes. Usa "+ Agregar".</p>')
                     : ''}
             </div>
         </div>`;
@@ -5098,7 +5098,7 @@ function renderPosProductsPanel() {
             .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
         grid.innerHTML = '';
         if (!matches.length) {
-            grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Sin resultados</p>';
+            grid.innerHTML = '<p class="empty-state" style="grid-column:1/-1;">Sin resultados</p>';
             return;
         }
         _renderPosProductCards(grid, matches);
@@ -5119,7 +5119,7 @@ function renderPosProductsPanel() {
     if (posSelectedCategory === '__POS_TOP__') {
         grid.innerHTML = '';
         const top = _posTopProducts();
-        if (!top.length) { grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Aún no hay suficientes ventas para mostrar los más vendidos</p>'; return; }
+        if (!top.length) { grid.innerHTML = '<p class="empty-state" style="grid-column:1/-1;">Aún no hay suficientes ventas para mostrar los más vendidos</p>'; return; }
         _renderPosProductCards(grid, top);
         return;
     }
@@ -5150,7 +5150,7 @@ function renderPosProductsPanel() {
     grid.innerHTML = '';
 
     if (!categoryProducts.length) {
-        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Sin productos disponibles</p>';
+        grid.innerHTML = '<p class="empty-state" style="grid-column:1/-1;">Sin productos disponibles</p>';
         return;
     }
 
@@ -5222,7 +5222,7 @@ function renderPosGroupedProductsPanel(grid, parentName) {
     }
 
     if (!hasAnyProduct) {
-        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin productos disponibles</p>';
+        grid.innerHTML = '<p class="empty-state">Sin productos disponibles</p>';
     }
 }
 
@@ -5281,7 +5281,7 @@ function renderPosAcompanantesNewPanel(grid) {
     grid.innerHTML = '';
     const activos = acompanantesState.filter((a) => a.estado === 'active' && a.activo_pos);
     if (!activos.length) {
-        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Sin acompañantes disponibles</p>';
+        grid.innerHTML = '<p class="empty-state" style="grid-column:1/-1;">Sin acompañantes disponibles</p>';
         return;
     }
     activos.forEach((acomp) => {
@@ -5317,7 +5317,7 @@ function renderPosBebidasPanel(grid) {
     grid.innerHTML = '';
     const activas = bebidasState.filter((b) => b.estado === 'active' && b.mostrar_categoria);
     if (!activas.length) {
-        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Sin bebidas disponibles</p>';
+        grid.innerHTML = '<p class="empty-state" style="grid-column:1/-1;">Sin bebidas disponibles</p>';
         return;
     }
     activas.forEach((bev) => {
@@ -5514,7 +5514,7 @@ function renderPosAcompanantesPanel(grid) {
     grid.innerHTML = '';
 
     if (!opciones.length) {
-        grid.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;grid-column:1/-1;">Sin acompañantes activos configurados</p>';
+        grid.innerHTML = '<p class="empty-state" style="grid-column:1/-1;">Sin acompañantes activos configurados</p>';
         return;
     }
 
@@ -5990,7 +5990,7 @@ function renderPosPromocionesPanel(grid) {
     if (comboSection) { wrap.appendChild(comboSection); hasAny = true; }
 
     if (!hasAny) {
-        wrap.innerHTML = '<p style="color:rgba(255,255,255,0.4);text-align:center;padding:24px;">Sin promociones activas configuradas</p>';
+        wrap.innerHTML = '<p class="empty-state">Sin promociones activas configuradas</p>';
     }
 
     grid.appendChild(wrap);
@@ -10673,7 +10673,7 @@ function _renderCarouselPanel() {
                         </div>
                     </div>`;
                 }).join('')}
-            </div>` : '<p style="font-size:0.8rem;color:var(--admin-muted);">No hay productos en Firestore aún.</p>'}
+            </div>` : '<p class="empty-state">No hay productos en Firestore aún.</p>'}
         </div>
     `;
 
@@ -10799,7 +10799,7 @@ function _cpefRenderVariantesList() {
     list.innerHTML = '';
 
     if (_cpefVariantes.length === 0) {
-        list.innerHTML = '<p style="font-size:0.75rem;color:var(--admin-muted);margin:4px 0 0;">Sin variantes. Usa &quot;+ Agregar&quot;.</p>';
+        list.innerHTML = '<p class="empty-state">Sin variantes. Usa &quot;+ Agregar&quot;.</p>';
         return;
     }
 
@@ -11064,7 +11064,7 @@ function _renderCategoryDetailPanel(categoryId) {
                             </div>
                         </div>`;
                     })() : ''}`
-                    : '<p style="font-size:0.8rem;color:var(--admin-muted);margin:4px 0;">Sin productos aún</p>'}
+                    : '<p class="empty-state">Sin productos aún</p>'}
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
                 <button type="button" class="section-save-btn" id="catDetailSaveBtn">Guardar</button>
@@ -14043,7 +14043,7 @@ function _renderMetricsUserRows(users) {
     if (countLabel) countLabel.textContent = `${users.length} usuario${users.length !== 1 ? 's' : ''}`;
 
     if (!users.length) {
-        list.innerHTML = '<p class="muted" style="padding:24px 16px;text-align:center;">Sin usuarios registrados.</p>';
+        list.innerHTML = '<p class="empty-state">Sin usuarios registrados.</p>';
         return;
     }
 
@@ -14237,7 +14237,7 @@ function _renderMetricsPosRows(clients) {
     if (countLbl) countLbl.textContent = `${clients.length} cliente${clients.length !== 1 ? 's' : ''}`;
 
     if (!clients.length) {
-        list.innerHTML = '<p class="muted" style="padding:24px 16px;text-align:center;">Sin clientes POS registrados.</p>';
+        list.innerHTML = '<p class="empty-state">Sin clientes POS registrados.</p>';
         return;
     }
 
@@ -18493,7 +18493,7 @@ function _occRenderResults(order, term) {
             <strong>${escapeHtml(client.customerName || 'Sin nombre')}</strong>
             <span>${escapeHtml(client.customerPhone || 'Sin telefono')}${client.whatsappUser ? ` · 💬 ${escapeHtml(client.whatsappUser)}` : ''}</span>
             <span class="occ-result-address">${escapeHtml(client.address || 'Sin direccion')}</span>
-        </button>`).join('') : `<p style="color:var(--admin-muted);font-size:0.85rem;padding:10px 0;">No hay clientes que coincidan.</p>`;
+        </button>`).join('') : `<p class="empty-state">No hay clientes que coincidan.</p>`;
 
     list.querySelectorAll('[data-client-id]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -22779,7 +22779,7 @@ async function renderCuponesCanjes(period) {
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
 
     if (!sorted.length) {
-        bodyNow.innerHTML = '<p class="admin-hint" style="text-align:center;padding:12px 0;">Sin canjes en este período.</p>';
+        bodyNow.innerHTML = '<p class="empty-state">Sin canjes en este período.</p>';
         return;
     }
     bodyNow.innerHTML = `
@@ -22820,7 +22820,7 @@ function renderCuponesUnified() {
 
     const listHTML = allCoupons.length
         ? allCoupons.map(_buildUnifiedCouponCardHTML).join('')
-        : '<p class="admin-hint" style="text-align:center;margin-top:24px;">Sin cupones aún. Usa el botón de arriba para crear uno.</p>';
+        : '<p class="empty-state">Sin cupones aún. Usa el botón de arriba para crear uno.</p>';
 
     const sinForm = !isFormOpen && _cuponCreatingType === null;
     if (!sinForm) _cuponesVista = 'lista';
@@ -28654,7 +28654,7 @@ function renderBarriosEspecialesPanel() {
                         </div>
                     </div>
                 </div>
-            `).join('') : '<p style="font-size:0.82rem;color:var(--admin-muted);margin:0;">Aún no hay barrios especiales.</p>'}
+            `).join('') : '<p class="empty-state">Aún no hay barrios especiales.</p>'}
         </div>
         <div class="pm-method-form-wrap" id="beFormWrap" hidden>
             <div class="pm-method-form">
@@ -30362,7 +30362,7 @@ function _meseroSetCajaGate(cerrada) {
     gate.innerHTML = `
         <div style="font-size:3.4rem;line-height:1;">🔒</div>
         <h2 style="margin:0;font-size:1.6rem;">Caja cerrada</h2>
-        <p style="margin:0;max-width:320px;line-height:1.5;color:rgba(255,255,255,0.7);">Todavía no se ha abierto la caja. Pídele al administrador que la abra para poder ingresar y tomar pedidos.</p>
+        <p class="empty-state">Todavía no se ha abierto la caja. Pídele al administrador que la abra para poder ingresar y tomar pedidos.</p>
         <p style="margin:6px 0 0;font-size:0.85rem;color:rgba(255,255,255,0.45);">Esta pantalla se actualiza sola cuando la caja esté abierta.</p>`;
     document.body.appendChild(gate);
 }
@@ -32582,7 +32582,7 @@ function _openCierreDetalleModal(c) {
                 <span style="font-size:0.85rem;color:rgba(255,255,255,0.7);">${m.icon ? m.icon + ' ' : ''}${escapeHtml(m.label)}</span>
                 <span style="font-size:0.9rem;font-weight:700;color:#6ee7b7;">+${formatMoney(v)}</span>
             </div>`;
-        }).join('') || `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin movimientos</div>`;
+        }).join('') || `<div class="empty-state">Sin movimientos</div>`;
 
     const ingTotalRow = `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(110,231,183,0.1);border-radius:8px;border:1px solid rgba(110,231,183,0.2);margin-top:6px;">
         <span style="font-size:0.85rem;font-weight:700;color:rgba(255,255,255,0.85);">TOTAL INGRESOS</span>
@@ -32606,7 +32606,7 @@ function _openCierreDetalleModal(c) {
                 <span style="font-size:0.9rem;font-weight:700;color:#fca5a5;white-space:nowrap;">−${formatMoney(Number(g.monto || 0))}</span>
             </div>`;
         }).join('')
-        : `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin egresos</div>`;
+        : `<div class="empty-state">Sin egresos</div>`;
 
     const gasTotalRow = gastosTotal > 0 ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:rgba(252,165,165,0.1);border-radius:8px;border:1px solid rgba(252,165,165,0.2);margin-top:6px;">
         <span style="font-size:0.85rem;font-weight:700;color:rgba(255,255,255,0.85);">TOTAL EGRESOS</span>
@@ -32670,7 +32670,7 @@ function _openCierreDetalleModal(c) {
             <!-- Arqueo -->
             <div>
                 <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.5);font-weight:700;margin-bottom:8px;">🗂 Arqueo de caja (neto por método)</div>
-                ${arqueoRows || `<div style="font-size:0.8rem;color:rgba(255,255,255,0.35);padding:6px 0;">Sin movimientos</div>`}
+                ${arqueoRows || `<div class="empty-state">Sin movimientos</div>`}
             </div>
         </div>
         ${_conteoCierreHtml(c, 'detalle')}
@@ -33044,7 +33044,7 @@ function renderProveedoresPanel() {
                 <button type="button" class="pm-icon-btn" data-prov-edit="${escapeHtml(p.id)}" title="Editar">✎</button>
                 <button type="button" class="pm-icon-btn pm-icon-btn--del" data-prov-del="${escapeHtml(p.id)}" title="Eliminar">🗑</button>
             </div>
-        </div>`).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay proveedores registrados.</p>`;
+        </div>`).join('') || `<p class="empty-state">No hay proveedores registrados.</p>`;
 
     wrap.innerHTML = `
         <div id="proveedoresListWrap">${rows}</div>
@@ -33180,7 +33180,7 @@ function renderMeserosPanel() {
             </div>
             <div class="mesero-history-wrap" data-mesero-history-wrap="${escapeHtml(m.token)}" hidden></div>
         </div>`;
-    }).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay meseros registrados.</p>`;
+    }).join('') || `<p class="empty-state">No hay meseros registrados.</p>`;
 
     wrap.innerHTML = `
         <div id="meserosListWrap">${rows}</div>
@@ -33268,7 +33268,7 @@ async function _toggleMeseroHistorial(token) {
                         ? `· Cerró ${escapeHtml(formatOrderTime(s.cerradoAt))}`
                         : '· <span class="mesero-history-open">🟢 En curso</span>'}
                 </span>
-            </div>`).join('') : `<p style="color:var(--admin-muted);font-size:0.8rem;padding:6px 0;">Sin turnos registrados.</p>`;
+            </div>`).join('') : `<p class="empty-state">Sin turnos registrados.</p>`;
     } catch (err) {
         box.innerHTML = `<p style="color:#fca5a5;font-size:0.8rem;padding:6px 0;">Error al cargar historial: ${escapeHtml(err.message || '')}</p>`;
     }
@@ -33396,7 +33396,7 @@ function renderCategoriasGastosPanel() {
                 </div>
             </div>
         </div>`;
-    }).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay categorías. Agrega una nueva.</p>`;
+    }).join('') || `<p class="empty-state">No hay categorías. Agrega una nueva.</p>`;
 
     // Delegación de eventos — un solo listener en el contenedor
     if (!_catGastosPanelBound) {
@@ -33650,7 +33650,7 @@ function renderCostosFijosPanel() {
             <input type="text" class="costo-fijo-nombre cat-new-input-name" value="${escapeHtml(it.nombre)}" maxlength="40" style="flex:1;min-width:120px;">
             <input type="text" inputmode="numeric" class="costo-fijo-monto cat-new-input-name" value="${Number(it.monto || 0)}" style="max-width:140px;text-align:right;">
             <button type="button" class="pm-icon-btn pm-icon-btn--del" data-costo-del="${escapeHtml(it.id)}" title="Eliminar costo">🗑</button>
-        </div>`).join('') || `<p style="color:var(--admin-muted);font-size:0.85rem;padding:8px 0;">No hay costos fijos. Agrega uno nuevo.</p>`)
+        </div>`).join('') || `<p class="empty-state">No hay costos fijos. Agrega uno nuevo.</p>`)
         + `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:12px;font-weight:800;font-size:0.95rem;">
             <span>Total costos fijos</span><span>${formatMoney(total)}</span>
         </div>`;
@@ -33912,7 +33912,7 @@ function renderGastosInformes() {
     }).join('');
 
     container.innerHTML = `
-        <div class="gi-summary-grid">${summaryCards || '<span style="color:var(--admin-muted);font-size:0.82rem;">Sin registros para el período.</span>'}</div>
+        <div class="gi-summary-grid">${summaryCards || '<span class="empty-state">Sin registros para el período.</span>'}</div>
         <div class="gi-totals-bar">
             <span>${grandCount} gasto${grandCount !== 1 ? 's' : ''} · Promedio: ${grandCount ? formatMoney(grandTotal / grandCount) : '$0'}</span>
             <strong>Total: ${formatMoney(grandTotal)}</strong>
@@ -34361,7 +34361,7 @@ function _icmRenderPreview() {
     const wrap = document.getElementById('icmPreviewTable');
     if (!wrap) return;
     const sample = _icmParsedRows.slice(0, 5);
-    if (!sample.length) { wrap.innerHTML = '<p style="color:#64748b;padding:10px">Sin datos.</p>'; return; }
+    if (!sample.length) { wrap.innerHTML = '<p class="empty-state">Sin datos.</p>'; return; }
     const ths = _icmRawHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('');
     const trs = sample.map(row =>
         `<tr>${_icmRawHeaders.map(h => `<td>${escapeHtml(String(row[h] ?? ''))}</td>`).join('')}</tr>`
@@ -39973,7 +39973,7 @@ function _rrInit() {
         const vis = items.filter((m) => !q || `${m.label || ''} ${m.text || ''}`.toLowerCase().includes(q));
         lista.innerHTML = vis.length
             ? vis.map((m) => `<button type="button" class="rr-item" data-rr="${escapeHtml(m.id)}"><b>${escapeHtml(m.label || '(sin nombre)')}</b><small>${escapeHtml(m.text || '')}</small></button>`).join('')
-            : '<p style="opacity:.7;font-size:.85rem;margin:4px 0">Aún no hay respuestas. Crea la primera abajo.</p>';
+            : '<p class="empty-state">Aún no hay respuestas. Crea la primera abajo.</p>';
     };
     const suscribir = () => {
         if (suscrito || !firebaseDb) return;
@@ -40220,7 +40220,7 @@ async function _fodiInformeCargar(generar) {
         }
         box.innerHTML = `<details style="padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.07)">
             <summary style="cursor:pointer;font-weight:700">📰 Informe semanal${d ? ` (${escapeHtml(d.desde || '')} a ${escapeHtml(d.hasta || d.fecha || '')})` : ''}</summary>
-            ${d ? `<div class="asist-msg" style="margin:8px 0">${_asistRender(d.texto || '')}</div>` : '<p class="asist-hint" style="opacity:1">Aún no hay informe; se genera solo los lunes a las 8:00 a. m.</p>'}
+            ${d ? `<div class="asist-msg" style="margin:8px 0">${_asistRender(d.texto || '')}</div>` : '<p class="empty-state">Aún no hay informe; se genera solo los lunes a las 8:00 a. m.</p>'}
             <button type="button" class="section-action-btn" id="fodiInformeGen">Generar ahora (máx. 1 al día)</button></details>`;
         document.getElementById('fodiInformeGen')?.addEventListener('click', () => _fodiInformeCargar(true));
     } catch (e) { box.innerHTML = `<p class="asist-hint" style="opacity:1">No pude leer o generar el informe: ${escapeHtml(e.message || String(e))}</p>`; }
@@ -40246,7 +40246,7 @@ async function _fodiMemLlamar(datos) {
 function _fodiMemPintar(items) {
     const box = document.getElementById('fodiMemLista');
     if (!box) return;
-    if (!items.length) { box.innerHTML = '<p class="asist-hint" style="text-align:left;opacity:1">Todavía no recuerda nada. Conversa con ella o agrega algo abajo.</p>'; return; }
+    if (!items.length) { box.innerHTML = '<p class="empty-state">Todavía no recuerda nada. Conversa con ella o agrega algo abajo.</p>'; return; }
     box.innerHTML = items.sort((a, b) => (b.fijo ? 1 : 0) - (a.fijo ? 1 : 0) || a.tema.localeCompare(b.tema)).map((m) => `<div class="fm-item" data-tema="${escapeHtml(m.tema)}" style="margin:8px 0;padding:8px;border-radius:10px;background:rgba(255,255,255,.06)">
         <strong>${m.fijo ? '📌 ' : ''}${escapeHtml(m.tema)}</strong> <small>${escapeHtml(m.actualizado || '')}</small>
         <textarea class="fm-txt" rows="2" maxlength="400" style="width:100%;box-sizing:border-box;margin-top:4px">${escapeHtml(m.texto)}</textarea>
@@ -40279,7 +40279,7 @@ async function _fodiBaseLlamar(datos) { return (await firebaseFunctions.httpsCal
 function _fodiBasePintar(r) {
     _fodiBaseDocs = r.docs || [];
     const lista = document.getElementById('fodiBaseLista'), sin = document.getElementById('fodiBaseSin');
-    if (lista) lista.innerHTML = _fodiBaseDocs.length ? _fodiBaseDocs.map((d) => `<div class="fb-item" data-id="${escapeHtml(d.id)}" style="margin:6px 0;padding:8px;border-radius:10px;background:rgba(255,255,255,.06)"><strong>${escapeHtml(d.titulo)}</strong>${d.categoria ? ` <small>· ${escapeHtml(d.categoria)}</small>` : ''} <small>(${d.texto.length} car.)</small><br><small>${escapeHtml(d.texto.slice(0, 140))}…</small><div style="margin-top:4px;display:flex;gap:6px"><button type="button" class="section-action-btn fb-edit">Editar</button><button type="button" class="section-action-btn fb-del">Borrar</button></div></div>`).join('') : '<p class="asist-hint" style="text-align:left;opacity:1">Aún no hay documentos propios. Agrega el primero abajo.</p>';
+    if (lista) lista.innerHTML = _fodiBaseDocs.length ? _fodiBaseDocs.map((d) => `<div class="fb-item" data-id="${escapeHtml(d.id)}" style="margin:6px 0;padding:8px;border-radius:10px;background:rgba(255,255,255,.06)"><strong>${escapeHtml(d.titulo)}</strong>${d.categoria ? ` <small>· ${escapeHtml(d.categoria)}</small>` : ''} <small>(${d.texto.length} car.)</small><br><small>${escapeHtml(d.texto.slice(0, 140))}…</small><div style="margin-top:4px;display:flex;gap:6px"><button type="button" class="section-action-btn fb-edit">Editar</button><button type="button" class="section-action-btn fb-del">Borrar</button></div></div>`).join('') : '<p class="empty-state">Aún no hay documentos propios. Agrega el primero abajo.</p>';
     if (sin) sin.innerHTML = (r.sinResultado || []).length ? `<div style="margin:6px 0;padding:8px;border-radius:10px;border:1px solid #f59e0b"><strong>⚠️ Cosas que FODI buscó y no encontró</strong> <small>(documéntalas para que las sepa)</small>${r.sinResultado.map((x) => `<div class="fb-sin" data-id="${escapeHtml(x.id)}" style="margin-top:4px">• ${escapeHtml(x.consulta)} <small>(${x.veces}×)</small> <button type="button" class="section-action-btn fb-sin-x" style="padding:0 8px">✕</button></div>`).join('')}</div>` : '';
 }
 async function _fodiBaseCargar() {
@@ -40429,7 +40429,7 @@ function _bancoPintarLista(docs) {
         const pruebas = docs.length - reales.length;
         resumen.textContent = `${_bancoTituloFiltro()}: ${reales.length} pago${reales.length === 1 ? '' : 's'} · ${formatMoney(total)}${pruebas ? ` · (${pruebas} de prueba, no suman)` : ''}`;
     }
-    if (!docs.length) { cont.innerHTML = '<p style="font-size:0.85rem;color:var(--admin-muted);">No hay pagos en esta fecha.</p>'; return; }
+    if (!docs.length) { cont.innerHTML = '<p class="empty-state">No hay pagos en esta fecha.</p>'; return; }
     cont.innerHTML = docs.map((d) => {
         const x = d.data();
         let cuando = '';
@@ -40507,7 +40507,7 @@ function _bancoPintarEquipos(docs) {
             ${enLinea ? '' : `<button type="button" data-banco-equipo-borrar="${escapeHtml(e.id)}" title="Quitar este computador de la lista" aria-label="Quitar este computador de la lista" style="flex:none;border:0;border-radius:10px;padding:8px 10px;cursor:pointer;background:rgba(255,255,255,.14);color:#fff;">🗑️</button>`}
         </div>`;
     };
-    const contenido = equipos.length ? equipos.map(fila).join('') : '<div style="font-size:13px;opacity:.8;">Aún no hay computadores con el programa de voz. Instálalo y espera 1 minuto.</div>';
+    const contenido = equipos.length ? equipos.map(fila).join('') : '<div class="empty-state">Aún no hay computadores con el programa de voz. Instálalo y espera 1 minuto.</div>';
     caja.innerHTML = `<div style="font-weight:800;margin-bottom:6px;">Voz de pagos por computador</div>` + contenido;
     const inline = document.getElementById('bancoEquiposInline');
     if (inline) inline.innerHTML = contenido;

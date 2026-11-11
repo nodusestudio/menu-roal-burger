@@ -934,3 +934,8 @@ Ahora (una sola escala 4 · 8 · 12 · 14 · 24): **12 px entre tarjetas**, pues
 # Parte 28 — Vista única (títulos, tablas, ventanas, etiquetas, campos)
 Medido antes: títulos de tarjeta de 16 y 16,8 px; cabeceras de tabla con dos tipografías (una sin estilo, «Times New Roman»); ventanas con esquinas de 16, 18, 20, 22, 26 y 28 px y fondos de .65 a .88; etiquetas de estado con radios 8, 10, 20 y 999 px; campos con radios 0, 8, 9, 10 y 12 px.
 Ahora: título de tarjeta Space Grotesk 1rem/700; tablas con la misma tipografía (cabecera .7rem en mayúsculas); todas las ventanas con radio 14 px y el mismo fondo oscuro (.72); una sola etiqueta de estado (píldora 999 px, .72rem); todos los campos de texto con radio 9 px; vacíos con el mismo color y centrado. Excepción: el login (fondo .88) y el FODI flotante. Probado en Chromium (`regla-interfaz.e2e.mjs`, 20 comprobaciones); `ventanas-dinero.e2e.mjs` actualizado a 14 px.
+
+# Parte 29 — Estado vacío y menú lateral
+- **Estado vacío**: había 13 clases distintas (`caja-empty`, `inbox-empty`, `met-empty-note`…) y 40 mensajes con estilos en línea, cada uno con su tamaño, color y relleno. Ahora todos son `.empty-state` (centrado, .85rem, color atenuado, 16 px de relleno); las clases viejas comparten la misma regla. El ticket impreso conserva sus estilos (se imprime sin hoja de estilos del admin).
+- **Menú lateral**: la flecha queda siempre fija a la derecha y la insignia de pendientes a su izquierda y centrada (antes la flecha se movía según hubiera insignia); «Ir a público» pasó a ser un botón más de la familia (32 px, 9 px de radio) y se corrigieron las tildes de «Ir a público» y «Cerrar sesión».
+- Tests: `regla-interfaz.e2e.mjs` (24) y `regla-interfaz.test.js` (18).
