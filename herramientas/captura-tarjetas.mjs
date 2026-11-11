@@ -7,7 +7,7 @@ const archivo = path.join(raiz, '__tj.html'); fs.writeFileSync(archivo, pagina);
 const srv = http.createServer((req, res) => { const f = path.join(raiz, decodeURIComponent(req.url.split('?')[0])); if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end(); } res.writeHead(200, { 'Content-Type': f.endsWith('.css') ? 'text/css' : 'text/html' }); fs.createReadStream(f).pipe(res); }).listen(0);
 const nav = await chromium.launch();
 try {
-  const p = await nav.newPage({ viewport: { width: 1100, height: 900 } });
+  const p = await nav.newPage({ viewport: { width: 1180, height: 900 } });
   await p.goto(`http://localhost:${srv.address().port}/__tj.html`);
   const n = await p.evaluate(({ ini, cant }) => {
     const cards = [...document.querySelectorAll('.admin-card')].filter((c) => !c.closest('.vd-card, #fodiFlot'));

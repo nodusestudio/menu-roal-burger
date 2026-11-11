@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261110-2102">
+    <link rel="stylesheet" href="style.css?v=20261110-2106">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -14523,7 +14523,7 @@
                     <div class="menu-inner-panel" data-menu-panel="upgrades" role="tabpanel" hidden style="display:none;">
                         <div class="section-toolbar">
                             <button type="button" class="section-action-btn primary" id="addUpgradeOptionBtn">+ Agregar opción</button>
-                            <button type="button" class="section-action-btn" id="saveUpgradesConfigBtn">Guardar</button>
+                            <button type="button" class="informes-action-btn informes-action-btn--primary" id="saveUpgradesConfigBtn">Guardar</button>
                         </div>
                         <p class="admin-hint" style="margin:0 0 12px;">Opciones para "subir a combo" un producto (ej. Combo, Papas a la Francesa, Bebida) con sus variantes — se ofrecen al agregar productos en el POS y en el menú público.</p>
                         <div class="upgrades-master-detail">
@@ -14887,8 +14887,8 @@
                                         <input type="date" id="gastosDesde" aria-label="Gastos desde">
                                         <label style="font-size:0.78rem;color:var(--admin-muted);">Hasta</label>
                                         <input type="date" id="gastosHasta" aria-label="Gastos hasta">
-                                        <button type="button" class="gi-filter-btn" id="gastosFilterBtn">Filtrar</button>
-                                        <button type="button" class="gi-filter-btn" id="gastosClearFilterBtn">Todo</button>
+                                        <button type="button" class="informes-action-btn" id="gastosFilterBtn">Filtrar</button>
+                                        <button type="button" class="informes-action-btn" id="gastosClearFilterBtn">Todo</button>
                                     </div>
                                     <div id="gastosInformesBody">
                                         <!-- renderizado por JS -->
@@ -16085,7 +16085,7 @@
                         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                             <input type="text" inputmode="numeric" id="margenMinimoInput" class="admin-input" maxlength="4" style="max-width:90px;font-size:1.1rem;font-weight:700;text-align:right;">
                             <span style="font-size:1.1rem;font-weight:700;">%</span>
-                            <button type="button" id="margenMinimoSaveBtn" class="cat-new-save-btn">Guardar</button>
+                            <button type="button" id="margenMinimoSaveBtn" class="informes-action-btn informes-action-btn--primary">Guardar</button>
                             <span id="margenActualizadoLbl" style="font-size:0.78rem;color:var(--admin-muted);"></span>
                         </div>
                     </div>
@@ -16228,7 +16228,7 @@
                         <div class="cpana-editor-head-actions">
                             <!-- Envía el MISMO formulario (form="cpanaForm"): una sola lógica de guardado. -->
                             <button type="submit" form="cpanaForm" class="section-action-btn primary" id="cpanaSaveTopBtn">Guardar</button>
-                            <button type="button" class="pm-icon-btn" id="cpanaEditorCloseBtn">Cerrar</button>
+                            <button type="button" class="informes-action-btn" id="cpanaEditorCloseBtn">Cerrar</button>
                         </div>
                     </div>
                     <div class="card-body">
@@ -16384,7 +16384,7 @@
                                 <div class="cpana-preview-head">
                                     <strong>Vista previa</strong>
                                     <span class="admin-hint">Así lo ve el cliente</span>
-                                    <button type="button" class="pm-icon-btn cpana-preview-cerrar" id="cpanaPreviewCerrar">Cerrar</button>
+                                    <button type="button" class="informes-action-btn cpana-preview-cerrar" id="cpanaPreviewCerrar">Cerrar</button>
                                 </div>
                                 <div id="cpanaPreviewBody"></div>
                             </aside>
@@ -16393,7 +16393,7 @@
                             <div class="cpana-actions-bar">
                                 <button type="submit" class="section-action-btn primary" id="cpanaSaveBtn">Guardar campaña</button>
                                 <button type="button" class="pm-icon-btn cpana-preview-btn" id="cpanaPreviewBtn">👁 Vista previa</button>
-                                <button type="button" class="pm-icon-btn" id="cpanaDeleteBtn" hidden>Eliminar</button>
+                                <button type="button" class="informes-action-btn informes-action-btn--danger" id="cpanaDeleteBtn" hidden>Eliminar</button>
                             </div>
                         </form>
                     </div>
@@ -17125,7 +17125,7 @@
                 <div class="admin-field full">
                     <div id="orderFieldEditFeedback" class="modal-feedback" role="status" aria-live="polite"></div>
                 </div>
-                <button type="submit" class="admin-button" id="orderFieldEditSaveBtn">Guardar</button>
+                <button type="submit" class="informes-action-btn informes-action-btn--primary" id="orderFieldEditSaveBtn">Guardar</button>
             </form>
         </div>
     </div>
@@ -17589,19 +17589,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261110-2102"></script>
+    <script defer src="firebase-config.js?v=20261110-2106"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261110-2102"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261110-2106"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2102"></script>
-    <script defer src="admin.js?v=20261110-2102"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2106"></script>
+    <script defer src="admin.js?v=20261110-2106"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

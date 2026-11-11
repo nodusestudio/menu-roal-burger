@@ -73,3 +73,12 @@ test('Seguridad y Menú público: resumen + «Cambiar», y formulario tras «Agr
     assert.match(js, /_bfw\.hidden = true/);
     assert.match(js, /_bfw2\.hidden = false/);
 });
+
+test('los botones de texto del HTML ya no usan familias sueltas (filtros de gastos, cerrar/eliminar de campañas, guardar sueltos)', () => {
+    const botones = html.match(/<button\b[^>]*>[^<]{2,30}<\/button>/g) || [];
+    const sueltos = botones.filter((b) => /class="[^"]*\b(gi-filter-btn|cat-new-save-btn|pm-icon-btn)\b/.test(b));
+    assert.deepEqual(sueltos, []);
+    for (const id of ['gastosFilterBtn', 'gastosClearFilterBtn', 'cpanaEditorCloseBtn', 'cpanaDeleteBtn', 'margenMinimoSaveBtn', 'orderFieldEditSaveBtn', 'saveUpgradesConfigBtn']) {
+        assert.match(html, new RegExp(`<button[^>]*class="informes-action-btn[^"]*"[^>]*id="${id}"`), id);
+    }
+});

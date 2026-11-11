@@ -915,3 +915,4 @@ El dueño veía todo "gigante": su pantalla trabaja a ~1280 px CSS (zoom), donde
 - Filas de lista (Menú público y todo `.list-item` de Configuración): UNA fila de ~38 px con botones pequeños de 24 px a la derecha (antes: bloque de 3 líneas con botones a todo el ancho).
 - Tarjetas de formas de pago, meseros y categorías de gastos: relleno 8–12, campos de 34 px.
 - Pruebas en `regla-interfaz.e2e.mjs` ahora a 1280 px (fila ≤ 44, botón ≤ 26 de alto, tarjeta retraída ≤ 56). `herramientas/captura-config.mjs <carpeta> <ancho>` captura a cualquier ancho con filas de muestra.
+- (Parte 24, ronda 2) Revisión de todas las tarjetas del admin a ~1180 px: se unificaron a la familia única los botones que seguían sueltos: Filtrar/Todo de Gastos, Cerrar y Eliminar de las campañas «Fuera del Menú», Guardar del margen mínimo, de «Editar campo del pedido» y de la configuración de adicionales. Test estático nuevo en `regla-interfaz.test.js` (12).
