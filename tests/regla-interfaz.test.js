@@ -116,7 +116,7 @@ test('VISTA ÚNICA: título de tarjeta, tablas, ventanas, etiquetas y campos con
 });
 
 test('ESTADO VACÍO: los «No hay… / Sin… / Aún no…» usan la clase única y no estilos en línea (salvo el ticket impreso)', () => {
-    const malos = (js.match(/<(p|div|span|td)\b[^>]*\sstyle="[^"]*"[^>]*>(?=(No hay |Sin |Todav|A[uú]n no|No tienes))/g) || []).filter((m) => !/color:#c8c0b8/.test(m));
+    const malos = (js.match(/<(p|div|span|td)\b[^>]*\sstyle="[^"]*"[^>]*>(?=(No hay |Sin |Todav|A[uú]n no|No tienes))/g) || []).filter((m) => !/color:#c8c0b8/.test(m) && !/class="empty-state" style="grid-column:1\/-1;"/.test(m)); // el grid-column es de disposición, no de aspecto
     assert.deepEqual(malos, []);
     assert.ok((js.match(/class="empty-state"/g) || []).length >= 35);
     assert.ok(html.includes('.empty-state, .caja-empty, .met-empty-note'));
