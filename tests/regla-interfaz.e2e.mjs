@@ -6,7 +6,7 @@ const pagina = fs.readFileSync(path.join(raiz, 'admin.html'), 'utf8').replace(/<
 document.body.classList.remove('admin-loading','admin-locked'); document.body.classList.add('admin-unlocked');
 const p = document.querySelector('[data-section-panel="negocio"][data-section-scope="configuracion"]'); let n = p; while (n && n !== document.body) { n.hidden = false; n.style.display = ''; if (getComputedStyle(n).display === 'none') n.style.display = 'block'; n = n.parentElement; }
 const caja = document.createElement('div'); caja.id = 'banco'; caja.setAttribute('data-section-scope', 'configuracion');
-caja.innerHTML = ['informes-action-btn','informes-action-btn informes-action-btn--primary','informes-action-btn informes-action-btn--danger-solid','section-action-btn','section-action-btn primary','admin-button','ghost-button','biz-save-btn','biz-pass-btn','cat-new-save-btn','ticket-bt-btn','mesero-action-btn','mesero-action-btn mesero-action-btn--del','cat-sub-add-btn']
+caja.innerHTML = ['informes-action-btn','informes-action-btn informes-action-btn--primary','informes-action-btn informes-action-btn--danger-solid','section-action-btn','section-action-btn primary','admin-button','ghost-button','biz-save-btn','biz-pass-btn','cat-new-save-btn','ticket-bt-btn','mesero-action-btn','mesero-action-btn mesero-action-btn--del','cat-sub-add-btn','ticket-action-btn','pos-note-cancel-btn','pos-note-save-btn','client-action-btn','cd-btn']
   .map((c) => '<button type="button" class="' + c + '" data-fam="' + c + '">Acción</button>').join('');
 p.appendChild(caja);
 </script></body>`);

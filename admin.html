@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261110-2107">
+    <link rel="stylesheet" href="style.css?v=20261110-2116">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -16935,6 +16935,7 @@
     :root { --ui-btn-h: 32px; --ui-gap: 8px; --ui-pad: 14px; --ui-sec: 12px; --ui-radius: 9px; --ui-field-h: 34px; }
     .informes-action-btn, .section-action-btn, .section-save-btn, .preview-refresh-btn, .admin-button, .ghost-button,
     .biz-save-btn, .biz-pass-btn, button.cat-new-save-btn, .ticket-bt-btn,
+    .ticket-action-btn, .pos-note-cancel-btn, .pos-note-save-btn, .client-action-btn, .cd-btn,
     [data-section-scope="configuracion"] .mesero-action-btn, [data-section-scope="configuracion"] .cat-sub-add-btn {
         display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;
         min-height: var(--ui-btn-h); padding: 0 var(--ui-pad); border-radius: var(--ui-radius);
@@ -16944,12 +16945,12 @@
         transition: background .15s, border-color .15s;
     }
     .informes-action-btn:hover, .section-action-btn:hover, .section-save-btn:hover, .preview-refresh-btn:hover, .ghost-button:hover,
-    .biz-pass-btn:hover, .ticket-bt-btn:hover, [data-section-scope="configuracion"] .mesero-action-btn:hover,
+    .biz-pass-btn:hover, .ticket-bt-btn:hover, .ticket-action-btn:hover, .pos-note-cancel-btn:hover, .client-action-btn:hover, .cd-btn:hover, [data-section-scope="configuracion"] .mesero-action-btn:hover,
     [data-section-scope="configuracion"] .cat-sub-add-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.22); transform: none; box-shadow: none; }
-    .informes-action-btn--primary, .section-action-btn.primary, .admin-button, .biz-save-btn, button.cat-new-save-btn {
+    .informes-action-btn--primary, .section-action-btn.primary, .admin-button, .biz-save-btn, button.cat-new-save-btn, .pos-note-save-btn {
         background: linear-gradient(135deg, #ff7a1a, #ff9540); color: #1a1208; border-color: transparent;
     }
-    .informes-action-btn--primary:hover, .section-action-btn.primary:hover, .admin-button:hover, .biz-save-btn:hover, button.cat-new-save-btn:hover {
+    .informes-action-btn--primary:hover, .section-action-btn.primary:hover, .admin-button:hover, .biz-save-btn:hover, button.cat-new-save-btn:hover, .pos-note-save-btn:hover {
         background: linear-gradient(135deg, #ff8a35, #ffa458); color: #1a1208; transform: none; box-shadow: none; opacity: 1;
     }
     .informes-action-btn--danger-solid { background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff; border-color: transparent; }
@@ -17059,6 +17060,11 @@
     [data-section-scope="configuracion"] .mesero-row { padding: 6px 10px; gap: 8px; }
     [data-section-scope="configuracion"] .cat-gasto-header { padding: 6px 12px; }
     [data-section-scope="configuracion"] .cat-gasto-item { margin-bottom: 6px; }
+    /* Tres tamaños, y solo tres: normal 32 px (todos los botones de texto) · compacto 24 px (listas y tablas) · táctil del POS (fichas de producto,
+       «Nueva mesa / Para llevar / Domicilio», acciones sobre la tarjeta de un pedido): grande a propósito, porque se tocan con prisa. */
+    .ticket-action-btn.preview { background: rgba(99,102,241,0.22); color: #a5b4fc; border-color: rgba(99,102,241,0.35); }
+    .ticket-action-btn.void { background: rgba(239,68,68,0.18); color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+    .ticket-action-btn.restore { background: rgba(16,185,129,0.18); color: #6ee7b7; border-color: rgba(16,185,129,0.3); }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17589,19 +17595,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261110-2107"></script>
+    <script defer src="firebase-config.js?v=20261110-2116"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261110-2107"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261110-2116"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2107"></script>
-    <script defer src="admin.js?v=20261110-2107"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2116"></script>
+    <script defer src="admin.js?v=20261110-2116"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

@@ -916,3 +916,9 @@ El dueño veía todo "gigante": su pantalla trabaja a ~1280 px CSS (zoom), donde
 - Tarjetas de formas de pago, meseros y categorías de gastos: relleno 8–12, campos de 34 px.
 - Pruebas en `regla-interfaz.e2e.mjs` ahora a 1280 px (fila ≤ 44, botón ≤ 26 de alto, tarjeta retraída ≤ 56). `herramientas/captura-config.mjs <carpeta> <ancho>` captura a cualquier ancho con filas de muestra.
 - (Parte 24, ronda 2) Revisión de todas las tarjetas del admin a ~1180 px: se unificaron a la familia única los botones que seguían sueltos: Filtrar/Todo de Gastos, Cerrar y Eliminar de las campañas «Fuera del Menú», Guardar del margen mínimo, de «Editar campo del pedido» y de la configuración de adicionales. Test estático nuevo en `regla-interfaz.test.js` (12).
+
+# Parte 25 — POS: tres tamaños de botón
+El POS es táctil y de prisa, así que NO se encoge todo: la regla queda en **tres tamaños**: normal 32 px (todos los botones de texto), compacto 24 px (listas y tablas) y táctil (fichas de producto, «Nueva mesa / Para llevar / Domicilio» y las acciones sobre la tarjeta de un pedido: grandes a propósito).
+- A la familia única pasaron los secundarios del POS: `ticket-action-btn` (con sus roles vista previa/anular/restaurar), `pos-note-cancel-btn`, `pos-note-save-btn` (principal naranja), `client-action-btn` y `cd-btn` (ventana de cobro).
+- Se respetan las acciones sobre la tarjeta de un pedido (`order-action-btn`, ☰) y las fichas táctiles. Si el dueño quiere más compacto algo de ahí, decidirlo con el cajero real.
+- Tests: `regla-interfaz.e2e.mjs` mide 19 familias; `regla-interfaz.test.js` (13).

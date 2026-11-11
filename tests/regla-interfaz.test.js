@@ -35,7 +35,7 @@ test('los botones renderizados por JS en Configuración no llevan relleno/ancho/
     assert.deepEqual(malos, []);
 });
 test('los botones de guardar son del rol principal (naranja) y no ocupan todo el ancho', () => {
-    assert.match(html, /\.admin-button, \.biz-save-btn, button\.cat-new-save-btn \{\s*background: linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
+    assert.match(html, /\.admin-button, \.biz-save-btn, button\.cat-new-save-btn, \.pos-note-save-btn \{\s*background: linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
     assert.match(html, /cursor: pointer; white-space: nowrap; width: auto; grid-column: auto;/);
 });
 
@@ -81,4 +81,13 @@ test('los botones de texto del HTML ya no usan familias sueltas (filtros de gast
     for (const id of ['gastosFilterBtn', 'gastosClearFilterBtn', 'cpanaEditorCloseBtn', 'cpanaDeleteBtn', 'margenMinimoSaveBtn', 'orderFieldEditSaveBtn', 'saveUpgradesConfigBtn']) {
         assert.match(html, new RegExp(`<button[^>]*(?:class="informes-action-btn[^"]*"[^>]*id="${id}"|id="${id}"[^>]*class="informes-action-btn)`), id);
     }
+});
+
+test('POS: los botones secundarios (ticket, notas, cliente, cobro) están en la familia única; sin relleno ni tamaño en línea', () => {
+    for (const c of ['ticket-action-btn', 'pos-note-cancel-btn', 'pos-note-save-btn', 'client-action-btn', 'cd-btn']) {
+        assert.ok(html.includes(`.${c}, `) || html.includes(`.${c}:hover`) || html.includes(`, .${c},`), c);
+    }
+    const malos = ((html + js).match(/<button\b[^>]*>/g) || []).filter((b) => /class="[^"]*\b(ticket-action-btn|pos-note-cancel-btn|pos-note-save-btn|client-action-btn|cd-btn)\b/.test(b) && /style="[^"]*(padding|font-size|border-radius)/.test(b));
+    assert.deepEqual(malos, []);
+    assert.ok(html.includes('Tres tamaños, y solo tres'));
 });
