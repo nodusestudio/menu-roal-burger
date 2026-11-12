@@ -28,7 +28,7 @@ test('montos en distintos formatos', () => {
 
 test('la frase agradece al cliente, confirma el pago y despide', () => {
     assert.strictEqual(B.frasePago('Johan Eduardo Rojas Albornoz', 1225),
-        'Muchas gracias Johan Rojas por tu pago de 1225 pesos. Ya ha sido confirmado. Que vuelvas pronto.');
+        'Muchas gracias Johan Rojas por tu pago de mil doscientos veinticinco pesos. Ya ha sido confirmado. Que vuelvas pronto.');
 });
 
 test('el remitente debe ser de Bancolombia', () => {

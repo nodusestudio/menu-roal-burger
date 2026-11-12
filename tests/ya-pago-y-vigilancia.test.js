@@ -27,8 +27,8 @@ test('con dos "Ya pagó" del mismo valor se enlaza primero el más antiguo', () 
 });
 
 test('la frase funciona sin nombre', () => {
-    assert.strictEqual(B.frasePago('', 45000), 'Muchas gracias por tu pago de 45000 pesos. Ya ha sido confirmado. Que vuelvas pronto.');
-    assert.strictEqual(B.frasePago('Johan Eduardo Rojas Albornoz', 45000), 'Muchas gracias Johan Rojas por tu pago de 45000 pesos. Ya ha sido confirmado. Que vuelvas pronto.');
+    assert.strictEqual(B.frasePago('', 45000), 'Muchas gracias por tu pago de cuarenta y cinco mil pesos. Ya ha sido confirmado. Que vuelvas pronto.');
+    assert.strictEqual(B.frasePago('Johan Eduardo Rojas Albornoz', 45000), 'Muchas gracias Johan Rojas por tu pago de cuarenta y cinco mil pesos. Ya ha sido confirmado. Que vuelvas pronto.');
 });
 
 function dbConfirmar(cobro, tv) {
@@ -58,7 +58,7 @@ test('confirmarManual: cierra el cobro, avisa a la TV y crea el anuncio de voz',
     assert.strictEqual(db.escritos.cobro[0].esperaSeg, 40);
     assert.strictEqual(db.escritos.tv[0].estado, 'pagado');
     assert.strictEqual(db.escritos.tv[0].pagador, 'Johan Rojas');
-    assert.strictEqual(db.escritos.anuncios[0].frase, 'Muchas gracias Johan Rojas por tu pago de 45000 pesos. Ya ha sido confirmado. Que vuelvas pronto.');
+    assert.strictEqual(db.escritos.anuncios[0].frase, 'Muchas gracias Johan Rojas por tu pago de cuarenta y cinco mil pesos. Ya ha sido confirmado. Que vuelvas pronto.');
 });
 
 test('confirmarManual: un cobro que ya no está abierto no se confirma dos veces', async () => {

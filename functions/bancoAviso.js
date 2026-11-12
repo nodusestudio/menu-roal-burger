@@ -67,10 +67,13 @@ function nombreCorto(nombre) {
     return `${t[0]} ${t[2]}`;
 }
 
+const { montoEnPalabras } = require('./vozMontos');
+
 // Lo oyen los clientes en caja: agradece, confirma el pago y despide.
 function frasePago(nombre, monto) {
     const n = nombreCorto(nombre);
-    return `Muchas gracias${n ? ' ' + n : ''} por tu pago de ${monto} pesos. Ya ha sido confirmado. Que vuelvas pronto.`;
+    // El dinero SIEMPRE en palabras y en pesos colombianos (las voces del sistema leen mal «27500»): «veintisiete mil quinientos pesos».
+    return `Muchas gracias${n ? ' ' + n : ''} por tu pago de ${montoEnPalabras(monto)}. Ya ha sido confirmado. Que vuelvas pronto.`;
 }
 
 module.exports = { REMITENTE_OK, parsearMonto, nombrePropio, leerPagoRecibido, nombreCorto, frasePago };

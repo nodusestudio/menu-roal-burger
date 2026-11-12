@@ -30438,7 +30438,7 @@ function _renderEfectivoEsperado(sumMethod) {
     const signo = (v) => (v < 0 ? '−' : '') + formatMoney(Math.abs(v));
     el.hidden = false;
     el.innerHTML = `<div class="ee-titulo">💵 Efectivo que debe haber en el cajón <strong>${signo(r.esperado)}</strong></div>
-        <div class="ee-detalle">Fondo ${signo(r.fondo)} + efectivo de la jornada ${signo(r.efectivoNeto)} (ventas − gastos ± traslados). Lo digital (${signo(r.digital)}) no está en el cajón.</div>`;
+        <div class="ee-detalle">Fondo ${signo(r.fondo)} <em>(no son ventas)</em> + efectivo de la jornada ${signo(r.efectivoNeto)} (ventas − gastos ± traslados). Lo digital (${signo(r.digital)}) no está en el cajón.</div>`;
 }
 
 document.getElementById('refreshCajaDiariaBtn')?.addEventListener('click', async () => {
@@ -30577,6 +30577,23 @@ let _cierrePrintHtml = '';
 let _pendingCierreDoc = null;
 let _cierrePrintData = null; // {c, dateStr, timeStr} para reimpresión BT
 
+// El FONDO del cajón (con lo que se abre) es APARTE de las ventas: no es ingreso, no entra al Saldo Neto ni a los saldos del Historial.
+// Solo suma para saber cuánto efectivo debe haber físicamente en el cajón al cerrar: fondo + efectivo de la jornada (ventas − gastos ± traslados).
+function _cajonCierreDatos(c) {
+    const r = efectivoEsperado(c && c.fondoInicial, c && c.methodTotals, 'efectivo');
+    return { fondo: r.fondo, efectivoJornada: r.efectivoNeto, esperado: r.esperado, hayFondo: r.fondo > 0 };
+}
+function _cajonCierreHtml(c, modo) {
+    const d = _cajonCierreDatos(c);
+    const fila = (a, b, fuerte, color) => `<div style="display:flex;justify-content:space-between;${fuerte ? 'font-weight:700;border-top:1px dashed rgba(255,255,255,0.25);margin-top:3px;padding-top:3px;' : ''}${color ? 'color:' + color + ';' : ''}"><span>${a}</span><span>${b}</span></div>`;
+    const pad = modo === 'ticket' ? 'margin-top:12px;padding-top:8px;border-top:1px dashed #3a2e26;font-size:12px;' : 'padding:10px 20px;border-top:1px solid rgba(255,255,255,0.08);font-size:0.82rem;';
+    const signo = (v) => (v < 0 ? '−' : '') + formatMoney(Math.abs(v));
+    return `<div class="cierre-cajon" style="${pad}"><div style="font-weight:700;letter-spacing:1px;margin-bottom:4px;color:#f3c56a;">EFECTIVO EN EL CAJÓN</div>
+        ${d.hayFondo ? fila('Fondo con que se abrió <small>(no son ventas)</small>', formatMoney(d.fondo), false, '#f3c56a') : ''}
+        ${fila('Efectivo de la jornada <small>(ventas − gastos)</small>', signo(d.efectivoJornada))}
+        ${fila('Debe haber en el cajón', signo(d.esperado), true)}</div>`;
+}
+
 function _conteoCierreHtml(c, modo) {
     const r = conteoResumen(c);
     if (!r) return '';
@@ -30625,7 +30642,6 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
         wc('Apertura', aperturaTime);
     }
     if (c.aperturaBy) wc('Abierta por', String(c.aperturaBy));
-    if (Number(c.fondoInicial) > 0) wc('Fondo inicial', formatMoney(Number(c.fondoInicial)));
     wc('Cierre', timeStr);
     wc('Transacciones', String(cobradas));
     if (c.voidedCount) wc('Anulados (excl.)', String(Number(c.voidedCount)));
@@ -30686,6 +30702,13 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
     pb(ESC, 0x45, 0x01, ESC, 0x21, 0x10);
     wc('SALDO NETO CAJA', (grandTotal < 0 ? '-' : '') + formatMoney(Math.abs(grandTotal)));
     pb(ESC, 0x21, 0x00, ESC, 0x45, 0x00);
+    sep2();
+    // EFECTIVO EN EL CAJÓN: el fondo es aparte de las ventas
+    const _cd = _cajonCierreDatos(c);
+    pb(ESC, 0x45, 0x01); wl('EFECTIVO EN EL CAJON'); pb(ESC, 0x45, 0x00);
+    if (_cd.hayFondo) wc('Fondo (no son ventas)', formatMoney(_cd.fondo));
+    wc('Efectivo de la jornada', (_cd.efectivoJornada < 0 ? '-' : '') + formatMoney(Math.abs(_cd.efectivoJornada)));
+    wc('Debe haber en el cajon', (_cd.esperado < 0 ? '-' : '') + formatMoney(Math.abs(_cd.esperado)));
     sep2();
     const _cr = conteoResumen(c);
     if (_cr) {
@@ -31006,7 +31029,6 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
             ${ROW('Fecha', dateStr)}
             ${c.aperturaAt ? ROW('Hora apertura', new Date(Number(c.aperturaAt)).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })) : ''}
             ${c.aperturaBy ? ROW('Abierta por', escapeHtml(String(c.aperturaBy))) : ''}
-            ${Number(c.fondoInicial) > 0 ? ROW('Fondo inicial', formatMoney(Number(c.fondoInicial)), '#f3c56a') : ''}
             ${ROW('Hora cierre', timeStr)}
             ${ROW('Transacciones', String(cobradas))}
             ${c.voidedCount ? ROW('Anulados (excluidos)', String(Number(c.voidedCount)), '#fca5a5') : ''}
@@ -31029,11 +31051,12 @@ function _buildCierreTicketHtml(c, dateStr, timeStr) {
         <div style="border-top:2px solid #ff9540;margin-top:12px;padding-top:10px;">
             <table style="width:100%;border-collapse:collapse;">
                 <tr>
-                    <td style="font-weight:700;font-size:14px;color:#ff9540;letter-spacing:1px;">SALDO NETO CAJA</td>
+                    <td style="font-weight:700;font-size:14px;color:#ff9540;letter-spacing:1px;">SALDO NETO CAJA<div style="font-weight:400;font-size:10px;color:#c8c0b8;letter-spacing:0;">ventas − gastos, sin el fondo</div></td>
                     <td style="text-align:right;font-weight:700;font-size:15px;color:${grandTotal >= 0 ? '#ff9540' : '#fca5a5'};">${grandTotal < 0 ? '−' : ''}${formatMoney(Math.abs(grandTotal))}</td>
                 </tr>
             </table>
         </div>
+        ${_cajonCierreHtml(c, 'ticket')}
         ${_conteoCierreHtml(c, 'ticket')}
 
         <div style="text-align:center;margin-top:14px;font-size:10px;color:#6a5a4a;border-top:1px dashed #3a2e26;padding-top:8px;letter-spacing:0.5px;">
@@ -31381,12 +31404,12 @@ async function _showAbrirCajaModal() {
 
             <div id="_acStep1">
                 <div style="background:rgba(243,197,106,0.08);border:1px solid rgba(243,197,106,0.25);border-radius:12px;padding:0.9rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
-                    <span style="color:rgba(255,255,255,0.6);font-size:0.83rem;">💰 Caja chica guardada</span>
+                    <span style="color:rgba(255,255,255,0.6);font-size:0.83rem;">💰 Fondo del cajón guardado<br><small style="opacity:.7">con esto arranca el cajón; las ventas se cuentan aparte</small></span>
                     <span style="color:#f3c56a;font-weight:700;font-size:1.1rem;">${formatMoney(savedTotal)}</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:0.6rem;">
                     <button id="_acUsarGuardadoBtn" type="button" class="informes-action-btn informes-action-btn--primary vd-btn">
-                        ✓ Iniciar con caja chica guardada
+                        ✓ Abrir con este fondo
                     </button>
                     <button id="_acRecontarBtn" type="button" class="informes-action-btn vd-btn">
                         🔄 Volver a contar
@@ -31419,7 +31442,7 @@ async function _showAbrirCajaModal() {
                     </div>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 0;border-top:1px dashed rgba(255,255,255,0.14);">
-                    <span style="color:rgba(255,255,255,0.6);font-size:0.85rem;">Total contado:</span>
+                    <span style="color:rgba(255,255,255,0.6);font-size:0.85rem;">Fondo contado:</span>
                     <span id="_acCountedTotal" style="color:#f3c56a;font-weight:700;font-size:1.05rem;">${formatMoney(0)}</span>
                 </div>
                 <button id="_acConfirmCountBtn" type="button" class="informes-action-btn informes-action-btn--primary vd-btn">
@@ -32810,7 +32833,7 @@ function _openCierreDetalleModal(c) {
                     ${horaApertura ? `<span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Apertura: <strong style="color:rgba(255,255,255,0.6);">${horaApertura}</strong></span>` : ''}
                     <span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Cierre: <strong style="color:rgba(255,255,255,0.6);">${horaCierre}</strong></span>
                     <span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Transacciones: <strong style="color:rgba(255,255,255,0.6);">${cobradas}</strong></span>
-                    ${Number(c.fondoInicial) > 0 ? `<span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Fondo inicial: <strong style="color:#f3c56a;">${formatMoney(Number(c.fondoInicial))}</strong></span>` : ''}
+                    ${Number(c.fondoInicial) > 0 ? `<span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Fondo del cajón (no son ventas): <strong style="color:#f3c56a;">${formatMoney(Number(c.fondoInicial))}</strong></span>` : ''}
                     ${c.aperturaBy ? `<span style="font-size:0.75rem;color:rgba(255,255,255,0.4);">Cajero: <strong style="color:rgba(255,255,255,0.6);">${escapeHtml(String(c.aperturaBy))}</strong></span>` : ''}
                 </div>
             </div>
@@ -32839,6 +32862,7 @@ function _openCierreDetalleModal(c) {
                 ${arqueoRows || `<div class="empty-state">Sin movimientos</div>`}
             </div>
         </div>
+        ${_cajonCierreHtml(c, 'detalle')}
         ${_conteoCierreHtml(c, 'detalle')}
         <!-- Footer total neto -->
         <div style="padding:14px 20px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:rgba(255,149,64,0.05);">
@@ -39230,6 +39254,52 @@ async function _asistEnviar(texto) {
 
 // ── Voz de FODI: dictado (SpeechRecognition) y lectura en voz alta (speechSynthesis), 100% del navegador ──
 let _asistLeerOn = false, _asistRec = null;
+// SYNC:voz-montos:inicio
+const _VM_N = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince',
+    'dieciséis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidós', 'veintitrés', 'veinticuatro', 'veinticinco', 'veintiséis',
+    'veintisiete', 'veintiocho', 'veintinueve'];
+const _VM_D = ['', '', '', 'treinta', 'cuarenta', 'cincuenta', 'sesenta', 'setenta', 'ochenta', 'noventa'];
+const _VM_C = ['', 'ciento', 'doscientos', 'trescientos', 'cuatrocientos', 'quinientos', 'seiscientos', 'setecientos', 'ochocientos', 'novecientos'];
+function _vmBajo100(n) { if (n < 30) return _VM_N[n]; const u = n % 10; return _VM_D[Math.floor(n / 10)] + (u ? ' y ' + _VM_N[u] : ''); }
+function _vmMenor1000(n) { if (n === 100) return 'cien'; const c = Math.floor(n / 100), r = n % 100; return (c ? _VM_C[c] : '') + (c && r ? ' ' : '') + (r ? _vmBajo100(r) : ''); }
+// «uno» / «veintiuno» al final se vuelven «un» / «veintiún» porque siempre les sigue un sustantivo (pesos, mil, millones).
+function _vmApocopa(s) { return s.replace(/veintiuno$/, 'veintiún').replace(/uno$/, 'un'); }
+function _vmEntero(n) {
+    if (n === 0) return 'cero';
+    const partes = [];
+    const millones = Math.floor(n / 1e6), resto = n % 1e6, miles = Math.floor(resto / 1000), r = resto % 1000;
+    if (millones) partes.push(millones === 1 ? 'un millón' : _vmApocopa(_vmEntero(millones)) + ' millones');
+    if (miles) partes.push(miles === 1 ? 'mil' : _vmApocopa(_vmMenor1000(miles)) + ' mil');
+    if (r) partes.push(_vmMenor1000(r));
+    return partes.join(' ');
+}
+// 27500 → «veintisiete mil quinientos pesos» · 1 → «un peso» · 2000000 → «dos millones de pesos» · −5000 → «menos cinco mil pesos»
+function montoEnPalabras(valor) {
+    const n = Math.round(Math.abs(Number(valor) || 0));
+    const neg = Number(valor) < 0 && n > 0;
+    let txt;
+    if (n === 1) txt = 'un peso';
+    else if (n === 0) txt = 'cero pesos';
+    else txt = _vmApocopa(_vmEntero(n)) + (n % 1e6 === 0 ? ' de pesos' : ' pesos');
+    return (neg ? 'menos ' : '') + txt;
+}
+// Cambia, dentro de un texto, cada cantidad de dinero por sus palabras: «$ 27.500», «$27500», «COP 27.500», «27.500 pesos», «27500 pesos»…
+// Solo toca cantidades con signo $ o seguidas de «pesos»/«COP»: no confunde teléfonos, fechas ni códigos de pedido.
+function textoParaVoz(texto) {
+    const aNum = (s) => Number(String(s).split('.').join(''));
+    const signo = (neg) => (neg ? -1 : 1);
+    return String(texto == null ? '' : texto)
+        // «$ 27.500», «$27500», «COP $ 27.500», «−$ 5.000», «-$5.000», «menos $ 5.000» (con «pesos»/«COP» detrás o sin él)
+        .replace(/(\s*)(−\s*|-(?=\$)|menos\s+)?(?:COP\s*)?\$\s*([0-9]{1,3}(?:[.][0-9]{3})+|[0-9]+)(?:,[0-9]{1,2})?(?:\s*(?:pesos|COP))?/gi,
+            (m, lead, neg, num) => lead + montoEnPalabras(signo(neg) * aNum(num)))
+        // «COP 27.500»
+        .replace(/(\s*)(−\s*|menos\s+)?COP\s*([0-9]{1,3}(?:[.][0-9]{3})+|[0-9]+)(?:,[0-9]{1,2})?/gi,
+            (m, lead, neg, num) => lead + montoEnPalabras(signo(neg) * aNum(num)))
+        // «27.500 pesos», «27500 pesos» (solo si el número tiene separador de miles o 4 o más cifras)
+        .replace(/(\s*)(−\s*|menos\s+)?([0-9]{1,3}(?:[.][0-9]{3})+|[0-9]{4,})(?:,[0-9]{1,2})?\s*(?:pesos|COP)(?![A-Za-z])/gi,
+            (m, lead, neg, num) => lead + montoEnPalabras(signo(neg) * aNum(num)));
+}
+// SYNC:voz-montos:fin
 function _asistTextoHablado(md) {
     return String(md || '').replace(/```[\s\S]*?```/g, ' (tabla o código en pantalla) ').replace(/\|/g, ' ').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/[*_#>`~]/g, '').replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 1500);
 }
@@ -39306,6 +39376,7 @@ async function _fodiDecirPiper(texto, cb, miGen) {
 }
 // Habla por frases (sin cortes de Chrome en textos largos), con prosodia variable y una pausita entre frases.
 function _fodiDecir(texto, cb = {}) {
+    texto = textoParaVoz(texto); // el dinero SIEMPRE en palabras y en pesos: «$ 27.500» → «veintisiete mil quinientos pesos»
     const ss = window.speechSynthesis;
     _fodiParar();
     const miGen = _piper.gen;
@@ -40482,7 +40553,7 @@ function _bancoRepetir(frase) {
     if (!('speechSynthesis' in window) || !frase) return;
     try {
         window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(frase);
+        const u = new SpeechSynthesisUtterance(textoParaVoz(frase));
         u.lang = 'es-CO';
         const voz = window.speechSynthesis.getVoices().find((v) => /^es/i.test(v.lang));
         if (voz) u.voice = voz;
