@@ -14,7 +14,8 @@ const clientsList = document.getElementById('clientsList'), clientsCount = docum
 let _clientsPage = 0; const CLIENTS_PAGE_SIZE = 50; const expandedClientAddressIds = new Set();
 const _renderClientsPagination = () => {};
 const mk = (i) => ({ id: 'phone_30' + i, customerName: i % 3 ? 'Faberlandia de los Ríos Montoya ' + i : 'Hebert', customerPhone: '301 18063' + i, whatsappUser: i % 4 ? '' : 'hebert_wa', address: 'Mz 24 casa 12 puerto espejo barrio las americas armenia quindio', savedAddresses: i % 2 ? ['a', 'b', 'c'] : ['a'], firstOrderAt: 1, lastOrderAt: 2, totalOrders: i, totalSpent: 40500 * i, puntosDisponibles: i * 10, puntosAcumuladosTotal: i * 30, lastOrderCode: 'RB-35' + i, lastOrderTotal: 52000 });
-const getFilteredClients = () => Array.from({ length: 12 }, (_, i) => mk(i + 1));
+let clientsState = []; let _clientsLoad = { estado: 'ok', error: '' }; window.__n = 12; window.setLoad = (e, m) => { _clientsLoad = { estado: e, error: m || '' }; };
+const getFilteredClients = () => Array.from({ length: window.__n }, (_, i) => mk(i + 1));
 ${codigo}
 renderClients();
 document.body.insertAdjacentHTML('beforeend', '<div id="ov" class="pos-note-modal-overlay"><div class="pos-note-modal-box cxc-box"><p class="pos-note-modal-title">Unir</p><div class="uc-cuerpo cxc-cuerpo">' + Array.from({ length: 40 }, (_, i) => '<div class="cxc-grupo"><div class="cxc-grupo-t">Grupo ' + i + '</div><label class="cxc-fila">fila</label><label class="cxc-fila">fila</label></div>').join('') + '</div><div class="cxc-pie"><button class="pos-note-cancel-btn">Cerrar</button></div></div></div>');
@@ -48,6 +49,14 @@ try {
   const antes = await p.evaluate(() => window.scrollY); const cb = await p.locator('.cxc-cuerpo').boundingBox(); await p.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2); await p.mouse.wheel(0, 600); await p.waitForTimeout(150);
   const mov = await p.evaluate((a) => ({ lista: document.querySelector('.cxc-cuerpo').scrollTop, pagina: window.scrollY - a }), antes);
   ok(mov.lista > 0 && mov.pagina === 0, `la rueda del ratón mueve la lista de la ventana (${mov.lista} px) y no la página (${mov.pagina} px)`);
+  // Estado de carga visible (antes: un «No hay clientes» mudo cuando la carga fallaba)
+  await p.evaluate(() => { window.__n = 0; window.setLoad('cargando'); renderClients(); });
+  ok(/Cargando clientes/.test(await p.locator('#clientsList').innerText()), 'mientras carga dice «Cargando clientes…»');
+  await p.evaluate(() => { window.setLoad('error', 'resource-exhausted: Quota exceeded'); renderClients(); });
+  const msg = await p.locator('#clientsList').innerText();
+  ok(/No se pudieron cargar los clientes/.test(msg) && /resource-exhausted/.test(msg) && await p.locator('[data-clients-reintentar]').count() === 1, 'si falla, dice por qué («resource-exhausted…») y ofrece «Reintentar»: ' + msg.replace(/\s+/g, ' ').slice(0, 90));
+  await p.evaluate(() => { window.setLoad('ok'); renderClients(); });
+  ok(/No hay clientes que coincidan/.test(await p.locator('#clientsList').innerText()), 'con la carga bien y 0 resultados dice «No hay clientes que coincidan»');
   ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
 } finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
 console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);

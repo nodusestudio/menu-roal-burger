@@ -3200,7 +3200,7 @@ function setupAccordion() {
         updateChatRoalAttentionState();
 
         if (target === 'clientes') {
-            fetchClients().then(renderClients);
+            if (_clientsLoad.estado !== 'cargando') { if (!clientsState.length) { _clientsLoad = { estado: 'cargando', error: '' }; renderClients(); } fetchClients().then(renderClients, () => renderClients()); }
         }
 
         if (target === 'metricas') {
@@ -4420,6 +4420,7 @@ async function fetchSalesDayState() {
 }
 
 let _clientsLastFetchedAt = 0;
+let _clientsLoad = { estado: 'idle', error: '' }; // idle · cargando · ok · error
 const CLIENTS_CACHE_TTL_MS = 60000; // clientes crece sin limite y se relee en decenas de flujos;
 // evita releer toda la coleccion en cada accion menor del admin (guardar producto, promo, gasto, etc.)
 
@@ -4427,6 +4428,17 @@ async function fetchClients({ force = false } = {}) {
     if (!force && clientsState.length && (Date.now() - _clientsLastFetchedAt) < CLIENTS_CACHE_TTL_MS) {
         return;
     }
+    _clientsLoad = { estado: 'cargando', error: '' };
+    try {
+        await _fetchClientsInterno();
+        _clientsLoad = { estado: 'ok', error: '' };
+    } catch (err) {
+        _clientsLoad = { estado: 'error', error: String((err && (err.code ? err.code + ': ' : '') + err.message) || err || 'error desconocido').slice(0, 180) };
+        throw err;
+    }
+}
+
+async function _fetchClientsInterno() {
     const BATCH_SIZE = 500;
     const allDocs = [];
     let lastVisible = null;
@@ -16582,6 +16594,12 @@ function exportCierresHistorial(format) {
     showNotice(`Historial de cajas exportado en Excel/CSV (${rows.length}).`, 'ok');
 }
 
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-clients-reintentar]')) return;
+    _clientsLoad = { estado: 'cargando', error: '' }; renderClients();
+    fetchClients({ force: true }).then(renderClients, () => renderClients());
+});
+
 function renderClients() {
     if (!clientsList) {
         return;
@@ -16601,7 +16619,12 @@ function renderClients() {
     clientsList.innerHTML = '';
 
     if (!filteredClients.length) {
-        clientsList.innerHTML = '<tr><td class="client-empty-row" colspan="8">No hay clientes que coincidan con la busqueda actual.</td></tr>';
+        const sinDatos = !clientsState.length;
+        clientsList.innerHTML = sinDatos && _clientsLoad.estado === 'cargando'
+            ? '<tr><td class="client-empty-row" colspan="8">⏳ Cargando clientes…</td></tr>'
+            : sinDatos && _clientsLoad.estado === 'error'
+                ? `<tr><td class="client-empty-row" colspan="8">⚠️ No se pudieron cargar los clientes (${escapeHtml(_clientsLoad.error)}). <button type="button" class="informes-action-btn" data-clients-reintentar>Reintentar</button></td></tr>`
+                : '<tr><td class="client-empty-row" colspan="8">No hay clientes que coincidan con la busqueda actual.</td></tr>';
         _renderClientsPagination(0, 1);
         return;
     }
