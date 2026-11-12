@@ -144,3 +144,11 @@ test('Configuración: títulos de fila con una sola tipografía y todos los «+ 
     assert.ok(!js.includes('class="informes-action-btn cfg-add-btn"'), 'los botones de agregar del JS llevan el rol principal');
     assert.ok((js.match(/informes-action-btn--primary cfg-add-btn/g) || []).length >= 3);
 });
+
+test('Clientes: una línea por cliente con menú «⋯»; ventanas con scroll propio y fondo bloqueado', () => {
+    assert.ok(html.includes('LISTA DE CLIENTES: una sola línea por cliente'));
+    assert.ok(js.includes('class="client-more"') && js.includes('data-client-action'));
+    assert.ok(html.includes('body:has(.pos-note-modal-overlay), body:has(.vd-overlay) { overflow: hidden; }'));
+    assert.ok(js.includes('<div class="uc-cuerpo cxc-cuerpo">'), 'la ventana de Unir duplicados desplaza su lista');
+    assert.ok(!/<th>Cliente<\/th>\s*<th>Tipo<\/th>\s*<th>M/.test(html) || html.includes('<th>Tipo</th>'), 'la tabla de ventas conserva sus columnas');
+});

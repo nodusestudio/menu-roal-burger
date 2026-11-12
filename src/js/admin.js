@@ -16601,7 +16601,7 @@ function renderClients() {
     clientsList.innerHTML = '';
 
     if (!filteredClients.length) {
-        clientsList.innerHTML = '<tr><td class="client-empty-row" colspan="11">No hay clientes que coincidan con la busqueda actual.</td></tr>';
+        clientsList.innerHTML = '<tr><td class="client-empty-row" colspan="8">No hay clientes que coincidan con la busqueda actual.</td></tr>';
         _renderClientsPagination(0, 1);
         return;
     }
@@ -16616,41 +16616,22 @@ function renderClients() {
         row.className = 'client-row';
         const extraAddresses = client.savedAddresses.slice(1);
         const hasExpandedAddresses = expandedClientAddressIds.has(client.id);
+        const _tel = escapeHtml(client.customerPhone || '');
+        const _acc = (accion, rotulo, extra) => `<button type="button" class="client-action-btn${extra || ''}" data-client-action="${accion}" data-client-id="${escapeHtml(client.id)}">${rotulo}</button>`;
         row.innerHTML = `
-            <td>
-                <div class="client-name-cell">
-                    <strong>${escapeHtml(client.customerName)}</strong>
-                    <span>${escapeHtml(client.id)}</span>
-                </div>
-            </td>
-            <td>${escapeHtml(client.customerPhone)}${client.whatsappUser ? `<div class="client-address-muted">💬 ${escapeHtml(client.whatsappUser)}</div>` : ''}</td>
-            <td class="client-address-cell">
-                <strong class="client-address-primary">${escapeHtml(client.address)}</strong>
-                ${extraAddresses.length ? `
-                    <button type="button" class="client-address-toggle" data-client-toggle-addresses="${escapeHtml(client.id)}" aria-expanded="${hasExpandedAddresses ? 'true' : 'false'}">
-                        ${hasExpandedAddresses ? 'Ocultar direcciones' : `Ver ${extraAddresses.length} direccion(es) mas`}
-                    </button>
-                ` : '<span class="client-address-muted">Solo direccion principal</span>'}
-            </td>
-            <td>${escapeHtml(formatOrderDate(client.firstOrderAt))}</td>
-            <td>${escapeHtml(formatOrderDate(client.lastOrderAt))}</td>
-            <td><span class="client-metric-chip">${escapeHtml(String(client.totalOrders))}</span></td>
-            <td>${escapeHtml(formatMoney(client.totalSpent))}</td>
-            <td>${escapeHtml(client.puntosDisponibles.toLocaleString('es-CO'))}</td>
-            <td>${escapeHtml(client.puntosAcumuladosTotal.toLocaleString('es-CO'))}</td>
-            <td>
-                <div class="client-name-cell">
-                    <strong>${escapeHtml(client.lastOrderCode || 'Sin codigo')}</strong>
-                    <span>${escapeHtml(formatMoney(client.lastOrderTotal || 0))}</span>
-                </div>
-            </td>
-            <td>
+            <td class="cl-cliente" title="${escapeHtml(client.customerName)} · ${escapeHtml(client.id)}"><strong>${escapeHtml(client.customerName)}</strong> <span class="cl-tel">${_tel}${client.whatsappUser ? ` · 💬 ${escapeHtml(client.whatsappUser)}` : ''}</span></td>
+            <td class="cl-dir" title="${escapeHtml(client.address || '')}">${escapeHtml(client.address || '—')}${extraAddresses.length ? ` <button type="button" class="cl-mas" data-client-toggle-addresses="${escapeHtml(client.id)}" aria-expanded="${hasExpandedAddresses ? 'true' : 'false'}" title="${hasExpandedAddresses ? 'Ocultar direcciones' : 'Ver las otras direcciones'}">+${extraAddresses.length}</button>` : ''}</td>
+            <td class="cl-fecha" title="Primera visita: ${escapeHtml(formatOrderDate(client.firstOrderAt))}">${escapeHtml(formatOrderDate(client.lastOrderAt))}</td>
+            <td class="cl-num"><span class="client-metric-chip">${escapeHtml(String(client.totalOrders))}</span></td>
+            <td class="cl-num">${escapeHtml(formatMoney(client.totalSpent))}</td>
+            <td class="cl-num" title="Acumulados en total: ${escapeHtml(client.puntosAcumuladosTotal.toLocaleString('es-CO'))}">${escapeHtml(client.puntosDisponibles.toLocaleString('es-CO'))}</td>
+            <td class="cl-ult" title="${escapeHtml(client.lastOrderCode || 'Sin codigo')}">${escapeHtml(client.lastOrderCode || '—')} · ${escapeHtml(formatMoney(client.lastOrderTotal || 0))}</td>
+            <td class="cl-acc">
                 <div class="client-actions">
-                    <button type="button" class="client-action-btn" data-client-action="edit" data-client-id="${escapeHtml(client.id)}">Editar</button>
-                    <button type="button" class="client-action-btn" data-client-action="contacto" data-client-id="${escapeHtml(client.id)}" title="Descarga la tarjeta de contacto para guardarla en el celular">📇 Contacto</button>
-                    <button type="button" class="client-action-btn" data-client-action="adjust-points" data-client-id="${escapeHtml(client.id)}">Ajustar puntos</button>
-                    <button type="button" class="client-action-btn" data-client-action="points-history" data-client-id="${escapeHtml(client.id)}">Historial de ajustes</button>
-                    <button type="button" class="client-action-btn delete" data-client-action="delete" data-client-id="${escapeHtml(client.id)}">Eliminar</button>
+                    ${_acc('edit', 'Editar')}
+                    <details class="client-more"><summary class="client-action-btn" title="Más acciones">⋯</summary><div class="client-more-menu">
+                        ${_acc('contacto', '📇 Tarjeta de contacto')}${_acc('adjust-points', '⭐ Ajustar puntos')}${_acc('points-history', '🕒 Historial de ajustes')}${_acc('delete', '🗑 Eliminar', ' delete')}
+                    </div></details>
                 </div>
             </td>
         `;
@@ -16660,7 +16641,7 @@ function renderClients() {
             const detailRow = document.createElement('tr');
             detailRow.className = 'client-address-detail-row';
             detailRow.innerHTML = `
-                <td colspan="11">
+                <td colspan="8">
                     <div class="client-address-detail-box">
                         <strong>Direcciones guardadas</strong>
                         <div class="client-address-detail-list">
@@ -16679,6 +16660,20 @@ function renderClients() {
 
     _renderClientsPagination(_clientsPage, totalPages, filteredClients.length);
 }
+
+// Menú «⋯» de cada cliente: flota (fixed) para no quedar recortado por la tabla; se cierra solo.
+document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (!(d instanceof HTMLElement) || !d.classList.contains('client-more') || !d.open) return;
+    document.querySelectorAll('details.client-more[open]').forEach((o) => { if (o !== d) o.open = false; });
+    const s = d.querySelector('summary').getBoundingClientRect(); const m = d.querySelector('.client-more-menu');
+    // Un contenedor con filtro (backdrop-filter) vuelve «relativo» a su caja el position:fixed: se mide dónde cayó y se corrige.
+    const metaTop = Math.min(s.bottom + 4, window.innerHeight - m.offsetHeight - 8), metaLeft = Math.max(8, s.right - m.offsetWidth);
+    m.style.top = metaTop + 'px'; m.style.left = metaLeft + 'px';
+    const r = m.getBoundingClientRect();
+    m.style.top = (metaTop + (metaTop - r.top)) + 'px'; m.style.left = (metaLeft + (metaLeft - r.left)) + 'px';
+}, true);
+document.addEventListener('click', (e) => { document.querySelectorAll('details.client-more[open]').forEach((o) => { if (!o.contains(e.target) || e.target.closest('.client-more-menu button')) o.open = false; }); });
 
 function _renderClientsPagination(page, totalPages, total) {
     const el = document.getElementById('clientsPagination');
@@ -23996,7 +23991,7 @@ async function openUnirClientesModal() {
     const modal = document.createElement('div');
     modal.id = 'unirClientesModal';
     modal.className = 'pos-note-modal-overlay';
-    modal.innerHTML = '<div class="pos-note-modal-box cxc-box"><p class="pos-note-modal-title">🧩 Unir clientes duplicados</p><div class="uc-cuerpo"><p class="cxc-vacio">Buscando…</p></div><div class="pos-note-modal-actions"><button type="button" class="pos-note-cancel-btn">Cerrar</button></div></div>';
+    modal.innerHTML = '<div class="pos-note-modal-box cxc-box"><p class="pos-note-modal-title">🧩 Unir clientes duplicados</p><div class="uc-cuerpo cxc-cuerpo"><p class="cxc-vacio">Buscando…</p></div><div class="pos-note-modal-actions"><button type="button" class="pos-note-cancel-btn">Cerrar</button></div></div>';
     modal.querySelector('.pos-note-cancel-btn').addEventListener('click', () => modal.remove());
     document.body.appendChild(modal);
     const cuerpo = modal.querySelector('.uc-cuerpo');
