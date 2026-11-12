@@ -152,3 +152,8 @@ test('Clientes: una línea por cliente con menú «⋯»; ventanas con scroll pr
     assert.ok(js.includes('<div class="uc-cuerpo cxc-cuerpo">'), 'la ventana de Unir duplicados desplaza su lista');
     assert.ok(!/<th>Cliente<\/th>\s*<th>Tipo<\/th>\s*<th>M/.test(html) || html.includes('<th>Tipo</th>'), 'la tabla de ventas conserva sus columnas');
 });
+
+test('Clientes: se leen SIEMPRE del servidor (no de la copia local que puede venir vacía)', () => {
+    const i = js.indexOf('async function _fetchClientsInterno()');
+    assert.ok(js.slice(i, i + 600).includes("q.get({ source: 'server' })"));
+});

@@ -4445,7 +4445,7 @@ async function _fetchClientsInterno() {
     do {
         let q = firebaseDb.collection(CLIENTS_COLLECTION).limit(BATCH_SIZE);
         if (lastVisible) q = q.startAfter(lastVisible);
-        const snapshot = await q.get();
+        const snapshot = await q.get({ source: 'server' }); // SIEMPRE del servidor: sin esto, si la conexión falla el SDK devuelve en silencio la copia local (vacía o vieja)
         allDocs.push(...snapshot.docs);
         lastVisible = snapshot.docs.length === BATCH_SIZE
             ? snapshot.docs[snapshot.docs.length - 1]
