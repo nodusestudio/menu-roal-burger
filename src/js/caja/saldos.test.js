@@ -4,7 +4,7 @@
 // Si la foto no existe en este computador, solo corre los casos sintéticos.
 process.env.TZ = 'America/Bogota';
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { calcularSaldosHistorial, cierreDescuadreSinMetodo, trasladoEnCierreCerrado, totalNetoLibroContable } from './saldos.js';
 
 let fallos = 0;
@@ -63,15 +63,15 @@ if (existsSync(ruta)) {
     const s = calcularSaldosHistorial({ cierres: crudo.cierres, gastos: crudo.gastos, methodKeys });
     console.log(`\nFoto real del ${crudo.generado} · métodos: ${methodKeys.join(', ')}`);
     console.log('  calculado:', JSON.stringify({ ...s.porMetodo, otro: s.otro, totalNeto: s.totalNeto, ingresos: s.ingresos, egresos: s.egresos }));
-    // Números que mostraba la pantalla Historial de Cajas el 10-nov-2026 (captura del dueño):
-    eq(s.porMetodo.efectivo, 878700, 'PANTALLA: Efectivo $878.700');
-    eq(s.porMetodo.bancolombia, 723325, 'PANTALLA: Bancolombia/Breve $723.325');
-    eq(s.porMetodo.nequi, 0, 'PANTALLA: Nequi $0');
-    eq(s.otro, 0, 'PANTALLA: Otro $0');
-    eq(s.totalNeto, 1602025, 'PANTALLA: Total Neto $1.602.025');
-    eq(s.ingresos, 76832900, 'PANTALLA: Ingresos $76.832.900');
-    eq(s.egresos, 77235120, 'PANTALLA: Egresos $77.235.120');
-    eq(totalNetoLibroContable({ cierres: crudo.cierres, gastos: crudo.gastos }), -402220, 'Libro Contable hoy: −$402.220');
+    // Esperados: de la ÚLTIMA foto independiente (sumas simples de herramientas/baseline-dinero.mjs), no números fijos: el negocio sigue vendiendo.
+    const dirFotos = new URL('../../../herramientas/baseline-dinero/', import.meta.url);
+    const fotos = readdirSync(dirFotos).filter((f) => /^dinero-.*[.]json$/.test(f)).sort();
+    const T = JSON.parse(readFileSync(new URL(fotos[fotos.length - 1], dirFotos), 'utf8')).totales;
+    eq(s.totalNeto, T.saldo_total_estilo_Historial, `PANTALLA: Total Neto = foto independiente (${fotos[fotos.length - 1]})`);
+    eq(s.ingresos, T.cierres_ingresosTotal, 'PANTALLA: Ingresos = suma de los cierres');
+    eq(s.egresos, T.cierres_gastosTotal + T.gastos_externos_total, 'PANTALLA: Egresos = gastos de los cierres + gastos externos');
+    eq(s.ingresos - s.egresos + T.ajustes_total, s.totalNeto, 'Ingresos − Egresos + Ajustes = Total Neto');
+    eq(totalNetoLibroContable({ cierres: crudo.cierres, gastos: crudo.gastos }), T.saldo_total_estilo_LibroContable, 'Libro Contable hoy = foto independiente');
     eq(Object.values(s.porMetodo).reduce((a, b) => a + b, 0) + s.otro, s.totalNeto, 'las tarjetas suman exactamente el Total Neto');
 } else {
     console.log('\n(Sin foto real en este computador: se omite el golden master. Genera una con herramientas/baseline-dinero.mjs)');

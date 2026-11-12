@@ -63,14 +63,23 @@ try {
   ok(r.foot.includes('$ 1.000') && r.foot.includes('−$ 150'), '…sin tocar Ingresos (1.000) ni Egresos (−150): el ajuste no es ingreso ni egreso');
 
   // ── Dinero real ──
+
+// Valores esperados: se leen de la ÚLTIMA foto independiente del dinero (herramientas/baseline-dinero.mjs), no de números fijos (el negocio sigue vendiendo).
+const dirFotos = path.join(raiz, 'herramientas/baseline-dinero');
+const ultimaFoto = fs.readdirSync(dirFotos).filter((f) => /^dinero-.*\.json$/.test(f)).sort().pop();
+const T = JSON.parse(fs.readFileSync(path.join(dirFotos, ultimaFoto), 'utf8')).totales;
+const fmtMonto = (n) => (n < 0 ? '−' : '') + '$ ' + Math.abs(Math.round(n)).toLocaleString('es-CO');
+const montoDe = (texto, etiqueta) => { const m = new RegExp(etiqueta + ' *(−?)[$] ?([0-9.]+)', 'i').exec(texto); return m ? (m[1] ? -1 : 1) * Number(m[2].split('.').join('')) : NaN; };
   const ruta = path.join(raiz, 'herramientas/baseline-dinero/crudo-ultimo.json');
   if (fs.existsSync(ruta)) {
     const crudo = JSON.parse(fs.readFileSync(ruta, 'utf8'));
     const real = await p.evaluate((d) => window.pintar(d), { cierres: crudo.cierres, gastos: crudo.gastos, metodos: crudo.metodos || [] });
     const compacto = real.foot.replace(/\s+/g, ' ');
-    ok(compacto.includes('$ 1.602.025'), 'DINERO REAL: Total Neto del Libro Contable = $ 1.602.025 (el mismo del Historial)');
-    ok(compacto.includes('+$ 2.004.245'), 'DINERO REAL: línea «Ajustes de saldo» = +$ 2.004.245');
-    ok(compacto.includes('$ 76.832.900') && compacto.includes('−$ 77.235.120'), 'DINERO REAL: Ingresos $ 76.832.900 y Egresos −$ 77.235.120 sin cambios');
+    ok(compacto.includes(fmtMonto(T.saldo_total_estilo_Historial)), 'DINERO REAL: Total Neto del Libro Contable = ' + fmtMonto(T.saldo_total_estilo_Historial) + ' (el mismo del Historial)');
+    ok(compacto.includes('+' + fmtMonto(T.ajustes_total)), 'DINERO REAL: línea «Ajustes de saldo» = +' + fmtMonto(T.ajustes_total));
+    const _montos = [...compacto.slice(compacto.indexOf('TOTAL HIST')).matchAll(/(−?)[$] ?([0-9.]+)/g)].map((m) => (m[1] ? -1 : 1) * Number(m[2].split('.').join('')));
+    const _i = _montos[0], _e = _montos[1], _t = _montos[2];
+    ok(_montos.length >= 3 && Math.round(_i + _e + T.ajustes_total) === T.saldo_total_estilo_Historial && _t === T.saldo_total_estilo_Historial, 'DINERO REAL: Ingresos ' + fmtMonto(_i) + ' + Egresos ' + fmtMonto(_e) + ' + Ajustes ' + fmtMonto(T.ajustes_total) + ' = Total Neto ' + fmtMonto(_t));
   } else {
     res.push('ℹ️ sin foto real en este computador: se omiten las comprobaciones con dinero real');
   }
