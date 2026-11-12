@@ -23980,6 +23980,9 @@ function _clientesDuplicados(clientes) {
     }));
 }
 
+// La ventana de unir trabaja SOLO por número de teléfono (nadie tiene dos números iguales). Dos personas con el mismo nombre y otro teléfono NO se unen.
+function _gruposPorTelefono(clientes) { return _clientesDuplicados(clientes).filter((g) => g.tipo === 'mismo_telefono'); }
+
 async function _clientesUnirLlamar(keepId, otherId, customerPhone = '') {
     if (!firebaseFunctions) throw new Error('No hay conexión con el servidor.');
     const res = await firebaseFunctions.httpsCallable('adminUnirClientes')({ keepId, otherId, customerPhone });
@@ -23998,7 +24001,7 @@ async function openUnirClientesModal() {
     let grupos = [];
     const pintar = () => {
         if (!grupos.length) { cuerpo.innerHTML = '<p class="cxc-vacio">No encontré clientes repetidos. 🎉</p>'; return; }
-        cuerpo.innerHTML = `<div class="uc-barra"><button type="button" class="informes-action-btn informes-action-btn--primary" data-uc-todos>🧩 Unir todos (${grupos.length} grupo${grupos.length === 1 ? '' : 's'})</button><span class="uc-estado" aria-live="polite">Se queda la ficha con MÁS pedidos de cada grupo.</span></div>` + '<p style="font-size:.78rem;opacity:.75;margin:0 0 8px;">Elige cuál ficha se conserva en cada grupo: a esa se le suman los pedidos y los puntos de las demás, y las otras se borran (queda una copia de seguridad).</p>'
+        cuerpo.innerHTML = `<div class="uc-barra"><button type="button" class="informes-action-btn informes-action-btn--primary" data-uc-todos>🧩 Unir todos (${grupos.length} grupo${grupos.length === 1 ? '' : 's'})</button><span class="uc-estado" aria-live="polite">Se unen las fichas con el MISMO teléfono y se queda la que tiene MÁS pedidos.</span></div>` + '<p style="font-size:.78rem;opacity:.75;margin:0 0 8px;">Elige cuál ficha se conserva en cada grupo: a esa se le suman los pedidos y los puntos de las demás, y las otras se borran (queda una copia de seguridad).</p>'
             + grupos.map((g, gi) => `<div class="cxc-grupo" data-g="${gi}"><div class="cxc-grupo-t"><strong>${g.tipo === 'mismo_telefono' ? '📞 Mismo teléfono' : '🔎 Posible: mismo nombre, otro teléfono'}</strong></div>`
                 + g.clientes.map((c) => `<label class="cxc-fila"><input type="radio" name="uc${gi}" value="${escapeHtml(c.id)}"${c.id === g.sugerido ? ' checked' : ''}>`
                     + `<span class="cxc-info">${escapeHtml(c.customerName)} · ${escapeHtml(c.customerPhone)}<small>${escapeHtml(c.id)} · ${Number(c.totalOrders || 0)} pedidos · ${escapeHtml(formatMoney(c.totalSpent || 0))} · ${Number(c.puntosDisponibles || 0).toLocaleString('es-CO')} pts</small></span></label>`).join('')
@@ -24032,12 +24035,11 @@ async function openUnirClientesModal() {
         const todos = e.target.closest('[data-uc-todos]');
         if (todos) {
             if (todos.disabled || !grupos.length) return;
-            const nTel = grupos.filter((g) => g.tipo === 'mismo_telefono').length, nNom = grupos.length - nTel;
             const sobran = grupos.reduce((s, g) => s + g.clientes.length - 1, 0);
             const ok = await showConfirmModal({
                 icon: '🧩', danger: false, confirmText: `Unir los ${grupos.length} grupos`,
                 title: '¿Unir TODOS los clientes repetidos?',
-                message: `${grupos.length} grupos (${nTel} por mismo teléfono${nNom ? ` y ${nNom} «posibles» por mismo nombre con otro teléfono` : ''}). En cada uno se conserva la ficha con MÁS pedidos y se le suman los pedidos y puntos de las demás; ${sobran} ficha${sobran === 1 ? '' : 's'} repetida${sobran === 1 ? '' : 's'} se borra${sobran === 1 ? '' : 'n'}. No se puede deshacer.`
+                message: `${grupos.length} grupo${grupos.length === 1 ? '' : 's'} con el MISMO número de teléfono. En cada uno se conserva la ficha con MÁS pedidos y se le suman los pedidos y puntos de las demás; ${sobran} ficha${sobran === 1 ? '' : 's'} repetida${sobran === 1 ? '' : 's'} se borra${sobran === 1 ? '' : 'n'}. No se puede deshacer.`
             });
             if (!ok) return;
             const estado = modal.querySelector('.uc-estado');
@@ -24046,7 +24048,7 @@ async function openUnirClientesModal() {
             try {
                 const r = await unirTodos(lista, (h, t) => { todos.textContent = `Uniendo ${h} de ${t}…`; if (estado) estado.textContent = 'No cierres esta ventana hasta que termine.'; });
                 await fetchClients({ force: true });
-                grupos = _clientesDuplicados(clientsState);
+                grupos = _gruposPorTelefono(clientsState);
                 pintar(); renderClients();
                 const f = r.fallos.length;
                 showNotice(`Listo: ${r.hechos - f} grupo${r.hechos - f === 1 ? '' : 's'} unido${r.hechos - f === 1 ? '' : 's'}, ${r.movidos} pedido${r.movidos === 1 ? '' : 's'} pasaron a la ficha base.${f ? ` ${f} grupo${f === 1 ? '' : 's'} no se pudo${f === 1 ? '' : 'ieron'} unir (quedan en la lista): ${r.fallos[0].mensaje}` : ''}`, f ? 'error' : 'ok');
@@ -24076,7 +24078,7 @@ async function openUnirClientesModal() {
             let movidos = 0;
             for (const o of otros) { const r = await _clientesUnirLlamar(keepId, o.id); movidos += Number(r && r.pedidosMovidos || 0); }
             await fetchClients({ force: true });
-            grupos = _clientesDuplicados(clientsState);
+            grupos = _gruposPorTelefono(clientsState);
             pintar();
             renderClients();
             showNotice(`Clientes unidos en ${keep.customerName}. ${movidos} pedido${movidos === 1 ? '' : 's'} pasaron a su historial.`, 'ok');
@@ -24085,7 +24087,7 @@ async function openUnirClientesModal() {
             showNotice(`No se pudo unir: ${err.message || err}`, 'error');
         }
     });
-    try { await fetchClients({ force: true }); grupos = _clientesDuplicados(clientsState); pintar(); }
+    try { await fetchClients({ force: true }); grupos = _gruposPorTelefono(clientsState); pintar(); }
     catch (err) { cuerpo.innerHTML = `<p class="cxc-vacio">No se pudieron cargar los clientes: ${escapeHtml(err.message || 'error')}.</p>`; }
 }
 document.getElementById('openUnirClientesBtn')?.addEventListener('click', openUnirClientesModal);

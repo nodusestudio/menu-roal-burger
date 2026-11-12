@@ -27,7 +27,7 @@ test('la ficha base del grupo es la que MÁS pedidos tiene', () => {
     assert.equal(grupos[0].sugerido, 'phone_573001112222');
 });
 
-test('el nombre repetido con OTRO teléfono también sugiere el de más pedidos', () => {
+test('la detección sigue viendo el nombre repetido, pero la ventana solo une por teléfono', () => {
     const grupos = _clientesDuplicados([
         { id: 'phone_3101000001', customerName: 'Valentina Cardona', customerPhone: '3101000001', totalOrders: 1 },
         { id: 'phone_3202000002', customerName: 'Valentina Cardona', customerPhone: '3202000002', totalOrders: 5 },
@@ -35,6 +35,10 @@ test('el nombre repetido con OTRO teléfono también sugiere el de más pedidos'
     assert.equal(grupos.length, 1);
     assert.equal(grupos[0].tipo, 'mismo_nombre');
     assert.equal(grupos[0].sugerido, 'phone_3202000002');
+    // la ventana filtra: dos personas con el mismo nombre y otro teléfono NO se unen
+    const soloTel = new Function('_clientesDuplicados', `${js.slice(js.indexOf('function _gruposPorTelefono'), js.indexOf('async function _clientesUnirLlamar'))}
+ return _gruposPorTelefono;`)(() => grupos);
+    assert.deepEqual(soloTel([]), []);
 });
 
 test('unirTodos: cada ficha repetida se une a la base y nunca la base consigo misma', async () => {
@@ -82,6 +86,8 @@ test('unirTodos: si un grupo falla, los demás siguen y el fallo se informa', as
 test('el botón, la confirmación con el conteo y el aviso final existen', () => {
     assert.match(js, /data-uc-todos/);
     assert.match(js, /¿Unir TODOS los clientes repetidos\?/);
-    assert.match(js, /Se queda la ficha con MÁS pedidos de cada grupo/);
+    assert.match(js, /Se unen las fichas con el MISMO teléfono y se queda la que tiene MÁS pedidos/);
+    assert.ok(!js.includes('_clientesDuplicados(clientsState)'), 'la ventana nunca usa los grupos por nombre');
+    assert.match(js, /grupos = _gruposPorTelefono\(clientsState\)/);
     assert.match(js, /No se puede deshacer/);
 });
