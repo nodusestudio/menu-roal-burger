@@ -19223,12 +19223,22 @@ function _btCols() { return _btPapelMm() === 80 ? 48 : 32; }
 // Helpers de formato ESC/POS compartidos por buildESCPOSData y buildCierreESCPOSData:
 // _emit (línea cruda), ww (envuelve por palabras, nunca corta), wl (envuelve o no según COLS),
 // wc (columna izquierda/derecha), sep/sep2 (separadores). `pb` recibe los bytes a imprimir.
-function createEscPosLineBuilder(pb, COLS) {
-    function _emit(line) {
-        const s = _escNormalize(line);
+function createEscPosLineBuilder(pb, COLS_TOTAL) {
+    // Ancho útil: dentro de un recuadro (boxOpen/boxClose) se reducen 4 columnas ("| " y " |").
+    let COLS = COLS_TOTAL;
+    let boxed = false;
+    function _raw(s) {
         for (let i = 0; i < s.length; i++) pb(s.charCodeAt(i) & 0xFF);
         pb(0x0A);
     }
+    function _emit(line) {
+        const s = _escNormalize(line);
+        if (boxed) _raw('| ' + s + ' '.repeat(Math.max(0, COLS - s.length)) + ' |');
+        else _raw(s);
+    }
+    // Recuadro de un producto (con sus adicionales): igual que el cuadro del ticket en pantalla.
+    function boxOpen()  { if (boxed) return; _raw('+' + '-'.repeat(COLS_TOTAL - 2) + '+'); boxed = true; COLS = COLS_TOTAL - 4; }
+    function boxClose() { if (!boxed) return; boxed = false; COLS = COLS_TOTAL; _raw('+' + '-'.repeat(COLS_TOTAL - 2) + '+'); }
     function ww(str, prefix) {
         const pfx = _escNormalize(prefix || '');
         const s = _escNormalize(str);
@@ -19309,7 +19319,7 @@ function createEscPosLineBuilder(pb, COLS) {
     function blank() { _emit(''); }
     function sep()  { _emit('-'.repeat(COLS)); }
     function sep2() { _emit('='.repeat(COLS)); }
-    return { ww, wl, wc, wh, blank, sep, sep2 };
+    return { ww, wl, wc, wh, blank, sep, sep2, boxOpen, boxClose };
 }
 
 // Ticket impreso: una burger pedida "en combo" llega como optionLabel "1 persona + Postobon 250ml (colombiana, manzana) ×2".
@@ -19367,7 +19377,7 @@ function buildESCPOSData(order) {
     const COLS = _btCols();
     const bytes = [];
     const pb = (...a) => bytes.push(...a);
-    const { ww, wl, wc, wh, blank, sep, sep2 } = createEscPosLineBuilder(pb, COLS);
+    const { ww, wl, wc, wh, blank, sep, sep2, boxOpen, boxClose } = createEscPosLineBuilder(pb, COLS);
 
     // ── ENCABEZADO ──────────────────────────────────────────────────────────
     pb(ESC, 0x40);
@@ -19414,6 +19424,7 @@ function buildESCPOSData(order) {
     const _grupos = _ticketAgruparCombos(_groupOrderItemsForDisplay(order.items || []));
     _grupos.forEach((item, idx) => {
         const esHijo = !!item.parentItemKey;
+        boxOpen(); // cada producto va en su recuadro, con lo que lleva dentro
         const precio = Number(item.subtotal) > 0 ? formatMoney(item.subtotal) : (Number(item.subtotal) < 0 ? '-' + formatMoney(Math.abs(item.subtotal)) : (esHijo ? 'incl.' : formatMoney(item.subtotal)));
         if (esHijo) wh('   + ', `${item.quantity}x ${item.productName}`, precio);
         else if (item._combo) {
@@ -19433,7 +19444,7 @@ function buildESCPOSData(order) {
             if (resalta) pb(ESC, 0x45, 0x00);
         });
         const siguiente = _grupos[idx + 1];
-        if (siguiente && !siguiente.parentItemKey) blank();
+        if (!siguiente || !siguiente.parentItemKey) boxClose();
     });
     if (order.orderNote) {
         sep();
@@ -19586,6 +19597,14 @@ function buildOrderPrintDocumentHtml(order) {
         '.ticket-table td:first-child{width:100%;overflow-wrap:anywhere;word-break:break-word}',
         '.ticket-table td:last-child{width:1%;white-space:nowrap;padding-left:4px}',
         '.ticket-table td strong{display:block}',
+        // Cada producto en su recuadro (igual que en pantalla), con sus adicionales dentro.
+        '.ticket-table{border-collapse:separate;border-spacing:0 4px}',
+        '.ticket-table tr.tk-g>td{border:0;padding:2px 4px}',
+        '.ticket-table tr.tk-g>td:first-child{border-left:1px solid #000}',
+        '.ticket-table tr.tk-g>td:last-child{border-right:1px solid #000}',
+        '.ticket-table tr.tk-g-first>td{border-top:1px solid #000}',
+        '.ticket-table tr.tk-g-last>td{border-bottom:1px solid #000}',
+        '.ticket-table tr.tk-g.ticket-row-child>td{border-top:1px dotted #000}',
         // Combos / adicionales / bebidas: anidados bajo su producto, con sangría y barra lateral.
         '.ticket-table tr.ticket-row-child td:first-child{padding-left:3mm;border-left:1px solid #000}',
         '.ticket-table tr.ticket-row-child td{font-size:8pt;border-bottom-style:dotted}',

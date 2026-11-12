@@ -70,3 +70,15 @@ test('wh: una palabra más larga que la línea se parte sin perder letras', () =
     assert.equal(l.join(''), palabra);
     l.forEach((x) => assert.ok(x.length <= 32));
 });
+
+test('recuadro: cada producto va en su cuadro, todas las líneas del mismo ancho y sin perder texto', () => {
+    const l = lineas((b) => {
+        b.boxOpen(); b.wh(' 1x ', 'Burger Roal', '$ 18.000'); b.wh('    - ', 'Sin tomate'); b.boxOpen(); b.wh('   + ', '1x Papas', '$ 5.000'); b.boxClose(); b.boxClose();
+        b.wl('fuera');
+    });
+    assert.equal(l[0], '+' + '-'.repeat(30) + '+');
+    assert.ok(l.slice(0, 5).every((x) => x.length === 32));
+    assert.ok(l[1].startsWith('|  1x Burger Roal') && l[1].endsWith('$ 18.000 |'));
+    assert.equal(l[4], l[0]);
+    assert.equal(l[5], 'fuera');
+});
