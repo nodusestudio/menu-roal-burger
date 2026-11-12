@@ -176,3 +176,9 @@ test('Fuera del Menú: la lista de campañas usa botones compactos visibles (no 
     assert.ok(f.includes('cpana-camp-fila') && (f.match(/class="mini-btn"/g) || []).length >= 4);
     assert.ok(html.includes('.cpana-camp-fila .mini-btn {'));
 });
+
+test('Mensajes: botones del encabezado de la conversación con la familia única y filas más bajas', () => {
+    assert.ok(html.includes('.inbox-head-btn { display: inline-flex;'));
+    assert.ok(html.includes('.inbox-head-btn.blue {') && html.includes('.inbox-head-btn.red {'));
+    assert.ok(html.includes('.inbox-thread-avatar { width: 34px !important;'));
+});

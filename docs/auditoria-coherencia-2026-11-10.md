@@ -976,3 +976,6 @@ Hallazgo (mismo origen que la lista de clientes vacía): con `enablePersistence`
 
 # Parte 37 — Fuera del Menú: campañas compactas y botones visibles
 `herramientas/captura-fuera-menu.mjs` dibuja la lista con la función real (`renderCuponPanaCampanas`). Hallazgo: los botones «Copiar link / Editar / Ver métricas / Duplicar» usaban `pm-icon-btn` fuera de su contexto (texto oscuro sobre fondo oscuro, casi invisibles) y «Abrir landing» salía como enlace azul por defecto. Cada campaña ocupaba ~151 px. Ahora: título, datos y cupos en una línea, estados a la derecha, y el enlace junto a los 5 botones compactos de 24 px (~75 px por campaña). Test: `tests/fuera-menu.e2e.mjs`.
+
+# Parte 38 — Mensajes
+`herramientas/captura-mensajes.mjs` dibuja Mensajes con las funciones reales (`renderMessages`, `openInboxDetail`). El diseño de dos paneles (lista y conversación) ya era bueno. Ajustes: conversaciones de 61 a ~51 px; botones del encabezado («WhatsApp», «Eliminar conversación») a la familia única (32 px, radio 9 px; azul = acento, rojo = peligro suave). Test: `tests/mensajes.e2e.mjs`. Con esto las listas de Clientes, Feedback, Fuera del Menú, Artículos y Mensajes quedan revisadas con las funciones reales; solo Chat Roal y Redes no se han visto con datos.
