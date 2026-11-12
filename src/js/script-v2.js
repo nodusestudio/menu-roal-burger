@@ -8,7 +8,9 @@ const WHATSAPP_NUMBER = '573144689509';
 // los conserva. Sin texto, abre el chat vacío. SYNC: mismo formato que waMeLink en
 // functions/cuponPana.js (este archivo no se empaqueta con imports, por eso vive aquí).
 function buildWhatsAppUrl(phoneDigits, text = '') {
-    const digits = String(phoneDigits || '').replace(/\D+/g, '');
+    let digits = String(phoneDigits || '').replace(/\D+/g, '');
+    // Los celulares se guardan sin el 57 (como la web); WhatsApp necesita el indicativo para abrir el chat.
+    if (digits.length === 10 && digits.startsWith('3')) digits = `57${digits}`;
     return `https://api.whatsapp.com/send?phone=${digits}${text ? `&text=${encodeURIComponent(text)}` : ''}`;
 }
 const ORDERS_COLLECTION = 'pedidos';

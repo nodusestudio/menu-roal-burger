@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261112-1624">
+    <link rel="stylesheet" href="style.css?v=20261112-1653">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -17209,6 +17209,12 @@
     .inbox-head-btn.red { background: rgba(252,165,165,.16); color: #fca5a5; border: 1px solid rgba(252,165,165,.4); }
     .inbox-thread-item { padding-top: 8px !important; padding-bottom: 8px !important; }
     .inbox-thread-avatar { width: 34px !important; height: 34px !important; font-size: .9rem !important; }
+    /* ACCIÓN PRINCIPAL DE CADA CONFIGURACIÓN: siempre arriba a la derecha de su tarjeta (junto al título), no abajo ni pegada al título */
+    [data-section-scope="configuracion"] .admin-card { position: relative; }
+    [data-section-scope="configuracion"] #pmAddBtn, [data-section-scope="configuracion"] #beAddBtn, [data-section-scope="configuracion"] #cpAddBtn { position: absolute; top: var(--ui-pad); right: var(--ui-pad); margin: 0; z-index: 2; }
+    [data-section-scope="configuracion"] .card-head { min-height: var(--ui-btn-h); }
+    [data-section-scope="configuracion"] .card-head > div:has(> #addMeseroBtn) { flex: 1; justify-content: space-between; }
+    [data-section-scope="configuracion"] .card-head > div:has(> #addMeseroBtn) > #addMeseroBtn { margin-left: auto; }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17739,19 +17745,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261112-1624"></script>
+    <script defer src="firebase-config.js?v=20261112-1653"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261112-1624"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261112-1653"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1624"></script>
-    <script defer src="admin.js?v=20261112-1624"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1653"></script>
+    <script defer src="admin.js?v=20261112-1653"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

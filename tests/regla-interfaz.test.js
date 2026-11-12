@@ -145,6 +145,12 @@ test('Configuración: títulos de fila con una sola tipografía y todos los «+ 
     assert.ok((js.match(/informes-action-btn--primary cfg-add-btn/g) || []).length >= 3);
 });
 
+test('Configuración: la acción principal de cada tarjeta va arriba a la derecha', () => {
+    assert.ok(html.includes('ACCIÓN PRINCIPAL DE CADA CONFIGURACIÓN'));
+    assert.match(html, /#pmAddBtn, \[data-section-scope="configuracion"\] #beAddBtn, \[data-section-scope="configuracion"\] #cpAddBtn \{ position: absolute; top: var\(--ui-pad\); right: var\(--ui-pad\)/);
+    assert.ok(html.includes('#addMeseroBtn) > #addMeseroBtn { margin-left: auto; }'));
+});
+
 test('Clientes: una línea por cliente con menú «⋯»; ventanas con scroll propio y fondo bloqueado', () => {
     assert.ok(html.includes('LISTA DE CLIENTES: una sola línea por cliente'));
     assert.ok(js.includes('class="client-more"') && js.includes('data-client-action'));
