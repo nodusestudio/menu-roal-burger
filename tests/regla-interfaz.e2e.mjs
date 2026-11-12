@@ -29,7 +29,7 @@ try {
   ok(card.h <= 36, `los campos son compactos (alto ${card.h} px)`);
   const alto = await p.evaluate(() => Math.round(document.querySelector('#brandingForm').getBoundingClientRect().height));
   ok(alto < 650, `la pestaña Negocio cabe sin tanto desplazamiento (formulario de ${alto} px; antes ~900)`);
-  const fuera = await p.evaluate(() => { const c = [...document.querySelectorAll('.admin-card')].find((x) => !x.closest('[data-section-scope="configuracion"]')); return c ? getComputedStyle(c).paddingTop : 'sin tarjeta'; });
+  const fuera = await p.evaluate(() => { const c = [...document.querySelectorAll('.admin-card:not(.menu-section-card)')].find((x) => !x.closest('[data-section-scope="configuracion"]')); return c ? getComputedStyle(c).paddingTop : 'sin tarjeta'; });
   ok(fuera === '14px', 'las tarjetas de las demás secciones también usan el relleno de 14 px (' + fuera + ')');
   const mini = await p.evaluate(() => { const b = document.createElement('button'); b.className = 'mini-btn'; b.textContent = 'x'; document.body.appendChild(b); const r = b.getBoundingClientRect(); return Math.round(r.height); });
   ok(mini === 24, 'el botón compacto (tablas y listas) mide 24 px: un solo tamaño pequeño');
@@ -45,7 +45,8 @@ try {
   });
   ok(geo.fila <= 44, `Menú público: cada botón de la lista es UNA fila compacta (${geo.fila} px), no un bloque de varias líneas`);
   ok(geo.ancho < 120 && geo.alto <= 26, `…con botones pequeños de ${geo.ancho}×${geo.alto} px (no ocupan todo el ancho), también en ventanas de 1280 px`);
-  ok(geo.retraida <= 56, `una tarjeta retraída ocupa solo ${geo.retraida} px (antes ~90)`);
+  ok(geo.retraida > 150, `en Configuración nada se retrae: aunque una tarjeta venga guardada como retraída, se ve abierta (${geo.retraida} px)`);
+  ok(await p.evaluate(() => getComputedStyle(document.querySelector('[data-section-scope="configuracion"] .card-collapse-btn')).display) === 'none', 'y el botón Retraer/Desplegar no se muestra en Configuración');
   const formas = await p.evaluate(() => {
     const radios = {}; const trans = new Set();
     document.querySelectorAll('button, [role="tab"], .menu-inner-tab').forEach((b) => { if (b.closest('#fodiFlot') || b.classList.contains('ff-b')) return; const c = getComputedStyle(b); radios[c.borderTopLeftRadius] = (radios[c.borderTopLeftRadius] || 0) + 1; trans.add(c.transitionDuration.split(',')[0]); });
@@ -86,6 +87,19 @@ try {
   ok(vacios.length === 1, 'ESTADO VACÍO: los 13 tipos de «No hay…» se ven idénticos (' + vacios.join(' ; ') + ')');
   const pie = await p.evaluate(() => { const a = document.getElementById('adminPublicLink'); const s = getComputedStyle(a); return [Math.round(a.getBoundingClientRect().height), s.borderTopLeftRadius, s.textTransform].join('|'); });
   ok(pie === '32|9px|none', 'el enlace «Ir a público» del menú es un botón más de la familia (' + pie + ')');
+  const fodi = await p.evaluate(() => {
+    const set = (sel, f) => [...new Set([...document.querySelectorAll(sel)].map((e) => f(getComputedStyle(e))))];
+    return {
+      ventanas: set('#fodiFlotPanel, #respClienteModal .rc-caja, #rrPanel, #rrVozPanel', (c) => c.borderTopLeftRadius),
+      botones: set('#fodiFlotPanel .ff-b, #fodiFlotPanel .ff-x, .asist-send, .asist-voz, #respClienteModal .rc-btn, .rr-nuevo, #fodiFlotTxt', (c) => c.borderTopLeftRadius),
+      cuadrados: set('#fodiFlotPanel .ff-b, .asist-send, .asist-voz', (c) => c.width + 'x' + c.height),
+      burbujas: set('.asist-card-sug, .asist-form, .asist-rec', (c) => c.borderTopLeftRadius),
+    };
+  });
+  ok(fodi.ventanas.length === 1 && fodi.ventanas[0] === '14px', 'FODI: todas sus ventanas con radio 14 px (' + fodi.ventanas.join(',') + ')');
+  ok(fodi.botones.length === 1 && fodi.botones[0] === '9px', 'FODI: botones y campo de escribir con radio 9 px, ya no redondos ni píldora (' + fodi.botones.join(',') + ')');
+  ok(fodi.cuadrados.length === 1 && fodi.cuadrados[0] === '40px x 40px'.replace(' x ', 'x'), 'FODI: botones de icono de 40×40 (' + fodi.cuadrados.join(',') + ')');
+  ok(fodi.burbujas.length === 1 && fodi.burbujas[0] === '14px', 'FODI: tarjetas y caja de escribir del asistente con radio 14 px (' + fodi.burbujas.join(',') + ')');
   ok(errs.length === 0, 'sin errores de JavaScript' + (errs.length ? ': ' + errs.join(' | ') : ''));
 } finally { await nav.close(); srv.close(); fs.unlinkSync(archivo); }
 console.log(res.join('\n')); if (res.some((r) => r.startsWith('❌'))) process.exit(1);

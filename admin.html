@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261110-2231">
+    <link rel="stylesheet" href="style.css?v=20261112-1130">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -17117,6 +17117,37 @@
     .nav2-grupo.has-unread { padding-right: 13px; }
     .nav2-grupo.has-unread .nav2-flecha { margin-right: 0; }
     .nav2-grupo.has-unread::after { right: 34px; top: 50%; transform: translateY(-50%); }
+    /* ══ CONFIGURACIÓN E INFORMES: un solo recuadro por sección (antes: tarjeta grande con tarjetas dentro) ══ */
+    .admin-card.menu-section-card:has(> .menu-inner-panels-wrap), .menu-section-card:has(.menu-inner-panels-wrap) { background: none !important; box-shadow: none !important; border: none !important; padding: 0 !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+    .menu-inner-panels-wrap { padding: 0; }
+    /* En Configuración nada se retrae: el menú lateral ya navega, y una lista de títulos con «Desplegar» solo estorba */
+    [data-section-scope="configuracion"] .card-collapse-btn { display: none !important; }
+    [data-section-scope="configuracion"] .card-body.collapsed { max-height: none !important; opacity: 1 !important; pointer-events: auto !important; overflow: visible; }
+    .menu-inner-panel .admin-card { background: rgba(18, 24, 42, 0.72); border: 1px solid rgba(255,255,255,0.09); box-shadow: none; }
+    /* Submenú lateral: filas planas, sin cajas; el activo con barra naranja */
+    .nav2-lista { gap: 2px; margin: 2px 0 6px 14px; padding-left: 8px; }
+    .nav2-sub { background: transparent !important; border-color: transparent !important; box-shadow: none !important; min-height: 32px; padding: 6px 12px; font-weight: 600; color: rgba(255,255,255,0.78); }
+    .nav2-sub:hover { background: rgba(255,255,255,0.07) !important; color: #fff; }
+    .nav2-sub.active { background: rgba(255,122,26,0.14) !important; color: #ffb27a; box-shadow: inset 3px 0 0 #ff7a1a !important; }
+
+    /* ══ FODI: mismas formas, tamaños y colores que el resto de la aplicación (la mascota conserva su cara) ══
+       Ventanas 14 px · botones y campos 9 px · botón de enviar = rol principal (naranja) · el resto, secundarios. */
+    #fodiFlotPanel, #respClienteModal .rc-caja, #rrPanel, #rrVozPanel { border-radius: var(--ui-radius-lg) !important; background: #14172a !important; border: 1.5px solid rgba(255,255,255,.14) !important; }
+    #fodiFlotPanel .ff-b, #fodiFlotPanel .ff-x, .asist-send, .asist-voz { border-radius: var(--ui-radius) !important; width: 40px !important; height: 40px !important; flex: 0 0 40px !important; border: 1px solid var(--admin-border) !important; background: rgba(255,255,255,.07) !important; color: rgba(255,255,255,.85) !important; transition-duration: .15s !important; }
+    #fodiFlotPanel .ff-x { width: 32px !important; height: 32px !important; flex: 0 0 32px !important; }
+    #fodiFlotPanel .ff-b:hover, #fodiFlotPanel .ff-x:hover, .asist-voz:hover { background: rgba(255,255,255,.14) !important; }
+    #fodiFlotEnviar, .asist-send { background: linear-gradient(135deg, #ff7a1a, #ff9540) !important; color: #1a1208 !important; border-color: transparent !important; }
+    #fodiFlotMic.on, .asist-voz.on { background: #ef4444 !important; color: #fff !important; border-color: #ef4444 !important; }
+    #fodiFlotTxt { border-radius: var(--ui-radius) !important; min-height: 40px; }
+    #respClienteModal .rc-btn, .rr-nuevo { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--ui-btn-h); padding: 0 var(--ui-pad) !important; border-radius: var(--ui-radius) !important; font-family: 'Space Grotesk', sans-serif; font-size: .8rem !important; font-weight: 700; line-height: 1; border: 1px solid transparent; background: linear-gradient(135deg, #ff7a1a, #ff9540) !important; color: #1a1208 !important; cursor: pointer; width: auto !important; }
+    #respClienteModal .rc-btn.sec { background: rgba(255,255,255,.07) !important; color: rgba(255,255,255,.85) !important; border-color: var(--admin-border); }
+    #rrCerrar, #rrVozCerrar { border-radius: var(--ui-radius) !important; }
+    /* Burbujas y tarjetas del chat: 14 px con la esquina de la cola más cerrada */
+    #fodiFlotLog .ff-m { border-radius: var(--ui-radius-lg); }
+    #fodiFlotPensamientos .ff-pensamiento, #fodiFlotHola { border-radius: var(--ui-radius-lg); }
+    .asist-msg.user { border-radius: 14px 14px 4px 14px; }
+    .asist-card-sug, .asist-form, .asist-rec { border-radius: var(--ui-radius-lg); }
+    .asist-code, .asist-tbl-wrap, .asist-copy { border-radius: var(--ui-radius); }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17647,19 +17678,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261110-2231"></script>
+    <script defer src="firebase-config.js?v=20261112-1130"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261110-2231"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261112-1130"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261110-2231"></script>
-    <script defer src="admin.js?v=20261110-2231"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1130"></script>
+    <script defer src="admin.js?v=20261112-1130"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {
@@ -17901,11 +17932,11 @@
         <div id="fodiFlotPanel" role="dialog" aria-label="Chat con FODI">
             <div class="ff-head"><div id="fodiFlotCara"></div><div class="ff-nombre">FODI<small>tu asistente 💛</small></div><button type="button" class="ff-x" id="fodiFlotNuevo" aria-label="Nueva conversación" title="Nueva conversación">🧹</button><button type="button" class="ff-x" id="fodiFlotCerrar" aria-label="Cerrar">✕</button></div>
             <div id="fodiFlotLog"></div>
-            <div id="fodiFlotPrev" style="display:none;align-items:center;gap:8px;padding:0 12px 4px"><img alt="Captura" style="max-height:56px;border-radius:8px"><button type="button" class="ff-b" id="fodiFlotQuitar" style="width:30px;height:30px;font-size:.8rem">✕</button></div>
+            <div id="fodiFlotPrev" style="display:none;align-items:center;gap:8px;padding:0 12px 4px"><img alt="Captura" style="max-height:56px;border-radius:8px"><button type="button" class="ff-b" id="fodiFlotQuitar">✕</button></div>
             <div class="ff-pie">
-                <button type="button" class="ff-b" id="fodiFlotAdj" title="Adjuntar captura de un chat para armar un pedido" aria-label="Adjuntar captura" style="background:rgba(255,255,255,.14);color:#eef4ff">📎</button><input type="file" id="fodiFlotArchivo" accept="image/*" hidden>
+                <button type="button" class="ff-b" id="fodiFlotAdj" title="Adjuntar captura de un chat para armar un pedido" aria-label="Adjuntar captura">📎</button><input type="file" id="fodiFlotArchivo" accept="image/*" hidden>
                 <input id="fodiFlotTxt" type="text" maxlength="4000" enterkeyhint="send" placeholder="Pregúntame o dime un pedido…" autocomplete="off">
-                <button type="button" class="ff-b" id="fodiFlotEnviar" title="Enviar" aria-label="Enviar mensaje" style="background:linear-gradient(135deg,#ffb35c,#ff7a9c);color:#2a1020;font-weight:800">➤</button>
+                <button type="button" class="ff-b" id="fodiFlotEnviar" title="Enviar" aria-label="Enviar mensaje">➤</button>
                 <button type="button" class="ff-b" id="fodiFlotMic" title="Hablarle" aria-label="Hablarle a FODI">🎤</button>
                 <button type="button" class="ff-b" id="fodiFlotCalla" title="Callar a FODI" aria-label="Callar a FODI">🔇</button>
             </div>

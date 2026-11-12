@@ -126,3 +126,15 @@ test('Menú lateral: flecha fija a la derecha, insignia a su izquierda y «Ir a 
     assert.ok(html.includes('a.admin-link,'));
     assert.ok(html.includes('>Ir a público</a>') && html.includes('>Cerrar sesión</button>'));
 });
+
+test('Configuración e Informes: un solo recuadro por sección, sin «Retraer», submenú lateral plano', () => {
+    assert.ok(html.includes('CONFIGURACIÓN E INFORMES: un solo recuadro por sección'));
+    assert.ok(html.includes('[data-section-scope="configuracion"] .card-collapse-btn { display: none !important; }'));
+    assert.ok(html.includes('.nav2-sub.active { background: rgba(255,122,26,0.14) !important;'));
+});
+test('FODI usa las mismas formas: ventanas 14 px, botones y campo 9 px, enviar en rol principal', () => {
+    assert.ok(html.includes('FODI: mismas formas, tamaños y colores que el resto de la aplicación'));
+    assert.match(html, /#fodiFlotPanel, #respClienteModal \.rc-caja, #rrPanel, #rrVozPanel \{ border-radius: var\(--ui-radius-lg\) !important;/);
+    assert.match(html, /#fodiFlotEnviar, \.asist-send \{ background: linear-gradient\(135deg, #ff7a1a, #ff9540\) !important;/);
+    assert.ok(!/class="ff-b"[^>]*style=/.test(html), 'los botones del chat flotante no llevan estilos en línea');
+});

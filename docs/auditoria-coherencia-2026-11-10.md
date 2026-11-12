@@ -939,3 +939,10 @@ Ahora: título de tarjeta Space Grotesk 1rem/700; tablas con la misma tipografí
 - **Estado vacío**: había 13 clases distintas (`caja-empty`, `inbox-empty`, `met-empty-note`…) y 40 mensajes con estilos en línea, cada uno con su tamaño, color y relleno. Ahora todos son `.empty-state` (centrado, .85rem, color atenuado, 16 px de relleno); las clases viejas comparten la misma regla. El ticket impreso conserva sus estilos (se imprime sin hoja de estilos del admin).
 - **Menú lateral**: la flecha queda siempre fija a la derecha y la insignia de pendientes a su izquierda y centrada (antes la flecha se movía según hubiera insignia); «Ir a público» pasó a ser un botón más de la familia (32 px, 9 px de radio) y se corrigieron las tildes de «Ir a público» y «Cerrar sesión».
 - Tests: `regla-interfaz.e2e.mjs` (24) y `regla-interfaz.test.js` (18).
+
+# Parte 30 — Configuración plana y FODI unificado
+Con las capturas reales del dueño (≈1280 px, zoom): Configuración tenía una **tarjeta grande con tarjetas dentro** (`.menu-section-card` envolviendo los paneles) y una lista de títulos con «Desplegar» guardados como retraídos; el submenú lateral eran cajas pesadas.
+- Se aplanó: el recuadro envolvente de Configuración e Informes queda transparente (solo las tarjetas de cada panel dan fondo); en Configuración **no hay Retraer/Desplegar** y todo se ve abierto (aunque venga guardado retraído).
+- Submenú lateral: filas planas, sin cajas, el activo con barra naranja.
+- **FODI**: ventanas (chat flotante, «Responder a un cliente», respuestas rápidas, decir en voz alta) con radio 14 px y el mismo fondo; botones y campo de escribir con radio 9 px (ya no redondos ni píldora), iconos de 40×40; enviar en el rol principal (naranja) y el resto secundarios; burbujas y tarjetas del asistente con 14 px. La mascota conserva su cara.
+- Tests: `regla-interfaz.test.js` (20) y `regla-interfaz.e2e.mjs` (29).
