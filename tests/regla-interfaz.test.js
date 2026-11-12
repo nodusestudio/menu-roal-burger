@@ -157,3 +157,8 @@ test('Clientes: se leen SIEMPRE del servidor (no de la copia local que puede ven
     const i = js.indexOf('async function _fetchClientsInterno()');
     assert.ok(js.slice(i, i + 600).includes("q.get({ source: 'server' })"));
 });
+
+test('Artículos: títulos con la misma tipografía y botones pequeños sin mayúsculas', () => {
+    assert.ok(html.includes('.upgrades-detail-topbar-title, .upgrades-master-item-name { font-family: \'Space Grotesk\', sans-serif !important;'));
+    assert.ok(html.includes('.mini-btn, .category-actions .mini-btn, .upgrades-detail-topbar .mini-btn { text-transform: none !important;'));
+});

@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261112-1306">
+    <link rel="stylesheet" href="style.css?v=20261112-1355">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -17181,6 +17181,11 @@
     .clients-filtros .cf-rotulo { font-size: .76rem; color: var(--admin-muted); font-weight: 700; margin-right: 2px; }
     .clients-filtros .date-preset-btn small { opacity: .7; font-weight: 600; margin-left: 4px; }
     .dinero-fallo { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 var(--ui-sec); padding: 10px 14px; border-radius: var(--ui-radius-lg); background: rgba(239,68,68,.14); border: 1px solid rgba(239,68,68,.45); color: #fecaca; font-size: .84rem; }
+    /* Artículos: mismos títulos y botones pequeños que el resto (sin mayúsculas ni letra condensada) */
+    .upgrades-detail-topbar-title, .upgrades-master-item-name { font-family: 'Space Grotesk', sans-serif !important; font-weight: 700 !important; letter-spacing: 0 !important; text-transform: none !important; }
+    .upgrades-detail-topbar-title { font-size: 1rem !important; }
+    .upgrades-master-item-name { font-size: .85rem !important; }
+    .mini-btn, .category-actions .mini-btn, .upgrades-detail-topbar .mini-btn { text-transform: none !important; letter-spacing: 0 !important; }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17711,19 +17716,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261112-1306"></script>
+    <script defer src="firebase-config.js?v=20261112-1355"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261112-1306"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261112-1355"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1306"></script>
-    <script defer src="admin.js?v=20261112-1306"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1355"></script>
+    <script defer src="admin.js?v=20261112-1355"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

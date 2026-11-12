@@ -967,3 +967,6 @@ Hallazgo (mismo origen que la lista de clientes vacía): con `enablePersistence`
 - Cierres, gastos externos/traslados/ajustes y gastos de la jornada se leen con `get({ source: 'server' })`.
 - Si falla: se conserva lo último leído bien (ya no se vacía) y aparece un recuadro rojo fijo «⚠️ Los datos de dinero no se leyeron completos — los saldos y totales pueden estar mal» con el motivo y **Reintentar**; se quita solo cuando la lectura vuelve a funcionar.
 - Tests: `tests/dinero-lectura.test.js` (5). Foto del dinero: las diferencias contra la del 10-nov son operación real de dos días (un cierre nuevo, gastos y caja chica); el cambio de código solo lee.
+
+# Parte 35 — Artículos (Catálogo)
+`herramientas/captura-articulos.mjs <carpeta> [ancho]` dibuja la lista de categorías y el detalle con productos con las funciones reales (`createCategoryMasterItem`, `_renderCategoryDetailPanel`). Ya era compacto (rejilla de fichas pequeñas); se unificó la tipografía de títulos (Space Grotesk, sin letra condensada) y los botones pequeños («Eliminar», etc.) sin mayúsculas. Las ventanas de producto y de categoría no se vieron con datos.
