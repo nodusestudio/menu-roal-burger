@@ -156,6 +156,8 @@ test('Pie de la barra lateral: accesos agrupados en un botón «Accesos» y Cerr
     assert.ok(m && m[0].includes('adminPublicLink') && m[0].includes('adminAvisosPcBtn') && m[0].includes('adminTvBtn'));
     assert.ok(!m[0].includes('adminSignOutBtn'), 'Cerrar sesión no va dentro del grupo');
     assert.ok(html.includes('id="sidebarMoreBtn"') && js.includes("getElementById('sidebarMoreBtn')"));
+    assert.ok(/id="rrWrap">\s*<!--[^>]*-->\s*<div class="rr-accesos">/.test(html), 'el grupo vive en la barra fija de abajo (#rrWrap)');
+    assert.ok(!html.includes('<div class="sidebar-footer">'), 'el pie de la barra lateral ya no existe');
 });
 
 test('Clientes: una línea por cliente con menú «⋯»; ventanas con scroll propio y fondo bloqueado', () => {
