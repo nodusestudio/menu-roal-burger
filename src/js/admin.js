@@ -35058,15 +35058,15 @@ function renderCuponPanaCampanas() {
                     ${c.agotadaAt ? `<span class="cpana-badge cpana-badge--off">Agotada ${_cpanaFmtFecha(c.agotadaAt)}</span>` : ''}
                 </div>
             </div>
-            <div class="cpana-link-row">
+            <div class="cpana-camp-fila">
                 <code>${escapeHtml(link)}</code>
-                <button type="button" class="pm-icon-btn" data-cpana-copy="${escapeHtml(link)}">Copiar link</button>
-            </div>
-            <div class="cpana-actions">
-                <button type="button" class="pm-icon-btn" data-cpana-edit="${escapeHtml(c.id)}">Editar</button>
-                <button type="button" class="pm-icon-btn" data-cpana-metricas="${escapeHtml(c.id)}">Ver métricas</button>
-                <button type="button" class="pm-icon-btn" data-cpana-duplicar="${escapeHtml(c.id)}">Duplicar</button>
-                <a class="pm-icon-btn" href="/cupon?k=${encodeURIComponent(c.id)}" target="_blank" rel="noopener">Abrir landing</a>
+                <div class="cpana-actions">
+                    <button type="button" class="mini-btn" data-cpana-copy="${escapeHtml(link)}">Copiar link</button>
+                    <button type="button" class="mini-btn" data-cpana-edit="${escapeHtml(c.id)}">Editar</button>
+                    <button type="button" class="mini-btn" data-cpana-metricas="${escapeHtml(c.id)}">Ver métricas</button>
+                    <button type="button" class="mini-btn" data-cpana-duplicar="${escapeHtml(c.id)}">Duplicar</button>
+                    <a class="mini-btn" href="/cupon?k=${encodeURIComponent(c.id)}" target="_blank" rel="noopener">Abrir landing</a>
+                </div>
             </div>
         </div>`;
     }).join('');

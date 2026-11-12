@@ -168,3 +168,11 @@ test('Feedback: una línea por cliente y el botón «Copiar mensaje» es de la f
     assert.ok(html.includes('.client-action-btn, .cd-btn, .feedback-pending-btn,'));
     assert.ok(html.includes('.pos-note-save-btn, .feedback-pending-btn {'));
 });
+
+test('Fuera del Menú: la lista de campañas usa botones compactos visibles (no pm-icon-btn sin estilo)', () => {
+    const i = js.indexOf('function renderCuponPanaCampanas()');
+    const f = js.slice(i, js.indexOf('function renderCuponPanaMetricasSelect()', i));
+    assert.ok(!f.includes('pm-icon-btn'));
+    assert.ok(f.includes('cpana-camp-fila') && (f.match(/class="mini-btn"/g) || []).length >= 4);
+    assert.ok(html.includes('.cpana-camp-fila .mini-btn {'));
+});

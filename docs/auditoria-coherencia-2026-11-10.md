@@ -973,3 +973,6 @@ Hallazgo (mismo origen que la lista de clientes vacía): con `enablePersistence`
 
 # Parte 36 — Feedback en una línea
 `herramientas/captura-feedback.mjs <carpeta> [ancho]` dibuja Feedback (seguimiento por día y respuestas) con el marcado real y datos de muestra. Cada cliente ocupaba 61 px (nombre, luego celular y estado en otra línea, y un botón naranja grande «Copiar mensaje» fuera de la familia). Ahora: una línea de ~44 px con nombre, celular y estado, y «Copiar mensaje» con el tamaño y rol de los demás botones. Las respuestas también pasan a una línea.
+
+# Parte 37 — Fuera del Menú: campañas compactas y botones visibles
+`herramientas/captura-fuera-menu.mjs` dibuja la lista con la función real (`renderCuponPanaCampanas`). Hallazgo: los botones «Copiar link / Editar / Ver métricas / Duplicar» usaban `pm-icon-btn` fuera de su contexto (texto oscuro sobre fondo oscuro, casi invisibles) y «Abrir landing» salía como enlace azul por defecto. Cada campaña ocupaba ~151 px. Ahora: título, datos y cupos en una línea, estados a la derecha, y el enlace junto a los 5 botones compactos de 24 px (~75 px por campaña). Test: `tests/fuera-menu.e2e.mjs`.
