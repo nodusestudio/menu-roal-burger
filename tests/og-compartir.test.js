@@ -15,7 +15,8 @@ test('después del festival, /og-compartir.jpg sirve og-portada.jpg (JPEG de 120
     const m = await require('sharp')(f).metadata();
     assert.deepEqual([m.width, m.height, m.format], [1200, 630, 'jpeg']);
 });
-test('la página declara el tipo y el tamaño de la imagen para compartir', () => {
+test('la página declara el id de la app de Meta (el depurador de Facebook lo pide) y el tipo y tamaño de la imagen', () => {
+    assert.ok(fs.readFileSync(path.join(raiz, 'index.html'), 'utf8').includes('property="fb:app_id" content="1077052188187626"'));
     const h = fs.readFileSync(path.join(raiz, 'index.html'), 'utf8');
     assert.ok(h.includes('og:image:type" content="image/jpeg"') && h.includes('og:image:width" content="1200"') && h.includes('og:image:height" content="630"'));
 });
