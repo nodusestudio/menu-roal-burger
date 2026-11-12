@@ -4300,7 +4300,7 @@ function renderCierresProgramados() {
                 </div>
             </div>
         </div>
-        <button type="button" class="informes-action-btn cfg-add-btn" id="cpAddBtn">+ Programar cierre</button>
+        <button type="button" class="informes-action-btn informes-action-btn--primary cfg-add-btn" id="cpAddBtn">+ Programar cierre</button>
     `;
 
     panel.querySelectorAll('[data-cp-edit]').forEach((btn) => {
@@ -28490,7 +28490,7 @@ function renderPaymentConfigPanel() {
                 </div>
             </div>
         </div>
-        <button type="button" class="informes-action-btn cfg-add-btn" id="pmAddBtn">+ Agregar método</button>
+        <button type="button" class="informes-action-btn informes-action-btn--primary cfg-add-btn" id="pmAddBtn">+ Agregar método</button>
     `;
 
     panel.querySelectorAll('[data-pm-toggle]').forEach((cb) => {
@@ -28672,7 +28672,7 @@ function renderBarriosEspecialesPanel() {
                 </div>
             </div>
         </div>
-        <button type="button" class="informes-action-btn cfg-add-btn" id="beAddBtn">+ Agregar barrio</button>
+        <button type="button" class="informes-action-btn informes-action-btn--primary cfg-add-btn" id="beAddBtn">+ Agregar barrio</button>
     `;
 
     panel.querySelectorAll('[data-be-toggle]').forEach((cb) => {

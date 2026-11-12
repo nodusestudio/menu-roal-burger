@@ -138,3 +138,9 @@ test('FODI usa las mismas formas: ventanas 14 px, botones y campo 9 px, enviar e
     assert.match(html, /#fodiFlotEnviar, \.asist-send \{ background: linear-gradient\(135deg, #ff7a1a, #ff9540\) !important;/);
     assert.ok(!/class="ff-b"[^>]*style=/.test(html), 'los botones del chat flotante no llevan estilos en línea');
 });
+
+test('Configuración: títulos de fila con una sola tipografía y todos los «+ Agregar» en rol principal', () => {
+    assert.ok(html.includes('.pm-method-name, .mesero-row-name, .cat-gasto-name, .list-item .product-main span'));
+    assert.ok(!js.includes('class="informes-action-btn cfg-add-btn"'), 'los botones de agregar del JS llevan el rol principal');
+    assert.ok((js.match(/informes-action-btn--primary cfg-add-btn/g) || []).length >= 3);
+});
