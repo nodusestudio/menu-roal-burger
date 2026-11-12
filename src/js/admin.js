@@ -3083,7 +3083,7 @@ function setupNav2() {
         document.querySelectorAll('#adminAccordionNav > .admin-accordion-trigger[data-accordion-target]').forEach((b) => obs.observe(b, { attributes: true, attributeFilter: ['class', 'data-unread-count'] }));
     } catch (_) { /* sin observador: las insignias se copian en cada cambio de panel */ }
     const sw = document.getElementById('adminMenuSwitchBtn');
-    const rotularSw = () => { if (sw) sw.textContent = document.body.classList.contains('menu-nuevo') ? 'Ver menú anterior' : 'Ver menú nuevo'; };
+    const rotularSw = () => { if (sw) sw.textContent = document.body.classList.contains('menu-nuevo') ? '🔀 Ver menú anterior' : '🔀 Ver menú nuevo'; };
     rotularSw();
     sw?.addEventListener('click', () => {
         const nuevo = !document.body.classList.contains('menu-nuevo');

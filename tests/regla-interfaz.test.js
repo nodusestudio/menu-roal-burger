@@ -124,7 +124,7 @@ test('ESTADO VACÍO: los «No hay… / Sin… / Aún no…» usan la clase únic
 test('Menú lateral: flecha fija a la derecha, insignia a su izquierda y «Ir a público» como botón de la familia', () => {
     assert.ok(html.includes('.nav2-grupo.has-unread::after { right: 34px;'));
     assert.ok(html.includes('a.admin-link,'));
-    assert.ok(html.includes('>Ir a público</a>') && html.includes('>Cerrar sesión</button>'));
+    assert.ok(html.includes('>🌐 Ir a público</a>') && html.includes('>🚪 Cerrar sesión</button>'));
 });
 
 test('Configuración e Informes: un solo recuadro por sección, sin «Retraer», submenú lateral plano', () => {
