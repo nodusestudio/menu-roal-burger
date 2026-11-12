@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261112-1205">
+    <link rel="stylesheet" href="style.css?v=20261112-1238">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -15449,7 +15449,7 @@
                     <div class="clients-toolbar-actions">
                         <button type="button" class="section-action-btn primary" id="openCreateClientBtn">+ Agregar cliente</button>
                         <button type="button" class="section-action-btn icm-import-btn" id="openImportClientsBtn">⬆ Importar</button>
-                        <button type="button" class="section-action-btn" id="openUnirClientesBtn" title="Busca clientes repetidos (mismo celular o mismo nombre) y los junta en uno solo, con sus pedidos y puntos">🧩 Unir duplicados</button>
+                        <button type="button" class="section-action-btn" id="openUnirClientesBtn" title="Busca clientes repetidos (mismo número de teléfono) y los junta en uno solo, con sus pedidos y puntos">🧩 Unir duplicados</button>
                         <select id="clientsExportFormat" class="clients-export-select" aria-label="Formato de exportacion de clientes">
                             <option value="csv">CSV</option>
                             <option value="json">JSON</option>
@@ -15470,6 +15470,7 @@
                         <input type="search" id="clientsSearchInput" class="clients-search-input" placeholder="Buscar por nombre, telefono, usuario de WhatsApp o direccion">
                     </label>
                 </div>
+                <div id="clientsFiltros" class="clients-filtros" role="group" aria-label="Filtros y orden de la lista de clientes"></div>
                 <article class="admin-card admin-card--flush">
                     <div class="card-head">
                         <h2>Base de Clientes</h2>
@@ -17175,6 +17176,10 @@
     .clients-grid p.muted { font-size: .76rem; margin: 0 0 8px; color: var(--admin-muted); }
     .uc-barra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; padding: 8px 10px; border-radius: var(--ui-radius-lg); background: rgba(255,122,26,.10); border: 1px solid rgba(255,122,26,.30); }
     .uc-estado { font-size: .76rem; color: rgba(255,255,255,.7); }
+    /* Filtros de clientes: una fila de chips; el activo, naranja */
+    .clients-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 var(--ui-sec); }
+    .clients-filtros .cf-rotulo { font-size: .76rem; color: var(--admin-muted); font-weight: 700; margin-right: 2px; }
+    .clients-filtros .date-preset-btn small { opacity: .7; font-weight: 600; margin-left: 4px; }
     .cfg-add-btn { margin-top: 10px; }
     .cfg-inline-label { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.8rem; font-weight: 600; }
     </style>
@@ -17705,19 +17710,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261112-1205"></script>
+    <script defer src="firebase-config.js?v=20261112-1238"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261112-1205"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261112-1238"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1205"></script>
-    <script defer src="admin.js?v=20261112-1205"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1238"></script>
+    <script defer src="admin.js?v=20261112-1238"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

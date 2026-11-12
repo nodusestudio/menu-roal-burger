@@ -4,7 +4,9 @@ import fs from 'node:fs'; import os from 'node:os'; import http from 'node:http'
 const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const js = fs.readFileSync(path.join(raiz, 'src/js/admin.js'), 'utf8');
 const corte = (ini, fin) => { const a = js.indexOf(ini); const b = js.indexOf(fin, a + ini.length); if (a < 0 || b < 0) throw new Error('No se encontró ' + ini); return js.slice(a, b); };
-const codigo = corte('function renderClients() {', '\n// Menú «⋯» de cada cliente') + '\n' + corte('// Menú «⋯» de cada cliente', 'function _renderClientsPagination');
+const SALTO = String.fromCharCode(10);
+const filtros = corte('// SYNC:clientes-filtros:inicio', '// SYNC:clientes-filtros:fin') + SALTO + corte('function getFilteredClients() {', 'function formatExportDate') + SALTO + corte('function _renderClientsFiltros() {', 'function renderClients() {');
+const codigo = filtros + SALTO + corte('function renderClients() {', '\n// Menú «⋯» de cada cliente') + '\n' + corte('// Menú «⋯» de cada cliente', 'function _renderClientsPagination');
 const pagina = fs.readFileSync(path.join(raiz, 'admin.html'), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '').replace('</body>', `<script>
 document.body.classList.remove('admin-loading','admin-locked'); document.body.classList.add('admin-unlocked');
 const p = document.querySelector('[data-tab-panel="clientes"]'); let n = p; while (n && n !== document.body) { n.hidden = false; if (getComputedStyle(n).display === 'none') n.style.display = 'block'; n = n.parentElement; }
@@ -14,8 +16,10 @@ const clientsList = document.getElementById('clientsList'), clientsCount = docum
 let _clientsPage = 0; const CLIENTS_PAGE_SIZE = 50; const expandedClientAddressIds = new Set();
 const _renderClientsPagination = () => {};
 const mk = (i) => ({ id: 'phone_30' + i, customerName: i % 3 ? 'Faberlandia de los Ríos Montoya ' + i : 'Hebert', customerPhone: '301 18063' + i, whatsappUser: i % 4 ? '' : 'hebert_wa', address: 'Mz 24 casa 12 puerto espejo barrio las americas armenia quindio', savedAddresses: i % 2 ? ['a', 'b', 'c'] : ['a'], firstOrderAt: 1, lastOrderAt: 2, totalOrders: i, totalSpent: 40500 * i, puntosDisponibles: i * 10, puntosAcumuladosTotal: i * 30, lastOrderCode: 'RB-35' + i, lastOrderTotal: 52000 });
-let clientsState = []; let _clientsLoad = { estado: 'ok', error: '' }; window.__n = 12; window.setLoad = (e, m) => { _clientsLoad = { estado: e, error: m || '' }; };
-const getFilteredClients = () => Array.from({ length: window.__n }, (_, i) => mk(i + 1));
+let _clientsLoad = { estado: 'ok', error: '' }; window.__n = 12; window.setLoad = (e, m) => { _clientsLoad = { estado: e, error: m || '' }; };
+let clientsState = Array.from({ length: 12 }, (_, i) => mk(i + 1)); let clientsSearchTerm = ''; let clientsFiltro = 'todos';
+const normalizeCategoryKey = (x) => String(x || '').toLowerCase(); const clientUserMatches = () => false;
+window.vaciar = () => { clientsState = []; }; window.setFiltro = (f) => { clientsFiltro = f; };
 ${codigo}
 renderClients();
 document.body.insertAdjacentHTML('beforeend', '<div id="ov" class="pos-note-modal-overlay"><div class="pos-note-modal-box cxc-box"><p class="pos-note-modal-title">Unir</p><div class="uc-cuerpo cxc-cuerpo">' + Array.from({ length: 40 }, (_, i) => '<div class="cxc-grupo"><div class="cxc-grupo-t">Grupo ' + i + '</div><label class="cxc-fila">fila</label><label class="cxc-fila">fila</label></div>').join('') + '</div><div class="cxc-pie"><button class="pos-note-cancel-btn">Cerrar</button></div></div></div>');
@@ -49,8 +53,21 @@ try {
   const antes = await p.evaluate(() => window.scrollY); const cb = await p.locator('.cxc-cuerpo').boundingBox(); await p.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2); await p.mouse.wheel(0, 600); await p.waitForTimeout(150);
   const mov = await p.evaluate((a) => ({ lista: document.querySelector('.cxc-cuerpo').scrollTop, pagina: window.scrollY - a }), antes);
   ok(mov.lista > 0 && mov.pagina === 0, `la rueda del ratón mueve la lista de la ventana (${mov.lista} px) y no la página (${mov.pagina} px)`);
+  await p.evaluate(() => { document.getElementById('ov').style.display = 'none'; window.scrollTo(0, 0); });
+  // Filtros y órdenes más usados (con el código real)
+  const chips = await p.evaluate(() => [...document.querySelectorAll('#clientsFiltros [data-clientes-filtro]')].map((b) => b.textContent.replace(/\s+/g, ' ').trim()));
+  ok(chips.length === 10 && /Últimos registrados/.test(chips.join('|')) && /Más compras/.test(chips.join('|')), 'FILTROS: 10 opciones (' + chips.join(' · ') + ')');
+  await p.evaluate(() => document.querySelector('[data-clientes-filtro=\"mas_compras\"]').click());
+  const orden = await p.evaluate(() => [...document.querySelectorAll('#clientsList tr.client-row .cl-num .client-metric-chip')].map((x) => Number(x.textContent)));
+  ok(orden.length === 12 && orden[0] === 12 && orden[11] === 1, '«Más compras» ordena de más a menos pedidos (' + orden.join(',') + ')');
+  await p.locator('#clientsFiltros').screenshot({ path: path.join(os.tmpdir(), 'cl-3-filtros.png') });
+  ok(await p.locator('[data-clientes-filtro="mas_compras"].active').count() === 1, 'el filtro activo se marca en naranja');
+  await p.evaluate(() => document.querySelector('[data-clientes-filtro=\"recurrentes\"]').click());
+  const rec = await p.evaluate(() => document.querySelectorAll('#clientsList tr.client-row').length);
+  ok(rec === 10, '«Recurrentes (3 o más)» deja solo a los de 3+ compras (' + rec + ' de 12)');
+  await p.evaluate(() => document.querySelector('[data-clientes-filtro=\"todos\"]').click());
   // Estado de carga visible (antes: un «No hay clientes» mudo cuando la carga fallaba)
-  await p.evaluate(() => { window.__n = 0; window.setLoad('cargando'); renderClients(); });
+  await p.evaluate(() => { window.vaciar(); window.setLoad('cargando'); renderClients(); });
   ok(/Cargando clientes/.test(await p.locator('#clientsList').innerText()), 'mientras carga dice «Cargando clientes…»');
   await p.evaluate(() => { window.setLoad('error', 'resource-exhausted: Quota exceeded'); renderClients(); });
   const msg = await p.locator('#clientsList').innerText();

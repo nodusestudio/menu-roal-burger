@@ -974,6 +974,7 @@ function posSalsasTexto(list = posSalsas) {
 let menuUpgradesConfig = null;
 let _posUpgradePending = null;
 let clientsSearchTerm = '';
+let clientsFiltro = 'todos'; // uno de CLIENTES_FILTROS
 let _clientsPage = 0;
 const CLIENTS_PAGE_SIZE = 50;
 let expandedClientAddressIds = new Set();
@@ -16600,10 +16601,30 @@ document.addEventListener('click', (e) => {
     fetchClients({ force: true }).then(renderClients, () => renderClients());
 });
 
+function _renderClientsFiltros() {
+    const cont = document.getElementById('clientsFiltros');
+    if (!cont) return;
+    const base = clientsState.filter((client) => {
+        if (!clientsSearchTerm) return true;
+        const haystack = [client.customerName, client.customerPhone, client.address, client.lastOrderCode].join(' | ');
+        return normalizeCategoryKey(haystack).includes(clientsSearchTerm) || clientUserMatches(client, clientsSearchTerm);
+    });
+    cont.innerHTML = '<span class="cf-rotulo">Ver:</span>' + CLIENTES_FILTROS.map((f) => {
+        const cuenta = (f.orden || f.id === 'todos') ? '' : ` <small>${clientesAplicarFiltro(base, f.id, Date.now()).length.toLocaleString('es-CO')}</small>`;
+        return `<button type="button" class="date-preset-btn${clientsFiltro === f.id ? ' active' : ''}" data-clientes-filtro="${f.id}" aria-pressed="${clientsFiltro === f.id}">${f.etiqueta}${cuenta}</button>`;
+    }).join('');
+}
+document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-clientes-filtro]');
+    if (!b) return;
+    clientsFiltro = b.dataset.clientesFiltro; _clientsPage = 0; renderClients();
+});
+
 function renderClients() {
     if (!clientsList) {
         return;
     }
+    _renderClientsFiltros();
 
     const filteredClients = getFilteredClients();
     const totalPages = Math.max(1, Math.ceil(filteredClients.length / CLIENTS_PAGE_SIZE));
@@ -16624,7 +16645,7 @@ function renderClients() {
             ? '<tr><td class="client-empty-row" colspan="8">⏳ Cargando clientes…</td></tr>'
             : sinDatos && _clientsLoad.estado === 'error'
                 ? `<tr><td class="client-empty-row" colspan="8">⚠️ No se pudieron cargar los clientes (${escapeHtml(_clientsLoad.error)}). <button type="button" class="informes-action-btn" data-clients-reintentar>Reintentar</button></td></tr>`
-                : '<tr><td class="client-empty-row" colspan="8">No hay clientes que coincidan con la busqueda actual.</td></tr>';
+                : `<tr><td class="client-empty-row" colspan="8">${clientsFiltro !== 'todos' ? 'Ningún cliente cumple este filtro' + (clientsSearchTerm ? ' con la búsqueda actual' : '') + '.' : 'No hay clientes que coincidan con la busqueda actual.'}</td></tr>`;
         _renderClientsPagination(0, 1);
         return;
     }
@@ -17981,8 +18002,51 @@ function clientUserMatches(client, normTerm) {
     return normalizeCategoryKey(client.whatsappUser).replace(/^@+/, '').includes(term);
 }
 
+// SYNC:clientes-filtros:inicio
+// Filtros y órdenes más usados de la lista de clientes. Función PURA: recibe la lista y devuelve una lista nueva.
+const CLIENTES_DIAS_INACTIVO = 30;
+const CLIENTES_FILTROS = [
+    { id: 'todos', etiqueta: 'Todos' },
+    { id: 'recientes', etiqueta: '🆕 Últimos registrados', orden: true },
+    { id: 'ultima_compra', etiqueta: '🕒 Compraron hace poco', orden: true },
+    { id: 'mas_compras', etiqueta: '🏆 Más compras', orden: true },
+    { id: 'mas_gasto', etiqueta: '💰 Más gasto', orden: true },
+    { id: 'mas_puntos', etiqueta: '⭐ Más puntos', orden: true },
+    { id: 'una_compra', etiqueta: '1️⃣ Una sola compra' },
+    { id: 'recurrentes', etiqueta: '🔁 Recurrentes (3 o más)' },
+    { id: 'inactivos', etiqueta: '😴 Inactivos (+30 días)' },
+    { id: 'sin_compras', etiqueta: '🚫 Sin compras' },
+];
+function clientesMs(v) {
+    if (!v) return 0;
+    if (typeof v === 'number') return v;
+    if (typeof v.toMillis === 'function') return v.toMillis();
+    if (typeof v.seconds === 'number') return v.seconds * 1000;
+    const t = Date.parse(v); return Number.isFinite(t) ? t : 0;
+}
+function clientesAplicarFiltro(lista, id, ahora) {
+    const hoy = Number(ahora) || Date.now();
+    const n = (c) => Number(c.totalOrders || 0);
+    const registro = (c) => clientesMs(c.createdAt) || clientesMs(c.firstOrderAt);
+    const ultima = (c) => clientesMs(c.lastOrderAt);
+    const orden = (f) => [...lista].sort((a, b) => f(b) - f(a));
+    switch (id) {
+        case 'recientes': return orden(registro);
+        case 'ultima_compra': return orden(ultima);
+        case 'mas_compras': return orden((c) => n(c) * 1e6 + Number(c.totalSpent || 0) / 1e3);
+        case 'mas_gasto': return orden((c) => Number(c.totalSpent || 0));
+        case 'mas_puntos': return orden((c) => Number(c.puntosDisponibles || 0));
+        case 'una_compra': return lista.filter((c) => n(c) === 1);
+        case 'recurrentes': return lista.filter((c) => n(c) >= 3);
+        case 'inactivos': return lista.filter((c) => n(c) >= 1 && ultima(c) > 0 && hoy - ultima(c) > CLIENTES_DIAS_INACTIVO * 86400000);
+        case 'sin_compras': return lista.filter((c) => n(c) === 0);
+        default: return lista;
+    }
+}
+// SYNC:clientes-filtros:fin
+
 function getFilteredClients() {
-    return clientsState.filter((client) => {
+    const porBusqueda = clientsState.filter((client) => {
         if (!clientsSearchTerm) {
             return true;
         }
@@ -17996,6 +18060,7 @@ function getFilteredClients() {
 
         return normalizeCategoryKey(haystack).includes(clientsSearchTerm) || clientUserMatches(client, clientsSearchTerm);
     });
+    return clientesAplicarFiltro(porBusqueda, clientsFiltro, Date.now());
 }
 
 function formatExportDate(value) {
