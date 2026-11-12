@@ -28952,15 +28952,17 @@ async function loadGastosCaja({ desdeMs = null, hastaMs = null } = {}) {
         } else {
             q = q.limit(500);
         }
-        const snap = await q.get();
+        const snap = await q.get({ source: 'server' });
         // Incluye gastos de caja, externos y traslados: renderCajaDiaria() y cerrarCaja()
         // separan cada tipo internamente (y ambos esperan encontrar los traslados aquí para
         // reflejarlos en el saldo por método). Los traslados no son gastos reales — quien
         // los trate como "egreso" (ej. renderGastosInformes) debe excluirlos explícitamente ahí.
         _gastosCajaState = snap.docs
             .map((d) => ({ id: d.id, ...d.data() }));
-    } catch (_) {
-        _gastosCajaState = [];
+        _dineroLimpiarFallo();
+    } catch (err) {
+        // Se conserva lo último leído bien (antes se vaciaba y Caja de hoy mostraba cero gastos sin avisar).
+        _dineroMarcarFallo('No se pudieron leer los gastos de la jornada', err);
     }
 }
 
@@ -31801,13 +31803,42 @@ function _computeHistoricoSumMethod(includeOpenJornada = false) {
     return { ...r.porMetodo, [OTRO_PAYMENT_METHOD.id]: r.otro };
 }
 
+// SYNC:dinero-fallo:inicio
+// Los saldos y totales se calculan SUMANDO todos los cierres y gastos. Si una lectura falla (conexión, permisos) NO se puede dejar la lista en blanco en silencio:
+// los saldos saldrían mal sin que nadie lo note. Se conserva lo último bueno, se marca el fallo y se avisa con un recuadro fijo y «Reintentar».
+let _dineroFallo = '';
+function _dineroMarcarFallo(que, err) {
+    _dineroFallo = `${que}: ${String((err && (err.code ? err.code + ' · ' : '') + err.message) || err || 'error').slice(0, 140)}`;
+    _dineroPintarAviso();
+}
+function _dineroLimpiarFallo() { if (_dineroFallo) { _dineroFallo = ''; _dineroPintarAviso(); } }
+function _dineroPintarAviso() {
+    let el = document.getElementById('dineroFalloBanner');
+    if (!_dineroFallo) { if (el) el.remove(); return; }
+    if (!el) {
+        el = document.createElement('div'); el.id = 'dineroFalloBanner'; el.className = 'dinero-fallo'; el.setAttribute('role', 'alert');
+        const host = document.querySelector('.admin-page') || document.body; host.insertBefore(el, host.firstChild);
+    }
+    el.innerHTML = `<span>⚠️ <strong>Los datos de dinero no se leyeron completos</strong> — los saldos y totales pueden estar mal. ${_dineroFallo.replace(/[<>&]/g, '')}</span><button type="button" class="informes-action-btn" data-dinero-reintentar>Reintentar</button>`;
+}
+// SYNC:dinero-fallo:fin
+
+document.addEventListener('click', async (e) => {
+    if (!e.target.closest('[data-dinero-reintentar]')) return;
+    try { await loadCierresCaja(); await loadGastosCaja(); } catch (_) { /* el aviso ya quedó marcado */ }
+    if (!_dineroFallo) { try { renderCajaDiaria(); } catch (_) {} try { await renderLibroCierres(); } catch (_) {} showNotice('Datos de dinero leídos completos.', 'ok'); }
+});
+
 async function loadCierresCaja() {
     // Sin limit(): las tarjetas de saldo del Historial y "Ajustar saldos" ACUMULAN todos los
     // cierres -- con limit(100), al llegar al cierre 101 el más viejo salía de la ventana y los
     // saldos "cambiaban solos" cada día (mismo bug que tuvo la consulta de gastos con limit(500)).
-    const snap = await firebaseDb.collection(CIERRES_CAJA_COLLECTION)
-        .orderBy('closedAt', 'desc')
-        .get();
+    let snap;
+    try {
+        snap = await firebaseDb.collection(CIERRES_CAJA_COLLECTION)
+            .orderBy('closedAt', 'desc')
+            .get({ source: 'server' }); // del servidor: con la copia local un fallo de conexión daría saldos viejos sin avisar
+    } catch (err) { _dineroMarcarFallo('No se pudieron leer los cierres de caja', err); throw err; }
     _cierresCajaState = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
     // Cargar gastos externos y traslados (registrados desde Historial, fuera de cualquier cierre).
@@ -31823,17 +31854,17 @@ async function loadCierresCaja() {
         // sin límite (filtro de un solo campo con "in": no requiere índice compuesto).
         const gSnap = await firebaseDb.collection(GASTOS_CAJA_COLLECTION)
             .where('tipo', 'in', ['externo', 'traslado', 'ajuste'])
-            .get();
+            .get({ source: 'server' });
         const _gDocs = gSnap.docs
             .map((d) => ({ id: d.id, ...d.data() }))
             .sort((a, b) => _tsMs(b.registradoAt) - _tsMs(a.registradoAt));
         _gastosExternosState = _gDocs.filter((g) => g.tipo === 'externo');
         _trasladosState = _gDocs.filter((g) => g.tipo === 'traslado');
         _ajustesSaldoState = _gDocs.filter((g) => g.tipo === 'ajuste');
-    } catch (_) {
-        _gastosExternosState = [];
-        _trasladosState = [];
-        _ajustesSaldoState = [];
+        _dineroLimpiarFallo();
+    } catch (err) {
+        // NO se vacían: se conserva lo último leído bien y se avisa (antes se ponía [] y los saldos salían sin gastos, en silencio).
+        _dineroMarcarFallo('No se pudieron leer los gastos externos y traslados', err);
     }
 
     _historicoSumMethod = _computeHistoricoSumMethod();

@@ -961,3 +961,9 @@ Unir duplicados era de uno en uno (cada unión espera al servidor). Ahora la ven
 
 # Parte 33 — Filtros y órdenes de la lista de clientes
 Fila de chips sobre la lista (un solo filtro activo, combinado con la búsqueda, y la exportación «Solo filtrados» usa la misma lista): **Todos · 🆕 Últimos registrados · 🕒 Compraron hace poco · 🏆 Más compras (desempata por gasto) · 💰 Más gasto · ⭐ Más puntos · 1️⃣ Una sola compra · 🔁 Recurrentes (3 o más) · 😴 Inactivos (+30 días) · 🚫 Sin compras**. Los filtros muestran cuántos clientes hay en cada uno. Lógica pura en `clientesAplicarFiltro` (`SYNC:clientes-filtros`). Tests: `tests/clientes-filtros.test.js` (11) y `clientes-linea.e2e.mjs` (16, con el código real). El tooltip de «Unir duplicados» ahora dice «mismo número de teléfono».
+
+# Parte 34 — Lecturas de dinero: del servidor y sin vaciarse en silencio
+Hallazgo (mismo origen que la lista de clientes vacía): con `enablePersistence` activo, `get()` devuelve la copia local si falla la conexión, y `loadCierresCaja`/`loadGastosCaja` ponían `[]` en un `catch` mudo. Un fallo dejaba los **saldos y totales calculados sin gastos, sin ningún aviso**.
+- Cierres, gastos externos/traslados/ajustes y gastos de la jornada se leen con `get({ source: 'server' })`.
+- Si falla: se conserva lo último leído bien (ya no se vacía) y aparece un recuadro rojo fijo «⚠️ Los datos de dinero no se leyeron completos — los saldos y totales pueden estar mal» con el motivo y **Reintentar**; se quita solo cuando la lectura vuelve a funcionar.
+- Tests: `tests/dinero-lectura.test.js` (5). Foto del dinero: las diferencias contra la del 10-nov son operación real de dos días (un cierre nuevo, gastos y caja chica); el cambio de código solo lee.
