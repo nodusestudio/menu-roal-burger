@@ -45,12 +45,32 @@ test('la copia del navegador (admin.js) es IDÉNTICA al módulo del servidor y s
     const norm = (s) => s.replace(/\r\n/g, '\n').trim();
     const sacar = (s) => s.slice(s.indexOf('// SYNC:voz-montos:inicio'), s.indexOf('// SYNC:voz-montos:fin') + '// SYNC:voz-montos:fin'.length);
     assert.equal(norm(sacar(js)), norm(sacar(modulo)));
-    assert.match(js, /texto = textoParaVoz\(texto\);/);
-    assert.match(js, /new SpeechSynthesisUtterance\(textoParaVoz\(frase\)\)/);
+    assert.match(js, /texto = _vozLimpia\(texto\);/);
 });
 test('el programa de Windows de voz de pagos dice el dinero en palabras en su prueba', () => {
     for (const d of ['voz-pagos', 'voz-pagos-ROAL']) {
         const ps = fs.readFileSync(path.join(__dirname, '../herramientas', d, 'voz-pagos.ps1'), 'utf8');
         assert.ok(!/por 27500 pesos/.test(ps), d);
     }
+});
+
+// ── El aviso de apertura de caja: «Se abrió con … de fondo» ──
+function _funcion(nombre) { const i = js.indexOf('function ' + nombre + '('); const m = /\r?\n}\r?\n/.exec(js.slice(i)); return js.slice(i, i + m.index + m[0].length); }
+const _sync = js.slice(js.indexOf('// SYNC:voz-montos:inicio'), js.indexOf('// SYNC:voz-montos:fin'));
+const { asistTexto, vozLimpia } = new Function(`${_sync}\n${_funcion('_asistTextoHablado')}\n${_funcion('_vozLimpia')}\nreturn { asistTexto: _asistTextoHablado, vozLimpia: _vozLimpia };`)();
+const formatMoney = (v) => `$ ${Number(v || 0).toLocaleString('es-CO')}`;
+test('apertura de caja: lo que se DICE es «Se abrió con cien mil pesos de fondo»', () => {
+    const aviso = `Caja abierta por Johan. Se abrió con ${formatMoney(100000)} de fondo.`; // el mismo texto de admin.js
+    assert.ok(js.includes('Se abrió con ${formatMoney(fondoUsado)} de fondo.'));
+    assert.equal(vozLimpia(asistTexto(aviso)), 'Caja abierta por Johan. Se abrió con cien mil pesos de fondo.');
+    assert.equal(vozLimpia(asistTexto(`Caja abierta por Ana. Se abrió con ${formatMoney(250500)} de fondo.`)), 'Caja abierta por Ana. Se abrió con doscientos cincuenta mil quinientos pesos de fondo.');
+    assert.equal(vozLimpia(asistTexto(`Caja abierta por Luis. Se abrió con ${formatMoney(0)} de fondo.`)), 'Caja abierta por Luis. Se abrió con cero pesos de fondo.');
+});
+test('los avisos con « · » y «2×1» se dicen como una voz los diría', () => {
+    assert.equal(vozLimpia('Pedido RB-3562 · Mesa 4 · $ 45.000'), 'Pedido RB-3562. Mesa 4. cuarenta y cinco mil pesos');
+    assert.equal(vozLimpia('Promo 2×1 y 2x1 activas'), 'Promo 2 por 1 y 2 por 1 activas');
+});
+test('toda lectura en voz pasa por _vozLimpia (FODI, avisos y aviso de pagos)', () => {
+    assert.match(js, /texto = _vozLimpia\(texto\);/);
+    assert.match(js, /new SpeechSynthesisUtterance\(_vozLimpia\(frase\)\)/);
 });

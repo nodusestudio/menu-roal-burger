@@ -31530,7 +31530,7 @@ async function _showAbrirCajaModal() {
         overlay.remove();
         renderCajaDiaria();
         _updateCajaEstadoUI();
-        showNotice(`Caja abierta por ${nombre} · Fondo: ${formatMoney(fondoUsado)}`, 'ok');
+        showNotice(`Caja abierta por ${nombre}. Se abrió con ${formatMoney(fondoUsado)} de fondo.`, 'ok'); // la voz lo dice: «Se abrió con cien mil pesos de fondo»
     }
 
     document.getElementById('_acUsarGuardadoBtn')?.addEventListener('click', () => {
@@ -39303,6 +39303,11 @@ function textoParaVoz(texto) {
 function _asistTextoHablado(md) {
     return String(md || '').replace(/```[\s\S]*?```/g, ' (tabla o código en pantalla) ').replace(/\|/g, ' ').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/[*_#>`~]/g, '').replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 1500);
 }
+// Lo que de verdad se dice: el dinero en palabras y en pesos, y los símbolos de los avisos (« · », «×») como una voz los diría.
+// «Caja abierta por Johan · Fondo: $ 100.000» → «Caja abierta por Johan. Fondo: cien mil pesos». Toda lectura en voz pasa por aquí.
+function _vozLimpia(texto) {
+    return textoParaVoz(texto).replace(/\s*[·•]\s*/g, '. ').replace(/([0-9])\s*[×x]\s*([0-9])/g, '$1 por $2').replace(/\s+/g, ' ').trim();
+}
 // Voz de FODI: la más natural y femenina disponible en español, algo más aguda y pausada = tierna.
 function _fodiElegirVoz() {
     const vs = (window.speechSynthesis?.getVoices() || []).filter((x) => /^es/i.test(x.lang));
@@ -39376,7 +39381,7 @@ async function _fodiDecirPiper(texto, cb, miGen) {
 }
 // Habla por frases (sin cortes de Chrome en textos largos), con prosodia variable y una pausita entre frases.
 function _fodiDecir(texto, cb = {}) {
-    texto = textoParaVoz(texto); // el dinero SIEMPRE en palabras y en pesos: «$ 27.500» → «veintisiete mil quinientos pesos»
+    texto = _vozLimpia(texto); // el dinero SIEMPRE en palabras y en pesos: «$ 27.500» → «veintisiete mil quinientos pesos»
     const ss = window.speechSynthesis;
     _fodiParar();
     const miGen = _piper.gen;
@@ -40553,7 +40558,7 @@ function _bancoRepetir(frase) {
     if (!('speechSynthesis' in window) || !frase) return;
     try {
         window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(textoParaVoz(frase));
+        const u = new SpeechSynthesisUtterance(_vozLimpia(frase));
         u.lang = 'es-CO';
         const voz = window.speechSynthesis.getVoices().find((v) => /^es/i.test(v.lang));
         if (voz) u.voice = voz;
