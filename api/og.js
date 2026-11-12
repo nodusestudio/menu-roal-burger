@@ -7,13 +7,13 @@ const ORIGEN = 'https://roalburger.com';
 
 module.exports = async (req, res) => {
     const festival = Date.now() <= FESTIVAL_HASTA;
-    const ruta = festival ? '/og-trifasica.jpg' : '/portada.png?v=20260601';
+    const ruta = festival ? '/og-trifasica.jpg' : '/og-portada.jpg?v=20261112';
     // Caché corta en el borde para que el cambio del 9 de noviembre se note pronto.
     res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=600');
     try {
         const r = await fetch(`${ORIGEN}${ruta}`);
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        res.setHeader('Content-Type', r.headers.get('content-type') || (festival ? 'image/jpeg' : 'image/png'));
+        res.setHeader('Content-Type', r.headers.get('content-type') || 'image/jpeg');
         res.status(200).send(Buffer.from(await r.arrayBuffer()));
     } catch (_) {
         res.redirect(302, `${ORIGEN}${ruta}`);

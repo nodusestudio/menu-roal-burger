@@ -31,3 +31,7 @@ Revisión: 2026-11-04 (primera corrida del skill `lanzamiento`). Leyenda: ✅ he
 ## Recomendación
 
 Lo más valioso y barato: **JSON-LD de Restaurant + ampliar el sitemap + píxel de Meta** (una sola tanda de cambios en `index.html`). Luego cerrar WhatsApp Cloud API, que es lo que más impacta las ventas.
+
+## Actualización 2026-11-12
+- **Imagen al compartir:** desde el 9-nov (fin del festival) `/og-compartir.jpg` servía `portada.png` de **2,2 MB** (PNG con extensión .jpg): WhatsApp/Facebook suelen no mostrar previews con imágenes tan pesadas. Ahora sirve `og-portada.jpg` (JPEG 1200×630, **97 KB**) y `index.html` declara tipo y tamaño (`og:image:type/width/height`). Test: `tests/og-compartir.test.js`.
+- Seguridad: llaves manuales de la cuenta de servicio borradas (ver fila 7).
