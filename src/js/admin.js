@@ -3082,6 +3082,14 @@ function setupNav2() {
         const obs = new MutationObserver(() => _nav2Insignias());
         document.querySelectorAll('#adminAccordionNav > .admin-accordion-trigger[data-accordion-target]').forEach((b) => obs.observe(b, { attributes: true, attributeFilter: ['class', 'data-unread-count'] }));
     } catch (_) { /* sin observador: las insignias se copian en cada cambio de panel */ }
+    // Botón «Accesos» del pie: abre/cierra el grupo (Ir a público, avisos, Modo TV…); se cierra al elegir uno o al tocar fuera.
+    try {
+        const mb = document.getElementById('sidebarMoreBtn'), mm = document.getElementById('sidebarMoreMenu');
+        const abrir = (v) => { if (!mb || !mm) return; mm.hidden = !v; mb.setAttribute('aria-expanded', v ? 'true' : 'false'); };
+        mb?.addEventListener('click', () => abrir(mm.hidden));
+        mm?.addEventListener('click', (e) => { if (e.target.closest('a,button')) abrir(false); });
+        document.addEventListener('click', (e) => { if (mm && !mm.hidden && !e.target.closest('#sidebarMoreMenu, #sidebarMoreBtn')) abrir(false); });
+    } catch (_) { /* sin el grupo, los accesos siguen en el pie */ }
     const sw = document.getElementById('adminMenuSwitchBtn');
     const rotularSw = () => { if (sw) sw.textContent = document.body.classList.contains('menu-nuevo') ? '🔀 Ver menú anterior' : '🔀 Ver menú nuevo'; };
     rotularSw();

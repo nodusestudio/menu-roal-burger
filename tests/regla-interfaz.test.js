@@ -151,6 +151,13 @@ test('Configuración: la acción principal de cada tarjeta va arriba a la derech
     assert.ok(html.includes('#addMeseroBtn) > #addMeseroBtn { margin-left: auto; }'));
 });
 
+test('Pie de la barra lateral: accesos agrupados en un botón «Accesos» y Cerrar sesión aparte', () => {
+    const m = /id="sidebarMoreMenu"[\s\S]*?<\/div>/.exec(html);
+    assert.ok(m && m[0].includes('adminPublicLink') && m[0].includes('adminAvisosPcBtn') && m[0].includes('adminTvBtn'));
+    assert.ok(!m[0].includes('adminSignOutBtn'), 'Cerrar sesión no va dentro del grupo');
+    assert.ok(html.includes('id="sidebarMoreBtn"') && js.includes("getElementById('sidebarMoreBtn')"));
+});
+
 test('Clientes: una línea por cliente con menú «⋯»; ventanas con scroll propio y fondo bloqueado', () => {
     assert.ok(html.includes('LISTA DE CLIENTES: una sola línea por cliente'));
     assert.ok(js.includes('class="client-more"') && js.includes('data-client-action'));

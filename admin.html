@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261112-1659">
+    <link rel="stylesheet" href="style.css?v=20261112-1704">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -14352,12 +14352,15 @@
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>
 
         <div class="sidebar-footer">
+            <div class="sidebar-more-menu" id="sidebarMoreMenu" hidden>
             <a class="admin-link" id="adminPublicLink" href="/" target="_blank" rel="noopener noreferrer">🌐 Ir a público</a>
             <button type="button" class="preview-refresh-btn" id="adminInstallBtn" style="display:none;">📲 Descargar App</button>
             <button type="button" class="preview-refresh-btn" id="adminAvisosPcBtn" title="Activa y prueba el cuadrito de aviso en la esquina de este computador (pedidos, chats, redes)">🖥️ Avisos del computador</button>
             <button type="button" class="preview-refresh-btn" id="adminAvisosBtn" title="Activa los avisos en este celular o computador (pedidos, chats, redes, clientes nuevos)">🔔 Avisos al celular</button>
             <button type="button" class="preview-refresh-btn" id="adminTvBtn" title="Configura y controla la pantalla de TV del local (productos, tiempos, pausa)">📺 Modo TV</button>
             <button type="button" class="preview-refresh-btn" id="adminMenuSwitchBtn" title="Cambia entre el menú nuevo (8 grupos) y el anterior">🔀 Ver menú anterior</button>
+            </div>
+            <button type="button" class="preview-refresh-btn" id="sidebarMoreBtn" aria-expanded="false" aria-controls="sidebarMoreMenu" title="Ir a público, avisos, Modo TV y más">🧰 Accesos <span class="sidebar-more-flecha">▴</span></button>
             <button type="button" class="preview-refresh-btn" id="adminSignOutBtn">🚪 Cerrar sesión</button>
         </div>
     </aside>
@@ -17217,8 +17220,14 @@
     [data-section-scope="configuracion"] .card-head > div:has(> #addMeseroBtn) > #addMeseroBtn { margin-left: auto; }
     /* ACCESOS DEL PIE DE LA BARRA LATERAL (Ir a público, Avisos, Modo TV, Cerrar sesión): filas compactas como el menú, ícono + texto a la izquierda */
     .sidebar-footer { gap: 4px; padding-top: 10px; margin-top: 10px; }
-    .sidebar-footer .admin-link, .sidebar-footer .preview-refresh-btn { justify-content: flex-start; text-align: left; min-height: var(--ui-btn-h); padding: 0 12px; font-size: 0.74rem; font-weight: 600; background: transparent; border-color: transparent; color: rgba(255,255,255,0.78); }
+    .sidebar-footer .admin-link, .sidebar-footer .preview-refresh-btn { display: flex; align-items: center; justify-content: flex-start; text-align: left; min-height: var(--ui-btn-h); padding: 0 12px; font-size: 0.74rem; font-weight: 600; background: transparent; border-color: transparent; color: rgba(255,255,255,0.78); }
     .sidebar-footer .admin-link:hover, .sidebar-footer .preview-refresh-btn:hover { background: rgba(255,255,255,0.08); border-color: transparent; }
+    /* Los accesos del pie van agrupados en un solo botón «Accesos» (se abre hacia arriba); Cerrar sesión queda aparte */
+    .sidebar-more-menu { display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: var(--ui-radius-lg, 14px); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+    .sidebar-more-menu[hidden] { display: none; }
+    .sidebar-footer #sidebarMoreBtn { color: #fff; background: rgba(255,255,255,0.07); border-color: var(--admin-border); }
+    .sidebar-footer #sidebarMoreBtn .sidebar-more-flecha { margin-left: auto; opacity: .6; transition: transform .18s; }
+    .sidebar-footer #sidebarMoreBtn[aria-expanded="true"] .sidebar-more-flecha { transform: rotate(180deg); }
     .sidebar-footer #adminSignOutBtn { color: #ff9a9a; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.07); border-radius: 0 0 var(--ui-radius) var(--ui-radius); }
     .sidebar-footer #adminMenuSwitchBtn { opacity: 0.7; }
     .cfg-add-btn { margin-top: 10px; }
@@ -17751,19 +17760,19 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261112-1659"></script>
+    <script defer src="firebase-config.js?v=20261112-1704"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261112-1659"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261112-1704"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1659"></script>
-    <script defer src="admin.js?v=20261112-1659"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261112-1704"></script>
+    <script defer src="admin.js?v=20261112-1704"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

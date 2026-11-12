@@ -85,7 +85,7 @@ try {
     return [...new Set(cls.map((c) => { const e = document.createElement('div'); e.className = c; e.textContent = 'No hay datos'; document.body.appendChild(e); const s = getComputedStyle(e); const r = [s.fontSize, s.color, s.textAlign, s.paddingTop].join('|'); e.remove(); return r; }))];
   });
   ok(vacios.length === 1, 'ESTADO VACÍO: los 13 tipos de «No hay…» se ven idénticos (' + vacios.join(' ; ') + ')');
-  const pie = await p.evaluate(() => { const a = document.getElementById('adminPublicLink'); const s = getComputedStyle(a); return [Math.round(a.getBoundingClientRect().height), s.borderTopLeftRadius, s.textTransform].join('|'); });
+  const pie = await p.evaluate(() => { document.getElementById('sidebarMoreMenu').hidden = false; const a = document.getElementById('adminPublicLink'); const s = getComputedStyle(a); return [Math.round(a.getBoundingClientRect().height), s.borderTopLeftRadius, s.textTransform].join('|'); });
   ok(pie === '32|9px|none', 'el enlace «Ir a público» del menú es un botón más de la familia (' + pie + ')');
   const fodi = await p.evaluate(() => {
     const set = (sel, f) => [...new Set([...document.querySelectorAll(sel)].map((e) => f(getComputedStyle(e))))];
