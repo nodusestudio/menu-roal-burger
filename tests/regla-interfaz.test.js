@@ -35,7 +35,7 @@ test('los botones renderizados por JS en Configuración no llevan relleno/ancho/
     assert.deepEqual(malos, []);
 });
 test('los botones de guardar son del rol principal (naranja) y no ocupan todo el ancho', () => {
-    assert.match(html, /\.admin-button, \.biz-save-btn, button\.cat-new-save-btn, \.pos-note-save-btn \{\s*background: linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
+    assert.match(html, /\.admin-button, \.biz-save-btn, button\.cat-new-save-btn, \.pos-note-save-btn, \.feedback-pending-btn \{\s*background: linear-gradient\(135deg, #ff7a1a, #ff9540\)/);
     assert.match(html, /cursor: pointer; white-space: nowrap; width: auto; grid-column: auto;/);
 });
 
@@ -161,4 +161,10 @@ test('Clientes: se leen SIEMPRE del servidor (no de la copia local que puede ven
 test('Artículos: títulos con la misma tipografía y botones pequeños sin mayúsculas', () => {
     assert.ok(html.includes('.upgrades-detail-topbar-title, .upgrades-master-item-name { font-family: \'Space Grotesk\', sans-serif !important;'));
     assert.ok(html.includes('.mini-btn, .category-actions .mini-btn, .upgrades-detail-topbar .mini-btn { text-transform: none !important;'));
+});
+
+test('Feedback: una línea por cliente y el botón «Copiar mensaje» es de la familia única', () => {
+    assert.ok(html.includes('#fbBody .met-user-row-v2 { padding: 6px 10px !important;'));
+    assert.ok(html.includes('.client-action-btn, .cd-btn, .feedback-pending-btn,'));
+    assert.ok(html.includes('.pos-note-save-btn, .feedback-pending-btn {'));
 });

@@ -970,3 +970,6 @@ Hallazgo (mismo origen que la lista de clientes vacía): con `enablePersistence`
 
 # Parte 35 — Artículos (Catálogo)
 `herramientas/captura-articulos.mjs <carpeta> [ancho]` dibuja la lista de categorías y el detalle con productos con las funciones reales (`createCategoryMasterItem`, `_renderCategoryDetailPanel`). Ya era compacto (rejilla de fichas pequeñas); se unificó la tipografía de títulos (Space Grotesk, sin letra condensada) y los botones pequeños («Eliminar», etc.) sin mayúsculas. Las ventanas de producto y de categoría no se vieron con datos.
+
+# Parte 36 — Feedback en una línea
+`herramientas/captura-feedback.mjs <carpeta> [ancho]` dibuja Feedback (seguimiento por día y respuestas) con el marcado real y datos de muestra. Cada cliente ocupaba 61 px (nombre, luego celular y estado en otra línea, y un botón naranja grande «Copiar mensaje» fuera de la familia). Ahora: una línea de ~44 px con nombre, celular y estado, y «Copiar mensaje» con el tamaño y rol de los demás botones. Las respuestas también pasan a una línea.
