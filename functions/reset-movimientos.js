@@ -1,40 +1,31 @@
 /**
- * reset-movimientos.js
+ * reset-movimientos.js   —   ⚠️  BORRA el historial de dinero de PRODUCCIÓN
  *
- * Reinicia SOLO las colecciones de movimientos, informes y métricas.
+ * Reinicia SOLO las colecciones de movimientos, informes y métricas (cierres de caja, gastos, tickets, pedidos…).
  * NO toca: clientes, proveedores, productos, categorías ni catálogo.
  *
- * Requiere: functions/serviceAccountKey.json (descargarlo desde Firebase Console)
+ * SEGURIDAD (el negocio ya vende de verdad: los totales y historiales son intocables):
+ *   · Por defecto NO borra nada: solo muestra CUÁNTOS documentos hay en cada colección (ensayo).
+ *   · Para borrar hay que pasar --ejecutar Y escribir a mano «BORRAR TODO» cuando lo pida.
+ *   · Ya NO usa un archivo de llave (serviceAccountKey.json): toma las credenciales de tu sesión de Google Cloud
+ *     (gcloud auth application-default login) o de GOOGLE_APPLICATION_CREDENTIALS. En el repo no queda ninguna llave.
  *
  * Uso:
  *   cd functions
- *   node reset-movimientos.js
+ *   node reset-movimientos.js              ← ensayo: cuenta, no borra
+ *   node reset-movimientos.js --ejecutar   ← borra (pide confirmación escrita)
  */
 
 const admin = require('firebase-admin');
-const path = require('path');
-const fs = require('fs');
+const readline = require('readline');
 
-// ── Credenciales ──────────────────────────────────────────────────────────────
-const KEY_PATH = path.join(__dirname, 'serviceAccountKey.json');
+const PROJECT_ID = 'roal-burger-menu';
+const EJECUTAR = process.argv.includes('--ejecutar');
 
-if (!fs.existsSync(KEY_PATH)) {
-  console.error('\n❌  No se encontró serviceAccountKey.json en functions/');
-  console.error('    → Ve a Firebase Console → Project Settings → Service Accounts');
-  console.error('    → Clic en "Generate new private key"');
-  console.error('    → Guarda el archivo como:  functions/serviceAccountKey.json');
-  console.error('    → Vuelve a ejecutar este script.\n');
-  process.exit(1);
-}
-
-admin.initializeApp({
-  credential: admin.credential.cert(require(KEY_PATH)),
-  projectId: 'roal-burger-menu',
-});
-
+admin.initializeApp({ projectId: PROJECT_ID }); // credenciales de la sesión (ADC), sin archivo de llave
 const db = admin.firestore();
 
-// ── Colecciones a borrar completamente ───────────────────────────────────────
+// ── Colecciones a borrar completamente ───────────────────────────────
 const CLEAR_COLLECTIONS = [
   'gastos_caja',    // movimientos de caja (egresos)
   'cierres_caja',   // arqueos / cierres de jornada
@@ -43,7 +34,12 @@ const CLEAR_COLLECTIONS = [
   'pos_tickets',    // tickets POS generados
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────
+async function contar(name) {
+  const r = await db.collection(name).count().get();
+  return r.data().count;
+}
+
 async function deleteCollection(name) {
   const ref = db.collection(name);
   let total = 0;
@@ -101,18 +97,39 @@ async function resetearJornada() {
   await db.collection('admin_estado').doc('jornada_ventas_actual').delete();
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+function preguntar(texto) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => rl.question(texto, (r) => { rl.close(); resolve(r); }));
+}
+
+// ── Main ─────────────────────────────────────────────────────────────
 async function main() {
   console.log('\n══════════════════════════════════════════════════════');
   console.log('   REINICIO DE MOVIMIENTOS, INFORMES Y MÉTRICAS');
-  console.log('   Proyecto: roal-burger-menu');
-  console.log('══════════════════════════════════════════════════════');
-  console.log('');
+  console.log(`   Proyecto: ${PROJECT_ID}   ·   modo: ${EJECUTAR ? '⚠️  BORRAR' : 'ensayo (no borra)'}`);
+  console.log('══════════════════════════════════════════════════════\n');
   console.log('✅ SIN CAMBIOS EN: clientes · proveedores · productos');
-  console.log('                   categorías · bebidas · combos · config');
-  console.log('');
+  console.log('                   categorías · bebidas · combos · config\n');
 
   try {
+    // Siempre se muestra primero lo que hay
+    const conteos = {};
+    for (const col of [...CLEAR_COLLECTIONS, 'pedidos']) {
+      conteos[col] = await contar(col);
+      console.log(`  ${col.padEnd(18)} ${String(conteos[col]).padStart(7)} documentos`);
+    }
+
+    if (!EJECUTAR) {
+      console.log('\nEnsayo terminado: NO se borró nada. Para borrar de verdad: node reset-movimientos.js --ejecutar\n');
+      process.exit(0);
+    }
+
+    const resp = await preguntar('\n⚠️  Esto BORRA todo lo de arriba en PRODUCCIÓN y no se puede deshacer.\nEscribe exactamente  BORRAR TODO  para continuar: ');
+    if (resp.trim() !== 'BORRAR TODO') {
+      console.log('\nCancelado: no se borró nada.\n');
+      process.exit(0);
+    }
+
     // 1. Colecciones de informes/métricas
     for (const col of CLEAR_COLLECTIONS) {
       process.stdout.write(`  ⏳ ${col.padEnd(18)} → `);
@@ -130,11 +147,7 @@ async function main() {
     await resetearJornada();
     console.log('jornada_ventas_actual eliminado');
 
-    console.log('');
-    console.log('══════════════════════════════════════════════════════');
-    console.log('   ✅  REINICIO COMPLETADO EXITOSAMENTE');
-    console.log('   Todo listo para comenzar con ventas reales.');
-    console.log('══════════════════════════════════════════════════════\n');
+    console.log('\n   ✅  REINICIO COMPLETADO\n');
 
   } catch (err) {
     console.error('\n❌  Error durante el reinicio:', err.message);

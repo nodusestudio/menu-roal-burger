@@ -26,7 +26,7 @@ Revisión: 2026-11-04 (primera corrida del skill `lanzamiento`). Leyenda: ✅ he
 | 6 | Tests | ✅ | Suite en `tests/` (no se corrió en esta revisión) |
 | 7 Pendientes | App Google Play del admin | ⬜ | Pendiente consciente |
 | 7 | Probar QR con valor / pago real pequeño | ⬜ | Pendiente |
-| 7 | Rotar serviceAccountKey + reset-movimientos.js | ⬜ | Pendiente tras 8 nov |
+| 7 | Rotar serviceAccountKey + reset-movimientos.js | 🟡 | 2026-11-12: `reset-movimientos.js` ya no usa archivo de llave y por defecto solo cuenta (borrar exige `--ejecutar` + escribir «BORRAR TODO»). Falta (lo hace el dueño): borrar las 2 llaves USER_MANAGED de `firebase-adminsdk-fbsvc` (`8debef80…`, `9f46224e…`) en Google Cloud y el archivo local `functions/serviceAccountKey.json`. Nada del repo ni de Vercel las usa. |
 
 ## Recomendación
 
