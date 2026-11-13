@@ -11048,7 +11048,9 @@ function _renderCategoryDetailPanel(categoryId) {
                                 <button type="button" data-action="delete-product-inline" data-product-id="${p.id}" data-product-name="${p.nombre}" style="position:absolute;top:4px;left:4px;width:22px;height:22px;border-radius:6px;border:none;background:rgba(180,30,30,0.75);color:#fff;font-size:0.75rem;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;" title="Eliminar">✕</button>
                                 <div style="padding:4px 5px;">
                                     <p style="margin:0;font-size:0.65rem;color:#eef4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${p.nombre}">${p.nombre}</p>
-                                    <span style="font-size:0.6rem;color:${isPaused ? '#ff6b6b' : '#4ade80'};">${isPaused ? 'Pausado' : 'Activo'}</span>
+                                    <div style="display:flex;gap:4px;margin-top:3px;">
+                                        ${[['menu', 'Menú', !isPaused], ['pos', 'POS', p.visible_pos !== false]].map(([k, t, on]) => `<button type="button" data-action="toggle-product-flag" data-flag="${k}" data-product-id="${p.id}" title="${on ? 'Activo en ' + t + ' (toca para desactivar)' : 'Apagado en ' + t + ' (toca para activar)'}" style="flex:1;border:1px solid ${on ? 'rgba(74,222,128,0.5)' : 'rgba(255,255,255,0.15)'};background:${on ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.05)'};color:${on ? '#4ade80' : '#8a8a8a'};${on ? '' : 'text-decoration:line-through;'}border-radius:6px;font-size:0.58rem;font-weight:700;padding:2px 0;cursor:pointer;font-family:inherit;">${on ? '✓' : '✕'} ${t}</button>`).join('')}
+                                    </div>
                                 </div>
                             </div>`;
                         }).join('')}
@@ -11259,6 +11261,33 @@ function _renderCategoryDetailPanel(categoryId) {
             const pid = btn.dataset.productId;
             _editingProductId = _editingProductId === pid ? null : pid;
             _renderCategoryDetailPanel(categoryId);
+        });
+    });
+
+    // Activar/desactivar en Menú o POS directo desde la tarjeta (guarda al instante y avisa).
+    categoryDetailPanel.querySelectorAll('[data-action="toggle-product-flag"]').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (btn.disabled) return;
+            const prod = productsState.find((x) => x.id === btn.dataset.productId);
+            if (!prod) return;
+            const esMenu = btn.dataset.flag === 'menu';
+            const nuevoOn = esMenu ? prod.estado === 'paused' : prod.visible_pos === false;
+            const cambio = esMenu
+                ? { estado: nuevoOn ? 'active' : 'paused' }
+                : { visible_pos: nuevoOn };
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            try {
+                await firebaseDb.collection('productos').doc(prod.id).update({ ...cambio, updated_at: firestoreNow() });
+                Object.assign(prod, cambio);
+                showNotice(`${prod.nombre}: ${nuevoOn ? 'activado' : 'desactivado'} en ${esMenu ? 'el menú' : 'el POS'}.`, 'success');
+                _renderCategoryDetailPanel(categoryId);
+            } catch (err) {
+                btn.disabled = false;
+                btn.style.opacity = '';
+                showNotice('No se pudo cambiar: ' + ((err && err.message) || 'intenta de nuevo'), 'error');
+            }
         });
     });
 
