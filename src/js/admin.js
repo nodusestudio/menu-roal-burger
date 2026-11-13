@@ -17201,6 +17201,10 @@ function announceNewChatRoalConversations(conversations) {
         .forEach((conv) => {
             playChatRoalSound('eachMessage');
             showChatRoalMessageToast(_chatRoalName(conv), conv.lastCustomerMessageText || conv.lastMessageText || '');
+            // Cada mensaje del cliente también se dice en voz (no las respuestas del agente): solo el nombre, sin números ni emojis
+            if (conv.lastCustomerMessageText && conv.lastMessageText === conv.lastCustomerMessageText) {
+                _adminDecirAviso(`Mensaje de ${_nombreVoz(_chatRoalName(conv)) || 'un cliente'}.`, null);
+            }
         });
 
     if (!newOnes.length) return;
