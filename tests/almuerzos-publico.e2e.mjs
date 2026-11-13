@@ -53,6 +53,15 @@ try {
     ok(hoy.filas.length === 4 && hoy.filas[0].includes('Pollo a la plancha') && hoy.filas[0].includes('Chuleta de cerdo') && !hoy.filas[0].includes('Pepito') && hoy.boton, 'tarjeta Almuerzo de hoy: 4 filas con SOLO lo activo y el botón Armar: ' + JSON.stringify(hoy.filas));
     ok(/Hoy hay almuerzo/.test(hoy.franja) && hoy.franja.includes("$19.000") && /Pollo a la plancha/.test(hoy.franja), 'franja superior con precio y proteínas: ' + hoy.franja);
     await p.screenshot({ path: path.join(raiz, '_qa-shots', 'almuerzo-hoy-menu.png') });
+    // Menú del día (al tocar la tarjeta): un bloque por categoría y una ficha por opción
+    await p.evaluate(() => _almPubMenuDia());
+    const md = await p.evaluate(() => ({ bloques: document.querySelectorAll('#almuerzo-menu-modal .alm-menu-sec').length, fichas: [...document.querySelectorAll('#almuerzo-menu-modal .alm-menu-op')].map((x) => x.textContent), cta: !!document.querySelector('#almuerzo-menu-modal [data-armar]'), precio: (document.querySelector('.alm-menu-p') || {}).textContent }));
+    ok(md.bloques === 4 && md.fichas.length === 5 && md.fichas.includes('Pollo a la plancha') && !md.fichas.includes('Carne para Pepito') && md.cta && /19.000/.test(md.precio), 'menú del día: 4 bloques, una ficha por opción activa (' + md.fichas.length + ') y botón Armar: ' + md.fichas.join(', '));
+    await p.screenshot({ path: path.join(raiz, '_qa-shots', 'almuerzo-menu-dia.png') });
+    await p.click('#almuerzo-menu-modal [data-armar]');
+    await p.waitForSelector('#almuerzo-modal .alm-pub-o');
+    ok(!(await p.$('#almuerzo-menu-modal')) && (await p.textContent('#almuerzo-modal .alm-pub-q')).includes('proteína'), 'Armar mi almuerzo cierra el menú y abre el paso 1 (proteína)');
+    await p.evaluate(() => document.getElementById('almuerzo-modal')?.remove());
     await p.evaluate(() => { COMP.forEach((c) => { if (c[1] === 'ensalada') c[3] = false; }); _almPub.comps = COMP.map(([id, categoria, nombre, disponible]) => ({ id, categoria, nombre, disponible, activo: true })); _almPubRefrescar(); renderAlmuerzosPublicPanel(document.getElementById('categoryProductsPanel')); });
     const sin = await p.evaluate(() => ({ txt: document.getElementById('categoryProductsPanel').textContent, franja: !!document.getElementById('almuerzoHoyFranja'), boton: !!document.querySelector('[data-armar]') }));
     ok(/no hay almuerzo/.test(sin.txt) && !sin.franja && !sin.boton, 'si se apaga una categoría completa: dice que no hay almuerzo, sin franja ni botón');

@@ -12058,8 +12058,8 @@ function _makeMenuCarouselCard(product) {
 
     // El visor de imagen ampliada (lightbox) tambien muestra descripcion, precio y un boton de
     // agregar — no solo la foto y el nombre — para que "ampliar" traiga toda la info consigo.
-    _bindLightboxTap(wrap, img, {
-        description: esAlm ? _almPubResumenTexto() : (description || undefined),
+    if (esAlm) { wrap.style.cursor = 'pointer'; wrap.addEventListener('click', _almPubMenuDia); } else _bindLightboxTap(wrap, img, {
+        description: description || undefined,
         price: price ? '$' + price.toLocaleString('es-CO') : undefined,
         onAdd: addToCart
     });
@@ -12068,6 +12068,7 @@ function _makeMenuCarouselCard(product) {
     // izquierda, boton compacto de agregar a la derecha (en vez del boton ancho "Lo Quiero" de antes).
     const infoText = document.createElement('div');
     infoText.className = 'pcm-info-text';
+    if (esAlm) { infoText.style.cursor = 'pointer'; infoText.addEventListener('click', _almPubMenuDia); }
     infoText.appendChild(nameEl);
     if (description || esAlm) infoText.appendChild(descEl);
     if (price) infoText.appendChild(priceEl);
@@ -14451,7 +14452,7 @@ function _almPubFranja() {
         el.type = 'button';
         el.id = 'almuerzoHoyFranja';
         el.className = 'alm-franja liquid-glass';
-        el.addEventListener('click', _almPubAbrir);
+        el.addEventListener('click', _almPubMenuDia);
         grid.parentElement.insertBefore(el, grid);
     }
     el.innerHTML = '<span class="alm-franja-i">🍽️</span><span class="alm-franja-t"><b>Hoy hay almuerzo · ' + escapeHtml(formatCurrency(Number(p.precio) || 0)) + '</b><small>' + escapeHtml(txt) + ' y más</small></span><span class="alm-franja-f">›</span>';
@@ -14474,11 +14475,50 @@ function renderAlmuerzosPublicPanel(panel) {
     panel.querySelector('[data-armar]').addEventListener('click', _almPubAbrir);
 }
 
-/** Texto de lo que hay hoy, una línea por categoría (para la tarjeta del catálogo y su vista ampliada). */
+/** Línea corta para la tarjeta del catálogo; el detalle completo se ve al tocarla (menú del día). */
 function _almPubResumenTexto() {
     if (!_almPub.listo) return 'Cargando el menú de hoy…';
     if (!_almPubDisponible()) return 'Hoy no hay almuerzo disponible.';
     const m = _almPubPorCategoria();
-    const ic = { proteina: '🍗', contorno: '🍟', ensalada: '🥗', bebida: '🥤' };
-    return 'Arroz incluido + elige 1 de cada una:\n' + ALMUERZO_CATS_PUB.map((k) => ic[k] + ' ' + m[k].join(' · ')).join('\n');
+    return 'Arroz + proteína + contorno + ensalada + bebida\n👆 Toca para ver el menú de hoy (' + (m.proteina.length + m.contorno.length + m.ensalada.length + m.bebida.length) + ' opciones)';
+}
+
+/** Menú del día: cada categoría en su bloque y cada opción como ficha; desde aquí se arma el almuerzo. */
+function _almPubMenuDia() {
+    document.getElementById('almuerzo-menu-modal')?.remove();
+    const p = _almPubProducto();
+    const nombre = p ? p.nombre : 'Almuerzo Ejecutivo';
+    const modal = document.createElement('div');
+    modal.id = 'almuerzo-menu-modal';
+    modal.className = 'bebidas-modal-overlay';
+    const card = document.createElement('div');
+    card.className = 'bebidas-modal-card liquid-glass alm-pub alm-menu';
+    modal.appendChild(card);
+    document.body.appendChild(modal);
+    const cerrar = () => { modal.remove(); _popGenericModal(cerrar); };
+    modal.addEventListener('click', (e) => { if (e.target === modal) cerrar(); });
+    try { _pushGenericModal(cerrar); } catch (_) { /* sin historial */ }
+    const colores = { proteina: '#ff9a50', contorno: '#ffd479', ensalada: '#7ee2a8', bebida: '#7ec8ff' };
+    const filas = [['proteina', '🍗', 'Proteína'], ['contorno', '🍟', 'Contorno'], ['ensalada', '🥗', 'Ensalada'], ['bebida', '🥤', 'Bebida']];
+    const pintar = () => {
+        const precio = p ? formatCurrency(Number(p.precio) || 0) : '';
+        const cabeza = '<div class="bebidas-modal-title">' + escapeHtml(nombre) + '</div>';
+        if (!_almPub.listo) { card.innerHTML = cabeza + '<p class="alm-pub-q">Cargando el menú de hoy…</p>'; return; }
+        if (!p || p.estado === 'paused' || !_almPubDisponible()) {
+            card.innerHTML = cabeza + '<p class="alm-pub-q">Hoy no hay almuerzo disponible</p><p class="alm-pub-r">Vuelve pronto o escríbenos por WhatsApp.</p><div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-x>Cerrar</button></div>';
+            return;
+        }
+        const m = _almPubPorCategoria();
+        card.innerHTML = cabeza + '<p class="alm-menu-p">' + escapeHtml(precio) + ' · arroz incluido</p><p class="alm-pub-paso">MENÚ DE HOY · elige 1 de cada bloque</p>'
+            + filas.map((f) => '<div class="alm-menu-sec" style="--c:' + colores[f[0]] + '"><div class="alm-menu-t">' + f[1] + ' ' + f[2] + '<small>elige 1 · ' + m[f[0]].length + ' opciones</small></div><div class="alm-menu-ops">'
+                + m[f[0]].map((n) => '<span class="alm-menu-op">' + escapeHtml(n) + '</span>').join('') + '</div></div>').join('')
+            + '<div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-x>Cerrar</button><button type="button" class="alm-pub-b" data-armar>Armar mi almuerzo</button></div>';
+    };
+    card.addEventListener('click', (e) => {
+        if (e.target.closest('[data-x]')) return cerrar();
+        if (e.target.closest('[data-armar]')) { cerrar(); _almPubAbrir(); }
+    });
+    pintar();
+    // si lo disponible cambia con el menú abierto, se repinta solo
+    const obs = setInterval(() => { if (!document.body.contains(modal)) { clearInterval(obs); return; } pintar(); }, 4000);
 }
