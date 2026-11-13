@@ -19515,7 +19515,11 @@ function buildESCPOSData(order) {
 }
 
 async function _btWriteChunk(char, slice) {
-    // Intenta sin respuesta primero (más común en impresoras térmicas), luego con respuesta
+    // Con respuesta primero: la impresora confirma cada trozo, así no se pierden caracteres cuando su búfer está lleno
+    // (pasaba al imprimir tickets largos: "Sin salsas" salía "Isas"). Sin respuesta solo si la impresora no lo permite.
+    if (char.properties?.write) {
+        try { await char.writeValue(slice); return; } catch (_) { /* fallback */ }
+    }
     if (char.properties?.writeWithoutResponse) {
         try { await char.writeValueWithoutResponse(slice); return; } catch (_) { /* fallback */ }
     }
