@@ -41884,13 +41884,13 @@ async function _almPintarOpcionesEnFicha(host) {
     try { await _almCargar(); } catch (e) { host.innerHTML = `<p class="cs-muted">No se pudieron cargar las opciones (${escapeHtml((e && e.message) || e)}).</p>`; return; }
     const A = _almCore();
     const pintar = () => {
-        host.innerHTML = A.ORDEN_CATEGORIAS.map((cid) => {
+        host.innerHTML = '<div class="alm-mini">' + A.ORDEN_CATEGORIAS.map((cid) => {
             const cat = A.CATEGORIAS[cid];
             const lista = _alm.comps.filter((c) => c.categoria === cid && c.activo !== false);
-            return `<div style="margin:8px 0 4px;font-weight:700;font-size:.85rem;">${cat.icono} ${cat.plural} <small style="color:var(--admin-muted);font-weight:400;">${lista.filter((c) => c.disponible).length}/${lista.length} activas</small></div>`
-                + lista.map((c) => `<label class="alm-fila${c.disponible ? ' on' : ''}"><input type="checkbox" data-alm-f="${escapeHtml(c.id)}" ${c.disponible ? 'checked' : ''}><span class="alm-fila-n">${escapeHtml(c.nombre)}</span></label>`).join('')
-                + `<button type="button" class="alm-btn" data-alm-fadd="${cid}">➕ Agregar ${cat.label.toLowerCase()}</button>`;
-        }).join('');
+            return `<div class="alm-mini-c"><div class="alm-mini-t">${cat.icono} ${cat.plural} <small>${lista.filter((c) => c.disponible).length}/${lista.length}</small></div><div class="alm-mini-f">`
+                + lista.map((c) => `<label class="alm-tog${c.disponible ? ' on' : ''}" title="${c.disponible ? 'Activa hoy' : 'Apagada'}"><input type="checkbox" data-alm-f="${escapeHtml(c.id)}" ${c.disponible ? 'checked' : ''}>${escapeHtml(c.nombre)}</label>`).join('')
+                + `<button type="button" class="alm-tog add" data-alm-fadd="${cid}" title="Agregar ${cat.label.toLowerCase()}">＋</button></div></div>`;
+        }).join('') + '</div>';
     };
     pintar();
     if (host.dataset.almBound) return;
