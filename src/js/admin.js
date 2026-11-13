@@ -41562,7 +41562,7 @@ function _almHtmlMenu() {
         ? `<p class="cs-muted">Hoy se pueden armar <b>${posibles}</b> combinaciones. Costo real por almuerzo: <b>${money(Math.round(minC + base))}</b> a <b>${money(Math.round(maxC + base))}</b> · utilidad bruta: <b>${money(Math.round(precio - maxC - base))}</b> a <b>${money(Math.round(precio - minC - base))}</b> (precio ${money(precio)}).</p>`
         : `<p class="cs-muted">⚠️ Falta encender al menos una opción en cada categoría para poder vender el almuerzo.</p>`;
     return `<article class="admin-card"><div class="card-head"><h2>📅 Menú de hoy</h2></div><div class="card-body">
-        <div class="cs-bar">${aviso}<button type="button" class="alm-btn" data-alm-act="apagar">Apagar todo</button><button type="button" class="alm-btn" data-alm-act="menuOk">✔ Confirmar que este es el menú de hoy</button></div>
+        <div class="cs-bar">${aviso}<button type="button" class="alm-btn" data-alm-act="apagar">Apagar todo</button><button type="button" class="alm-btn" data-alm-act="menuOk">✔ Confirmar que este es el menú de hoy</button><button type="button" class="alm-btn" data-alm-act="copiarMenu" title="Copia el menú del día listo para pegar en WhatsApp o Instagram">📋 Copiar menú del día</button></div>
         <p class="cs-muted">Marca lo que hay hoy. El cajero solo podrá elegir lo encendido; la estructura del producto no cambia.</p>
         ${resumen}<div class="alm-cols">${colum}</div></div></article>`;
 }
@@ -41772,6 +41772,12 @@ function _almBind(body) {
                 await _almMarcarMenuHoy();
                 return _almRender();
             }
+            if (a === 'copiarMenu') {
+                const t = _almTextoMenuDia();
+                if (!t) return showNotice('Enciende al menos una opción en cada categoría para armar el menú.', 'error');
+                await copyTextToClipboard(t);
+                return showNotice('Menú del día copiado: pégalo en WhatsApp o Instagram.', 'ok');
+            }
             if (a === 'menuOk') { await _almMarcarMenuHoy(); showNotice('Menú confirmado para hoy.', 'ok'); return _almRender(); }
             if (a === 'guardarStock' || a === 'entrada') {
                 const ins = _costos.insumos.find((x) => x.id === id);
@@ -41924,4 +41930,18 @@ async function _almPintarOpcionesEnFicha(host) {
         try { await _almGuardarComp({ categoria: cat, nombre, ref: null, porcion: 0, unidad: '', activo: true, disponible: true }, null); await _almMarcarMenuHoy(); pintar(); showNotice('Opción agregada.', 'ok'); }
         catch (err) { showNotice(`No se pudo agregar: ${(err && err.message) || err}`, 'error'); }
     });
+}
+
+/** Texto del menú del día, listo para pegar en un estado de WhatsApp o una historia. null si falta una categoría. */
+function _almTextoMenuDia() {
+    const A = _almCore();
+    const prod = _almProducto();
+    const precio = Number(prod?.precio) || A.ALMUERZO_PRECIO;
+    const lineas = [];
+    for (const cid of A.ORDEN_CATEGORIAS) {
+        const on = _alm.comps.filter((c) => c.categoria === cid && c.activo !== false && c.disponible === true).map((c) => c.nombre);
+        if (!on.length) return null;
+        lineas.push(`${A.CATEGORIAS[cid].icono} ${A.CATEGORIAS[cid].label}: ${on.join(', ')}`);
+    }
+    return [`🍽️ *ALMUERZO EJECUTIVO DE HOY* — ${formatMoney(precio)}`, 'Arroz incluido + elige 1 de cada una:', '', ...lineas, '', '🛵 Domicilio se cobra aparte', '📲 Pídelo en roalburger.com'].join('\n');
 }

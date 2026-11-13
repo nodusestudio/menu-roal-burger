@@ -19,7 +19,7 @@
     var barra = document.getElementById('barra');
     var fotos = [document.getElementById('fotoA'), document.getElementById('fotoB')];
 
-    var state = { productos: [], categorias: [], promos: [], cfg: {} };
+    var state = { productos: [], categorias: [], promos: [], cfg: {}, almuerzo: [] };
 
     // Configuración que se maneja desde el admin (FODEXA → Modo TV), en configuracion/tv_config. Sin ese documento
     // la pantalla se comporta como siempre: todo el menú, 8 s por producto.
@@ -54,7 +54,8 @@
         return {
             id: d.id, nombre: d.nombre, precio: d.precio, categoria: d.categoria, estado: d.estado,
             es_destacado: d.es_destacado === true, image_url: d.image_url, descripcion: d.descripcion,
-            order: d.order, promo2x1: { activo: p.activo === true, image_url: p.image_url || '' }
+            order: d.order, promo2x1: { activo: p.activo === true, image_url: p.image_url || '' },
+            almuerzo: d.almuerzoConfigurable === true
         };
     }
 
@@ -132,13 +133,28 @@
         return false;
     }
 
+    // Almuerzo Ejecutivo: una línea por categoría con lo que hay hoy (null si falta alguna: no se muestra).
+    function almuerzoLineas() {
+        var cats = [['proteina', 'Proteína'], ['contorno', 'Contorno'], ['ensalada', 'Ensalada'], ['bebida', 'Bebida']];
+        var out = [];
+        for (var i = 0; i < cats.length; i++) {
+            var n = state.almuerzo.filter(function (c) { return c.categoria === cats[i][0] && c.activo !== false && c.disponible === true; }).map(function (c) { return c.nombre; });
+            if (!n.length) return null;
+            out.push(cats[i][1] + ': ' + n.join(' · '));
+        }
+        return out;
+    }
+
     function construirLista() {
         var festivalActivo = Date.now() <= FESTIVAL_HASTA;
         var out = [];
         state.productos.forEach(function (p) {
             if (String(p.estado || 'active').toLowerCase() === 'paused') return;
             var img = String(p.image_url || '').trim();
-            if (!img || /(^|\/)(logo|isotipo|fondo|portada)\.[a-z]+$/i.test(img)) return; // solo con foto de producto
+            // El Almuerzo Ejecutivo sale siempre que haya algo activo hoy (aunque aún no tenga foto propia)
+            var almLineas = p.almuerzo ? almuerzoLineas() : null;
+            if (p.almuerzo && !almLineas) return;
+            if (!p.almuerzo && (!img || /(^|\/)(logo|isotipo|fondo|portada)\.[a-z]+$/i.test(img))) return; // solo con foto de producto
             if (categoriaInactiva(p.categoria)) return;
             var clave = norm(p.nombre);
             if (!clave || clave === 'empanadas' || clave === 'empanada') return;
@@ -160,7 +176,7 @@
                 es2x1: es2x1,
                 festival: esFestival,
                 etiqueta: etiqueta,
-                ingredientes: (typeof p.ingredientes === 'string' && p.ingredientes.trim())
+                ingredientes: almLineas ? almLineas : (typeof p.ingredientes === 'string' && p.ingredientes.trim())
                     ? p.ingredientes.split(/[\n,;]+/).map(function (t) { t = t.trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : ''; }).filter(Boolean).slice(0, 8)
                     : parseIngredientes(p.descripcion),
                 img: resolverImg((es2x1 && p.promo2x1 && p.promo2x1.image_url) || img),
@@ -329,6 +345,10 @@
             guardarCache();
             reconstruir();
         }, err('productos'));
+        db.collection('almuerzo_componentes').onSnapshot(function (snap) {
+            state.almuerzo = snap.docs.map(function (d) { return d.data(); });
+            reconstruir();
+        }, err('almuerzo'));
         db.collection('configuracion').doc('tv_config').onSnapshot(function (snap) {
             var estabaPausada = cfg.pausada, antes = JSON.stringify(cfg);
             aplicarCfg(snap.exists ? snap.data() : {});

@@ -4898,6 +4898,10 @@ function getWhatsAppOrderDetail(categoryName, orderOptions = { type: 'solo' }) {
     const normalized = normalizeOrderOptions(orderOptions);
     const parts = [];
 
+    if (normalized.almuerzo) {
+        parts.push(ALMUERZO_CATS_PUB.map((k) => normalized.almuerzo[k]?.nombre).filter(Boolean).join(' + ') + ' + Arroz');
+    }
+
     if (normalized.type === 'combo-mixed') {
         parts.push('Combo mixto');
         if (normalized.drink) {
@@ -7192,7 +7196,7 @@ function renderCartUI() {
         const optionText = getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false });
         const option = document.createElement('p');
         option.className = 'cart-item-option';
-        if (normalizedType !== 'solo') {
+        if (normalizedType !== 'solo' || normalizeOrderOptions(item.orderOptions).almuerzo) {
             option.textContent = optionText;
         }
 
@@ -9953,6 +9957,15 @@ function renderCategoryExplorer(nextKey, options = {}) {
         void panel.offsetWidth;
         panel.classList.add('focus-highlight');
     };
+
+    // Almuerzo Ejecutivo: tarjeta "Almuerzo de hoy" con lo que hay disponible y botón para armarlo
+    if (normalizeCategoryKey(selectedCategory.key) === 'almuerzos') {
+        _almPubIniciar();
+        renderAlmuerzosPublicPanel(panel);
+        focusProductsPanel();
+        syncOrderingAvailabilityUI();
+        return;
+    }
 
     // Custom renderer for the bebidas collection
     if (normalizeCategoryKey(selectedCategory.key) === 'bebidas') {
@@ -14105,6 +14118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadPublicUpgradesConfig();
     loadHorarioConfig();
     loadCatalogoVisibilidadPublic();
+    _almPubIniciar();
     loadBebidasPublic();
     loadAcompanantesPublic();
     loadCombosPackPublic();
@@ -14380,4 +14394,73 @@ async function abrirModalAlmuerzo(nombre, ruta, categoria) {
         }
     });
     pintar();
+}
+
+// ── "Almuerzo de hoy": lo disponible se lee en vivo de almuerzo_componentes (lo que se enciende en Artículos → Almuerzos) ──
+const _almPub = { comps: [], listo: false, iniciado: false };
+function _almPubProducto() {
+    return (latestProducts || []).find((p) => p.almuerzoConfigurable === true || normalizeCategoryKey(p.categoria || p.category) === 'almuerzos') || null;
+}
+function _almPubPorCategoria() {
+    const out = {};
+    ALMUERZO_CATS_PUB.forEach((k) => { out[k] = _almPub.comps.filter((c) => c.categoria === k && c.activo !== false && c.disponible === true).map((c) => c.nombre); });
+    return out;
+}
+function _almPubDisponible() { const m = _almPubPorCategoria(); return ALMUERZO_CATS_PUB.every((k) => m[k].length > 0); }
+function _almPubIniciar() {
+    if (_almPub.iniciado) return;
+    let db;
+    try { db = getPublicFirebaseDb(); } catch (_) { return; }
+    if (!db) return;
+    _almPub.iniciado = true;
+    db.collection('almuerzo_componentes').onSnapshot((snap) => {
+        _almPub.comps = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+        _almPub.listo = true;
+        _almPubRefrescar();
+    }, () => { _almPub.iniciado = false; });
+}
+/** Repinta la franja superior y, si la categoría ALMUERZOS está abierta, su panel. */
+function _almPubRefrescar() {
+    _almPubFranja();
+    const panel = document.getElementById('categoryProductsPanel');
+    if (panel && panel.querySelector('.alm-hoy')) renderAlmuerzosPublicPanel(panel);
+}
+function _almPubAbrir() {
+    const p = _almPubProducto();
+    abrirModalAlmuerzo(p ? p.nombre : 'Almuerzo Ejecutivo', '', 'ALMUERZOS');
+}
+function _almPubFranja() {
+    const grid = document.getElementById('categoryGrid');
+    if (!grid || !grid.parentElement) return;
+    let el = document.getElementById('almuerzoHoyFranja');
+    const p = _almPubProducto();
+    if (!_almPub.listo || !p || p.estado === 'paused' || !_almPubDisponible()) { if (el) el.remove(); return; }
+    const prot = _almPubPorCategoria().proteina;
+    const txt = prot.slice(0, 3).join(', ') + (prot.length > 3 ? '…' : '');
+    if (!el) {
+        el = document.createElement('button');
+        el.type = 'button';
+        el.id = 'almuerzoHoyFranja';
+        el.className = 'alm-franja liquid-glass';
+        el.addEventListener('click', _almPubAbrir);
+        grid.parentElement.insertBefore(el, grid);
+    }
+    el.innerHTML = '<span class="alm-franja-i">🍽️</span><span class="alm-franja-t"><b>Hoy hay almuerzo · ' + escapeHtml(formatCurrency(Number(p.precio) || 0)) + '</b><small>' + escapeHtml(txt) + ' y más</small></span><span class="alm-franja-f">›</span>';
+}
+function renderAlmuerzosPublicPanel(panel) {
+    if (!panel) return;
+    const p = _almPubProducto();
+    const precio = p ? formatCurrency(Number(p.precio) || 0) : '';
+    const filas = [['proteina', '🍗', 'Proteína'], ['contorno', '🍟', 'Contorno'], ['ensalada', '🥗', 'Ensalada'], ['bebida', '🥤', 'Bebida']];
+    if (!_almPub.listo) { panel.innerHTML = '<div class="alm-hoy liquid-glass"><p class="alm-hoy-v">Cargando el menú de hoy…</p></div>'; return; }
+    const m = _almPubPorCategoria();
+    if (!p || p.estado === 'paused' || !_almPubDisponible()) {
+        panel.innerHTML = '<div class="alm-hoy liquid-glass"><div class="alm-hoy-h"><b>🍽️ Almuerzo Ejecutivo</b></div><p class="alm-hoy-v">Hoy no hay almuerzo disponible. Vuelve pronto.</p></div>';
+        return;
+    }
+    panel.innerHTML = '<div class="alm-hoy liquid-glass"><div class="alm-hoy-h"><b>🍽️ ' + escapeHtml(p.nombre) + '</b><span>' + escapeHtml(precio) + ' · arroz incluido</span></div>'
+        + '<p class="alm-hoy-s">Elige 1 de cada una. Esto es lo que hay hoy:</p>'
+        + filas.map((f) => '<div class="alm-hoy-f"><span class="k">' + f[1] + ' ' + f[2] + '</span><span class="v">' + m[f[0]].map(escapeHtml).join(' · ') + '</span></div>').join('')
+        + '<button type="button" class="alm-pub-b alm-hoy-b" data-armar>Armar mi almuerzo</button></div>';
+    panel.querySelector('[data-armar]').addEventListener('click', _almPubAbrir);
 }
