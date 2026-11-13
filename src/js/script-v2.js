@@ -14438,6 +14438,7 @@ function _almPubMenuDia() {
     const colores = { proteina: '#ff9a50', contorno: '#ffd479', ensalada: '#7ee2a8', bebida: '#7ec8ff' };
     const filas = [['proteina', '🍗', 'Proteína'], ['contorno', '🍟', 'Contorno'], ['ensalada', '🥗', 'Ensalada'], ['bebida', '🥤', 'Bebida']];
     const sel = {}; // { categoria: { id, nombre } }
+    let ultimo = '', ultimaCat = '', listoAnim = false; // para animar lo recién tocado
     const pintar = () => {
         const precio = p ? formatCurrency(Number(p.precio) || 0) : '';
         const cabeza = '<div class="bebidas-modal-title">' + escapeHtml(nombre) + '</div>';
@@ -14453,12 +14454,12 @@ function _almPubMenuDia() {
         card.innerHTML = cabeza + '<p class="alm-menu-p">' + escapeHtml(precio) + ' · arroz incluido</p><p class="alm-pub-paso">Toca 1 opción de cada bloque</p>'
             + filas.map((f) => {
                 const ops = activos.filter((x) => x.categoria === f[0]).sort((x, y) => String(x.nombre || '').localeCompare(String(y.nombre || ''), 'es'));
-                return '<div class="alm-menu-sec' + (sel[f[0]] ? ' hecho' : '') + '" style="--c:' + colores[f[0]] + '"><div class="alm-menu-t">' + f[1] + ' ' + f[2]
+                return '<div class="alm-menu-sec' + (sel[f[0]] ? ' hecho' : '') + (ultimaCat === f[0] && ultimo ? ' flash' : '') + '" style="--c:' + colores[f[0]] + '"><div class="alm-menu-t">' + f[1] + ' ' + f[2]
                     + '<small>' + (sel[f[0]] ? '✓ elegido' : 'elige 1') + '</small></div><div class="alm-menu-ops">'
-                    + ops.map((x) => '<button type="button" class="alm-menu-op' + (sel[f[0]] && sel[f[0]].id === x.id ? ' on' : '') + '" data-cat="' + f[0] + '" data-id="' + escapeHtml(x.id) + '">' + escapeHtml(x.nombre) + '</button>').join('') + '</div></div>';
+                    + ops.map((x) => '<button type="button" class="alm-menu-op' + (sel[f[0]] && sel[f[0]].id === x.id ? ' on' : '') + (ultimo === x.id ? ' pop' : '') + '" data-cat="' + f[0] + '" data-id="' + escapeHtml(x.id) + '">' + escapeHtml(x.nombre) + '</button>').join('') + '</div></div>';
             }).join('')
             + (completo ? '<p class="alm-menu-res">' + escapeHtml(filas.map((f) => sel[f[0]].nombre).join(' + ')) + ' + Arroz</p>' : '')
-            + '<div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-x>Cerrar</button><button type="button" class="alm-pub-b" data-add ' + (completo ? '' : 'disabled') + '>'
+            + '<div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-x>Cerrar</button><button type="button" class="alm-pub-b' + (completo && listoAnim ? ' listo' : '') + '" data-add ' + (completo ? '' : 'disabled') + '>'
             + (completo ? 'Agregar al carrito · ' + escapeHtml(precio) : 'Falta: ' + escapeHtml(faltan.join(', '))) + '</button></div>';
     };
     card.addEventListener('click', (e) => {
@@ -14467,10 +14468,17 @@ function _almPubMenuDia() {
         if (o) {
             const c = _almPub.comps.find((x) => x.id === o.dataset.id);
             if (!c) return;
-            if (sel[o.dataset.cat] && sel[o.dataset.cat].id === c.id) delete sel[o.dataset.cat]; else sel[o.dataset.cat] = { id: c.id, nombre: c.nombre };
-            return pintar();
+            const antes = filas.every((f) => sel[f[0]]);
+            ultimaCat = o.dataset.cat;
+            if (sel[o.dataset.cat] && sel[o.dataset.cat].id === c.id) { delete sel[o.dataset.cat]; ultimo = ''; _almPubSfx('quitar', o.dataset.cat); }
+            else { sel[o.dataset.cat] = { id: c.id, nombre: c.nombre }; ultimo = c.id; _almPubSfx('elegir', o.dataset.cat); }
+            if (filas.every((f) => sel[f[0]]) && !antes) { listoAnim = true; _almPubSfx('completo'); }
+            pintar();
+            listoAnim = false;
+            return;
         }
         if (e.target.closest('[data-add]') && filas.every((f) => sel[f[0]])) {
+            _almPubSfx('agregar');
             addItemToCart(nombre, 'ALMUERZOS', { type: 'solo', almuerzo: Object.assign({}, sel) });
             cerrar();
         }
@@ -14478,4 +14486,30 @@ function _almPubMenuDia() {
     pintar();
     // si lo disponible cambia con el menú abierto, se repinta solo (conservando lo ya elegido)
     const obs = setInterval(() => { if (!document.body.contains(modal)) { clearInterval(obs); return; } pintar(); }, 4000);
+}
+
+/** Vibración + sonido corto al elegir en el menú del almuerzo. Cada bloque tiene su tono; al completar las 4 suena un remate. */
+function _almPubSfx(tipo, cat) {
+    const tonos = { proteina: 523, contorno: 622, ensalada: 740, bebida: 880 };
+    const patron = { quitar: [15], elegir: [25], completo: [30, 40, 30, 40, 90], agregar: [40, 40, 90] }[tipo] || [20];
+    try { if (navigator.vibrate) navigator.vibrate(patron); } catch (_) { /* sin vibración */ }
+    try {
+        if (typeof globalInteractionVolume === 'number' && globalInteractionVolume === 0) return; // sonido apagado por el usuario
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        const ctx = window.__roalBurgerCartAudioContext || (window.__roalBurgerCartAudioContext = new AC());
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        const notas = { quitar: [330], elegir: [tonos[cat] || 600], completo: [523, 659, 784, 1047], agregar: [784, 988] }[tipo] || [600];
+        notas.forEach((hz, i) => {
+            const t = ctx.currentTime + i * 0.09;
+            const osc = ctx.createOscillator(), gain = ctx.createGain();
+            osc.type = tipo === 'quitar' ? 'sine' : 'triangle';
+            osc.frequency.setValueAtTime(hz, t);
+            gain.gain.setValueAtTime(0.0001, t);
+            gain.gain.exponentialRampToValueAtTime(0.12, t + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.start(t); osc.stop(t + 0.12);
+        });
+    } catch (_) { /* sin audio */ }
 }

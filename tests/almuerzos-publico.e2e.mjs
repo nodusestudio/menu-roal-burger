@@ -30,6 +30,7 @@ try {
     const errs = []; p.on('pageerror', (e) => errs.push(e.message));
     await p.goto('http://localhost:' + srv.address().port + '/');
     await p.addScriptTag({ content: stubs + bloqueNorm + bloqueHoy });
+    await p.evaluate(() => { window.__vib = []; navigator.vibrate = (pat) => { window.__vib.push(pat); return true; }; });
     const norm = await p.evaluate(() => [_normalizarAlmuerzoSel({ proteina: { id: 'a', nombre: 'b' }, basura: 1, bebida: { id: '' } }), _normalizarAlmuerzoSel(null)]);
     ok(JSON.stringify(norm) === JSON.stringify([{ proteina: { id: 'a', nombre: 'b' } }, null]), 'la selección se limpia: solo las 4 categorías con id y nombre');
     await p.evaluate(() => { _almPubIniciar(); });
@@ -59,6 +60,17 @@ try {
     await p.click('[data-add]');
     const c = await p.evaluate(() => carrito);
     ok(c.length === 1 && c[0].c === 'ALMUERZOS' && c[0].o.almuerzo.bebida.nombre === 'Té de limón' && c[0].o.almuerzo.proteina.id === 'p1' && !(await p.$('#almuerzo-menu-modal')), 'agrega UN ítem al carrito con la selección y cierra el menú');
+
+    // Vibración al elegir, quitar, completar y agregar (el patrón de "completo" es el más largo)
+    const vib = await p.evaluate(() => window.__vib);
+    ok(vib.some((x) => x.length === 1 && x[0] === 25) && vib.some((x) => x.length === 1 && x[0] === 15) && vib.some((x) => x.length === 5) && vib.some((x) => x.length === 3 && x[2] === 90), 'vibra al elegir (25), quitar (15), completar las 4 (patrón largo) y agregar: ' + JSON.stringify(vib.slice(0, 3)) + '…');
+    await p.evaluate(() => { document.getElementById('almuerzo-menu-modal')?.remove(); abrirModalAlmuerzo(); });
+    await p.click('.alm-menu-op:text("Pollo a la plancha")');
+    const pop = await p.evaluate(() => ({ ficha: document.querySelector('.alm-menu-op.on')?.classList.contains('pop'), bloque: document.querySelector('.alm-menu-sec.hecho')?.classList.contains('flash') }));
+    ok(pop.ficha && pop.bloque, 'la ficha recién elegida hace "pop" y su bloque destella');
+    await p.click('.alm-menu-op:text("Papa francesa")'); await p.click('.alm-menu-op:text("Ensalada tradicional")'); await p.click('.alm-menu-op:text("Té de limón")');
+    ok(await p.evaluate(() => document.querySelector('[data-add]').classList.contains('listo')), 'al completar las 4, el botón de agregar hace su animación de "listo"');
+    await p.evaluate(() => document.getElementById('almuerzo-menu-modal')?.remove());
 
     // Si falta una categoría completa, no se puede pedir
     await p.evaluate(() => { COMP.forEach((x) => { if (x[1] === 'ensalada') x[3] = false; }); _almPub.comps = COMP.map(([id, categoria, nombre, disponible]) => ({ id, categoria, nombre, disponible, activo: true })); _almPubRefrescar(); _almPubMenuDia(); });

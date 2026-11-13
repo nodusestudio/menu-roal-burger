@@ -9589,3 +9589,12 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .alm-menu-sec.hecho{background:rgba(0,0,0,.32)}
 .alm-menu-res{margin:0;text-align:center;font-size:.9rem;font-weight:700;color:#ffc07a;line-height:1.35}
 .cart-item-option-alm{white-space:pre-line;line-height:1.35}
+
+@keyframes almPop{0%{transform:scale(.88)}55%{transform:scale(1.14)}100%{transform:scale(1)}}
+@keyframes almFlash{0%{box-shadow:0 0 0 0 var(--c,#ff9a50)}100%{box-shadow:0 0 0 12px transparent}}
+@keyframes almListo{0%,100%{transform:scale(1)}35%{transform:scale(1.08)}65%{transform:scale(.97)}}
+.alm-menu-op.pop{animation:almPop .3s ease-out}
+.alm-menu-sec.flash{animation:almFlash .55s ease-out}
+.alm-menu .alm-pub-b.listo{animation:almListo .55s ease-out}
+.pcm-add-btn:active{transform:scale(.88);transition:transform .08s}
+@media (prefers-reduced-motion:reduce){.alm-menu-op.pop,.alm-menu-sec.flash,.alm-menu .alm-pub-b.listo{animation:none}}
