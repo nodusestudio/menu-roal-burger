@@ -11020,7 +11020,7 @@ function _renderCategoryDetailPanel(categoryId) {
             <div class="upgrades-section" style="margin-top:10px;">
                 <h4 style="margin:0 0 8px;font-size:0.78rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.5px;">Productos (${products.length})</h4>
                 ${products.length
-                    ? `<div data-drag-grid style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;">
+                    ? `<div data-drag-grid style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;">
                         ${products.map((p) => {
                             const img = p.image_url || '';
                             const isPaused = p.estado === 'paused';
@@ -11051,7 +11051,7 @@ function _renderCategoryDetailPanel(categoryId) {
                                     <input type="file" id="cpefFileInput" accept="image/*" style="display:none;">
                                 </label>
                             </div>
-                            <div style="display:grid;gap:8px;">
+                            <div class="cpef-grid">
                                 <div>
                                     <label style="font-size:0.7rem;color:var(--admin-muted);display:block;margin-bottom:3px;">Nombre *</label>
                                     <input type="text" id="cpefName" class="admin-input" value="${ep.nombre}" required style="width:100%;box-sizing:border-box;">
@@ -11060,7 +11060,7 @@ function _renderCategoryDetailPanel(categoryId) {
                                     <label style="font-size:0.7rem;color:var(--admin-muted);display:block;margin-bottom:3px;">Precio</label>
                                     <input type="number" id="cpefPrice" class="admin-input" value="${ep.precio || ''}" placeholder="0" min="0" style="width:100%;box-sizing:border-box;">
                                 </div>
-                                <div>
+                                <div class="cpef-full">
                                     <label style="font-size:0.7rem;color:var(--admin-muted);display:block;margin-bottom:3px;">Descripción</label>
                                     <textarea id="cpefDesc" class="admin-input" rows="2" placeholder="Descripción opcional..." style="width:100%;box-sizing:border-box;resize:vertical;">${ep.descripcion || ''}</textarea>
                                 </div>
@@ -11115,6 +11115,7 @@ function _renderCategoryDetailPanel(categoryId) {
 
     categoryDetailPanel.querySelector('#catDetailSaveBtn')?.addEventListener('click', () => _saveCategoryFromDetail(categoryId));
     _almPintarOpcionesEnFicha(categoryDetailPanel.querySelector('#cpefAlmuerzoOpciones'));
+    { const g = categoryDetailPanel.querySelector('[data-drag-grid]'); if (g && g.children.length >= 8) attachRowSearch(g, '[data-drag-product-id]', 'Buscar producto', g); }
     categoryDetailPanel.querySelector('#catDetailAddProductBtn')?.addEventListener('click', () => openProductCreateModal(category.name));
     categoryDetailPanel.querySelector('#catDetailDeleteBtn')?.addEventListener('click', async () => {
         const related = productsState.filter((p) => p.categoria === category.name);

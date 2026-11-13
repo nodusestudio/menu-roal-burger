@@ -9494,3 +9494,7 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .alm-tog.on{background:rgba(126,226,168,.18);border-color:rgba(126,226,168,.55);color:#e8fff2;font-weight:700}
 .alm-tog.on::before{content:"✓";color:#7ee2a8;font-weight:800}
 .alm-tog.add{color:#ffc07a;border-style:dashed;padding:5px 12px;background:none}
+.cpef-grid{display:grid;grid-template-columns:minmax(0,1fr) 150px;gap:8px}.cpef-full{grid-column:1/-1}
+@media (max-width:520px){.cpef-grid{grid-template-columns:1fr}}
+#cpefForm{padding:12px!important}
+#cpefForm .alm-mini{margin-top:4px}
