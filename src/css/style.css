@@ -9441,3 +9441,41 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 #libroCierresFoot td,
 #lcBody td:not(.col-left),
 #lcFoot td { white-space: nowrap; }
+
+/* ── Almuerzos configurables (selector de la caja + pestaña del panel) ── */
+.alm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:10400;padding:12px}
+.alm-box{background:#1a2133;border:1px solid rgba(255,154,80,.28);border-radius:14px;padding:16px;width:min(640px,100%);max-height:92vh;overflow-y:auto;color:#e8eeff;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.alm-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:1.05rem}
+.alm-precio{color:#ffc07a;font-weight:800;margin-left:6px}
+.alm-x{background:none;border:0;color:inherit;font-size:1.2rem;cursor:pointer;padding:4px 8px}
+.alm-arroz{font-size:.85rem;color:#b8c8e8;background:rgba(255,255,255,.06);border-radius:10px;padding:8px 10px}
+.alm-sec-t{font-weight:700;margin:0 0 6px}.alm-sec-t small{color:#b8c8e8;font-weight:400;margin-left:6px}
+.alm-chips{display:flex;flex-wrap:wrap;gap:8px}
+.alm-chip{background:rgba(255,255,255,.08);color:inherit;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:10px 14px;min-height:44px;font:inherit;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15}
+.alm-chip.on{background:#ff9a50;color:#1a1208;border-color:#ff9a50;font-weight:800}
+.alm-chip.agotado{opacity:.45;cursor:not-allowed}.alm-chip small{font-size:.65rem}
+.alm-vacio{font-size:.82rem;color:#ffd479}
+.alm-costo{font-size:.85rem;background:rgba(255,255,255,.05);border-radius:10px;padding:8px 10px}
+.alm-costo summary{cursor:pointer;color:#b8c8e8}
+.alm-warn,.alm-bad{color:#ff9c9c}.alm-bad{font-style:normal;font-size:.75rem}
+.alm-pie{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;position:sticky;bottom:-16px;background:#1a2133;padding:10px 0 2px}
+.alm-resumen{font-size:.82rem;color:#b8c8e8;flex:1 1 220px}
+.alm-add{background:#ff9a50;color:#1a1208;border:0;border-radius:12px;padding:12px 18px;min-height:46px;font:inherit;font-weight:800;cursor:pointer}
+.alm-add:disabled{opacity:.4;cursor:not-allowed}
+.alm-form{display:flex;flex-direction:column;gap:10px}.alm-form label{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:#b8c8e8}
+.alm-form .alm-check{flex-direction:row;align-items:center;gap:8px}
+.alm-ficha{font-size:.82rem}
+.alm-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.alm-col h3{font-size:.95rem;margin:0 0 8px}.alm-col h3 small{color:var(--admin-muted);font-weight:400}
+.alm-fila{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid rgba(255,255,255,.12);border-radius:10px;margin:0 0 6px;cursor:pointer;min-height:44px}
+.alm-fila.on{background:rgba(126,226,168,.12);border-color:rgba(126,226,168,.45)}
+.alm-fila input{width:20px;height:20px;flex:none}.alm-fila-n{flex:1;font-size:.88rem}.alm-fila-c{font-size:.8rem;white-space:nowrap}.alm-fila-c small{color:var(--admin-muted)}
+.alm-pill{display:inline-block;border-radius:999px;padding:3px 10px;font-size:.75rem;font-weight:700;background:rgba(255,255,255,.1)}
+.alm-pill.ok{background:rgba(126,226,168,.2);color:#7ee2a8}.alm-pill.warn{background:rgba(255,212,121,.2);color:#ffd479}.alm-pill.bad{background:rgba(255,156,156,.2);color:#ff9c9c}
+.alm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 14px}
+.alm-kpi{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column}
+.alm-kpi span{font-size:.72rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.04em}.alm-kpi b{font-size:1.2rem}.alm-kpi small{color:var(--admin-muted)}
+.alm-ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.alm-rank h3{font-size:.92rem;margin:0 0 6px}
+@media (max-width:600px){.alm-box{padding:12px}.alm-pie{bottom:-12px}}
+.alm-btn{background:rgba(255,255,255,.1);color:#e8eeff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:6px 12px;min-height:32px;cursor:pointer;font:inherit;font-size:.82rem}
+.alm-btn:hover{background:rgba(255,255,255,.18)}

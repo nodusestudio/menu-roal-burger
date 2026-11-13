@@ -514,7 +514,9 @@ const PosCart = {
             promo2x1,
             promo2x1Incremento,
             aplicadoPor: aplicadoPor || null,
-            parentKey: opts.parentKey || null
+            parentKey: opts.parentKey || null,
+            // Almuerzo configurable: combinación elegida + costos de este instante; el rótulo se ve en el carrito y el ticket.
+            ...(opts.almuerzo ? { almuerzo: opts.almuerzo, optionLabelOrig: String(opts.optionLabel || '') || null } : {})
         };
         internalOrderItems.push(item);
         return item;
@@ -664,6 +666,7 @@ const PosCart = {
             subtotal: Number(item.subtotal || 0),
             ...(item.cortesia ? { cortesia: true, cortesiaPrecio: Number(item.cortesiaPrecio || 0), originalUnitPrice: Number(item.cortesiaPrecio || 0) } : {}),
             ...(item.aplicadoPor ? { aplicadoPor: item.aplicadoPor } : {}),
+            ...(item.almuerzo ? { almuerzo: item.almuerzo } : {}),
             ...(orderOptionsOf(item) ? { orderOptions: orderOptionsOf(item) } : {})
         }));
     }
@@ -2925,7 +2928,8 @@ const NAV2_GRUPOS = [
     ] },
     { id: 'catalogo', icono: '🍔', etiqueta: 'Catálogo', items: [
         { id: 'catalogo.articulos', etiqueta: 'Artículos', target: 'menu' },
-        { id: 'catalogo.costos', etiqueta: 'Costos y recetas', target: 'costos' }
+        { id: 'catalogo.costos', etiqueta: 'Costos y recetas', target: 'costos' },
+        { id: 'catalogo.almuerzos', etiqueta: 'Almuerzos', target: 'almuerzos' }
     ] },
     { id: 'clientes', icono: '👥', etiqueta: 'Clientes', items: [
         { id: 'clientes.clientes', etiqueta: 'Clientes', target: 'clientes' },
@@ -3169,6 +3173,7 @@ function setupAccordion() {
         feedback: ['feedback'],
         finanzas: ['finanzas'],
         costos: ['costos'],
+        almuerzos: ['almuerzos'],
         banco: ['banco'],
         asistente: ['asistente'],
         cuponpana: ['cuponpana'],
@@ -3176,7 +3181,7 @@ function setupAccordion() {
         tv: ['tv']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', feedback:'Feedback', finanzas:'Finanzas', costos:'Costos y recetas', banco:'Pagos Bancolombia', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes', tv:'Modo TV' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', feedback:'Feedback', finanzas:'Finanzas', costos:'Costos y recetas', almuerzos:'Almuerzos', banco:'Pagos Bancolombia', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes', tv:'Modo TV' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -3226,6 +3231,10 @@ function setupAccordion() {
 
         if (target === 'costos') {
             _ensureCostosLoaded();
+        }
+
+        if (target === 'almuerzos') {
+            _ensureAlmuerzosLoaded();
         }
 
         if (target === 'asistente') {
@@ -3623,6 +3632,7 @@ function normalizeProduct(raw) {
         descripcion: raw.descripcion || '',
         ingredientes: typeof raw.ingredientes === 'string' ? raw.ingredientes : '',
         visible_pos: raw.visible_pos !== false,
+        almuerzoConfigurable: raw.almuerzoConfigurable === true,
         acompanantes: raw.acompanantes || null,
         promo2x1: raw.promo2x1 || { activo: false, image_url: '', incremento: false },
         marca: raw.marca ? String(raw.marca).trim() : '',
@@ -3731,7 +3741,9 @@ function normalizeOrderItem(raw, index = 0) {
         aplicadoPor: raw.aplicadoPor ? String(raw.aplicadoPor) : null,
         // Cortesía (botón 🎁 del POS): sin esto se perdía al recargar el pedido y no entraba a las métricas.
         cortesia: raw.cortesia === true,
-        cortesiaPrecio: raw.cortesia === true ? Number(raw.cortesiaPrecio ?? raw.originalUnitPrice ?? 0) : null
+        cortesiaPrecio: raw.cortesia === true ? Number(raw.cortesiaPrecio ?? raw.originalUnitPrice ?? 0) : null,
+        // Almuerzo configurable: copia INMUTABLE de la combinación vendida (componentes, costos y consumos de ese momento).
+        almuerzo: raw.almuerzo && typeof raw.almuerzo === 'object' ? raw.almuerzo : null
     };
 }
 
@@ -3866,6 +3878,9 @@ function normalizeOrder(raw) {
         voidedItems: Array.isArray(raw.voidedItems) ? raw.voidedItems : [],
         cajero: String(raw.cajero || '').trim(),
         deliveryFeeVerified: raw.deliveryFeeVerified === true,
+        // Almuerzos: insumos descontados del inventario por este pedido (para devolverlos o ajustarlos al editar/anular).
+        almuerzoConsumos: raw.almuerzoConsumos && typeof raw.almuerzoConsumos === 'object' ? raw.almuerzoConsumos : null,
+        almuerzoStockDevuelto: raw.almuerzoStockDevuelto === true,
     };
 }
 
@@ -6558,6 +6573,12 @@ function handlePosProductAdd(productId, productName, productPrice) {
     const prodEntry = productsState.find((p) => p.id === productId);
     const selectedCategory = String(prodEntry?.categoria || posSelectedCategory || '').trim();
     const normCat = normalizeCategoryKey(selectedCategory);
+
+    // Almuerzo Ejecutivo: un solo producto; la combinación (proteína, contorno, ensalada, bebida) se elige en su selector.
+    if (prodEntry?.almuerzoConfigurable === true) {
+        openAlmuerzoPicker(prodEntry);
+        return;
+    }
 
     // Producto con 2x1 activado desde su ficha (Articulos): agregar directo con el mismo
     // trato que el menu publico (cobra 1, incluye 2) — sin pasar por combos/acompañantes,
@@ -9638,7 +9659,8 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
         }
 
         const _prevParaStats = (isEditing && !_wasEnEspera) ? ordersState.find((o) => o.id === orderId) : null;
-        await firebaseDb.collection(ORDERS_COLLECTION).doc(orderId).set(orderDoc);
+        // Con almuerzos, el descuento de inventario y el pedido se guardan juntos (o ninguno: sin stock no se vende).
+        await _almGuardarPedido(orderId, orderDoc, isEditing ? editData : null);
         if (!isEditing) _posMedReset();
         if (_pedidoContado(_prevParaStats)) {
             const _antes = getOrderDisplayTotal(_prevParaStats), _ahora = Number(orderDoc.total || 0);
@@ -9746,6 +9768,7 @@ function _orderItemToPosCartItem(item) {
         categoryName: String(item.categoryName || ''),
         note: hasSeparateOption ? noteRaw : (noteRaw || optionLabel),
         optionLabelOrig: hasSeparateOption ? optionLabel : null,
+        almuerzo: item.almuerzo && typeof item.almuerzo === 'object' ? item.almuerzo : null,
         origOrderOptions: item.orderOptions && typeof item.orderOptions === 'object' ? item.orderOptions : null,
         quantity: Number(item.quantity || 1),
         unitPrice: Number(item.unitPrice || 0),
@@ -9907,9 +9930,11 @@ async function saveOrderItemsEdit() {
         if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Guardando...'; }
 
         const items = PosCart.toOrderPayload();
+        const almuerzoConsumos = await _almAjustarStockEdicion(order, items); // lanza si el stock no alcanza
 
         await updateOrder(orderId, {
             items,
+            ...(almuerzoConsumos ? { almuerzoConsumos } : {}),
             itemCount: internalOrderItems.length,
             totalItems: internalOrderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
             subtotal,
@@ -18810,6 +18835,7 @@ async function updateOrder(orderId, updates) {
 
 async function deleteOrder(orderId) {
     const _prev = ordersState.find((o) => o.id === orderId) || (typeof _ticketsData !== 'undefined' ? _ticketsData.find((o) => o.id === orderId) : null);
+    await _almDevolverStock(_prev || await _almLeerPedido(orderId)); // almuerzos: el inventario no se pierde con el pedido
     // delete() no falla si el doc no existe, así que basta con pedirlo en ambas
     // colecciones — solo hará efecto en la que realmente tenga el pedido.
     await Promise.all([
@@ -18821,7 +18847,10 @@ async function deleteOrder(orderId) {
 
 async function anularOrder(orderId) {
     const _prev = ordersState.find((o) => o.id === orderId);
+    // Almuerzos: lo que el pedido gastó del inventario vuelve a las existencias (una sola vez).
+    const _stockDevuelto = await _almDevolverStock(_prev || await _almLeerPedido(orderId));
     await updateOrder(orderId, {
+        ...(_stockDevuelto ? { almuerzoStockDevuelto: true } : {}),
         anulado: true,
         anuladoAt: firestoreNow(),
         status: 'entregado',
@@ -41266,3 +41295,554 @@ async function _bancoConciliar() {
     } finally { if (btn) btn.disabled = false; }
 }
 document.getElementById('bancoConcBtn')?.addEventListener('click', _bancoConciliar);
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// ALMUERZOS CONFIGURABLES (producto único "Almuerzo Ejecutivo")
+// Núcleo puro: src/js/almuerzos/core.js (window.AlmuerzosCore) — testeado en tests/almuerzos.test.js.
+// Datos: almuerzo_componentes/{id} (catálogo de componentes + si están en el menú de hoy) y almuerzo_config/main.
+// Cada componente apunta a una receta (o insumo) de Costos y recetas: NO se duplica ninguna receta.
+// La venta guarda items[].almuerzo = copia inmutable (componentes, costos y consumos de ese momento) y el
+// pedido guarda almuerzoConsumos = lo que descontó del inventario (costos_insumos.stockActual, opcional por insumo).
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+const ALM_COL = 'almuerzo_componentes';
+const ALM_CFG_COL = 'almuerzo_config';
+const _alm = {
+    comps: [],
+    cfg: { nombre: 'Almuerzo Ejecutivo', manoObra: 0, arroz: { nombre: 'Arroz', ref: null, porcion: 200, unidad: 'g' }, menuActualizadoDia: '' },
+    loaded: false, cargadoAt: 0, cargando: null, bound: false,
+    ordenes: null, ordenesCargando: false, verTodosInsumos: false
+};
+const _almCore = () => window.AlmuerzosCore || null;
+const _almDia = () => _sqDayKey(Date.now());
+
+async function _almCargar(force = false) {
+    if (!_almCore()) throw new Error('El módulo de almuerzos no cargó: recarga la página (Ctrl+Shift+R).');
+    if (!force && _alm.loaded && Date.now() - _alm.cargadoAt < 60000) return;
+    if (_alm.cargando) return _alm.cargando;
+    _alm.cargando = (async () => {
+        await _costosCargar(); // insumos, recetas, colchón y productos (misma fuente que la calculadora)
+        const [snap, cfgDoc] = await Promise.all([
+            firebaseDb.collection(ALM_COL).get(),
+            firebaseDb.collection(ALM_CFG_COL).doc('main').get()
+        ]);
+        const orden = ['proteina', 'contorno', 'ensalada', 'bebida'];
+        _alm.comps = snap.docs.map((d) => ({ ...d.data(), id: d.id }))
+            .sort((a, b) => orden.indexOf(a.categoria) - orden.indexOf(b.categoria) || String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+        const c = cfgDoc.exists ? cfgDoc.data() : {};
+        _alm.cfg = {
+            nombre: String(c.nombre || 'Almuerzo Ejecutivo'),
+            manoObra: Number(c.manoObra || 0) || 0,
+            arroz: { nombre: 'Arroz', ref: null, porcion: 200, unidad: 'g', ...(c.arroz || {}) },
+            menuActualizadoDia: String(c.menuActualizadoDia || '')
+        };
+        _alm.loaded = true; _alm.cargadoAt = Date.now();
+    })().finally(() => { _alm.cargando = null; });
+    return _alm.cargando;
+}
+
+const _almCtx = () => ({
+    insumos: Object.fromEntries(_costos.insumos.map((x) => [x.id, x])),
+    recetas: Object.fromEntries(_costos.recetas.map((x) => [x.id, x]))
+});
+const _almProducto = () => _cProdMenu().find((p) => p.id === _almCore().ALMUERZO_PRODUCTO_ID || p.almuerzoConfigurable === true) || null;
+function _almConfigVenta() {
+    const prod = _almProducto();
+    return { nombre: _alm.cfg.nombre, precio: Number(prod?.precio) || _almCore().ALMUERZO_PRECIO, manoObra: _alm.cfg.manoObra, arroz: _alm.cfg.arroz };
+}
+const _almUnidad = (u) => (u === 'u' ? 'und' : u || '');
+const _almNum = (n) => (Math.round(Number(n || 0) * 10) / 10).toLocaleString('es-CO');
+const _almCostoComp = (c) => _almCore().calcularComponente(c, _almCtx(), _almCore().CATEGORIAS[c.categoria]);
+
+// ── Inventario ──────────────────────────────────────────────────────────────────────────────────
+function _almTextoFaltante(faltan) {
+    return 'Inventario insuficiente: ' + faltan.map((f) => `${f.nombre} (hay ${_almNum(f.hay)} ${_almUnidad(f.unidad)}, se necesitan ${_almNum(f.necesita)})`).join('; ')
+        + '. Ajusta el stock en Almuerzos → Inventario o elige otra opción.';
+}
+/** Aplica un delta de consumo (positivo gasta, negativo devuelve) a costos_insumos.stockActual, validando dentro de la transacción. */
+async function _almTransaccionStock(delta, escribir) {
+    const A = _almCore();
+    const ids = Object.keys(delta);
+    const refs = ids.map((id) => firebaseDb.collection('costos_insumos').doc(id));
+    const aplicado = {};
+    await firebaseDb.runTransaction(async (tx) => {
+        const snaps = await Promise.all(refs.map((r) => tx.get(r)));
+        const actuales = {};
+        snaps.forEach((s, i) => { if (s.exists) actuales[ids[i]] = { id: ids[i], ...s.data() }; });
+        const faltan = A.validarStock(delta, actuales);
+        if (faltan.length) throw new Error(_almTextoFaltante(faltan));
+        snaps.forEach((s, i) => {
+            const ins = actuales[ids[i]];
+            if (!ins || !A.insumoConStock(ins)) return; // sin seguimiento de stock: no se toca
+            const nuevo = Math.round((Number(ins.stockActual) - delta[ids[i]].cantidad) * 1000) / 1000;
+            tx.update(refs[i], { stockActual: nuevo, stockActualizadoAt: firestoreNow() });
+            aplicado[ids[i]] = nuevo;
+        });
+        escribir(tx);
+    });
+    for (const [id, v] of Object.entries(aplicado)) { const i = _costos.insumos.find((x) => x.id === id); if (i) i.stockActual = v; }
+}
+/** Guarda el pedido; si lleva almuerzos, el descuento de inventario y el pedido van en UNA transacción. */
+async function _almGuardarPedido(orderId, orderDoc, prev) {
+    const A = _almCore();
+    const ref = firebaseDb.collection(ORDERS_COLLECTION).doc(orderId);
+    if (!A) { await ref.set(orderDoc); return; }
+    const nuevos = A.consumosDePedido(orderDoc.items);
+    const antes = prev && !prev.almuerzoStockDevuelto ? (prev.almuerzoConsumos || {}) : {};
+    if (Object.keys(nuevos).length || Object.keys(antes).length) orderDoc.almuerzoConsumos = nuevos;
+    const delta = A.deltaConsumos(antes, nuevos);
+    if (!Object.keys(delta).length) { await ref.set(orderDoc); return; }
+    await _almTransaccionStock(delta, (tx) => tx.set(ref, orderDoc));
+}
+/** Edición de productos de un pedido ya guardado: ajusta el inventario por la diferencia. Devuelve el consumo nuevo (o null si no aplica). */
+async function _almAjustarStockEdicion(order, items) {
+    const A = _almCore();
+    if (!A) return null;
+    const nuevos = A.consumosDePedido(items);
+    const antes = order && !order.almuerzoStockDevuelto ? (order.almuerzoConsumos || {}) : {};
+    const delta = A.deltaConsumos(antes, nuevos);
+    if (Object.keys(delta).length) await _almTransaccionStock(delta, () => {});
+    return (Object.keys(nuevos).length || Object.keys(antes).length) ? nuevos : null;
+}
+/** Devuelve al inventario lo que gastó un pedido anulado/borrado. true si devolvió algo. */
+async function _almDevolverStock(order) {
+    const A = _almCore();
+    if (!A || !order || order.almuerzoStockDevuelto) return false;
+    const c = order.almuerzoConsumos;
+    if (!c || !Object.keys(c).length) return false;
+    try { await _almTransaccionStock(A.deltaConsumos(c, {}), () => {}); return true; }
+    catch (e) { showNotice(`No se pudo devolver el inventario del almuerzo: ${(e && e.message) || e}`, 'error'); return false; }
+}
+async function _almLeerPedido(orderId) {
+    for (const col of [ORDERS_COLLECTION, ORDERS_ARCHIVE_COLLECTION]) {
+        try { const s = await firebaseDb.collection(col).doc(orderId).get(); if (s.exists) return { id: s.id, ...s.data() }; } catch (_) { /* siguiente colección */ }
+    }
+    return null;
+}
+
+// ── Selector de la caja (POS) ───────────────────────────────────────────────────────────────────
+/** Consumo que el pedido en edición ya descontó (para no contarlo dos veces al validar). */
+function _almPrevConsumos() {
+    const o = _editingOrderData || (_editingItemsOnlyOrderId ? ordersState.find((x) => x.id === _editingItemsOnlyOrderId) : null);
+    return o && !o.almuerzoStockDevuelto ? (o.almuerzoConsumos || {}) : {};
+}
+/** Insumos con el stock "efectivo": lo guardado + lo que el pedido en edición ya gastó − lo que hay ahora en el carrito. */
+function _almInsumosEfectivos() {
+    const A = _almCore(), prev = _almPrevConsumos(), carro = A.consumosDePedido(internalOrderItems);
+    const out = {};
+    for (const i of _costos.insumos) {
+        if (!A.insumoConStock(i)) { out[i.id] = i; continue; }
+        out[i.id] = { ...i, stockActual: Number(i.stockActual) + Number(prev[i.id]?.cantidad || 0) - Number(carro[i.id]?.cantidad || 0) };
+    }
+    return out;
+}
+
+async function openAlmuerzoPicker(prod) {
+    if (_meseroSession) { showNotice('Los almuerzos se cobran desde la caja: el costo y el inventario viven en el panel de administración.', 'error'); return; }
+    try { await _almCargar(); } catch (e) { showNotice(`No se pudo abrir el almuerzo: ${(e && e.message) || e}`, 'error'); return; }
+    const A = _almCore();
+    document.getElementById('almPickerModal')?.remove();
+    const sel = {};
+    const ctx = _almCtx();
+    const efectivos = _almInsumosEfectivos();
+    const opts = A.opcionesPorCategoria(_alm.comps);
+    const precio = Number(prod.precio) || A.ALMUERZO_PRECIO;
+    const modal = document.createElement('div');
+    modal.id = 'almPickerModal';
+    modal.className = 'alm-overlay';
+    document.body.appendChild(modal);
+    const cerrar = () => { modal.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); cerrar(); } };
+    document.addEventListener('keydown', onKey, true);
+
+    const armar = () => A.armarCombinacion({ config: { ..._almConfigVenta(), precio }, componentes: _alm.comps, seleccion: sel, ctx, colchonPct: _costos.cfg.colchonPct });
+
+    const pintar = () => {
+        const abierto = !!modal.querySelector(".alm-costo")?.open;
+        const r = armar();
+        const completa = r.ok;
+        const seccion = (catId) => {
+            const cat = A.CATEGORIAS[catId];
+            const lista = opts[catId];
+            const chips = lista.length ? lista.map((c) => {
+                const sinStock = A.componenteSinStock(c, { insumos: efectivos, recetas: ctx.recetas });
+                const on = sel[catId] === c.id;
+                return `<button type="button" class="alm-chip${on ? ' on' : ''}${sinStock.length ? ' agotado' : ''}" data-alm-pick="${catId}:${escapeHtml(c.id)}" ${sinStock.length ? 'disabled' : ''} title="${sinStock.length ? escapeHtml('Sin inventario: ' + sinStock.map((s) => s.nombre).join(', ')) : ''}">${escapeHtml(c.nombre)}${sinStock.length ? '<small>sin inventario</small>' : ''}</button>`;
+            }).join('') : `<span class="alm-vacio">No hay ${cat.plural.toLowerCase()} encendidas hoy. Enciéndelas en Almuerzos → Menú de hoy.</span>`;
+            return `<div class="alm-sec"><div class="alm-sec-t">${cat.icono} ${cat.label} <small>${cat.porcion} ${cat.unidad}</small></div><div class="alm-chips">${chips}</div></div>`;
+        };
+        modal.innerHTML = `<div class="alm-box" role="dialog" aria-label="Almuerzo Ejecutivo">
+            <div class="alm-head"><div><strong>${escapeHtml(prod.nombre)}</strong> <span class="alm-precio">${formatMoney(precio)}</span></div>
+                <button type="button" class="alm-x" data-alm-cerrar aria-label="Cerrar">✕</button></div>
+            <div class="alm-arroz">🍚 ${escapeHtml(_alm.cfg.arroz.nombre || 'Arroz')} ${_alm.cfg.arroz.porcion} ${_alm.cfg.arroz.unidad} · incluido</div>
+            ${A.ORDEN_CATEGORIAS.map(seccion).join('')}
+            <details class="alm-costo" ${abierto ? "open" : ""}><summary>Ver costo y utilidad</summary>${completa
+                ? `<div>Costo real: <b>${formatMoney(r.snapshot.costoReal)}</b> · Utilidad bruta: <b>${formatMoney(r.snapshot.utilidadBruta)}</b> (${r.snapshot.margenPct}%)</div>${r.snapshot.faltantes.length ? '<div class="alm-warn">⚠️ Alguna receta está incompleta: el costo puede estar subestimado.</div>' : ''}`
+                : '<div>Elige las 4 opciones para ver el costo de esta combinación.</div>'}</details>
+            <div class="alm-pie">
+                <div class="alm-resumen">${completa ? escapeHtml(A.etiquetaCombinacion(r.snapshot)) : `Faltan: ${A.ORDEN_CATEGORIAS.filter((c) => !sel[c]).map((c) => A.CATEGORIAS[c].label.toLowerCase()).join(', ')}`}</div>
+                <button type="button" class="alm-add" data-alm-add ${completa ? '' : 'disabled'}>Agregar al pedido · ${formatMoney(precio)}</button>
+            </div></div>`;
+    };
+    modal.addEventListener('click', async (e) => {
+        if (e.target === modal || e.target.closest('[data-alm-cerrar]')) return cerrar();
+        const pick = e.target.closest('[data-alm-pick]');
+        if (pick) { const [cat, id] = pick.dataset.almPick.split(':'); sel[cat] = sel[cat] === id ? undefined : id; return pintar(); }
+        if (!e.target.closest('[data-alm-add]')) return;
+        const r = armar();
+        if (!r.ok) { showNotice(r.errores[0], 'error'); return; }
+        const faltan = A.validarStock(A.consumosDePedido([{ quantity: 1, almuerzo: r.snapshot }]), efectivos);
+        if (faltan.length) { showNotice(_almTextoFaltante(faltan), 'error'); return; }
+        if (r.snapshot.faltantes.length && !(await showConfirmModal({ icon: '⚠️', title: 'Receta incompleta', message: 'Alguna receta de esta combinación tiene referencias rotas: el costo quedaría subestimado. ¿Agregar de todos modos?', confirmText: 'Agregar', danger: false }))) return;
+        PosCart.addItem(prod.id, prod.nombre, precio, '', null, {
+            forcedKey: `almuerzo::${Date.now()}::${Math.random().toString(36).slice(2, 7)}`,
+            almuerzo: r.snapshot,
+            optionLabel: A.etiquetaCombinacion(r.snapshot)
+        });
+        renderPosOrderItems(); renderPosTotals(); renderPosBottomBar();
+        cerrar();
+        showNotice('Almuerzo agregado al pedido.', 'ok');
+    });
+    pintar();
+}
+
+// ── Pestaña "Almuerzos" ─────────────────────────────────────────────────────────────────────────
+async function _ensureAlmuerzosLoaded(force = false) {
+    const body = document.getElementById('almuerzosBody');
+    if (!body) return;
+    if (!_alm.bound) _almBind(body);
+    if (!_alm.loaded) body.innerHTML = '<article class="admin-card"><p class="cs-muted">Cargando almuerzos…</p></article>';
+    try { await _almCargar(force || !_alm.loaded); } catch (e) { body.innerHTML = `<article class="admin-card"><p class="cs-muted">No se pudieron cargar los almuerzos (${escapeHtml((e && e.message) || e)}).</p></article>`; return; }
+    _almRender();
+    if (!_alm.ordenes && !_alm.ordenesCargando) {
+        _alm.ordenesCargando = true;
+        _loadMetricsOrders().then((o) => { _alm.ordenes = o; }).catch(() => { _alm.ordenes = []; }).finally(() => { _alm.ordenesCargando = false; _almRender(); });
+    }
+}
+
+function _almEstadoStock(i) {
+    const A = _almCore();
+    if (!A.insumoConStock(i)) return { txt: 'Sin seguimiento', cls: 'muted' };
+    const s = Number(i.stockActual), m = Number(i.stockMinimo || 0);
+    if (s <= 0) return { txt: 'Agotado', cls: 'bad' };
+    if (m > 0 && s <= m) return { txt: 'Bajo', cls: 'warn' };
+    return { txt: 'OK', cls: 'ok' };
+}
+
+function _almHtmlMenu() {
+    const A = _almCore(), money = formatMoney, hoy = _almDia();
+    const act = _alm.cfg.menuActualizadoDia;
+    const aviso = act === hoy ? `<span class="alm-pill ok">Menú actualizado hoy</span>` : `<span class="alm-pill warn">${act ? `Último cambio: ${escapeHtml(act)}` : 'Aún no has armado el menú'} — revisa que sea el de hoy</span>`;
+    let minC = 0, maxC = 0, posibles = 1, completo = true;
+    const colum = A.ORDEN_CATEGORIAS.map((cid) => {
+        const cat = A.CATEGORIAS[cid];
+        const lista = _alm.comps.filter((c) => c.categoria === cid && c.activo !== false);
+        const on = lista.filter((c) => c.disponible === true);
+        if (on.length) {
+            const costos = on.map((c) => _almCostoComp(c).costoReal);
+            minC += Math.min(...costos); maxC += Math.max(...costos); posibles *= on.length;
+        } else completo = false;
+        const filas = lista.length ? lista.map((c) => {
+            const f = _almCostoComp(c);
+            const sin = A.componenteSinStock(c, _almCtx()).length;
+            return `<label class="alm-fila${c.disponible ? ' on' : ''}"><input type="checkbox" data-alm-hoy="${escapeHtml(c.id)}" ${c.disponible ? 'checked' : ''}>
+                <span class="alm-fila-n">${escapeHtml(c.nombre)}${sin ? ' <em class="alm-bad">sin inventario</em>' : ''}${f.faltantes.length ? ' <em class="alm-bad">receta incompleta</em>' : ''}</span>
+                <span class="alm-fila-c">${money(f.costoReal)}<small> / ${f.porcion} ${f.unidad}</small></span></label>`;
+        }).join('') : `<p class="cs-muted">Aún no hay ${cat.plural.toLowerCase()}. Créalas en la pestaña Componentes.</p>`;
+        return `<div class="alm-col"><h3>${cat.icono} ${cat.plural} <small>${on.length}/${lista.length} hoy · ${cat.porcion} ${cat.unidad}</small></h3>${filas}</div>`;
+    }).join('');
+    const arrozF = _alm.cfg.arroz?.ref ? _almCore().calcularComponente({ id: 'arroz', categoria: 'arroz', nombre: _alm.cfg.arroz.nombre, ref: _alm.cfg.arroz.ref, porcion: _alm.cfg.arroz.porcion, unidad: _alm.cfg.arroz.unidad }, _almCtx()) : null;
+    const precio = _almConfigVenta().precio;
+    const base = (arrozF ? arrozF.costoReal : 0) + _alm.cfg.manoObra;
+    const resumen = completo
+        ? `<p class="cs-muted">Hoy se pueden armar <b>${posibles}</b> combinaciones. Costo real por almuerzo: <b>${money(Math.round(minC + base))}</b> a <b>${money(Math.round(maxC + base))}</b> · utilidad bruta: <b>${money(Math.round(precio - maxC - base))}</b> a <b>${money(Math.round(precio - minC - base))}</b> (precio ${money(precio)}).</p>`
+        : `<p class="cs-muted">⚠️ Falta encender al menos una opción en cada categoría para poder vender el almuerzo.</p>`;
+    return `<article class="admin-card"><div class="card-head"><h2>📅 Menú de hoy</h2></div><div class="card-body">
+        <div class="cs-bar">${aviso}<button type="button" class="alm-btn" data-alm-act="apagar">Apagar todo</button><button type="button" class="alm-btn" data-alm-act="menuOk">✔ Confirmar que este es el menú de hoy</button></div>
+        <p class="cs-muted">Marca lo que hay hoy. El cajero solo podrá elegir lo encendido; la estructura del producto no cambia.</p>
+        ${resumen}<div class="alm-cols">${colum}</div></div></article>`;
+}
+
+function _almHtmlComponentes() {
+    const A = _almCore(), money = formatMoney;
+    const filas = _alm.comps.map((c) => {
+        const f = _almCostoComp(c), cat = A.CATEGORIAS[c.categoria] || {};
+        const ref = c.ref?.tipo === 'insumo' ? _costos.insumos.find((x) => x.id === c.ref.id) : _costos.recetas.find((x) => x.id === c.ref?.id);
+        return `<tr><td>${cat.icono || ''} ${escapeHtml(cat.label || c.categoria)}</td><td>${escapeHtml(c.nombre)}${c.activo === false ? ' <small>(inactivo)</small>' : ''}</td>
+            <td>${ref ? escapeHtml(ref.nombre) : '<em class="alm-bad">sin vincular</em>'}${c.ref?.tipo === 'insumo' ? ' <small>(insumo)</small>' : ''}</td>
+            <td>${f.porcion} ${f.unidad}</td><td>${money(f.costoReal)}</td>
+            <td><button type="button" class="alm-btn" data-alm-act="editar" data-id="${escapeHtml(c.id)}">✎</button> <button type="button" class="alm-btn" data-alm-act="borrar" data-id="${escapeHtml(c.id)}">🗑</button></td></tr>`;
+    }).join('');
+    return `<article class="admin-card"><div class="card-head"><h2>🧩 Componentes</h2></div><div class="card-body">
+        <div class="cs-bar"><button type="button" class="section-save-btn" data-alm-act="nuevo">➕ Nuevo componente</button></div>
+        <p class="cs-muted">Cada componente se vincula a una receta de <b>Costos y recetas</b> (ingredientes, gramajes, rendimiento y costo viven ahí). Aquí defines la porción que se sirve; el costo por porción se calcula solo.</p>
+        <div class="cs-scroll" data-alm-busca="comp"><table class="cs-tbl"><thead><tr><th>Categoría</th><th>Componente</th><th>Receta vinculada</th><th>Porción</th><th>Costo / porción</th><th></th></tr></thead><tbody>${filas || '<tr><td colspan="6" class="cs-muted">Todavía no hay componentes.</td></tr>'}</tbody></table></div></div></article>`;
+}
+
+function _almHtmlInventario() {
+    const A = _almCore();
+    const usados = new Set();
+    const ctx = _almCtx();
+    for (const c of _alm.comps) _almCostoComp(c).consumos.forEach((x) => usados.add(x.insumoId));
+    if (_alm.cfg.arroz?.ref) A.calcularComponente({ id: 'arroz', categoria: 'arroz', nombre: 'Arroz', ref: _alm.cfg.arroz.ref, porcion: _alm.cfg.arroz.porcion }, ctx).consumos.forEach((x) => usados.add(x.insumoId));
+    const lista = _costos.insumos.filter((i) => _alm.verTodosInsumos || usados.has(i.id));
+    const filas = lista.map((i) => {
+        const e = _almEstadoStock(i);
+        return `<tr><td>${escapeHtml(i.nombre)}</td><td>${escapeHtml(_almUnidad(i.unidad) || '—')}</td>
+            <td><input class="cs-inp" style="width:90px" inputmode="decimal" data-alm-stock="${escapeHtml(i.id)}" value="${A.insumoConStock(i) ? Number(i.stockActual) : ''}" placeholder="sin control"></td>
+            <td><input class="cs-inp" style="width:80px" inputmode="decimal" data-alm-min="${escapeHtml(i.id)}" value="${Number(i.stockMinimo || 0) || ''}" placeholder="mínimo"></td>
+            <td><span class="alm-pill ${e.cls}">${e.txt}</span></td>
+            <td><button type="button" class="alm-btn" data-alm-act="guardarStock" data-id="${escapeHtml(i.id)}">Guardar</button> <button type="button" class="alm-btn" data-alm-act="entrada" data-id="${escapeHtml(i.id)}">＋ Entrada</button></td></tr>`;
+    }).join('');
+    return `<article class="admin-card"><div class="card-head"><h2>📦 Inventario de insumos</h2></div><div class="card-body">
+        <p class="cs-muted">Cada venta descuenta los ingredientes de las 4 preparaciones elegidas y del arroz. Un insumo <b>sin cantidad</b> no se controla (nunca bloquea una venta); con cantidad, la venta se rechaza si no alcanza. Las cantidades van en la unidad del insumo (g, ml, und).</p>
+        <div class="cs-bar"><label><input type="checkbox" data-alm-todos ${_alm.verTodosInsumos ? 'checked' : ''}> Ver todos los insumos (no solo los de almuerzos)</label></div>
+        <div class="cs-scroll" data-alm-busca="insumo"><table class="cs-tbl"><thead><tr><th>Insumo</th><th>Unidad</th><th>Existencias</th><th>Mínimo</th><th>Estado</th><th></th></tr></thead><tbody>${filas || '<tr><td colspan="6" class="cs-muted">Aún no hay insumos ligados a almuerzos.</td></tr>'}</tbody></table></div></div></article>`;
+}
+
+function _almDatosReporte() {
+    const A = _almCore(), r = rangoMs('almuerzos');
+    const ordenes = (_alm.ordenes || []).map((o) => ({ items: o.items, status: o.status, anulado: o.anulado, voided: o.voided, createdAtMs: _tsMs(o.createdAt) }));
+    return A.reporteAlmuerzos(ordenes, { desdeMs: r.desde, hastaMs: r.hasta });
+}
+function _almHtmlReportes() {
+    const money = formatMoney;
+    const cargando = !_alm.ordenes;
+    const rep = cargando ? null : _almDatosReporte();
+    const kpi = (t, v, sub = '') => `<div class="alm-kpi"><span>${t}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+    const rank = (titulo, lista, total) => `<div class="alm-rank"><h3>${titulo}</h3>${lista.length ? `<table class="cs-tbl"><thead><tr><th>Opción</th><th>Vendidos</th><th>%</th><th>Costo / porción</th></tr></thead><tbody>${lista.map((x) => `<tr><td>${escapeHtml(x.nombre)}</td><td>${x.cantidad}</td><td>${total ? Math.round((x.cantidad / total) * 100) : 0}%</td><td>${money(Math.round(x.costo / x.cantidad))}</td></tr>`).join('')}</tbody></table>` : '<p class="cs-muted">Sin ventas en este período.</p>'}</div>`;
+    let cuerpo = '<p class="cs-muted">Cargando ventas…</p>';
+    if (rep) {
+        cuerpo = `<div class="alm-kpis">${kpi('Almuerzos vendidos', rep.vendidos, `${rep.pedidos} pedido${rep.pedidos === 1 ? '' : 's'}`)}${kpi('Ventas', money(rep.ingresos))}${kpi('Costo real', money(rep.costoReal), `${money(rep.costoPromedio)} c/u`)}${kpi('Utilidad bruta', money(rep.utilidadBruta), `${money(rep.utilidadPromedio)} c/u`)}${kpi('Rentabilidad', rep.margenPct == null ? '—' : rep.margenPct + '%', 'utilidad / ventas')}</div>
+            ${rep.sinCostoCompleto ? `<p class="cs-muted">⚠️ ${rep.sinCostoCompleto} almuerzo(s) se vendieron con alguna receta incompleta: su costo está subestimado.</p>` : ''}
+            <div class="alm-ranks">${rank('🍗 Proteínas más vendidas', rep.proteinas, rep.vendidos)}${rank('🍟 Contornos más utilizados', rep.contornos, rep.vendidos)}${rank('🥗 Ensaladas más vendidas', rep.ensaladas, rep.vendidos)}${rank('🥤 Bebidas más vendidas', rep.bebidas, rep.vendidos)}</div>
+            <h3 style="margin-top:16px">Combinaciones: costo real y utilidad</h3>
+            <div class="cs-scroll" data-alm-busca="combo"><table class="cs-tbl"><thead><tr><th>Combinación</th><th>Vendidos</th><th>Costo real c/u</th><th>Utilidad c/u</th><th>Utilidad total</th></tr></thead><tbody>${rep.combinaciones.map((c) => `<tr><td>${escapeHtml(c.nombre)}</td><td>${c.cantidad}</td><td>${money(Math.round(c.costoUnidad))}</td><td>${money(Math.round(c.utilidadUnidad))}</td><td>${money(Math.round(c.utilidad))}</td></tr>`).join('') || '<tr><td colspan="5" class="cs-muted">Sin ventas en este período.</td></tr>'}</tbody></table></div>
+            <h3 style="margin-top:16px">Por día</h3>
+            <div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Día</th><th>Almuerzos</th><th>Ventas</th><th>Costo real</th><th>Utilidad</th></tr></thead><tbody>${rep.porDia.map((d) => `<tr><td>${escapeHtml(d.dia)}</td><td>${d.cantidad}</td><td>${money(d.ingresos)}</td><td>${money(d.costo)}</td><td>${money(d.ingresos - d.costo)}</td></tr>`).join('') || '<tr><td colspan="5" class="cs-muted">Sin ventas en este período.</td></tr>'}</tbody></table></div>`;
+    }
+    return `${rangoSelectorHtml('almuerzos')}<article class="admin-card"><div class="card-head"><h2>📊 Reportes de almuerzos <small>· ${escapeHtml(rangoLabel('almuerzos'))}</small></h2></div><div class="card-body">${cuerpo}</div></article>`;
+}
+
+function _almHtmlConfig() {
+    const prod = _almProducto(), cfg = _alm.cfg, money = formatMoney;
+    const arrozOpts = ['<option value="">— elige la receta del arroz —</option>']
+        .concat(_costos.recetas.map((r) => `<option value="receta:${escapeHtml(r.id)}" ${cfg.arroz.ref?.tipo === 'receta' && cfg.arroz.ref.id === r.id ? 'selected' : ''}>${escapeHtml(r.nombre)}</option>`))
+        .concat(_costos.insumos.map((i) => `<option value="insumo:${escapeHtml(i.id)}" ${cfg.arroz.ref?.tipo === 'insumo' && cfg.arroz.ref.id === i.id ? 'selected' : ''}>${escapeHtml(i.nombre)} (insumo)</option>`)).join('');
+    return `<article class="admin-card"><div class="card-head"><h2>⚙️ Producto y arroz fijo</h2></div><div class="card-body">
+        <p class="cs-muted"><b>Producto principal:</b> ${prod ? `${escapeHtml(prod.nombre)} · ${money(Number(prod.precio))} · categoría ${escapeHtml(prod.categoria)}. El domicilio se cobra aparte, como en cualquier pedido.` : 'Aún no existe. Se crea una sola vez y no se duplica por combinación ni por menú del día.'}</p>
+        <div class="cs-bar">${prod ? `<button type="button" class="alm-btn" data-alm-act="precio">Cambiar precio</button>` : `<button type="button" class="section-save-btn" data-alm-act="crearProducto">Crear producto «Almuerzo Ejecutivo» (${money(_almCore().ALMUERZO_PRECIO)})</button>`}</div>
+        <div class="cs-line"><label>Arroz fijo (receta o insumo)</label><select class="cs-inp" data-alm-cfg="arrozRef" style="max-width:320px">${arrozOpts}</select></div>
+        <div class="cs-line"><label>Porción del arroz <input class="cs-inp" style="width:80px" inputmode="decimal" data-alm-cfg="arrozPorcion" value="${cfg.arroz.porcion}"></label>
+            <select class="cs-inp" data-alm-cfg="arrozUnidad">${['g', 'ml', 'u'].map((u) => `<option value="${u}" ${cfg.arroz.unidad === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+        <div class="cs-line"><label>Mano de obra por almuerzo (COP) <input class="cs-inp" style="width:100px" inputmode="numeric" data-alm-cfg="manoObra" value="${cfg.manoObra || 0}"></label></div>
+        <div class="cs-bar"><button type="button" class="section-save-btn" data-alm-act="guardarCfg">Guardar</button></div></div></article>`;
+}
+
+function _almRender() {
+    const body = document.getElementById('almuerzosBody');
+    if (!body) return;
+    if (!_almCore()) { body.innerHTML = '<article class="admin-card"><p class="cs-muted">El módulo de almuerzos no cargó: recarga la página (Ctrl+Shift+R).</p></article>'; return; }
+    body.innerHTML = _almHtmlMenu() + _almHtmlComponentes() + _almHtmlInventario() + _almHtmlReportes() + _almHtmlConfig();
+    // el selector de fechas ocupa el <article> 3 (rango-host) y el reporte el 4; la config pasa al 5
+    applyInnerTabs(body, 'almuerzos', [
+        { id: 'menu', icon: '📅', label: 'Menú de hoy', idx: [0] },
+        { id: 'comp', icon: '🧩', label: 'Componentes', idx: [1] },
+        { id: 'inv', icon: '📦', label: 'Inventario', idx: [2] },
+        { id: 'rep', icon: '📊', label: 'Reportes', idx: [3, 4] },
+        { id: 'cfg', icon: '⚙️', label: 'Configuración', idx: [5] }
+    ]);
+    onRango('almuerzos', () => _almRender(), 'hoy');
+    body.querySelectorAll('[data-alm-busca]').forEach((el) => attachRowSearch(el, 'tbody tr', 'Buscar'));
+}
+
+async function _almGuardarComp(data, id) {
+    const ref = id ? firebaseDb.collection(ALM_COL).doc(id) : firebaseDb.collection(ALM_COL).doc();
+    const payload = { ...data, actualizadoAt: firestoreNow(), ...(id ? {} : { creadoAt: firestoreNow() }) };
+    await ref.set(payload, { merge: true });
+    const local = { ...(_alm.comps.find((c) => c.id === ref.id) || {}), ...data, id: ref.id };
+    _alm.comps = [..._alm.comps.filter((c) => c.id !== ref.id), local];
+    return ref.id;
+}
+
+function _almAbrirEditor(comp) {
+    const A = _almCore();
+    document.getElementById('almEditModal')?.remove();
+    const m = document.createElement('div');
+    m.id = 'almEditModal';
+    m.className = 'alm-overlay';
+    const c = comp || { categoria: 'proteina', nombre: '', ref: null, porcion: '', unidad: '', activo: true, disponible: false };
+    const refVal = c.ref ? `${c.ref.tipo}:${c.ref.id}` : '';
+    const opts = ['<option value="">— elige una receta o insumo —</option>']
+        .concat(`<optgroup label="Recetas">${_costos.recetas.map((r) => `<option value="receta:${escapeHtml(r.id)}" ${refVal === `receta:${r.id}` ? 'selected' : ''}>${escapeHtml(r.nombre)}</option>`).join('')}</optgroup>`)
+        .concat(`<optgroup label="Insumos (ej. una gaseosa o un jugo embotellado)">${_costos.insumos.map((i) => `<option value="insumo:${escapeHtml(i.id)}" ${refVal === `insumo:${i.id}` ? 'selected' : ''}>${escapeHtml(i.nombre)}</option>`).join('')}</optgroup>`).join('');
+    m.innerHTML = `<div class="alm-box" role="dialog" aria-label="Componente">
+        <div class="alm-head"><strong>${comp ? 'Editar componente' : 'Nuevo componente'}</strong><button type="button" class="alm-x" data-x aria-label="Cerrar">✕</button></div>
+        <div class="alm-form">
+            <label>Categoría<select class="cs-inp" data-f="categoria">${A.ORDEN_CATEGORIAS.map((k) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${A.CATEGORIAS[k].label}</option>`).join('')}</select></label>
+            <label>Nombre<input class="cs-inp" data-f="nombre" maxlength="60" value="${escapeHtml(c.nombre || '')}" placeholder="Ej: Pollo a la plancha"></label>
+            <label>Receta o insumo<select class="cs-inp" data-f="ref">${opts}</select></label>
+            <label>Porción<input class="cs-inp" data-f="porcion" inputmode="decimal" value="${c.porcion || ''}" placeholder="vacío = estándar de la categoría"></label>
+            <label>Unidad<select class="cs-inp" data-f="unidad"><option value="">estándar</option>${['g', 'ml', 'u'].map((u) => `<option value="${u}" ${c.unidad === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
+            <label class="alm-check"><input type="checkbox" data-f="activo" ${c.activo !== false ? 'checked' : ''}> Activo en el catálogo</label>
+            <div class="alm-ficha" data-ficha></div>
+        </div>
+        <div class="alm-pie"><button type="button" class="alm-btn" data-x>Cancelar</button><button type="button" class="alm-add" data-guardar>Guardar</button></div></div>`;
+    document.body.appendChild(m);
+    const get = (k) => m.querySelector(`[data-f="${k}"]`);
+    const leer = () => {
+        const [tipo, ...rest] = String(get('ref').value || '').split(':');
+        return {
+            categoria: get('categoria').value, nombre: get('nombre').value.trim(),
+            ref: tipo ? { tipo, id: rest.join(':') } : null,
+            porcion: _cParse(get('porcion').value) || 0, unidad: get('unidad').value || '',
+            activo: get('activo').checked
+        };
+    };
+    const ficha = () => {
+        const d = leer();
+        const box = m.querySelector('[data-ficha]');
+        if (!d.ref) { box.innerHTML = '<p class="cs-muted">Elige la receta para ver su ficha técnica.</p>'; return; }
+        const f = A.calcularComponente({ ...d, id: comp?.id }, _almCtx(), A.CATEGORIAS[d.categoria]);
+        const receta = d.ref.tipo === 'receta' ? _costos.recetas.find((r) => r.id === d.ref.id) : null;
+        const ingredientes = f.consumos.map((x) => `<tr><td>${escapeHtml(x.nombre)}</td><td>${_almNum(x.cantidad)} ${escapeHtml(_almUnidad(x.unidad))}</td><td>${formatMoney(Math.round(x.costo))}</td></tr>`).join('');
+        box.innerHTML = `<div class="cs-muted"><b>Ficha técnica</b> · ${receta ? `rendimiento de la receta: ${_almNum(receta.pesoTotal)} · costo total de la receta: ${formatMoney(Math.round(_cCostoReceta(receta.id, _cCtx()).porUnidad * (Number(receta.pesoTotal) || 1)))}` : 'insumo directo'}</div>
+            <table class="cs-tbl"><thead><tr><th>Ingrediente</th><th>En esta porción</th><th>Costo</th></tr></thead><tbody>${ingredientes || '<tr><td colspan="3" class="cs-muted">Sin ingredientes.</td></tr>'}</tbody></table>
+            <div><b>Costo por porción (${f.porcion} ${f.unidad}): ${formatMoney(Math.round(f.costoReal))}</b></div>
+            ${f.faltantes.length ? `<div class="alm-warn">⚠️ Receta con referencias rotas: ${escapeHtml(f.faltantes.join(', '))}</div>` : ''}
+            <button type="button" class="alm-btn" data-ir-costos>Editar la receta en Costos y recetas</button>`;
+    };
+    m.addEventListener('input', ficha);
+    m.addEventListener('change', ficha);
+    m.addEventListener('click', async (e) => {
+        if (e.target === m || e.target.closest('[data-x]')) return m.remove();
+        if (e.target.closest('[data-ir-costos]')) { m.remove(); document.querySelector('.admin-accordion-trigger[data-accordion-target="costos"]')?.click(); return; }
+        if (!e.target.closest('[data-guardar]')) return;
+        const d = leer();
+        if (!d.nombre) return showNotice('Ponle un nombre al componente.', 'error');
+        if (!d.ref || !d.ref.id) return showNotice('Vincúlalo a una receta o insumo para poder calcular su costo.', 'error');
+        if (_alm.comps.some((x) => x.id !== comp?.id && x.categoria === d.categoria && _cNorm(x.nombre) === _cNorm(d.nombre))) return showNotice('Ya existe un componente con ese nombre en esa categoría.', 'error');
+        try { await _almGuardarComp({ ...d, disponible: comp ? comp.disponible === true : false }, comp?.id); m.remove(); showNotice('Componente guardado.', 'ok'); _almRender(); }
+        catch (err) { showNotice(`No se pudo guardar: ${(err && err.message) || err}`, 'error'); }
+    });
+    ficha();
+}
+
+function _almBind(body) {
+    _alm.bound = true;
+    body.addEventListener('change', async (e) => {
+        const hoy = e.target.closest('[data-alm-hoy]');
+        if (hoy) {
+            const c = _alm.comps.find((x) => x.id === hoy.dataset.almHoy);
+            if (!c) return;
+            try {
+                await firebaseDb.collection(ALM_COL).doc(c.id).set({ disponible: hoy.checked, actualizadoAt: firestoreNow() }, { merge: true });
+                c.disponible = hoy.checked;
+                await _almMarcarMenuHoy();
+            } catch (err) { hoy.checked = !hoy.checked; showNotice(`No se pudo cambiar: ${(err && err.message) || err}`, 'error'); return; }
+            return _almRender();
+        }
+        if (e.target.closest('[data-alm-todos]')) { _alm.verTodosInsumos = e.target.checked; _almRender(); }
+    });
+    body.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-alm-act]');
+        if (!b) return;
+        const a = b.dataset.almAct, id = b.dataset.id;
+        try {
+            if (a === 'nuevo') return _almAbrirEditor(null);
+            if (a === 'editar') return _almAbrirEditor(_alm.comps.find((c) => c.id === id));
+            if (a === 'borrar') {
+                const c = _alm.comps.find((x) => x.id === id);
+                if (!c || !(await showConfirmModal({ title: '¿Borrar este componente?', message: `«${c.nombre}». Las ventas ya hechas conservan su detalle; solo desaparece del catálogo.`, confirmText: 'Borrar' }))) return;
+                await firebaseDb.collection(ALM_COL).doc(id).delete();
+                _alm.comps = _alm.comps.filter((x) => x.id !== id);
+                showNotice('Componente borrado.', 'ok');
+                return _almRender();
+            }
+            if (a === 'apagar') {
+                const on = _alm.comps.filter((c) => c.disponible === true);
+                if (!on.length) return showNotice('Ya está todo apagado.', 'ok');
+                const batch = firebaseDb.batch();
+                on.forEach((c) => batch.set(firebaseDb.collection(ALM_COL).doc(c.id), { disponible: false, actualizadoAt: firestoreNow() }, { merge: true }));
+                await batch.commit();
+                on.forEach((c) => { c.disponible = false; });
+                await _almMarcarMenuHoy();
+                return _almRender();
+            }
+            if (a === 'menuOk') { await _almMarcarMenuHoy(); showNotice('Menú confirmado para hoy.', 'ok'); return _almRender(); }
+            if (a === 'guardarStock' || a === 'entrada') {
+                const ins = _costos.insumos.find((x) => x.id === id);
+                if (!ins) return;
+                const row = b.closest('tr');
+                if (a === 'entrada') {
+                    const txt = await showPromptModal({ icon: '📦', title: `Entrada de ${ins.nombre}`, message: `Cantidad que ingresa (en ${_almUnidad(ins.unidad) || 'la unidad del insumo'}).`, placeholder: 'Ej: 5000', confirmText: 'Sumar' });
+                    const q = _cParse(txt || '');
+                    if (!(q > 0)) return;
+                    const nuevo = Math.round(((_almCore().insumoConStock(ins) ? Number(ins.stockActual) : 0) + q) * 1000) / 1000;
+                    await firebaseDb.collection('costos_insumos').doc(id).set({ stockActual: nuevo, stockActualizadoAt: firestoreNow() }, { merge: true });
+                    ins.stockActual = nuevo;
+                    showNotice(`${ins.nombre}: ahora hay ${_almNum(nuevo)}.`, 'ok');
+                    return _almRender();
+                }
+                const sRaw = row.querySelector('[data-alm-stock]').value.trim(), mRaw = row.querySelector('[data-alm-min]').value.trim();
+                const upd = { stockMinimo: mRaw === '' ? firebase.firestore.FieldValue.delete() : _cParse(mRaw), stockActualizadoAt: firestoreNow() };
+                upd.stockActual = sRaw === '' ? firebase.firestore.FieldValue.delete() : _cParse(sRaw);
+                await firebaseDb.collection('costos_insumos').doc(id).set(upd, { merge: true });
+                if (sRaw === '') delete ins.stockActual; else ins.stockActual = _cParse(sRaw);
+                if (mRaw === '') delete ins.stockMinimo; else ins.stockMinimo = _cParse(mRaw);
+                showNotice('Existencias guardadas.', 'ok');
+                return _almRender();
+            }
+            if (a === 'crearProducto') return _almCrearProducto();
+            if (a === 'precio') {
+                const prod = _almProducto();
+                const txt = await showPromptModal({ icon: '💲', title: 'Precio del almuerzo', message: 'Nuevo precio de venta (el domicilio se cobra aparte).', placeholder: String(prod.precio), confirmText: 'Guardar' });
+                const p = Math.round(_cParse(txt || ''));
+                if (!(p > 0)) return;
+                await firebaseDb.collection('productos').doc(prod.id).set({ precio: p, updated_at: firestoreNow() }, { merge: true });
+                await fetchProducts();
+                showNotice('Precio actualizado.', 'ok');
+                return _almRender();
+            }
+            if (a === 'guardarCfg') {
+                const g = (k) => body.querySelector(`[data-alm-cfg="${k}"]`);
+                const [tipo, ...rest] = String(g('arrozRef').value || '').split(':');
+                const cfg = {
+                    nombre: _alm.cfg.nombre,
+                    manoObra: Math.max(0, Math.round(_cParse(g('manoObra').value))),
+                    arroz: { nombre: 'Arroz', ref: tipo ? { tipo, id: rest.join(':') } : null, porcion: _cParse(g('arrozPorcion').value) || 200, unidad: g('arrozUnidad').value || 'g' }
+                };
+                if (!cfg.arroz.ref) return showNotice('Elige la receta (o insumo) del arroz fijo.', 'error');
+                await firebaseDb.collection(ALM_CFG_COL).doc('main').set({ ...cfg, actualizadoAt: firestoreNow() }, { merge: true });
+                _alm.cfg = { ..._alm.cfg, ...cfg };
+                showNotice('Configuración guardada.', 'ok');
+                return _almRender();
+            }
+        } catch (err) { showNotice(`No se pudo completar: ${(err && err.message) || err}`, 'error'); }
+    });
+    document.getElementById('almuerzosRefreshBtn')?.addEventListener('click', () => { _alm.ordenes = null; _ensureAlmuerzosLoaded(true); });
+}
+
+async function _almMarcarMenuHoy() {
+    const dia = _almDia();
+    await firebaseDb.collection(ALM_CFG_COL).doc('main').set({ menuActualizadoDia: dia, actualizadoAt: firestoreNow() }, { merge: true });
+    _alm.cfg.menuActualizadoDia = dia;
+}
+
+async function _almCrearProducto() {
+    const A = _almCore();
+    if (_almProducto()) return showNotice('El producto ya existe.', 'ok');
+    // La categoría ALMUERZOS se crea si falta (el menú web la ignora: ver isCategoryAllowed en script-v2.js).
+    const cats = await firebaseDb.collection('categorias').get();
+    if (!cats.docs.some((d) => normalizeCategoryKey(d.data().name || d.data().nombre) === normalizeCategoryKey(A.ALMUERZO_CATEGORIA))) {
+        await firebaseDb.collection('categorias').doc('almuerzos').set({ name: A.ALMUERZO_CATEGORIA, image_url: '', active: true, created_at: firestoreNow(), updated_at: firestoreNow() });
+    }
+    await firebaseDb.collection('productos').doc(A.ALMUERZO_PRODUCTO_ID).set({
+        nombre: 'Almuerzo Ejecutivo', precio: A.ALMUERZO_PRECIO, categoria: A.ALMUERZO_CATEGORIA, estado: 'active',
+        visible_pos: true, almuerzoConfigurable: true,
+        descripcion: 'Arroz + proteína + contorno + ensalada + bebida. Se arma en la caja con las opciones del día.',
+        image_url: 'logo.png', created_at: firestoreNow(), updated_at: firestoreNow()
+    });
+    await reloadDataAndRender();
+    showNotice('Producto «Almuerzo Ejecutivo» creado en la categoría ALMUERZOS.', 'ok');
+    _almRender();
+}

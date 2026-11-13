@@ -8910,6 +8910,10 @@ function resolveProductImage(product) {
 }
 
 function isCategoryAllowed(categoryName) {
+    // Almuerzos configurables: se arman y se cobran en la caja (el selector de componentes vive en el panel); no van al menú web.
+    if (normalizeCategoryKey(categoryName) === 'almuerzos') {
+        return false;
+    }
     if (!activeCategories || !activeCategories.size) {
         return true;
     }
@@ -9757,6 +9761,7 @@ function getCategoryProducts(category, options = {}) {
     const selectedKeys = new Set((category?.matchKeys || [category?.key || '']).map((value) => normalizeCategoryKey(value)).filter(Boolean));
 
     return latestProducts
+        .filter((product) => product.almuerzoConfigurable !== true)
         .map((product) => {
             const nombre = product.nombre || product.name || 'Producto';
             const precio = resolveProductDisplayPrice(product);
