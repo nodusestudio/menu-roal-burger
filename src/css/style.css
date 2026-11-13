@@ -9526,7 +9526,7 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 }
 @media (min-width:701px){
 /* Acompañantes y Combos (mismas tarjetas): 2 columnas, nombre y precio en una línea */
-.acomp-panel-list{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:8px}
+.acomp-panel-list{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:8px}
 .acomp-panel-card{padding:8px 10px!important;gap:10px!important;align-items:center!important}
 .acomp-panel-img,.acomp-panel-img-placeholder{width:44px!important;height:44px!important}
 .acomp-panel-info{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"n p" "m b";column-gap:10px;row-gap:2px;align-items:center}
@@ -9536,10 +9536,10 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .acomp-panel-badges{grid-area:b;margin:0!important;justify-content:flex-end}
 .acomp-panel-actions{gap:4px!important}
 /* Bebidas: 2 columnas y botones en fila */
-.bebidas-panel-grid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(460px,1fr));gap:8px}
+.bebidas-panel-grid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:8px}
 .bebidas-panel-card{padding:8px 10px!important;gap:10px!important}
 .bebidas-panel-img{width:44px!important;height:44px!important}
-.bebidas-panel-actions{flex-direction:row!important;flex-wrap:wrap;justify-content:flex-end;max-width:150px}
+.bebidas-panel-actions{flex-direction:row!important;flex-wrap:nowrap;justify-content:flex-end;max-width:none}
 .bebidas-panel-pres-item{min-width:0}
 .bebidas-pres-sabores{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 }
@@ -9553,3 +9553,10 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 #openingAdActivoToggle{width:auto!important;margin:0}
 #openingAdFileInput{padding:6px 10px}
 @media (min-width:901px){.upgrades-master-detail:has(#upgradeOptionsList){grid-template-columns:340px minmax(0,1fr)}}
+
+/* ── Artículos: anuncio, listas laterales y filas más bajas ── */
+.menu-inner-panel[data-menu-panel="promociones"]>.admin-card:first-of-type .card-body{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
+.menu-inner-panel[data-menu-panel="promociones"]>.admin-card:first-of-type .card-body>.card-desc,.menu-inner-panel[data-menu-panel="promociones"]>.admin-card:first-of-type .card-body>#openingAdCurrentBox{flex:1 1 100%;margin:0}
+.menu-inner-panel[data-menu-panel="promociones"]>.admin-card:first-of-type .admin-field.full{flex:1 1 260px;margin:0}
+.menu-inner-panel[data-menu-panel="promociones"]>.admin-card:first-of-type .admin-field.full:has(#openingAdActivoToggle){flex:0 0 auto}
+.upgrades-master-list .upgrades-master-item{padding-top:7px!important;padding-bottom:7px!important;min-height:0!important}
