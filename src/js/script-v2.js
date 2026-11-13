@@ -7197,8 +7197,11 @@ function renderCartUI() {
         const optionText = getCartOptionLabel(item.categoryName, item.orderOptions, { includeComment: false });
         const option = document.createElement('p');
         option.className = 'cart-item-option';
-        if (normalizedType !== 'solo' || normalizeOrderOptions(item.orderOptions).almuerzo) {
-            option.textContent = optionText;
+        const _almSel = normalizeOrderOptions(item.orderOptions).almuerzo;
+        if (normalizedType !== 'solo' || _almSel) {
+            // Almuerzo: cada elección en su línea (proteína, contorno, ensalada, bebida y arroz)
+            option.textContent = _almSel ? optionText.split(' + ').join('\n') : optionText;
+            if (_almSel) option.classList.add('cart-item-option-alm');
         }
 
         const price = document.createElement('div');
@@ -7248,7 +7251,7 @@ function renderCartUI() {
             info.appendChild(incrementoBadge);
         }
 
-        if (normalizedType !== 'solo') info.appendChild(option);
+        if (normalizedType !== 'solo' || _almSel) info.appendChild(option);
         info.appendChild(price);
         info.appendChild(commentBadge);
 

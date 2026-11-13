@@ -9588,3 +9588,4 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .alm-menu-op.on::before{content:"✓ "}
 .alm-menu-sec.hecho{background:rgba(0,0,0,.32)}
 .alm-menu-res{margin:0;text-align:center;font-size:.9rem;font-weight:700;color:#ffc07a;line-height:1.35}
+.cart-item-option-alm{white-space:pre-line;line-height:1.35}
