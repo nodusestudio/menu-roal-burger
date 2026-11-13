@@ -23721,15 +23721,38 @@ function withTimeout(promise, timeoutMs, timeoutMessage) {
     });
 }
 
+// Reduce la imagen (max 900px, webp conserva transparencia) ANTES de subirla:
+// una foto de celular de 3-6 MB tardaba mucho en subir.
+async function _imagenLivianaParaSubir(file) {
+    try {
+        if (!file || file.size < 150 * 1024) return file;
+        const image = await loadImageElementFromFile(file);
+        const w0 = image.naturalWidth || image.width;
+        const h0 = image.naturalHeight || image.height;
+        const scale = Math.min(1, 900 / Math.max(w0, h0, 1));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(w0 * scale));
+        canvas.height = Math.max(1, Math.round(h0 * scale));
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/webp', 0.85));
+        if (blob && blob.type === 'image/webp' && blob.size < file.size) {
+            blob.name = (file.name || 'img').replace(/\.[^.]+$/, '') + '.webp';
+            return blob;
+        }
+    } catch (_) { /* si falla, se sube el original */ }
+    return file;
+}
+
 async function uploadImageToFirebase(file, productName) {
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    file = await _imagenLivianaParaSubir(file);
+    const ext = (String(file.name || 'x.jpg').split('.').pop() || 'jpg').toLowerCase();
     const safeName = slugify(productName) || 'producto';
     const path = `${getFirebaseStorageFolder()}/${safeName}-${Date.now()}.${ext}`;
 
     const storageRef = firebaseStorage.ref().child(path);
     await withTimeout(
-        storageRef.put(file),
-        12000,
+        storageRef.put(file, file.type ? { contentType: file.type } : undefined),
+        8000,
         'La subida de imagen tardo demasiado. Verifica Firebase Storage/CORS.'
     );
 
@@ -23802,7 +23825,7 @@ async function resolveProductImageUpload(file, productName) {
     try {
         return await uploadImageToFirebase(file, productName);
     } catch (uploadError) {
-        return compressImageToDataUrl(file);
+        return compressImageToDataUrl(file, { maxWidth: 800, maxHeight: 800, mimeType: 'image/webp', startQuality: 0.8, maxLength: 250000 });
     }
 }
 
