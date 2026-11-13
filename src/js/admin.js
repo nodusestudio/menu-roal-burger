@@ -853,7 +853,7 @@ function renderPosOrderExtras() {
         salBtn.hidden = tipo === 'mesa';
         const t = posSalsas.join(', ');
         salBtn.classList.toggle('has-val', !!t);
-        salBtn.textContent = t ? `🥫 ${t.length > 22 ? t.slice(0, 21) + '…' : t}` : '🥫 Salsas';
+        salBtn.textContent = t ? `🥫 ${t.length > 22 ? t.slice(0, 21) + '…' : t}` : '🥫 Salsas para llevar';
         salBtn.title = posSalsasTexto() || 'Elegir salsas para llevar';
     }
 }
@@ -15594,7 +15594,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                 </section>` : ''}
                 ${posSalsasTexto(order.salsasLlevar) ? `
                 <section class="ticket-section">
-                    <div class="ticket-section-title">Salsas</div>
+                    <div class="ticket-section-title">Salsas para llevar</div>
                     <div class="ticket-address-text" style="font-weight:700;">${escapeHtml(posSalsasTexto(order.salsasLlevar))}</div>
                 </section>` : ''}
 
@@ -19452,7 +19452,7 @@ function buildESCPOSData(order) {
     }
     if (posSalsasTexto(order.salsasLlevar)) {
         sep();
-        pb(ESC, 0x45, 0x01); ww('SALSAS: ' + posSalsasTexto(order.salsasLlevar), '  '); pb(ESC, 0x45, 0x00);
+        pb(ESC, 0x45, 0x01); ww('SALSAS PARA LLEVAR: ' + posSalsasTexto(order.salsasLlevar), '  '); pb(ESC, 0x45, 0x00);
     }
     sep2();
 
@@ -20090,7 +20090,7 @@ function buildKitchenTicketHtml(order) {
                 ${addressLine}
                 <div class="k-products">${products}</div>
                 ${order.orderNote ? `<div class="k-note" style="margin:6px 0;padding:5px 6px;border:2px solid #000;font-weight:700;font-size:1.05em;overflow-wrap:anywhere;">⚠ NOTA DEL PEDIDO: ${escapeHtml(order.orderNote)}</div>` : ''}
-                ${posSalsasTexto(order.salsasLlevar) ? `<div style="margin:6px 0;padding:5px 6px;border:2px solid #000;font-weight:700;overflow-wrap:anywhere;">🥫 SALSAS: ${escapeHtml(posSalsasTexto(order.salsasLlevar))}</div>` : ''}
+                ${posSalsasTexto(order.salsasLlevar) ? `<div style="margin:6px 0;padding:5px 6px;border:2px solid #000;font-weight:700;overflow-wrap:anywhere;">🥫 SALSAS PARA LLEVAR: ${escapeHtml(posSalsasTexto(order.salsasLlevar))}</div>` : ''}
                 <div class="k-footer">— Ticket de Cocina —</div>
             </article>
         </div>`;
