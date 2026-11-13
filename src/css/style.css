@@ -9514,3 +9514,32 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .cpef-opts>div>div>label:first-child{display:none}
 .cpef-opts>div>div{margin:0!important}
 .cpef-opts>div:has(#cpefBebidaConfig:not(:empty)),.cpef-opts>div:has(#cpef2x1Config:not(:empty)){flex-basis:100%}
+
+/* ── Artículos: pestañas internas con el mismo formato compacto y justificado ── */
+.menu-inner-panel .section-toolbar{background:none!important;border:0!important;box-shadow:none!important;padding:0 0 8px!important;justify-content:flex-start!important;gap:8px}
+.menu-inner-panel .acomp-panel-toolbar{justify-content:flex-start;margin-bottom:8px}
+.alm-mini{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+@media (min-width:901px){
+.upgrades-detail-body .cat-vis-panel{flex-wrap:nowrap;justify-content:space-between;gap:10px;padding:6px 12px}
+.upgrades-detail-body .cat-vis-panel-row{gap:6px;white-space:nowrap}
+.upgrades-detail-body .cat-vis-panel-name{font-size:.78rem}
+}
+@media (min-width:701px){
+/* Acompañantes y Combos (mismas tarjetas): 2 columnas, nombre y precio en una línea */
+.acomp-panel-list{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:8px}
+.acomp-panel-card{padding:8px 10px!important;gap:10px!important;align-items:center!important}
+.acomp-panel-img,.acomp-panel-img-placeholder{width:44px!important;height:44px!important}
+.acomp-panel-info{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"n p" "m b";column-gap:10px;row-gap:2px;align-items:center}
+.acomp-panel-nombre{grid-area:n;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.88rem!important}
+.acomp-panel-precio{grid-area:p;margin:0!important;text-align:right}
+.acomp-panel-meta{grid-area:m;margin:0!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acomp-panel-badges{grid-area:b;margin:0!important;justify-content:flex-end}
+.acomp-panel-actions{gap:4px!important}
+/* Bebidas: 2 columnas y botones en fila */
+.bebidas-panel-grid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(460px,1fr));gap:8px}
+.bebidas-panel-card{padding:8px 10px!important;gap:10px!important}
+.bebidas-panel-img{width:44px!important;height:44px!important}
+.bebidas-panel-actions{flex-direction:row!important;flex-wrap:wrap;justify-content:flex-end;max-width:150px}
+.bebidas-panel-pres-item{min-width:0}
+.bebidas-pres-sabores{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+}
