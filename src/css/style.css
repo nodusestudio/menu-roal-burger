@@ -9582,3 +9582,9 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .alm-menu-ops{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .alm-menu-op{padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);font-size:.88rem;color:#fff}
 .alm-menu{align-items:stretch}.alm-menu .alm-menu-sec{align-self:stretch;width:100%;box-sizing:border-box}.alm-menu .alm-pub-fila{justify-content:center}
+
+.alm-menu-op{min-height:38px;cursor:pointer;font:inherit}
+.alm-menu-op.on{background:var(--c);color:#1a1208;border-color:var(--c);font-weight:800}
+.alm-menu-op.on::before{content:"✓ "}
+.alm-menu-sec.hecho{background:rgba(0,0,0,.32)}
+.alm-menu-res{margin:0;text-align:center;font-size:.9rem;font-weight:700;color:#ffc07a;line-height:1.35}

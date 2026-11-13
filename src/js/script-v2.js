@@ -14339,71 +14339,8 @@ function closeAyudaScreen() {
 // ── Almuerzo Ejecutivo (menú público): se elige paso a paso entre lo que está ACTIVO hoy ──────────────────────
 // Los componentes viven en almuerzo_componentes (lectura pública, sin costos). El servidor (submitPublicOrder) vuelve a validar
 // que cada opción siga activa y le pone al pedido los costos de ese momento; el precio sale del producto del catálogo.
-const ALMUERZO_PASOS_PUB = [
-    { k: 'proteina', q: '¿Con qué proteína?', ic: '🍗' },
-    { k: 'contorno', q: '¿Con qué contorno?', ic: '🍟' },
-    { k: 'ensalada', q: '¿Con qué ensalada?', ic: '🥗' },
-    { k: 'bebida', q: '¿Con qué bebida?', ic: '🥤' }
-];
-async function abrirModalAlmuerzo(nombre, ruta, categoria) {
-    document.getElementById('almuerzo-modal')?.remove();
-    const modal = document.createElement('div');
-    modal.id = 'almuerzo-modal';
-    modal.className = 'bebidas-modal-overlay';
-    const card = document.createElement('div');
-    card.className = 'bebidas-modal-card liquid-glass alm-pub';
-    modal.appendChild(card);
-    document.body.appendChild(modal);
-    const cerrar = () => { modal.remove(); _popGenericModal(cerrar); };
-    modal.addEventListener('click', (e) => { if (e.target === modal) cerrar(); });
-    try { _pushGenericModal(cerrar); } catch (_) { /* sin historial */ }
-    card.innerHTML = '<p class="alm-pub-q">Cargando el menú de hoy…</p>';
-    let comps = [];
-    try {
-        const snap = await getPublicFirebaseDb().collection('almuerzo_componentes').get();
-        comps = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.activo !== false && c.disponible === true)
-            .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
-    } catch (e) {
-        card.innerHTML = '<p class="alm-pub-q">No pudimos cargar el menú de hoy. Intenta de nuevo.</p><button type="button" class="alm-pub-b" data-x>Cerrar</button>';
-        card.addEventListener('click', (ev) => { if (ev.target.closest('[data-x]')) cerrar(); });
-        return;
-    }
-    const sel = {};
-    let paso = 0;
-    const titulo = '<div class="bebidas-modal-title">' + escapeHtml(nombre) + '</div>';
-    const pintar = () => {
-        if (paso >= ALMUERZO_PASOS_PUB.length) {
-            const nombres = ALMUERZO_PASOS_PUB.map((p) => sel[p.k].nombre).join(' + ');
-            card.innerHTML = titulo + '<p class="alm-pub-q">Tu almuerzo</p><p class="alm-pub-r">' + escapeHtml(nombres) + ' + Arroz</p>'
-                + '<div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-atras>← Cambiar</button><button type="button" class="alm-pub-b" data-add>Agregar al carrito</button></div>';
-            return;
-        }
-        const p = ALMUERZO_PASOS_PUB[paso];
-        const opts = comps.filter((c) => c.categoria === p.k);
-        card.innerHTML = titulo + '<p class="alm-pub-paso">Paso ' + (paso + 1) + ' de 4</p><p class="alm-pub-q">' + p.ic + ' ' + p.q + '</p>'
-            + (opts.length
-                ? '<div class="alm-pub-opts">' + opts.map((c) => '<button type="button" class="alm-pub-o" data-id="' + escapeHtml(c.id) + '">' + escapeHtml(c.nombre) + '</button>').join('') + '</div>'
-                : '<p class="alm-pub-r">Hoy no hay opciones disponibles en este paso. Escríbenos por WhatsApp.</p>')
-            + '<div class="alm-pub-fila">' + (paso ? '<button type="button" class="alm-pub-b sec" data-atras>← Atrás</button>' : '<button type="button" class="alm-pub-b sec" data-x>Cancelar</button>') + '</div>';
-    };
-    card.addEventListener('click', (e) => {
-        if (e.target.closest('[data-x]')) return cerrar();
-        if (e.target.closest('[data-atras]')) { paso = paso >= ALMUERZO_PASOS_PUB.length ? ALMUERZO_PASOS_PUB.length - 1 : Math.max(0, paso - 1); return pintar(); }
-        const o = e.target.closest('.alm-pub-o');
-        if (o) {
-            const c = comps.find((x) => x.id === o.dataset.id);
-            if (!c) return;
-            sel[ALMUERZO_PASOS_PUB[paso].k] = { id: c.id, nombre: c.nombre };
-            paso += 1;
-            return pintar();
-        }
-        if (e.target.closest('[data-add]')) {
-            addItemToCart(nombre, categoria, { type: 'solo', almuerzo: sel });
-            cerrar();
-        }
-    });
-    pintar();
-}
+// Todas las rutas (tarjeta, "+", franja, carrito) abren el mismo menú del día seleccionable (_almPubMenuDia).
+function abrirModalAlmuerzo() { _almPubIniciar(); _almPubMenuDia(); }
 
 // ── "Almuerzo de hoy": lo disponible se lee en vivo de almuerzo_componentes (lo que se enciende en Artículos → Almuerzos) ──
 const _almPub = { comps: [], listo: false, iniciado: false };
@@ -14435,10 +14372,7 @@ function _almPubRefrescar() {
     const panel = document.getElementById('categoryProductsPanel');
     if (panel && panel.querySelector('.alm-hoy')) renderAlmuerzosPublicPanel(panel);
 }
-function _almPubAbrir() {
-    const p = _almPubProducto();
-    abrirModalAlmuerzo(p ? p.nombre : 'Almuerzo Ejecutivo', '', 'ALMUERZOS');
-}
+function _almPubAbrir() { _almPubMenuDia(); }
 function _almPubFranja() {
     const grid = document.getElementById('categoryGrid') || document.getElementById('menuCarouselBody');
     if (!grid || !grid.parentElement) return;
@@ -14480,10 +14414,10 @@ function _almPubResumenTexto() {
     if (!_almPub.listo) return 'Cargando el menú de hoy…';
     if (!_almPubDisponible()) return 'Hoy no hay almuerzo disponible.';
     const m = _almPubPorCategoria();
-    return 'Arroz + proteína + contorno + ensalada + bebida\n👆 Toca para ver el menú de hoy (' + (m.proteina.length + m.contorno.length + m.ensalada.length + m.bebida.length) + ' opciones)';
+    return 'Arroz + proteína + contorno + ensalada + bebida\n👆 Toca para elegir tu almuerzo (' + (m.proteina.length + m.contorno.length + m.ensalada.length + m.bebida.length) + ' opciones)';
 }
 
-/** Menú del día: cada categoría en su bloque y cada opción como ficha; desde aquí se arma el almuerzo. */
+/** Menú del día SELECCIONABLE: un bloque por categoría, una ficha por opción (se toca 1 por bloque) y "Agregar al carrito". */
 function _almPubMenuDia() {
     document.getElementById('almuerzo-menu-modal')?.remove();
     const p = _almPubProducto();
@@ -14495,11 +14429,12 @@ function _almPubMenuDia() {
     card.className = 'bebidas-modal-card liquid-glass alm-pub alm-menu';
     modal.appendChild(card);
     document.body.appendChild(modal);
-    const cerrar = () => { modal.remove(); _popGenericModal(cerrar); };
+    const cerrar = () => { clearInterval(obs); modal.remove(); _popGenericModal(cerrar); };
     modal.addEventListener('click', (e) => { if (e.target === modal) cerrar(); });
     try { _pushGenericModal(cerrar); } catch (_) { /* sin historial */ }
     const colores = { proteina: '#ff9a50', contorno: '#ffd479', ensalada: '#7ee2a8', bebida: '#7ec8ff' };
     const filas = [['proteina', '🍗', 'Proteína'], ['contorno', '🍟', 'Contorno'], ['ensalada', '🥗', 'Ensalada'], ['bebida', '🥤', 'Bebida']];
+    const sel = {}; // { categoria: { id, nombre } }
     const pintar = () => {
         const precio = p ? formatCurrency(Number(p.precio) || 0) : '';
         const cabeza = '<div class="bebidas-modal-title">' + escapeHtml(nombre) + '</div>';
@@ -14508,17 +14443,36 @@ function _almPubMenuDia() {
             card.innerHTML = cabeza + '<p class="alm-pub-q">Hoy no hay almuerzo disponible</p><p class="alm-pub-r">Vuelve pronto o escríbenos por WhatsApp.</p><div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-x>Cerrar</button></div>';
             return;
         }
-        const m = _almPubPorCategoria();
-        card.innerHTML = cabeza + '<p class="alm-menu-p">' + escapeHtml(precio) + ' · arroz incluido</p><p class="alm-pub-paso">MENÚ DE HOY · elige 1 de cada bloque</p>'
-            + filas.map((f) => '<div class="alm-menu-sec" style="--c:' + colores[f[0]] + '"><div class="alm-menu-t">' + f[1] + ' ' + f[2] + '<small>elige 1 · ' + m[f[0]].length + ' opciones</small></div><div class="alm-menu-ops">'
-                + m[f[0]].map((n) => '<span class="alm-menu-op">' + escapeHtml(n) + '</span>').join('') + '</div></div>').join('')
-            + '<div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-x>Cerrar</button><button type="button" class="alm-pub-b" data-armar>Armar mi almuerzo</button></div>';
+        const activos = _almPub.comps.filter((x) => x.activo !== false && x.disponible === true);
+        filas.forEach((f) => { if (sel[f[0]] && !activos.some((x) => x.id === sel[f[0]].id)) delete sel[f[0]]; }); // se apagó mientras elegía
+        const faltan = filas.filter((f) => !sel[f[0]]).map((f) => f[2].toLowerCase());
+        const completo = faltan.length === 0;
+        card.innerHTML = cabeza + '<p class="alm-menu-p">' + escapeHtml(precio) + ' · arroz incluido</p><p class="alm-pub-paso">Toca 1 opción de cada bloque</p>'
+            + filas.map((f) => {
+                const ops = activos.filter((x) => x.categoria === f[0]).sort((x, y) => String(x.nombre || '').localeCompare(String(y.nombre || ''), 'es'));
+                return '<div class="alm-menu-sec' + (sel[f[0]] ? ' hecho' : '') + '" style="--c:' + colores[f[0]] + '"><div class="alm-menu-t">' + f[1] + ' ' + f[2]
+                    + '<small>' + (sel[f[0]] ? '✓ elegido' : 'elige 1') + '</small></div><div class="alm-menu-ops">'
+                    + ops.map((x) => '<button type="button" class="alm-menu-op' + (sel[f[0]] && sel[f[0]].id === x.id ? ' on' : '') + '" data-cat="' + f[0] + '" data-id="' + escapeHtml(x.id) + '">' + escapeHtml(x.nombre) + '</button>').join('') + '</div></div>';
+            }).join('')
+            + (completo ? '<p class="alm-menu-res">' + escapeHtml(filas.map((f) => sel[f[0]].nombre).join(' + ')) + ' + Arroz</p>' : '')
+            + '<div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-x>Cerrar</button><button type="button" class="alm-pub-b" data-add ' + (completo ? '' : 'disabled') + '>'
+            + (completo ? 'Agregar al carrito · ' + escapeHtml(precio) : 'Falta: ' + escapeHtml(faltan.join(', '))) + '</button></div>';
     };
     card.addEventListener('click', (e) => {
         if (e.target.closest('[data-x]')) return cerrar();
-        if (e.target.closest('[data-armar]')) { cerrar(); _almPubAbrir(); }
+        const o = e.target.closest('.alm-menu-op');
+        if (o) {
+            const c = _almPub.comps.find((x) => x.id === o.dataset.id);
+            if (!c) return;
+            if (sel[o.dataset.cat] && sel[o.dataset.cat].id === c.id) delete sel[o.dataset.cat]; else sel[o.dataset.cat] = { id: c.id, nombre: c.nombre };
+            return pintar();
+        }
+        if (e.target.closest('[data-add]') && filas.every((f) => sel[f[0]])) {
+            addItemToCart(nombre, 'ALMUERZOS', { type: 'solo', almuerzo: Object.assign({}, sel) });
+            cerrar();
+        }
     });
     pintar();
-    // si lo disponible cambia con el menú abierto, se repinta solo
+    // si lo disponible cambia con el menú abierto, se repinta solo (conservando lo ya elegido)
     const obs = setInterval(() => { if (!document.body.contains(modal)) { clearInterval(obs); return; } pintar(); }, 4000);
 }
