@@ -6569,7 +6569,8 @@ function handlePosProductAdd(productId, productName, productPrice) {
     const normCat = normalizeCategoryKey(selectedCategory);
 
     // Almuerzo Ejecutivo: un solo producto; la combinación (proteína, contorno, ensalada, bebida) se elige en su selector.
-    if (prodEntry?.almuerzoConfigurable === true) {
+    // (por marca del producto, por su id o por estar en la categoría ALMUERZOS: un producto creado a mano ahí también pregunta)
+    if (prodEntry && (prodEntry.almuerzoConfigurable === true || prodEntry.id === 'almuerzo-ejecutivo' || normCat === 'almuerzos')) {
         openAlmuerzoPicker(prodEntry);
         return;
     }

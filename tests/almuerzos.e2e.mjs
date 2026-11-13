@@ -113,9 +113,11 @@ try {
     await p.evaluate(() => { const c = document.querySelector('[data-alm-hoy="c2"]'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); });
     await p.waitForTimeout(150);
 
-    // Selector de la caja
+    // Selector de la caja (con la pantalla del POS abierta, como en la caja real)
+    await p.evaluate(() => { document.getElementById('posView')?.classList.add('is-open'); document.body.classList.add('pos-is-open'); });
     await p.evaluate(() => openAlmuerzoPicker(_productos[0]));
     await p.waitForSelector('#almPickerModal .alm-box');
+    ok(await p.evaluate(() => { const b = document.querySelector('#almPickerModal .alm-box').getBoundingClientRect(); const e = document.elementFromPoint(b.x + b.width / 2, b.y + 30); return !!e && !!e.closest('#almPickerModal'); }), 'el selector queda ENCIMA de la pantalla del POS (visible y tocable)');
     ok(await p.evaluate(() => document.querySelectorAll('#almPickerModal [data-alm-pick]').length === 4), 'el selector solo ofrece lo encendido hoy (4 opciones; la apagada no aparece)');
     ok(await p.evaluate(() => document.querySelector('[data-alm-add]').disabled), 'no deja agregar hasta elegir las 4 categorías');
     for (const [cat, id] of [['proteina', 'c1'], ['contorno', 'c3'], ['ensalada', 'c4']]) await p.click(`[data-alm-pick="${cat}:${id}"]`);
