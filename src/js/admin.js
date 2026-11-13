@@ -11065,6 +11065,7 @@ function _renderCategoryDetailPanel(categoryId) {
                                     <textarea id="cpefDesc" class="admin-input" rows="2" placeholder="Descripción opcional..." style="width:100%;box-sizing:border-box;resize:vertical;">${ep.descripcion || ''}</textarea>
                                 </div>
                             </div>
+                            ${ep.almuerzoConfigurable ? `<div style="margin-top:10px;"><label style="font-size:0.7rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.4px;">Opciones del almuerzo (activa o desactiva lo que hay hoy)</label><div id="cpefAlmuerzoOpciones" data-alm-ficha><p class="cs-muted">Cargando opciones…</p></div></div>` : ''}
                             <div style="margin-top:10px;">
                                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                                     <label style="font-size:0.7rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.4px;">Variantes de precio</label>
@@ -11113,6 +11114,7 @@ function _renderCategoryDetailPanel(categoryId) {
     `;
 
     categoryDetailPanel.querySelector('#catDetailSaveBtn')?.addEventListener('click', () => _saveCategoryFromDetail(categoryId));
+    _almPintarOpcionesEnFicha(categoryDetailPanel.querySelector('#cpefAlmuerzoOpciones'));
     categoryDetailPanel.querySelector('#catDetailAddProductBtn')?.addEventListener('click', () => openProductCreateModal(category.name));
     categoryDetailPanel.querySelector('#catDetailDeleteBtn')?.addEventListener('click', async () => {
         const related = productsState.filter((p) => p.categoria === category.name);
@@ -41874,4 +41876,45 @@ async function _almCrearProducto() {
     await reloadDataAndRender();
     showNotice('Producto «Almuerzo Ejecutivo» creado en la categoría ALMUERZOS.', 'ok');
     _almRender();
+}
+
+/** Opciones del almuerzo dentro de la edición del producto (Artículos → ALMUERZOS): activar/desactivar y agregar, sin salir de ahí. */
+async function _almPintarOpcionesEnFicha(host) {
+    if (!host) return;
+    try { await _almCargar(); } catch (e) { host.innerHTML = `<p class="cs-muted">No se pudieron cargar las opciones (${escapeHtml((e && e.message) || e)}).</p>`; return; }
+    const A = _almCore();
+    const pintar = () => {
+        host.innerHTML = A.ORDEN_CATEGORIAS.map((cid) => {
+            const cat = A.CATEGORIAS[cid];
+            const lista = _alm.comps.filter((c) => c.categoria === cid && c.activo !== false);
+            return `<div style="margin:8px 0 4px;font-weight:700;font-size:.85rem;">${cat.icono} ${cat.plural} <small style="color:var(--admin-muted);font-weight:400;">${lista.filter((c) => c.disponible).length}/${lista.length} activas</small></div>`
+                + lista.map((c) => `<label class="alm-fila${c.disponible ? ' on' : ''}"><input type="checkbox" data-alm-f="${escapeHtml(c.id)}" ${c.disponible ? 'checked' : ''}><span class="alm-fila-n">${escapeHtml(c.nombre)}</span></label>`).join('')
+                + `<button type="button" class="alm-btn" data-alm-fadd="${cid}">➕ Agregar ${cat.label.toLowerCase()}</button>`;
+        }).join('');
+    };
+    pintar();
+    if (host.dataset.almBound) return;
+    host.dataset.almBound = '1';
+    host.addEventListener('change', async (e) => {
+        const cb = e.target.closest('[data-alm-f]');
+        if (!cb) return;
+        const c = _alm.comps.find((x) => x.id === cb.dataset.almF);
+        if (!c) return;
+        try {
+            await firebaseDb.collection(ALM_COL).doc(c.id).set({ disponible: cb.checked, actualizadoAt: firestoreNow() }, { merge: true });
+            c.disponible = cb.checked;
+            await _almMarcarMenuHoy();
+        } catch (err) { cb.checked = !cb.checked; showNotice(`No se pudo cambiar: ${(err && err.message) || err}`, 'error'); return; }
+        pintar();
+    });
+    host.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-alm-fadd]');
+        if (!b) return;
+        const cat = b.dataset.almFadd;
+        const nombre = String((await showPromptModal({ icon: A.CATEGORIAS[cat].icono, title: `Nueva ${A.CATEGORIAS[cat].label.toLowerCase()}`, message: 'Nombre de la opción (queda activa de una vez).', placeholder: 'Ej: Pollo a la plancha', confirmText: 'Agregar' })) || '').trim();
+        if (!nombre) return;
+        if (_alm.comps.some((x) => x.categoria === cat && _cNorm(x.nombre) === _cNorm(nombre))) return showNotice('Ya existe esa opción.', 'error');
+        try { await _almGuardarComp({ categoria: cat, nombre, ref: null, porcion: 0, unidad: '', activo: true, disponible: true }, null); await _almMarcarMenuHoy(); pintar(); showNotice('Opción agregada.', 'ok'); }
+        catch (err) { showNotice(`No se pudo agregar: ${(err && err.message) || err}`, 'error'); }
+    });
 }
