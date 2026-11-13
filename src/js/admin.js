@@ -1427,8 +1427,20 @@ function _avisoTexto(msg) {
     if (t.length > 190) t = (_fodiFrases(t).reduce((acc, fr) => (acc.length + fr.length <= 190 ? (acc ? acc + ' ' : '') + fr : acc), '') || (t.slice(0, 187) + '…'));
     return t;
 }
+let _avisoVozOverride = null; // si no es null, la voz dice esto en vez del texto que se ve en el aviso
+// Nombre para decir en voz alta: sin emojis, teléfonos ni números ('' si no queda nada)
+function _nombreVoz(n) {
+    return String(n || '').replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu, '')
+        .replace(/[0-9+()\-_.]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+// Aviso que se ve completo pero se dice con otra frase (la voz no lee números ni emojis)
+function showNoticeVoz(visible, hablado, type = 'ok') {
+    _avisoVozOverride = hablado;
+    try { showNotice(visible, type); } finally { _avisoVozOverride = null; }
+}
 function _adminDecirAviso(hablado, face) {
     try {
+        if (_avisoVozOverride) hablado = _avisoVozOverride;
         if (!_avisosVozActiva() || _meseroSession || document.hidden || !hablado) return;
         if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; // el navegador exige un gesto previo
         if (window.speechSynthesis?.speaking || _piper.audio) return;
@@ -2685,7 +2697,16 @@ function announceNewMessages(messages) {
             }
             notifyNewMessage(message);
             playMessageAlertTone();
-            showNotice(`Nuevo mensaje de ${message.customerName}.`, 'ok');
+            // Sin números ni emojis: el aviso se lee en voz alta y un teléfono o un 😀 se oye mal
+            const _nombreAviso = String(message.customerName || '')
+                .replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}]/gu, '')
+                .replace(/[0-9+()\-_.]+/g, ' ').replace(/\s+/g, ' ').trim();
+            const _quien = _nombreAviso ? `Nuevo mensaje de ${_nombreAviso}` : 'Nuevo mensaje de un cliente';
+            const _contenido = [message.subject, message.body && message.body !== message.subject ? message.body : '']
+                .map((s) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ');
+            // En pantalla se ve lo que escribió; la voz solo dice quién escribió (sin leer números ni emojis del texto)
+            _avisoVozOverride = `${_quien}.`;
+            try { showNotice(_contenido ? `${_quien}: «${_contenido.slice(0, 120)}${_contenido.length > 120 ? '…' : ''}»` : `${_quien}.`, 'ok'); } finally { _avisoVozOverride = null; }
         });
 }
 
@@ -17163,13 +17184,14 @@ function announceNewChatRoalConversations(conversations) {
     escalatedOnes.forEach((conv) => {
         playChatRoalSound('escalation');
         notifyNewChatRoalConversation(conv, 'escalation');
-        showNotice(`${_chatRoalName(conv)} necesita atención humana.`, 'warn');
+        showChatRoalMessageToast(`🙋 ${_chatRoalName(conv)}`, conv.lastCustomerMessageText || conv.lastMessageText || '');
+        showNoticeVoz(`${_chatRoalName(conv)} necesita atención humana.`, `${_nombreVoz(_chatRoalName(conv)) || 'Un cliente'} necesita atención humana.`, 'warn');
     });
 
     newQuestionOnes.forEach((conv) => {
         playChatRoalSound('escalation');
         showChatRoalMessageToast(`❓ ${_chatRoalName(conv)} pregunta`, conv.pendingQuestion?.text || '');
-        showNotice(`El agente necesita un dato para ${_chatRoalName(conv)}.`, 'warn');
+        showNoticeVoz(`El agente necesita un dato para ${_chatRoalName(conv)}.`, `El agente necesita un dato para ${_nombreVoz(_chatRoalName(conv)) || 'un cliente'}.`, 'warn');
     });
 
     // No repetir el aviso de "escribió de nuevo" en la misma conversación que ya sonó arriba
@@ -17186,7 +17208,8 @@ function announceNewChatRoalConversations(conversations) {
     newOnes.slice().reverse().forEach((conv) => {
         playChatRoalSound('newChat');
         notifyNewChatRoalConversation(conv, 'newChat');
-        showNotice(`Nuevo chat de ${_chatRoalName(conv)}.`, 'ok');
+        showChatRoalMessageToast(`💬 ${_chatRoalName(conv)}`, conv.lastCustomerMessageText || conv.lastMessageText || '');
+        showNoticeVoz(`Nuevo chat de ${_chatRoalName(conv)}.`, `Nuevo chat de ${_nombreVoz(_chatRoalName(conv)) || 'un cliente'}.`, 'ok');
     });
 }
 
@@ -30396,7 +30419,7 @@ function renderCajaDiaria() {
             const gastoId = escapeHtml(g.id || '');
             const gastoTicketBtn = gastoId ? `<button type="button" class="mini-btn" data-gasto-ticket="${gastoId}" title="Ver e imprimir ticket" style="margin-left:6px;">🖨️</button>` : '';
             const gastoDelBtn = gastoId ? `<button type="button" class="mini-btn remove" data-gasto-del="${gastoId}" title="Eliminar gasto" style="margin-left:2px;">🗑️</button>` : '';
-            const origenStr = Number(g.desdeSaldoAnterior) > 0 ? ` <span class="gasto-origen-chip" title="Hoy no había suficiente en este método: ${escapeHtml(formatMoney(Number(g.desdeSaldoAnterior)))} salió del saldo de días anteriores">📅 saldo anterior ${escapeHtml(formatMoney(Number(g.desdeSaldoAnterior)))}</span>` : '';
+            const origenStr = '';
             const gastoDesc = `<span class="caja-cell-salida">💸 Gasto${catStr}</span>${subStr}${descStr}${origenStr}${gastoTicketBtn}${gastoDelBtn}`;
 
             rows.push(`<tr>
