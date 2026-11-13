@@ -9498,3 +9498,19 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 @media (max-width:520px){.cpef-grid{grid-template-columns:1fr}}
 #cpefForm{padding:12px!important}
 #cpefForm .alm-mini{margin-top:4px}
+
+/* ── Artículos: barra, cabecera de categoría, opciones y variantes ordenadas ── */
+[data-menu-panel="categorias"] > .section-toolbar{background:none!important;border:0!important;box-shadow:none!important;padding:0 0 8px!important;justify-content:flex-start!important;gap:8px}
+.catd-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px 10px;align-items:end;margin-bottom:8px}
+.catd-l{display:block;font-size:.7rem;color:var(--admin-muted);margin:0 0 3px}
+.catd-add{grid-column:3;grid-row:1;white-space:nowrap}
+.catd-name{grid-column:1;grid-row:1}.catd-parent{grid-column:2;grid-row:1;min-width:0}
+@media (max-width:700px){.catd-grid{grid-template-columns:1fr}.catd-name,.catd-parent,.catd-add{grid-column:1;grid-row:auto}}
+.upgrades-detail-body .cat-vis-panel{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 22px;padding:8px 12px;margin:0 0 8px}
+.upgrades-detail-body .cat-vis-panel-label{flex:0 0 auto;margin:0}
+.upgrades-detail-body .cat-vis-panel-row{display:inline-flex;align-items:center;gap:8px;padding:0;margin:0;border:0}
+.cpef-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:flex-start;margin-top:10px}
+.cpef-opts>div{margin:0!important}
+.cpef-opts>div>div>label:first-child{display:none}
+.cpef-opts>div>div{margin:0!important}
+.cpef-opts>div:has(#cpefBebidaConfig:not(:empty)),.cpef-opts>div:has(#cpef2x1Config:not(:empty)){flex-basis:100%}

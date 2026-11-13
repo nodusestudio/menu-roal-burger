@@ -10839,13 +10839,13 @@ function _cpefRenderVariantesList() {
     list.innerHTML = '';
 
     if (_cpefVariantes.length === 0) {
-        list.innerHTML = '<p class="empty-state">Sin variantes. Usa &quot;+ Agregar&quot;.</p>';
+        list.innerHTML = '<p class="cs-muted" style="margin:0">Sin variantes (precio único).</p>';
         return;
     }
 
     _cpefVariantes.forEach((v, idx) => {
         const card = document.createElement('div');
-        card.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px;margin-bottom:7px;';
+        card.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px 8px;margin-bottom:4px;';
 
         const bebOpts = bebidasState
             .filter((b) => b.estado === 'active')
@@ -10864,7 +10864,7 @@ function _cpefRenderVariantesList() {
                 <input type="text" class="admin-input cpef-var-nombre" value="${escapeHtml(v.nombre || '')}" placeholder="Ej: Para 1 persona" style="flex:1;min-width:0;font-size:0.78rem;padding:6px 10px;">
                 <input type="number" class="admin-input cpef-var-precio" value="${v.precio || ''}" min="0" step="1000" placeholder="Precio" style="width:90px;font-size:0.78rem;padding:6px 8px;">
                 <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#eef4ff;white-space:nowrap;cursor:pointer;flex-shrink:0;">
-                    <input type="checkbox" class="cpef-var-con-bebida"${v.con_bebida ? ' checked' : ''}> 🥤
+                    <input type="checkbox" class="cpef-var-con-bebida" title="Esta variante incluye bebida"${v.con_bebida ? ' checked' : ''}> 🥤
                 </label>
                 <button type="button" class="cpef-var-del" style="background:rgba(180,30,30,0.55);border:none;border-radius:6px;color:#fff;width:24px;height:24px;cursor:pointer;font-size:0.7rem;flex-shrink:0;">✕</button>
             </div>
@@ -10964,12 +10964,14 @@ function _renderCategoryDetailPanel(categoryId) {
             </div>
         </div>
         <div class="upgrades-detail-body">
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                <input type="text" class="admin-input" id="catDetailName" value="${category.name}" placeholder="Nombre categoría" style="flex:1;min-width:0;">
-                <button type="button" class="section-action-btn primary" id="catDetailAddProductBtn" style="flex-shrink:0;white-space:nowrap;">+ Agregar</button>
+            <div class="catd-grid">
+            <div class="catd-name">
+                <label class="catd-l" for="catDetailName">Nombre</label>
+                <input type="text" class="admin-input" id="catDetailName" value="${category.name}" placeholder="Nombre categoría" style="width:100%;box-sizing:border-box;">
             </div>
-            <div style="margin-bottom:12px;">
-                <label for="catDetailParent" style="display:block;font-size:0.7rem;color:var(--admin-muted);margin-bottom:4px;">Categoría principal (agrupa esta categoría con otras en el POS)</label>
+            <button type="button" class="section-action-btn primary catd-add" id="catDetailAddProductBtn" title="Crear un producto en esta categoría">+ Producto</button>
+            <div class="catd-parent">
+                <label for="catDetailParent" class="catd-l" title="Agrupa esta categoría con otras en una sola pestaña del POS">Categoría principal (grupo en el POS)</label>
                 <!-- <form> propio, sin ningún otro input adentro: Chrome/Brave ignoran autocomplete="off"
                      cuando su heurístico decide que un campo "es de login", pero si el campo está en un
                      form aislado (sin un input de contraseña cerca en ese mismo form) no tiene con qué
@@ -10993,8 +10995,9 @@ function _renderCategoryDetailPanel(categoryId) {
                     </div>
                 </form>
             </div>
+            </div>
             <div class="cat-vis-panel">
-                <div class="cat-vis-panel-label">Activar en esta categoría</div>
+                <div class="cat-vis-panel-label">Activar aquí:</div>
                 <div class="cat-vis-panel-row">
                     <span class="cat-vis-panel-name">🥤 Bebidas</span>
                     <div style="display:flex;gap:5px;">
@@ -11073,6 +11076,7 @@ function _renderCategoryDetailPanel(categoryId) {
                                 </div>
                                 <div id="cpefVariantesList"></div>
                             </div>
+                            <div class="cpef-opts">
                             <div style="margin-top:10px;">
                                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                                     <label style="font-size:0.7rem;color:var(--admin-muted);text-transform:uppercase;letter-spacing:.4px;">Bebida incluida</label>
@@ -11098,6 +11102,7 @@ function _renderCategoryDetailPanel(categoryId) {
                                 <label style="display:flex;align-items:center;gap:6px;font-size:0.78rem;color:#eef4ff;cursor:pointer;">
                                     <input type="checkbox" id="cpefActivePos" ${ep.visible_pos !== false ? 'checked' : ''}> Activo en POS
                                 </label>
+                            </div>
                             </div>
                             <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
                                 <button type="button" class="section-save-btn" id="cpefSaveBtn">Guardar</button>
