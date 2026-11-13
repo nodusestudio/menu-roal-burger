@@ -9543,3 +9543,13 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .bebidas-panel-pres-item{min-width:0}
 .bebidas-pres-sabores{flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 }
+
+/* ── Artículos: títulos duplicados fuera, anuncio y opciones de combo ── */
+.menu-inner-panel[data-menu-panel="carrusel"]>.admin-card>.card-head,
+.menu-inner-panel[data-menu-panel="acompanantes"]>.admin-card>.card-head,
+.menu-inner-panel[data-menu-panel="bebidas"]>.admin-card>.card-head,
+.menu-inner-panel[data-menu-panel="combospacks"]>.admin-card>.card-head{display:none}
+.admin-field.full:has(#openingAdActivoToggle){flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;gap:10px}
+#openingAdActivoToggle{width:auto!important;margin:0}
+#openingAdFileInput{padding:6px 10px}
+@media (min-width:901px){.upgrades-master-detail:has(#upgradeOptionsList){grid-template-columns:340px minmax(0,1fr)}}
