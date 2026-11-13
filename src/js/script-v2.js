@@ -6930,6 +6930,7 @@ function showCartAddedToast(categoryName, productName) {
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId, initialQuantity = 1, parentKey = null) {
     // Almuerzo Ejecutivo: NUNCA entra al carrito sin elegir proteína, contorno, ensalada y bebida (cualquier ruta que llegue aquí pregunta primero).
     if (normalizeCategoryKey(categoryName) === 'almuerzos' && !(orderOptions && orderOptions.almuerzo)) {
+        if (_almPub.listo && !_almPubDisponible()) { showStatusToast('Hoy no hay almuerzo disponible. Vuelve pronto.'); return; }
         abrirModalAlmuerzo(String(productName || 'Almuerzo Ejecutivo').split(' - ')[0], '', categoryName);
         return;
     }
@@ -12040,6 +12041,13 @@ function _makeMenuCarouselCard(product) {
     const descEl = document.createElement('p');
     descEl.className = 'pcm-description';
     descEl.textContent = description;
+    // Almuerzo Ejecutivo: en vez de una descripción fija, la tarjeta lista lo que hay HOY (se actualiza en vivo)
+    const esAlm = product.almuerzoConfigurable === true || normalizeCategoryKey(product.categoria || product.category) === 'almuerzos';
+    if (esAlm) {
+        _almPubIniciar();
+        descEl.classList.add('pcm-alm-hoy');
+        descEl.textContent = _almPubResumenTexto();
+    }
 
     const price = resolveProductDisplayPrice(product);
     const priceEl = document.createElement('p');
@@ -12051,7 +12059,7 @@ function _makeMenuCarouselCard(product) {
     // El visor de imagen ampliada (lightbox) tambien muestra descripcion, precio y un boton de
     // agregar — no solo la foto y el nombre — para que "ampliar" traiga toda la info consigo.
     _bindLightboxTap(wrap, img, {
-        description: description || undefined,
+        description: esAlm ? _almPubResumenTexto() : (description || undefined),
         price: price ? '$' + price.toLocaleString('es-CO') : undefined,
         onAdd: addToCart
     });
@@ -12061,7 +12069,7 @@ function _makeMenuCarouselCard(product) {
     const infoText = document.createElement('div');
     infoText.className = 'pcm-info-text';
     infoText.appendChild(nameEl);
-    if (description) infoText.appendChild(descEl);
+    if (description || esAlm) infoText.appendChild(descEl);
     if (price) infoText.appendChild(priceEl);
 
     const btn = document.createElement('button');
@@ -14421,6 +14429,7 @@ function _almPubIniciar() {
 }
 /** Repinta la franja superior y, si la categoría ALMUERZOS está abierta, su panel. */
 function _almPubRefrescar() {
+    document.querySelectorAll('.pcm-alm-hoy').forEach((e) => { e.textContent = _almPubResumenTexto(); });
     _almPubFranja();
     const panel = document.getElementById('categoryProductsPanel');
     if (panel && panel.querySelector('.alm-hoy')) renderAlmuerzosPublicPanel(panel);
@@ -14430,7 +14439,7 @@ function _almPubAbrir() {
     abrirModalAlmuerzo(p ? p.nombre : 'Almuerzo Ejecutivo', '', 'ALMUERZOS');
 }
 function _almPubFranja() {
-    const grid = document.getElementById('categoryGrid');
+    const grid = document.getElementById('categoryGrid') || document.getElementById('menuCarouselBody');
     if (!grid || !grid.parentElement) return;
     let el = document.getElementById('almuerzoHoyFranja');
     const p = _almPubProducto();
@@ -14463,4 +14472,13 @@ function renderAlmuerzosPublicPanel(panel) {
         + filas.map((f) => '<div class="alm-hoy-f"><span class="k">' + f[1] + ' ' + f[2] + '</span><span class="v">' + m[f[0]].map(escapeHtml).join(' · ') + '</span></div>').join('')
         + '<button type="button" class="alm-pub-b alm-hoy-b" data-armar>Armar mi almuerzo</button></div>';
     panel.querySelector('[data-armar]').addEventListener('click', _almPubAbrir);
+}
+
+/** Texto de lo que hay hoy, una línea por categoría (para la tarjeta del catálogo y su vista ampliada). */
+function _almPubResumenTexto() {
+    if (!_almPub.listo) return 'Cargando el menú de hoy…';
+    if (!_almPubDisponible()) return 'Hoy no hay almuerzo disponible.';
+    const m = _almPubPorCategoria();
+    const ic = { proteina: '🍗', contorno: '🍟', ensalada: '🥗', bebida: '🥤' };
+    return 'Arroz incluido + elige 1 de cada una:\n' + ALMUERZO_CATS_PUB.map((k) => ic[k] + ' ' + m[k].join(' · ')).join('\n');
 }

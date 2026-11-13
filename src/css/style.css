@@ -9571,3 +9571,4 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .alm-franja{display:flex;align-items:center;gap:10px;width:calc(100% - 32px);margin:10px 16px;padding:10px 14px;color:#fff;text-align:left;cursor:pointer;font:inherit}
 .alm-franja-i{font-size:1.5rem}.alm-franja-t{flex:1;display:flex;flex-direction:column;min-width:0}.alm-franja-t b{font-size:.95rem}
 .alm-franja-t small{font-size:.78rem;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.alm-franja-f{font-size:1.4rem;opacity:.8}
+.pcm-alm-hoy{white-space:pre-line;display:block!important;-webkit-line-clamp:unset!important;max-height:none!important;overflow:visible!important;line-height:1.4}
