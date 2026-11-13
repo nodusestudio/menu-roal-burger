@@ -6924,6 +6924,11 @@ function showCartAddedToast(categoryName, productName) {
 }
 
 function addItemToCart(productName, categoryName, orderOptions = { type: 'solo' }, buttonId, initialQuantity = 1, parentKey = null) {
+    // Almuerzo Ejecutivo: NUNCA entra al carrito sin elegir proteína, contorno, ensalada y bebida (cualquier ruta que llegue aquí pregunta primero).
+    if (normalizeCategoryKey(categoryName) === 'almuerzos' && !(orderOptions && orderOptions.almuerzo)) {
+        abrirModalAlmuerzo(String(productName || 'Almuerzo Ejecutivo').split(' - ')[0], '', categoryName);
+        return;
+    }
     if (_esTrifasicaAgotada(productName)) { _avisoTrifasicaAgotada(); return; }
     _hapticTap();
     // Interceptar para mostrar upgrades si corresponde
