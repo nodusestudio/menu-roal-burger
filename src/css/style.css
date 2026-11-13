@@ -9479,3 +9479,9 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 @media (max-width:600px){.alm-box{padding:12px}.alm-pie{bottom:-12px}}
 .alm-btn{background:rgba(255,255,255,.1);color:#e8eeff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:6px 12px;min-height:32px;cursor:pointer;font:inherit;font-size:.82rem}
 .alm-btn:hover{background:rgba(255,255,255,.18)}
+.alm-pub{width:min(420px,94vw);padding:18px;display:flex;flex-direction:column;gap:12px;color:#fff;text-align:center}
+.alm-pub-paso{margin:0;font-size:.78rem;opacity:.75}.alm-pub-q{margin:0;font-size:1.1rem;font-weight:800}.alm-pub-r{margin:0;font-size:.92rem;line-height:1.4}
+.alm-pub-opts{display:flex;flex-direction:column;gap:8px}
+.alm-pub-o,.alm-pub-b{min-height:46px;border-radius:12px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.14);color:#fff;font:inherit;font-weight:700;cursor:pointer;padding:10px 14px}
+.alm-pub-o:active,.alm-pub-b:active{transform:scale(.98)}.alm-pub-b{background:#ff9a50;color:#1a1208;border-color:#ff9a50}.alm-pub-b.sec{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.35)}
+.alm-pub-fila{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}

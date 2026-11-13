@@ -1811,6 +1811,14 @@ exports.submitPublicOrder = onCall(
                 `Para pedidos a domicilio en ${priced.barrioEspecial} necesitamos que confirmes que puedes salir a un punto acordado a recibir el pedido (el domiciliario no entra al barrio).`);
         }
 
+        // Almuerzo Ejecutivo: se revalida lo elegido (¿sigue activo hoy?) y se guarda la copia de costos de este momento.
+        try {
+            priced.items = await require('./almuerzosWeb').enriquecerItemsAlmuerzo(db, priced.items);
+        } catch (errAlm) {
+            await releaseOrderRequestSlot(orderRef, clientRequestId);
+            throw new HttpsError('failed-precondition', String((errAlm && errAlm.message) || 'No pudimos validar tu almuerzo.'));
+        }
+
         if (priced.mismatchDetected || priced.mismatchDetails.length) {
             console.warn('[PRICE_MISMATCH]', {
                 phone: customerPhoneDigits,

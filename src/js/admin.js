@@ -2928,8 +2928,7 @@ const NAV2_GRUPOS = [
     ] },
     { id: 'catalogo', icono: '🍔', etiqueta: 'Catálogo', items: [
         { id: 'catalogo.articulos', etiqueta: 'Artículos', target: 'menu' },
-        { id: 'catalogo.costos', etiqueta: 'Costos y recetas', target: 'costos' },
-        { id: 'catalogo.almuerzos', etiqueta: 'Almuerzos', target: 'almuerzos' }
+        { id: 'catalogo.costos', etiqueta: 'Costos y recetas', target: 'costos' }
     ] },
     { id: 'clientes', icono: '👥', etiqueta: 'Clientes', items: [
         { id: 'clientes.clientes', etiqueta: 'Clientes', target: 'clientes' },
@@ -3173,7 +3172,6 @@ function setupAccordion() {
         feedback: ['feedback'],
         finanzas: ['finanzas'],
         costos: ['costos'],
-        almuerzos: ['almuerzos'],
         banco: ['banco'],
         asistente: ['asistente'],
         cuponpana: ['cuponpana'],
@@ -3181,7 +3179,7 @@ function setupAccordion() {
         tv: ['tv']
     };
 
-    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', feedback:'Feedback', finanzas:'Finanzas', costos:'Costos y recetas', almuerzos:'Almuerzos', banco:'Pagos Bancolombia', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes', tv:'Modo TV' };
+    const _sectionLabels = { pedidos:'POS', menu:'Artículos', informes:'Informes', configuracion:'Config', clientes:'Clientes', mensajes:'Mensajes', chatroal:'Chat Roal', metricas:'Métricas', feedback:'Feedback', finanzas:'Finanzas', costos:'Costos y recetas', banco:'Pagos Bancolombia', asistente:'Asistente', cuponpana:'Fuera del Menú', redes:'Redes', tv:'Modo TV' };
 
     function activateAccordion(target) {
         activeAccordionSection = target;
@@ -3231,10 +3229,6 @@ function setupAccordion() {
 
         if (target === 'costos') {
             _ensureCostosLoaded();
-        }
-
-        if (target === 'almuerzos') {
-            _ensureAlmuerzosLoaded();
         }
 
         if (target === 'asistente') {
@@ -23818,6 +23812,8 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
     announceNewOrders(ordersState);
     announceNewMessages(messagesState);
 
+    if (!_almBaseRevisada && !_meseroSession) { _almBaseRevisada = true; await _almAsegurarBase().catch((e) => console.warn('[Almuerzos] base:', (e && e.message) || e)); }
+
     renderCategories();
     renderBebidasPanel();
     renderAcompanantesPanel();
@@ -25631,6 +25627,7 @@ document.querySelectorAll('.menu-inner-tab[data-menu-tab]').forEach((tab) => {
         });
         // Código del día: se carga al abrir la pestaña (no en cada recarga de datos del admin).
         if (target === 'recomendado') renderCodigoDiaPanel();
+        if (target === 'almuerzos') _ensureAlmuerzosLoaded();
     });
 });
 
@@ -41476,7 +41473,7 @@ async function openAlmuerzoPicker(prod) {
             <div class="alm-arroz">🍚 ${escapeHtml(_alm.cfg.arroz.nombre || 'Arroz')} ${_alm.cfg.arroz.porcion} ${_alm.cfg.arroz.unidad} · incluido</div>
             ${A.ORDEN_CATEGORIAS.map(seccion).join('')}
             <details class="alm-costo" ${abierto ? "open" : ""}><summary>Ver costo y utilidad</summary>${completa
-                ? `<div>Costo real: <b>${formatMoney(r.snapshot.costoReal)}</b> · Utilidad bruta: <b>${formatMoney(r.snapshot.utilidadBruta)}</b> (${r.snapshot.margenPct}%)</div>${r.snapshot.faltantes.length ? '<div class="alm-warn">⚠️ Alguna receta está incompleta: el costo puede estar subestimado.</div>' : ''}`
+                ? `<div>Costo real: <b>${formatMoney(r.snapshot.costoReal)}</b> · Utilidad bruta: <b>${formatMoney(r.snapshot.utilidadBruta)}</b> (${r.snapshot.margenPct}%)</div>${r.snapshot.faltantes.length ? '<div class="alm-warn">⚠️ Falta vincular alguna receta: el costo real está incompleto.</div>' : ''}`
                 : '<div>Elige las 4 opciones para ver el costo de esta combinación.</div>'}</details>
             <div class="alm-pie">
                 <div class="alm-resumen">${completa ? escapeHtml(A.etiquetaCombinacion(r.snapshot)) : `Faltan: ${A.ORDEN_CATEGORIAS.filter((c) => !sel[c]).map((c) => A.CATEGORIAS[c].label.toLowerCase()).join(', ')}`}</div>
@@ -41492,7 +41489,6 @@ async function openAlmuerzoPicker(prod) {
         if (!r.ok) { showNotice(r.errores[0], 'error'); return; }
         const faltan = A.validarStock(A.consumosDePedido([{ quantity: 1, almuerzo: r.snapshot }]), efectivos);
         if (faltan.length) { showNotice(_almTextoFaltante(faltan), 'error'); return; }
-        if (r.snapshot.faltantes.length && !(await showConfirmModal({ icon: '⚠️', title: 'Receta incompleta', message: 'Alguna receta de esta combinación tiene referencias rotas: el costo quedaría subestimado. ¿Agregar de todos modos?', confirmText: 'Agregar', danger: false }))) return;
         PosCart.addItem(prod.id, prod.nombre, precio, '', null, {
             forcedKey: `almuerzo::${Date.now()}::${Math.random().toString(36).slice(2, 7)}`,
             almuerzo: r.snapshot,
@@ -41719,7 +41715,6 @@ function _almAbrirEditor(comp) {
         if (!e.target.closest('[data-guardar]')) return;
         const d = leer();
         if (!d.nombre) return showNotice('Ponle un nombre al componente.', 'error');
-        if (!d.ref || !d.ref.id) return showNotice('Vincúlalo a una receta o insumo para poder calcular su costo.', 'error');
         if (_alm.comps.some((x) => x.id !== comp?.id && x.categoria === d.categoria && _cNorm(x.nombre) === _cNorm(d.nombre))) return showNotice('Ya existe un componente con ese nombre en esa categoría.', 'error');
         try { await _almGuardarComp({ ...d, disponible: comp ? comp.disponible === true : false }, comp?.id); m.remove(); showNotice('Componente guardado.', 'ok'); _almRender(); }
         catch (err) { showNotice(`No se pudo guardar: ${(err && err.message) || err}`, 'error'); }
@@ -41811,7 +41806,6 @@ function _almBind(body) {
                     manoObra: Math.max(0, Math.round(_cParse(g('manoObra').value))),
                     arroz: { nombre: 'Arroz', ref: tipo ? { tipo, id: rest.join(':') } : null, porcion: _cParse(g('arrozPorcion').value) || 200, unidad: g('arrozUnidad').value || 'g' }
                 };
-                if (!cfg.arroz.ref) return showNotice('Elige la receta (o insumo) del arroz fijo.', 'error');
                 await firebaseDb.collection(ALM_CFG_COL).doc('main').set({ ...cfg, actualizadoAt: firestoreNow() }, { merge: true });
                 _alm.cfg = { ..._alm.cfg, ...cfg };
                 showNotice('Configuración guardada.', 'ok');
@@ -41826,6 +41820,41 @@ async function _almMarcarMenuHoy() {
     const dia = _almDia();
     await firebaseDb.collection(ALM_CFG_COL).doc('main').set({ menuActualizadoDia: dia, actualizadoAt: firestoreNow() }, { merge: true });
     _alm.cfg.menuActualizadoDia = dia;
+}
+
+let _almBaseRevisada = false;
+// Ejemplos iniciales (3 por categoría, todos activos): el dueño los edita, apaga o reemplaza desde Artículos → Almuerzos.
+const ALM_EJEMPLOS = {
+    proteina: ['Pollo a la plancha', 'Carne para Pepito', 'Chuleta de cerdo'],
+    contorno: ['Papa francesa', 'Yuca frita', 'Tajadas de maduro'],
+    ensalada: ['Ensalada tradicional', 'Ensalada de repollo y zanahoria', 'Ensalada de tomate y cebolla'],
+    bebida: ['Papelón con limón', 'Té de limón', 'Jugo natural']
+};
+/** Crea UNA vez la categoría ALMUERZOS, el producto Almuerzo Ejecutivo ($19.000) y los componentes de ejemplo. Idempotente. */
+async function _almAsegurarBase() {
+    const A = _almCore();
+    if (!A) return;
+    const hayProducto = productsState.some((p) => p.id === A.ALMUERZO_PRODUCTO_ID || p.almuerzoConfigurable === true);
+    const hayCategoria = categoriesState.some((c) => normalizeCategoryKey(c.name) === normalizeCategoryKey(A.ALMUERZO_CATEGORIA));
+    if (hayProducto && hayCategoria) return;
+    if (!hayCategoria) await firebaseDb.collection('categorias').doc('almuerzos').set({ name: A.ALMUERZO_CATEGORIA, image_url: '', active: true, created_at: firestoreNow(), updated_at: firestoreNow() }, { merge: true });
+    if (!hayProducto) {
+        await firebaseDb.collection('productos').doc(A.ALMUERZO_PRODUCTO_ID).set({
+            nombre: 'Almuerzo Ejecutivo', precio: A.ALMUERZO_PRECIO, categoria: A.ALMUERZO_CATEGORIA, estado: 'active',
+            visible_pos: true, almuerzoConfigurable: true,
+            descripcion: 'Arroz + proteína + contorno + ensalada + bebida, a tu elección entre las opciones de hoy.',
+            image_url: 'logo.png', created_at: firestoreNow(), updated_at: firestoreNow()
+        }, { merge: true });
+        const existentes = await firebaseDb.collection(ALM_COL).limit(1).get();
+        if (existentes.empty) {
+            const batch = firebaseDb.batch();
+            Object.entries(ALM_EJEMPLOS).forEach(([cat, nombres]) => nombres.forEach((nombre, i) => {
+                batch.set(firebaseDb.collection(ALM_COL).doc(`${cat}-${i + 1}`), { categoria: cat, nombre, ref: null, porcion: 0, unidad: '', activo: true, disponible: true, creadoAt: firestoreNow(), actualizadoAt: firestoreNow() });
+            }));
+            await batch.commit();
+        }
+    }
+    await Promise.all([fetchCategories(), fetchProducts()]);
 }
 
 async function _almCrearProducto() {

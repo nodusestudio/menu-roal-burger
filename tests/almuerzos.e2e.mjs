@@ -69,7 +69,8 @@ try {
     await p.addScriptTag({ content: stubs + bloque });
     await p.evaluate(() => {
         document.body.classList.remove('admin-loading', 'admin-locked'); document.body.classList.add('admin-unlocked');
-        document.querySelectorAll('.admin-tab-panel').forEach((x) => x.classList.toggle('active', x.dataset.tabPanel === 'almuerzos'));
+        document.querySelectorAll('.admin-tab-panel').forEach((x) => x.classList.toggle('active', x.dataset.tabPanel === 'menu'));
+        document.querySelectorAll('.menu-inner-panel').forEach((x) => { const on = x.dataset.menuPanel === 'almuerzos'; x.hidden = !on; x.style.display = on ? 'flex' : 'none'; });
         _costos.insumos = [
             { id: 'arroz', nombre: 'Arroz crudo', unidad: 'g', precioCompra: 4000, pesoEmpaque: 2000, mermaPct: 0, stockActual: 5000 },
             { id: 'pollo', nombre: 'Pechuga cruda', unidad: 'g', precioCompra: 18000, pesoEmpaque: 1000, mermaPct: 10, stockActual: 400 },

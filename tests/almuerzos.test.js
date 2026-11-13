@@ -93,9 +93,10 @@ test('no deja armar con un componente apagado, inexistente o de otra categoría,
     r = A.armarCombinacion({ config, componentes, seleccion: { proteina: 'c-pollo' }, ctx });
     assert.equal(r.ok, false);
     assert.equal(r.errores.length, 3);
+    // sin receta de arroz o de un componente todavía se puede vender (aún no hay costos/inventario completos): queda marcado como incompleto
     r = A.armarCombinacion({ config: { ...config, arroz: {} }, componentes, seleccion: sel, ctx });
-    assert.equal(r.ok, false);
-    assert.match(r.errores.join(' '), /arroz/i);
+    assert.equal(r.ok, true);
+    assert.ok(r.snapshot.faltantes.length > 0);
     r = A.armarCombinacion({ config, componentes: componentes.map((c) => (c.id === 'c-pollo' ? { ...c, activo: false } : c)), seleccion: sel, ctx });
     assert.equal(r.ok, false);
 });

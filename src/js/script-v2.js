@@ -4830,6 +4830,14 @@ function syncBodyScrollLock() {
     document.body.style.overflow = isMenuOpen || isCartOpen || isCheckoutOpen || isPaymentFlowOpen || isCustomerAuthOpen || isCustomerRegisterOpen || isCustomerConsentOpen || isCustomerDeleteOpen || isCustomerPasswordResetOpen || hasAnyOpenModal ? 'hidden' : 'auto';
 }
 
+const ALMUERZO_CATS_PUB = ['proteina', 'contorno', 'ensalada', 'bebida'];
+function _normalizarAlmuerzoSel(v) {
+    if (!v || typeof v !== 'object') return null;
+    const out = {};
+    ALMUERZO_CATS_PUB.forEach((k) => { const x = v[k]; if (x && x.id && x.nombre) out[k] = { id: String(x.id).slice(0, 60), nombre: String(x.nombre).slice(0, 80) }; });
+    return Object.keys(out).length ? out : null;
+}
+
 function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
     const rawStatic = Number(orderOptions.staticPrice);
     return {
@@ -4857,7 +4865,9 @@ function normalizeOrderOptions(orderOptions = { type: 'solo' }) {
         couponId: String(orderOptions.couponId || '').trim(),
         // Código del día (functions/codigoDia.js): la palabra que el cliente escribió. El servidor
         // la vuelve a validar y consume el cupo al crear el pedido; el descuento real lo pone él.
-        codigoDia: String(orderOptions.codigoDia || '').trim().toUpperCase().slice(0, 24)
+        codigoDia: String(orderOptions.codigoDia || '').trim().toUpperCase().slice(0, 24),
+        // Almuerzo Ejecutivo: lo elegido en cada categoría ({proteina:{id,nombre},...}). El servidor lo revalida contra el menú del día.
+        almuerzo: _normalizarAlmuerzoSel(orderOptions.almuerzo)
     };
 }
 
@@ -4879,7 +4889,8 @@ function getCartItemKey(productName, categoryName, orderOptions = { type: 'solo'
         promoLabel: normalized.promoLabel,
         comboGroupId: normalized.comboGroupId,
         isComboChild: normalized.isComboChild,
-        codigoDia: normalized.codigoDia
+        codigoDia: normalized.codigoDia,
+        almuerzo: normalized.almuerzo
     });
 }
 
@@ -5279,6 +5290,10 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
         optionLabel = `${getComboButtonCopy(categoryName).combo} | ${normalized.drink}`;
     } else if (isComboCategory(categoryName)) {
         optionLabel = getComboButtonCopy(categoryName).solo;
+    }
+
+    if (normalized.almuerzo) {
+        optionLabel = ALMUERZO_CATS_PUB.map((k) => normalized.almuerzo[k]?.nombre).filter(Boolean).join(' + ') + ' + Arroz';
     }
 
     if (normalized.promoLabel) {
@@ -8910,10 +8925,6 @@ function resolveProductImage(product) {
 }
 
 function isCategoryAllowed(categoryName) {
-    // Almuerzos configurables: se arman y se cobran en la caja (el selector de componentes vive en el panel); no van al menú web.
-    if (normalizeCategoryKey(categoryName) === 'almuerzos') {
-        return false;
-    }
     if (!activeCategories || !activeCategories.size) {
         return true;
     }
@@ -9761,7 +9772,6 @@ function getCategoryProducts(category, options = {}) {
     const selectedKeys = new Set((category?.matchKeys || [category?.key || '']).map((value) => normalizeCategoryKey(value)).filter(Boolean));
 
     return latestProducts
-        .filter((product) => product.almuerzoConfigurable !== true)
         .map((product) => {
             const nombre = product.nombre || product.name || 'Producto';
             const precio = resolveProductDisplayPrice(product);
@@ -10168,6 +10178,7 @@ function openBebidaPublicPickerModal(bev) {
 
 // --- FUNCIÓN GLOBAL MODAL BEBIDAS ---
 function abrirModalBebida(nombre, ruta, categoria, options = {}) {
+    if (normalizeCategoryKey(categoria) === 'almuerzos') { abrirModalAlmuerzo(nombre, ruta, categoria); return; }
     const prev = document.getElementById('bebidas-modal');
     if (prev) prev.remove();
 
@@ -14296,3 +14307,72 @@ function closeAyudaScreen() {
     _exitScreen();
 }
 
+
+// ── Almuerzo Ejecutivo (menú público): se elige paso a paso entre lo que está ACTIVO hoy ──────────────────────
+// Los componentes viven en almuerzo_componentes (lectura pública, sin costos). El servidor (submitPublicOrder) vuelve a validar
+// que cada opción siga activa y le pone al pedido los costos de ese momento; el precio sale del producto del catálogo.
+const ALMUERZO_PASOS_PUB = [
+    { k: 'proteina', q: '¿Con qué proteína?', ic: '🍗' },
+    { k: 'contorno', q: '¿Con qué contorno?', ic: '🍟' },
+    { k: 'ensalada', q: '¿Con qué ensalada?', ic: '🥗' },
+    { k: 'bebida', q: '¿Con qué bebida?', ic: '🥤' }
+];
+async function abrirModalAlmuerzo(nombre, ruta, categoria) {
+    document.getElementById('almuerzo-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'almuerzo-modal';
+    modal.className = 'bebidas-modal-overlay';
+    const card = document.createElement('div');
+    card.className = 'bebidas-modal-card liquid-glass alm-pub';
+    modal.appendChild(card);
+    document.body.appendChild(modal);
+    const cerrar = () => { modal.remove(); _popGenericModal(cerrar); };
+    modal.addEventListener('click', (e) => { if (e.target === modal) cerrar(); });
+    try { _pushGenericModal(cerrar); } catch (_) { /* sin historial */ }
+    card.innerHTML = '<p class="alm-pub-q">Cargando el menú de hoy…</p>';
+    let comps = [];
+    try {
+        const snap = await getPublicFirebaseDb().collection('almuerzo_componentes').get();
+        comps = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => c.activo !== false && c.disponible === true)
+            .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+    } catch (e) {
+        card.innerHTML = '<p class="alm-pub-q">No pudimos cargar el menú de hoy. Intenta de nuevo.</p><button type="button" class="alm-pub-b" data-x>Cerrar</button>';
+        card.addEventListener('click', (ev) => { if (ev.target.closest('[data-x]')) cerrar(); });
+        return;
+    }
+    const sel = {};
+    let paso = 0;
+    const titulo = '<div class="bebidas-modal-title">' + escapeHtml(nombre) + '</div>';
+    const pintar = () => {
+        if (paso >= ALMUERZO_PASOS_PUB.length) {
+            const nombres = ALMUERZO_PASOS_PUB.map((p) => sel[p.k].nombre).join(' + ');
+            card.innerHTML = titulo + '<p class="alm-pub-q">Tu almuerzo</p><p class="alm-pub-r">' + escapeHtml(nombres) + ' + Arroz</p>'
+                + '<div class="alm-pub-fila"><button type="button" class="alm-pub-b sec" data-atras>← Cambiar</button><button type="button" class="alm-pub-b" data-add>Agregar al carrito</button></div>';
+            return;
+        }
+        const p = ALMUERZO_PASOS_PUB[paso];
+        const opts = comps.filter((c) => c.categoria === p.k);
+        card.innerHTML = titulo + '<p class="alm-pub-paso">Paso ' + (paso + 1) + ' de 4</p><p class="alm-pub-q">' + p.ic + ' ' + p.q + '</p>'
+            + (opts.length
+                ? '<div class="alm-pub-opts">' + opts.map((c) => '<button type="button" class="alm-pub-o" data-id="' + escapeHtml(c.id) + '">' + escapeHtml(c.nombre) + '</button>').join('') + '</div>'
+                : '<p class="alm-pub-r">Hoy no hay opciones disponibles en este paso. Escríbenos por WhatsApp.</p>')
+            + '<div class="alm-pub-fila">' + (paso ? '<button type="button" class="alm-pub-b sec" data-atras>← Atrás</button>' : '<button type="button" class="alm-pub-b sec" data-x>Cancelar</button>') + '</div>';
+    };
+    card.addEventListener('click', (e) => {
+        if (e.target.closest('[data-x]')) return cerrar();
+        if (e.target.closest('[data-atras]')) { paso = paso >= ALMUERZO_PASOS_PUB.length ? ALMUERZO_PASOS_PUB.length - 1 : Math.max(0, paso - 1); return pintar(); }
+        const o = e.target.closest('.alm-pub-o');
+        if (o) {
+            const c = comps.find((x) => x.id === o.dataset.id);
+            if (!c) return;
+            sel[ALMUERZO_PASOS_PUB[paso].k] = { id: c.id, nombre: c.nombre };
+            paso += 1;
+            return pintar();
+        }
+        if (e.target.closest('[data-add]')) {
+            addItemToCart(nombre, categoria, { type: 'solo', almuerzo: sel });
+            cerrar();
+        }
+    });
+    pintar();
+}

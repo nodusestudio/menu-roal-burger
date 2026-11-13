@@ -462,8 +462,10 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
     // Almuerzos configurables: catálogo de componentes (si están en el menú de hoy) y configuración. Referencian costos_*: SOLO admin.
+    // Los componentes (nombre, categoría, si están activos hoy) los lee el menú público para ofrecer solo lo disponible; no llevan costos.
     match /almuerzo_componentes/{doc} {
-      allow read, write: if isAdmin();
+      allow read: if true;
+      allow write: if isAdmin();
     }
     match /almuerzo_config/{doc} {
       allow read, write: if isAdmin();

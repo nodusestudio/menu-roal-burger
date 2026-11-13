@@ -133,7 +133,6 @@ export function armarCombinacion({ config = {}, componentes = [], seleccion = {}
         { id: 'arroz', categoria: 'arroz', nombre: arrozCfg.nombre || 'Arroz', ref: arrozCfg.ref, porcion: arrozCfg.porcion || ARROZ_DEFECTO.porcion, unidad: arrozCfg.unidad || ARROZ_DEFECTO.unidad },
         ctx
     );
-    if (!arrozCfg.ref || !arrozCfg.ref.id) errores.push('El arroz fijo no tiene receta vinculada (Almuerzos → Configuración).');
 
     for (const cat of ORDEN_CATEGORIAS) {
         const id = seleccion[cat];
