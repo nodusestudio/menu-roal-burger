@@ -7,6 +7,7 @@ const bloqueNorm = js.slice(js.indexOf('const ALMUERZO_CATS_PUB'), js.indexOf('f
 const bloqueHoy = js.slice(js.indexOf('function abrirModalAlmuerzo()'));
 const stubs = `
 const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let activeCategories = null;
 const _pushGenericModal = () => {}; const _popGenericModal = () => {};
 const carrito = []; const addItemToCart = (n, c, o) => carrito.push({ n, c, o });
 const COMP = [['p1','proteina','Pollo a la plancha',true],['p2','proteina','Carne para Pepito',false],['p3','proteina','Chuleta de cerdo',true],['c1','contorno','Papa francesa',true],['e1','ensalada','Ensalada tradicional',true],['b1','bebida','Té de limón',true]];
@@ -71,6 +72,16 @@ try {
     await p.click('.alm-menu-op:text("Papa francesa")'); await p.click('.alm-menu-op:text("Ensalada tradicional")'); await p.click('.alm-menu-op:text("Té de limón")');
     ok(await p.evaluate(() => document.querySelector('[data-add]').classList.contains('listo')), 'al completar las 4, el botón de agregar hace su animación de "listo"');
     await p.evaluate(() => document.getElementById('almuerzo-menu-modal')?.remove());
+
+    // El admin desactiva la categoría ALMUERZOS (o pausa el producto): desaparece la franja y no se puede pedir
+    await p.evaluate(() => { activeCategories = new Set(['entradas', 'burger premium']); _almPubRefrescar(); });
+    ok(!(await p.$('#almuerzoHoyFranja')), 'categoría ALMUERZOS desactivada en el admin: la franja desaparece');
+    await p.evaluate(() => _almPubMenuDia());
+    ok(/no hay almuerzo/i.test(await p.textContent('#almuerzo-menu-modal')) && !(await p.$('[data-add]')), 'categoría desactivada: el menú del día no deja pedir');
+    await p.evaluate(() => { document.getElementById('almuerzo-menu-modal')?.remove(); activeCategories = new Set(['almuerzos']); latestProducts[0].estado = 'paused'; _almPubRefrescar(); });
+    ok(!(await p.$('#almuerzoHoyFranja')), 'producto pausado en el admin: la franja desaparece');
+    await p.evaluate(() => { latestProducts[0].estado = 'active'; _almPubRefrescar(); });
+    ok(!!(await p.$('#almuerzoHoyFranja')), 'al reactivarlo vuelve a aparecer');
 
     // Si falta una categoría completa, no se puede pedir
     await p.evaluate(() => { COMP.forEach((x) => { if (x[1] === 'ensalada') x[3] = false; }); _almPub.comps = COMP.map(([id, categoria, nombre, disponible]) => ({ id, categoria, nombre, disponible, activo: true })); _almPubRefrescar(); _almPubMenuDia(); });

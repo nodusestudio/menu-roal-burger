@@ -10468,6 +10468,7 @@ async function renderPublicFeaturedFromAdmin() {
 
         activeCategoryMeta = active;
         activeCategories = new Set(active.map((item) => item.key));
+        if (typeof _almPubRefrescar === 'function') _almPubRefrescar();
         applyCategoryVisibility();
         _scheduleFullMenuRerender(carousel);
         renderCategoryExplorer();
@@ -14348,14 +14349,17 @@ function abrirModalAlmuerzo() { _almPubIniciar(); _almPubMenuDia(); }
 // ── "Almuerzo de hoy": lo disponible se lee en vivo de almuerzo_componentes (lo que se enciende en Artículos → Almuerzos) ──
 const _almPub = { comps: [], listo: false, iniciado: false };
 function _almPubProducto() {
-    return (latestProducts || []).find((p) => p.almuerzoConfigurable === true || normalizeCategoryKey(p.categoria || p.category) === 'almuerzos') || null;
+    // Si el admin desactivó la categoría ALMUERZOS o pausó el producto, el almuerzo no se ofrece en ningún lado (franja, tarjeta, menú del día, carrito)
+    if (activeCategories && activeCategories.size && !activeCategories.has('almuerzos')) return null;
+    const p = (latestProducts || []).find((x) => x.almuerzoConfigurable === true || normalizeCategoryKey(x.categoria || x.category) === 'almuerzos') || null;
+    return p && String(p.estado || 'active').toLowerCase() !== 'paused' ? p : null;
 }
 function _almPubPorCategoria() {
     const out = {};
     ALMUERZO_CATS_PUB.forEach((k) => { out[k] = _almPub.comps.filter((c) => c.categoria === k && c.activo !== false && c.disponible === true).map((c) => c.nombre); });
     return out;
 }
-function _almPubDisponible() { const m = _almPubPorCategoria(); return ALMUERZO_CATS_PUB.every((k) => m[k].length > 0); }
+function _almPubDisponible() { if (!_almPubProducto()) return false; const m = _almPubPorCategoria(); return ALMUERZO_CATS_PUB.every((k) => m[k].length > 0); }
 function _almPubIniciar() {
     if (_almPub.iniciado) return;
     let db;
