@@ -6764,19 +6764,9 @@ function renderBebidasPanel() {
 
         const badges = document.createElement('div');
         badges.className = 'bebidas-panel-badges';
-        if (bev.mostrar_categoria) {
-            const b1 = document.createElement('span');
-            b1.className = 'bebidas-badge bebidas-badge--cat';
-            b1.textContent = 'Categoría';
-            badges.appendChild(b1);
-        }
-        if (bev.mostrar_acompanante) {
-            const b2 = document.createElement('span');
-            b2.className = 'bebidas-badge bebidas-badge--acomp';
-            b2.textContent = 'Acompañante';
-            badges.appendChild(b2);
-        }
-        if (badges.firstChild) info.appendChild(badges);
+        badges.appendChild(_chipActivar('Categoría', bev.mostrar_categoria, 'bebidas-badge bebidas-badge--cat', 'bebidas', bev.id, 'mostrar_categoria', 'Mostrar como categoría en el menú'));
+        badges.appendChild(_chipActivar('Acompañante', bev.mostrar_acompanante, 'bebidas-badge bebidas-badge--acomp', 'bebidas', bev.id, 'mostrar_acompanante', 'Ofrecer como acompañante en las categorías'));
+        info.appendChild(badges);
 
         const presList = document.createElement('div');
         presList.className = 'bebidas-panel-pres-list';
@@ -6958,8 +6948,8 @@ function renderAcompanantesPanel() {
 
             const badges = document.createElement('div');
             badges.className = 'acomp-panel-badges';
-            if (acomp.activo_pos)  badges.innerHTML += '<span class="acomp-badge acomp-badge--pos">POS</span>';
-            if (acomp.activo_menu) badges.innerHTML += '<span class="acomp-badge acomp-badge--menu">Menú</span>';
+            badges.appendChild(_chipActivar('POS', acomp.activo_pos, 'acomp-badge acomp-badge--pos', 'acompanantes', acomp.id, 'activo_pos', 'Activar/desactivar en el POS'));
+            badges.appendChild(_chipActivar('Menú', acomp.activo_menu, 'acomp-badge acomp-badge--menu', 'acompanantes', acomp.id, 'activo_menu', 'Activar/desactivar en el menú'));
 
             info.appendChild(nombre);
             info.appendChild(meta);
@@ -7317,8 +7307,8 @@ function renderCombosPackPanel() {
 
             const badges = document.createElement('div');
             badges.className = 'acomp-panel-badges';
-            if (combo.activo_pos)  badges.innerHTML += '<span class="acomp-badge acomp-badge--pos">POS</span>';
-            if (combo.activo_menu) badges.innerHTML += '<span class="acomp-badge acomp-badge--menu">Menú</span>';
+            badges.appendChild(_chipActivar('POS', combo.activo_pos, 'acomp-badge acomp-badge--pos', 'combospacks', combo.id, 'activo_pos', 'Activar/desactivar en el POS'));
+            badges.appendChild(_chipActivar('Menú', combo.activo_menu, 'acomp-badge acomp-badge--menu', 'combospacks', combo.id, 'activo_menu', 'Activar/desactivar en el menú'));
 
             info.appendChild(nombre);
             info.appendChild(meta);
@@ -23741,6 +23731,31 @@ async function _imagenLivianaParaSubir(file) {
         }
     } catch (_) { /* si falla, se sube el original */ }
     return file;
+}
+
+// Chip clicable en la tarjeta (Bebidas/Acompañantes/Combos): activa o desactiva un campo
+// sin entrar a editar. Guarda al instante y re-dibuja con los datos frescos.
+function _chipActivar(texto, activo, clases, coleccion, docId, campo, titulo) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = clases + ' chip-activar' + (activo ? '' : ' chip-activar--off');
+    chip.textContent = (activo ? '✓ ' : '✕ ') + texto;
+    chip.title = titulo + (activo ? ' (activo, toca para desactivar)' : ' (apagado, toca para activar)');
+    chip.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        if (chip.disabled) return;
+        chip.disabled = true;
+        chip.style.opacity = '0.5';
+        try {
+            await firebaseDb.collection(coleccion).doc(docId).update({ [campo]: !activo, updated_at: firestoreNow() });
+            await reloadDataAndRender();
+        } catch (e) {
+            chip.disabled = false;
+            chip.style.opacity = '';
+            showNotice('No se pudo cambiar: ' + ((e && e.message) || 'intenta de nuevo'), 'error');
+        }
+    });
+    return chip;
 }
 
 async function uploadImageToFirebase(file, productName) {
