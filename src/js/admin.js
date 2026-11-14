@@ -29199,21 +29199,23 @@ function gastoTipoPorMetodo(metodo) { return gastoEsEfectivo(metodo) ? 'caja' : 
 // SYNC:origen-gasto:fin
 // De dónde sale el efectivo: 'hoy' (lo que entró en la jornada abierta) o 'guardado' (efectivo de días anteriores, ya en el cajón).
 // 'guardado' se registra como gasto externo: resta del saldo guardado y NO toca las entradas ni el cierre de hoy.
-let _gastoFuenteEfectivo = 'hoy';
+let _gastoFuenteEfectivo = null; // sin default: el cajero SIEMPRE elige de dónde sale
 function _gastoEsDelGuardado(metodo) { return _gastoFuenteEfectivo === 'guardado'; }
 function _gastoRenderFuenteEfectivo() {
     const el = document.getElementById('gastoFuenteEfectivo');
     if (!el) return;
     const metodo = _gastoSplitOn ? (Object.keys(_gastoSplitAmounts).find((k) => Number(_gastoSplitAmounts[k]) > 0) || null) : _gastoSelectedMethod;
+    const estabaOculto = el.hidden;
     el.hidden = !metodo;
     if (!metodo) { el.innerHTML = ''; return; }
     const m = findPaymentMethodOrOtro(metodo);
     const nombre = m ? m.label : metodo;
     const guardado = Number((_historicoSumMethod || {})[metodo] || 0);
     const hoy = Number((_cajaDiariaSumMethod || {})[metodo] || 0);
-    el.innerHTML = `<div class="gasto-fuente-titulo">¿De cuál ${escapeHtml(nombre)} sale?</div>
+    el.innerHTML = `<div class="gasto-fuente-titulo" style="color:#fbbf24;">👉 ¿De cuál ${escapeHtml(nombre)} sale este gasto? (elige una)</div>
         <button type="button" class="dpm-method-btn${_gastoFuenteEfectivo === 'hoy' ? ' dpm-method-btn--active' : ''}" data-gasto-fuente="hoy"><span class="dpm-method-icon">📅</span><span>De lo de hoy</span><small class="dpm-method-saldo">${formatMoney(hoy)}</small></button>
         <button type="button" class="dpm-method-btn${_gastoFuenteEfectivo === 'guardado' ? ' dpm-method-btn--active' : ''}" data-gasto-fuente="guardado"><span class="dpm-method-icon">🗄️</span><span>Del guardado</span><small class="dpm-method-saldo">${formatMoney(guardado)}</small></button>`;
+    if (estabaOculto) { try { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {} }
 }
 function _gastoOrigenDe(metodo, monto) {
     if (_gastoEsDelGuardado(metodo)) {
@@ -29335,12 +29337,12 @@ function _updateGastoConfirmState() {
     const monto = _gastoMontoTotal();
     if (_gastoSplitOn) {
         const { falta } = _gastoSplitResumen();
-        btn.disabled = !(monto > 0 && falta === 0 && _gastoSplitPartes().length > 0);
+        btn.disabled = !(monto > 0 && falta === 0 && _gastoSplitPartes().length > 0 && _gastoFuenteEfectivo);
         _updateGastoSplitStatus();
         _gastoActualizarOrigen();
         return;
     }
-    btn.disabled = !(monto > 0 && _gastoSelectedMethod);
+    btn.disabled = !(monto > 0 && _gastoSelectedMethod && _gastoFuenteEfectivo);
     _gastoActualizarOrigen();
 }
 
@@ -29445,7 +29447,7 @@ function _gastoShowStep2(catId) {
     const montoEl  = document.getElementById('gastoMonto');
     if (descEl)  descEl.value  = '';
     if (montoEl) montoEl.value = '';
-    _gastoSelectedMethod = null; _gastoFuenteEfectivo = 'hoy';
+    _gastoSelectedMethod = null; _gastoFuenteEfectivo = null;
     _gastoSplitOn = false;
     _gastoSplitAmounts = {};
     document.querySelectorAll('#gastoMethodsGrid .dpm-method-btn').forEach((b) => b.classList.remove('dpm-method-btn--active'));
@@ -29641,7 +29643,7 @@ function openGastoModal(prefill) {
     _gastoPendienteEnCurso = _gastoPrefill ? (_gastoPrefill.pendienteId || null) : null;
     // Los saldos acumulados se refrescan en segundo plano: así «Disp.» y «de dónde sale» usan datos al día.
     loadCierresCaja().then(() => { renderGastoMethodButtons(); _gastoActualizarOrigen(); }).catch(() => { /* sin red: se usan los últimos saldos conocidos */ });
-    _gastoSelectedMethod = null; _gastoFuenteEfectivo = 'hoy';
+    _gastoSelectedMethod = null; _gastoFuenteEfectivo = null;
     _gastoCategoriaId = null;
     _gastoSubcategoria = null;
     const modal = document.getElementById('gastoModal');
@@ -29652,7 +29654,7 @@ function openGastoModal(prefill) {
 
 function closeGastoModal() {
     document.getElementById('gastoModal')?.setAttribute('hidden', '');
-    _gastoSelectedMethod = null; _gastoFuenteEfectivo = 'hoy';
+    _gastoSelectedMethod = null; _gastoFuenteEfectivo = null;
     _gastoCategoriaId = null;
     _gastoSubcategoria = null;
     _gastoPrefill = null;
@@ -30186,6 +30188,7 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
     const partes = _gastoSplitOn ? _gastoSplitPartes() : [];
     if (!monto || monto <= 0) return;
     if (_gastoSplitOn ? (!partes.length || partes.reduce((s, p) => s + p.amount, 0) !== monto) : !_gastoSelectedMethod) return;
+    if (!_gastoFuenteEfectivo) { showNotice('Elige de cuál sale el gasto: de lo de hoy o del guardado.', 'error'); return; }
 
     const registrarBtn = document.getElementById('gastoRegistrarBtn');
     if (registrarBtn) { registrarBtn.disabled = true; registrarBtn.textContent = 'Guardando...'; }
