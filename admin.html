@@ -17917,6 +17917,32 @@
             .rr-bar-btn.on{background:#ff7a1a;border-color:#ff7a1a}
             #rrBtn[data-tip]:hover::after,.rr-bar-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;right:0;bottom:34px;white-space:nowrap;background:#0d111b;color:#fff;font-size:.78rem;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);pointer-events:none}
         }
+        /* CELULAR: la misma barra fija abajo que en PC (Cerrar sesión, Accesos, voz, FODI, respuestas rápidas) */
+        @media (max-width:1023px){
+            body.admin-unlocked:not(.mesero-mode) #rrWrap,
+            body.admin-unlocked:not(.mesero-mode).pos-is-open #rrWrap{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 10px calc(0px + env(safe-area-inset-bottom,0px));box-sizing:border-box;left:0;right:0;bottom:0;height:calc(40px + env(safe-area-inset-bottom,0px));background:#26304f;border-top:2px solid #ff7a1a;z-index:2147482990}
+            body.admin-unlocked:not(.mesero-mode) #rrWrap .rr-accesos{display:flex;align-items:center;gap:6px;margin-right:auto}
+            #rrWrap .rr-acc-wrap{position:relative;display:flex;align-items:center}
+            #rrWrap .rr-accesos .preview-refresh-btn{min-height:30px;height:30px;padding:0 10px;font-size:.74rem}
+            #rrWrap #adminSignOutBtn{color:#ff9a9a}
+            #rrWrap #sidebarMoreBtn .sidebar-more-flecha{margin-left:4px;opacity:.6}
+            #rrWrap #sidebarMoreBtn[aria-expanded="true"] .sidebar-more-flecha{transform:rotate(180deg)}
+            #rrWrap .sidebar-more-menu{position:absolute;left:0;bottom:40px;width:min(230px,calc(100vw - 20px));display:flex;flex-direction:column;gap:2px;padding:4px;border-radius:14px;background:#1b2133;border:1px solid rgba(255,255,255,.18);box-shadow:0 12px 32px rgba(0,0,0,.55)}
+            #rrWrap .sidebar-more-menu[hidden]{display:none}
+            #rrWrap .sidebar-more-menu .admin-link,#rrWrap .sidebar-more-menu .preview-refresh-btn{display:flex;align-items:center;justify-content:flex-start;width:100%;height:auto;min-height:40px;padding:0 12px;font-size:.8rem;font-weight:600;background:transparent;border-color:transparent;color:rgba(255,255,255,.85)}
+            #rrWrap #bancoSilencioBtn{position:relative!important;right:auto!important;bottom:auto!important}
+            #rrVoz.rr-bar-btn,#rrFodi.rr-bar-btn,#rrBtn,#rrWrap #bancoSilencioBtn{display:flex!important;align-items:center;justify-content:center;width:34px!important;height:30px!important;border-radius:8px!important;margin:0!important;float:none!important;font-size:1rem!important;line-height:1;box-shadow:none!important;padding:0!important;border:1px solid rgba(255,255,255,.22)!important;background:rgba(255,255,255,.08);color:#fff;cursor:pointer;position:relative}
+            #rrVoz.rr-bar-btn.on{background:#16a34a}
+            #rrFodi.rr-bar-btn.on{background:#ff7a1a;border-color:#ff7a1a!important}
+            #rrWrap #rrPanel,#rrWrap #rrVozPanel{position:fixed;right:10px;bottom:48px}
+            #bancoSilencioCaja{right:10px!important;bottom:48px!important}
+            /* Lo que ya vivía pegado abajo sube por encima de la barra */
+            body.admin-unlocked:not(.mesero-mode) .pos-view{bottom:calc(40px + env(safe-area-inset-bottom,0px))}
+            body.admin-unlocked:not(.mesero-mode) .mob-pos-bottombar{bottom:calc(40px + env(safe-area-inset-bottom,0px));padding-bottom:0}
+            body.admin-unlocked:not(.mesero-mode) .admin-page{padding-bottom:calc(120px + env(safe-area-inset-bottom,0px))}
+            body.admin-unlocked:not(.mesero-mode) #cobroQrCard,body.admin-unlocked:not(.mesero-mode) #printSnack{bottom:52px!important}
+            body.admin-unlocked:not(.mesero-mode) #fodiFlot,body.admin-unlocked:not(.mesero-mode).pos-is-open #fodiFlot{bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+        }
         #rrPanel{position:absolute;right:0;bottom:56px;width:min(340px,calc(100vw - 32px));max-height:min(70vh,520px);overflow:auto;background:#1b2133;color:#eef4ff;border:1px solid rgba(255,255,255,.18);border-radius:18px;padding:12px;box-shadow:0 18px 50px rgba(0,0,0,.6)}
         #rrPanel[hidden],#rrForm[hidden]{display:none}
         #rrPanel .rr-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
