@@ -2088,9 +2088,55 @@ async function loadHorarioConfig() {
         };
         const hoyStr = getTodayDateStringInScheduleTZ();
         SCHEDULED_CLOSURES = parseCierresProgramados(d.cierresProgramados).filter((c) => c.fechaFin >= hoyStr);
+        _almuerzoPromoCfg = d.almuerzoPromo && typeof d.almuerzoPromo === 'object' ? d.almuerzoPromo : null;
+        renderAlmuerzoPromoHome();
         syncOrderingAvailabilityUI();
     } catch (_) {}
 }
+
+// ===== ANUNCIO DE ALMUERZOS (siempre de primero en el menú) =====
+// Config en configuracion/config_horario.almuerzoPromo (Admin → Configuración → Horario).
+// SYNC de los valores por defecto: src/js/admin.js (ALMUERZO_PROMO_DEFAULT).
+const ALMUERZO_PROMO_DEFAULT = { activo: true, dias: [0, 1, 2, 4, 5, 6], desde: '12:00', hasta: '15:00', imagen: '/anuncios/almuerzo-combo-mediano.webp', extraHoy: { fecha: '2026-11-14', hasta: '16:00' } };
+let _almuerzoPromoCfg = null;
+
+function _almuerzoPromoVisible(cfg, now = new Date()) {
+    if (!cfg || cfg.activo === false) return false;
+    const p = new Intl.DateTimeFormat('en-GB', { timeZone: ORDERING_SCHEDULE.timeZone, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now);
+    const dia = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.find((x) => x.type === 'weekday')?.value);
+    const min = (Number(p.find((x) => x.type === 'hour')?.value) % 24) * 60 + Number(p.find((x) => x.type === 'minute')?.value || 0);
+    if (!Array.isArray(cfg.dias) || !cfg.dias.map(Number).includes(dia)) return false;
+    const [dh, dm] = String(cfg.desde || '12:00').split(':').map(Number);
+    const extra = cfg.extraHoy && cfg.extraHoy.fecha === getTodayDateStringInScheduleTZ(now) ? cfg.extraHoy.hasta : null;
+    const [hh, hm] = String(extra || cfg.hasta || '15:00').split(':').map(Number);
+    return min >= (dh || 0) * 60 + (dm || 0) && min < (hh || 0) * 60 + (hm || 0);
+}
+
+function renderAlmuerzoPromoHome() {
+    const slot = document.getElementById('almuerzoPromoHome');
+    if (!slot) return;
+    const cfg = { ...ALMUERZO_PROMO_DEFAULT, ...(_almuerzoPromoCfg || {}) };
+    const visible = _almuerzoPromoVisible(cfg);
+    if (!visible) { slot.hidden = true; slot.innerHTML = ''; return; }
+    const src = String(cfg.imagen || ALMUERZO_PROMO_DEFAULT.imagen);
+    if (!slot.hidden && slot.dataset.src === src) return; // ya pintado
+    slot.dataset.src = src;
+    slot.innerHTML = '';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'almuerzo-promo-btn';
+    btn.setAttribute('aria-label', 'Combo de almuerzo: ver combos');
+    const img = document.createElement('img');
+    img.alt = 'Combo de almuerzo: burger mediana de 1 carne + papas + bebida';
+    img.src = src;
+    btn.appendChild(img);
+    btn.addEventListener('click', () => { _hapticTap(); openCombosScreen(); });
+    slot.appendChild(btn);
+    slot.hidden = false;
+}
+// Re-evalúa cada minuto para que aparezca/desaparezca solo al llegar la hora.
+setInterval(renderAlmuerzoPromoHome, 60000);
+document.addEventListener('DOMContentLoaded', renderAlmuerzoPromoHome);
 
 async function loadCustomerPaymentMethods() {
     try {
@@ -12708,6 +12754,8 @@ function _updateCatalogSearchUI(total) {
     if (codigoSlot) codigoSlot.classList.toggle('is-searching', active);
     const festivalSlot = document.getElementById('festivalHome');
     if (festivalSlot) festivalSlot.classList.toggle('is-searching', active);
+    const almuerzoSlot = document.getElementById('almuerzoPromoHome');
+    if (almuerzoSlot) almuerzoSlot.classList.toggle('is-searching', active);
     if (!statusEl) return;
     if (!active) { statusEl.hidden = true; statusEl.innerHTML = ''; return; }
     const q = _catalogSearchQuery.trim();

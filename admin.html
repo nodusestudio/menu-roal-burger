@@ -36,7 +36,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <noscript><link rel="manifest" href="admin.webmanifest"></noscript>
-    <link rel="stylesheet" href="style.css?v=20261113-1214">
+    <link rel="stylesheet" href="style.css?v=20261114-1501">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Adelanta la conexión (DNS+TLS) a los hosts de los scripts diferidos del final del body,
@@ -15115,6 +15115,21 @@
 
                             <article class="admin-card">
                                 <div class="card-head">
+                                    <h2>Anuncio de almuerzos</h2>
+                                    <button type="button" class="card-collapse-btn" data-collapse-target="card-almuerzo-promo" aria-expanded="true">Retraer</button>
+                                </div>
+                                <div class="card-body" id="card-almuerzo-promo">
+                                    <p class="card-desc">
+                                        Anuncio del combo de almuerzo que sale SIEMPRE de primero en el menú público, solo los días y en la franja que marques. Fuera de esa franja desaparece solo.
+                                    </p>
+                                    <div id="almuerzoPromoPanel">
+                                        <!-- renderizado por JS -->
+                                    </div>
+                                </div>
+                            </article>
+
+                            <article class="admin-card">
+                                <div class="card-head">
                                     <h2>Cierres programados</h2>
                                     <button type="button" class="card-collapse-btn" data-collapse-target="card-cierres-programados" aria-expanded="true">Retraer</button>
                                 </div>
@@ -17775,20 +17790,20 @@
       }
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-    <script defer src="firebase-config.js?v=20261113-1214"></script>
+    <script defer src="firebase-config.js?v=20261114-1501"></script>
     <script defer src="tracking.js"></script>
     <!-- Lógica de negocio de Caja extraída a módulo real (src/js/caja/calculos.js).
          Se expone en window.CajaCalculos para que admin.js (script clásico) la use
          sin migrar todo el panel a ES modules de una sola vez. Debe cargar antes
          que admin.js — los <script type="module"> y los <script defer> ejecutan en
          el orden en que aparecen en el documento, así que este orden es suficiente. -->
-    <script type="module" src="src/js/caja/calculos.js?v=20261113-1214"></script>
+    <script type="module" src="src/js/caja/calculos.js?v=20261114-1501"></script>
     <!-- Saldos del Historial de Cajas en módulo puro (window.CajaSaldos): verificación en vivo, no pinta nada. -->
     <script type="module" src="src/js/caja/saldos.js?v=20261110-1"></script>
     <script type="module" src="src/js/almuerzos/core.js?v=20261112-1"></script>
     <!-- Semáforo de temporadas de Fuera del Menú (lógica pura, window.CuponesSemaforo). -->
-    <script type="module" src="src/js/cupones/semaforo.js?v=20261113-1214"></script>
-    <script defer src="admin.js?v=20261113-1214"></script>
+    <script type="module" src="src/js/cupones/semaforo.js?v=20261114-1501"></script>
+    <script defer src="admin.js?v=20261114-1501"></script>
     <div id="thermalPrintArea" aria-hidden="true"></div>
     <script>
         if ('serviceWorker' in navigator) {

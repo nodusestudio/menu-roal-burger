@@ -9056,6 +9056,28 @@ html.low-fx .support-feedback--error:not(:empty) {
 .codigo-dia-home {
     margin: 14px 16px 4px;
 }
+.almuerzo-promo-home {
+    margin: 14px 16px 4px;
+}
+.almuerzo-promo-home[hidden],
+.almuerzo-promo-home.is-searching {
+    display: none !important;
+}
+.almuerzo-promo-btn {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 1.5px solid rgba(255, 255, 255, 0.28);
+    border-radius: 18px;
+    overflow: hidden;
+    background: transparent;
+    cursor: pointer;
+}
+.almuerzo-promo-btn img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
 .codigo-dia-home[hidden],
 .codigo-dia-home.is-searching {
     display: none !important;

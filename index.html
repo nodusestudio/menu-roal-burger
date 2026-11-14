@@ -69,7 +69,7 @@
     <link rel="apple-touch-icon" href="isotipo.png">
     <link rel="manifest" href="site.webmanifest">
     <link rel="preload" as="image" href="portada.webp?v=20260615" type="image/webp" fetchpriority="high">
-    <link rel="stylesheet" href="style.css?v=20261113-1214">
+    <link rel="stylesheet" href="style.css?v=20261114-1501">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -461,6 +461,9 @@
         <!-- Código del día ("Recomendado del día" con el código de las historias de Instagram):
              lo pinta renderCodigoDiaHome() desde codigo_dia_publico/hoy. Fuera de
              menuCarouselBody por la misma razón que el banner de puntos de abajo. -->
+        <!-- Anuncio de almuerzos (siempre de primero): lo pinta renderAlmuerzoPromoHome() según
+             configuracion/config_horario.almuerzoPromo (días y horas editables en Admin → Configuración → Horario). -->
+        <section class="almuerzo-promo-home" id="almuerzoPromoHome" hidden aria-label="Combo de almuerzo"></section>
         <section class="codigo-dia-home" id="codigoDiaHome" hidden aria-label="Recomendado del día"></section>
         <!-- Burger Trifásica (Festival Sabe a Quindío), hasta el 08/11/2026 23:59 hora Colombia:
              la pinta renderFestivalHome() en script-v2.js. Se pide como cualquier producto: sin código ni cupón. -->
@@ -736,10 +739,10 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
-    <script defer src="tracking.js?v=20261113-1214"></script>
-    <script defer src="firebase-config.js?v=20261113-1214"></script>
-    <script defer src="script-v2.js?v=20261113-1214"></script>
-    <script defer src="agent-chat.js?v=20261113-1214"></script>
+    <script defer src="tracking.js?v=20261114-1501"></script>
+    <script defer src="firebase-config.js?v=20261114-1501"></script>
+    <script defer src="script-v2.js?v=20261114-1501"></script>
+    <script defer src="agent-chat.js?v=20261114-1501"></script>
 
     <!-- ── Anuncio de apertura (promo destacada al abrir el menu) ── -->
     <div id="openingAdOverlay" class="opening-ad-overlay" hidden style="display:none;">

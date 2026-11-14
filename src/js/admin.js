@@ -4292,6 +4292,62 @@ function _cpRangoLabel(c) {
 
 let _cpEditingId = null;
 
+// ===== Anuncio de almuerzos (sale de primero en el menú público) =====
+// Guardado en configuracion/config_horario.almuerzoPromo. SYNC: ALMUERZO_PROMO_DEFAULT en script-v2.js.
+const ALMUERZO_PROMO_DEFAULT = { activo: true, dias: [0, 1, 2, 4, 5, 6], desde: '12:00', hasta: '15:00', imagen: '/anuncios/almuerzo-combo-mediano.webp', extraHoy: { fecha: '2026-11-14', hasta: '16:00' } };
+
+function renderAlmuerzoPromoAdmin() {
+    const panel = document.getElementById('almuerzoPromoPanel');
+    if (!panel) return;
+    const c = { ...ALMUERZO_PROMO_DEFAULT, ...(horarioState.almuerzoPromo || {}) };
+    const dias = (Array.isArray(c.dias) ? c.dias : []).map(Number);
+    const nombres = [['1', 'Lunes'], ['2', 'Martes'], ['3', 'Miércoles'], ['4', 'Jueves'], ['5', 'Viernes'], ['6', 'Sábado'], ['0', 'Domingo']];
+    panel.innerHTML = `
+        <div class="admin-form">
+            <div class="admin-field full">
+                <label class="horario-dia-chip"><input type="checkbox" id="apActivo" ${c.activo !== false ? 'checked' : ''}> Mostrar el anuncio (apagado = nunca se muestra)</label>
+            </div>
+            <fieldset class="admin-field full" style="border:0;padding:0;margin:0;">
+                <label>Días que se muestra</label>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+                    ${nombres.map(([v, n]) => `<label class="horario-dia-chip"><input type="checkbox" name="apDia" value="${v}" ${dias.includes(Number(v)) ? 'checked' : ''}> ${n}</label>`).join('')}
+                </div>
+            </fieldset>
+            <div class="admin-field"><label for="apDesde">Desde</label><input type="time" id="apDesde" value="${escapeHtml(c.desde)}"></div>
+            <div class="admin-field"><label for="apHasta">Hasta</label><input type="time" id="apHasta" value="${escapeHtml(c.hasta)}"></div>
+            <div class="admin-field full">
+                <label for="apExtra">Ampliar SOLO HOY hasta (vacío = sin ampliación)</label>
+                <input type="time" id="apExtra" value="${c.extraHoy && c.extraHoy.fecha === _bogotaDateKey() ? escapeHtml(c.extraHoy.hasta) : ''}">
+            </div>
+            <div class="admin-field full">
+                <label for="apImagen">Imagen del anuncio (ruta)</label>
+                <input type="text" id="apImagen" value="${escapeHtml(c.imagen)}" placeholder="/anuncios/almuerzo-combo-mediano.webp">
+                <small style="color:var(--admin-muted);display:block;margin-top:6px;">Para cambiar el anuncio, súbelo a la carpeta anuncios del proyecto y pon aquí su ruta.</small>
+            </div>
+            <div class="admin-field full"><img src="${escapeHtml(c.imagen)}" alt="" style="max-width:220px;border-radius:12px;"></div>
+            <div class="admin-field full"><button type="button" class="informes-action-btn informes-action-btn--primary" id="apGuardar">Guardar anuncio</button></div>
+        </div>`;
+    document.getElementById('apGuardar')?.addEventListener('click', async () => {
+        const nuevo = {
+            activo: document.getElementById('apActivo').checked,
+            dias: [...panel.querySelectorAll('input[name="apDia"]:checked')].map((x) => Number(x.value)),
+            desde: document.getElementById('apDesde').value || '12:00',
+            hasta: document.getElementById('apHasta').value || '15:00',
+            imagen: document.getElementById('apImagen').value.trim() || ALMUERZO_PROMO_DEFAULT.imagen,
+            extraHoy: document.getElementById('apExtra').value ? { fecha: _bogotaDateKey(), hasta: document.getElementById('apExtra').value } : null
+        };
+        if (nuevo.desde >= nuevo.hasta) { showNotice('La hora "Desde" debe ser antes de "Hasta".', 'error'); return; }
+        try {
+            await firebaseDb.collection(CONFIG_COLLECTION).doc(HORARIO_DOC_ID).set({ almuerzoPromo: nuevo }, { merge: true });
+            horarioState.almuerzoPromo = nuevo;
+            showNotice('Anuncio de almuerzos guardado.', 'ok');
+            renderAlmuerzoPromoAdmin();
+        } catch (e) {
+            showNotice('No se pudo guardar el anuncio: ' + (e.message || 'error inesperado.'), 'error');
+        }
+    });
+}
+
 function renderCierresProgramados() {
     const panel = document.getElementById('cierresProgramadosPanel');
     if (!panel) return;
@@ -23969,6 +24025,7 @@ async function reloadDataAndRender({ skipClients = false } = {}) {
     renderBrandingForm();
     renderHorarioForm();
     renderCierresProgramados();
+    renderAlmuerzoPromoAdmin();
     renderOpeningAdPanel();
     renderCuponesUnified();
     renderOrders();
@@ -25804,7 +25861,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         if (scope === 'configuracion') {
             if (target === 'categorias_gastos') loadCategoriasGastos().then(renderCategoriasGastosPanel);
             if (target === 'barrios_especiales') loadBarriosEspeciales().then(renderBarriosEspecialesPanel);
-            if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); hcCargar(); heCargar('abrir'); heCargar('cerrar'); });
+            if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); renderAlmuerzoPromoAdmin(); hcCargar(); heCargar('abrir'); heCargar('cerrar'); });
             if (target === 'seguridad') loadSupervisorPin().then(renderSupervisorPinField);
         }
     });
