@@ -311,7 +311,6 @@ const salesDayStatusMeta = document.getElementById('salesDayStatusMeta');
     if (!btn || !banner) return;
     const aplicar = (ocultos) => {
         banner.classList.toggle('saldos-ocultos', ocultos);
-        btn.textContent = ocultos ? '🙈' : '👁️';
         btn.setAttribute('aria-pressed', String(ocultos));
         btn.setAttribute('aria-label', ocultos ? 'Mostrar saldos' : 'Ocultar saldos');
     };

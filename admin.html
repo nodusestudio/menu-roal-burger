@@ -628,8 +628,14 @@
         }
 
         .sales-day-chip[hidden] { display: none !important; }
-        .sales-day-eye { background: transparent; border: 1px solid rgba(255,255,255,0.25); border-radius: 999px; width: 30px; height: 30px; cursor: pointer; font-size: 15px; line-height: 1; color: inherit; flex: 0 0 auto; }
-        .sales-day-banner.saldos-ocultos .sales-day-banner-data .sales-day-chip { filter: blur(8px); user-select: none; pointer-events: none; }
+        .sales-day-eye { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; flex:0 0 auto; border-radius:50%; border:1.5px solid rgba(255,255,255,0.28); background:rgba(255,255,255,0.18); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); color:inherit; cursor:pointer; padding:0; transition:transform .15s, background .15s; }
+        .sales-day-eye:hover { background:rgba(255,255,255,0.3); transform:scale(1.08); }
+        .sales-day-eye svg { width:18px; height:18px; }
+        .sales-day-eye .eye-off { display:none; }
+        .sales-day-banner.saldos-ocultos .sales-day-eye .eye-on { display:none; }
+        .sales-day-banner.saldos-ocultos .sales-day-eye .eye-off { display:block; }
+        .sales-day-banner.saldos-ocultos .sales-day-banner-data .sales-day-chip, .sales-day-banner.saldos-ocultos #cajaChicaBtn { filter: blur(8px); user-select: none; }
+        .sales-day-banner.saldos-ocultos .sales-day-banner-data .sales-day-chip { pointer-events: none; }
         .sales-day-chip {
             min-height: 28px;
             padding: 0 10px;
@@ -14573,7 +14579,7 @@
                             </div>
                             <div class="sales-day-banner-metrics">
                                 <div class="sales-day-banner-data">
-                                    <button type="button" class="sales-day-eye" id="salesDayEyeBtn" title="Ocultar / mostrar saldos" aria-label="Ocultar saldos" aria-pressed="false">👁️</button>
+                                    <button type="button" class="sales-day-eye" id="salesDayEyeBtn" title="Ocultar / mostrar saldos" aria-label="Ocultar saldos" aria-pressed="false"><svg class="eye-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.9 17.9A10.1 10.1 0 0 1 12 19c-6.4 0-10-7-10-7a18.5 18.5 0 0 1 5.1-5.9M9.9 5.2A9.7 9.7 0 0 1 12 5c6.4 0 10 7 10 7a18.5 18.5 0 0 1-2.2 3.2M1 1l22 22"/><path d="M14.1 14.1a3 3 0 1 1-4.2-4.2"/></svg></button>
                                     <span class="sales-day-chip" id="salesDayDeliveredTotal">💵 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                     <span class="sales-day-chip" id="salesDayGrandTotal">💳 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                     <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
