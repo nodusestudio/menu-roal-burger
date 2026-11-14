@@ -16489,12 +16489,29 @@ function renderSalesDayBanner() {
         }
     }
 
+    // Saldo real al pasar el mouse: cobros − gastos de la jornada del mismo tipo (± traslados)
+    let gastoEf = 0, gastoDig = 0, trasEf = 0, trasDig = 0;
+    try {
+        const { gastos: _gj, traslados: _tj } = _splitGastosDeJornada();
+        _gj.forEach((g) => { const m = Number(g.monto || 0); if (g.paymentMethod === 'efectivo') gastoEf += m; else gastoDig += m; });
+        _tj.forEach((t) => {
+            const m = Number(t.monto || 0);
+            if (t.methodFrom === 'efectivo') trasEf -= m; else trasDig -= m;
+            if (t.methodTo === 'efectivo') trasEf += m; else trasDig += m;
+        });
+    } catch (_) {}
+    const _saldoTip = (nombre, cobros, gastos, tras) =>
+        `Saldo real de ${nombre}: ${formatMoney(cobros - gastos + tras)}\nCobros ${formatMoney(cobros)} − gastos ${formatMoney(gastos)}` +
+        (tras ? `${tras > 0 ? ' + ' : ' − '}traslados ${formatMoney(Math.abs(tras))}` : '');
+
     if (salesDayDeliveredTotal) {
         salesDayDeliveredTotal.textContent = `💵 ${formatMoney(efectivoTotal)}`;
+        salesDayDeliveredTotal.title = _saldoTip('efectivo', efectivoTotal, gastoEf, trasEf);
     }
 
     if (salesDayGrandTotal) {
         salesDayGrandTotal.textContent = `💳 ${formatMoney(digitalTotal)}`;
+        salesDayGrandTotal.title = _saldoTip('tarjeta/digital', digitalTotal, gastoDig, trasDig);
     }
 
     const totalChip = document.getElementById('salesDayTotalChip');
