@@ -4294,7 +4294,7 @@ let _cpEditingId = null;
 
 // ===== Anuncio de almuerzos (sale de primero en el menú público) =====
 // Guardado en configuracion/config_horario.almuerzoPromo. SYNC: ALMUERZO_PROMO_DEFAULT en script-v2.js.
-const ALMUERZO_PROMO_DEFAULT = { activo: true, dias: [0, 1, 2, 4, 5, 6], desde: '12:00', hasta: '15:00', imagen: '/anuncios/almuerzo-combo-mediano.webp', extraHoy: { fecha: '2026-11-14', hasta: '16:00' } };
+const ALMUERZO_PROMO_DEFAULT = { activo: true, dias: [0, 1, 2, 4, 5, 6], desde: '12:00', hasta: '16:00', imagen: '/anuncios/almuerzo-combo-mediano.webp' };
 
 function renderAlmuerzoPromoAdmin() {
     const panel = document.getElementById('almuerzoPromoPanel');
@@ -4332,7 +4332,7 @@ function renderAlmuerzoPromoAdmin() {
             activo: document.getElementById('apActivo').checked,
             dias: [...panel.querySelectorAll('input[name="apDia"]:checked')].map((x) => Number(x.value)),
             desde: document.getElementById('apDesde').value || '12:00',
-            hasta: document.getElementById('apHasta').value || '15:00',
+            hasta: document.getElementById('apHasta').value || '16:00',
             imagen: document.getElementById('apImagen').value.trim() || ALMUERZO_PROMO_DEFAULT.imagen,
             extraHoy: document.getElementById('apExtra').value ? { fecha: _bogotaDateKey(), hasta: document.getElementById('apExtra').value } : null
         };

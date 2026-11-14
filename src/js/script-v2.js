@@ -2097,7 +2097,7 @@ async function loadHorarioConfig() {
 // ===== ANUNCIO DE ALMUERZOS (siempre de primero en el menú) =====
 // Config en configuracion/config_horario.almuerzoPromo (Admin → Configuración → Horario).
 // SYNC de los valores por defecto: src/js/admin.js (ALMUERZO_PROMO_DEFAULT).
-const ALMUERZO_PROMO_DEFAULT = { activo: true, dias: [0, 1, 2, 4, 5, 6], desde: '12:00', hasta: '15:00', imagen: '/anuncios/almuerzo-combo-mediano.webp', extraHoy: { fecha: '2026-11-14', hasta: '16:00' } };
+const ALMUERZO_PROMO_DEFAULT = { activo: true, dias: [0, 1, 2, 4, 5, 6], desde: '12:00', hasta: '16:00', imagen: '/anuncios/almuerzo-combo-mediano.webp' };
 let _almuerzoPromoCfg = null;
 
 function _almuerzoPromoVisible(cfg, now = new Date()) {
@@ -2108,7 +2108,7 @@ function _almuerzoPromoVisible(cfg, now = new Date()) {
     if (!Array.isArray(cfg.dias) || !cfg.dias.map(Number).includes(dia)) return false;
     const [dh, dm] = String(cfg.desde || '12:00').split(':').map(Number);
     const extra = cfg.extraHoy && cfg.extraHoy.fecha === getTodayDateStringInScheduleTZ(now) ? cfg.extraHoy.hasta : null;
-    const [hh, hm] = String(extra || cfg.hasta || '15:00').split(':').map(Number);
+    const [hh, hm] = String(extra || cfg.hasta || '16:00').split(':').map(Number);
     return min >= (dh || 0) * 60 + (dm || 0) && min < (hh || 0) * 60 + (hm || 0);
 }
 
@@ -2130,10 +2130,31 @@ function renderAlmuerzoPromoHome() {
     img.alt = 'Combo de almuerzo: burger mediana de 1 carne + papas + bebida';
     img.src = src;
     btn.appendChild(img);
-    btn.addEventListener('click', () => { _hapticTap(); openCombosScreen(); });
+    btn.addEventListener('click', () => { _hapticTap(); pedirAlmuerzoPromo(); });
     slot.appendChild(btn);
     slot.hidden = false;
 }
+// Al tocar el anuncio: Burger Normal Mediana | 1 carne ($17.000) + combo (papas y bebida de 250 ml, +$7.000)
+// y pregunta el sabor de la bebida de una vez. Si algo no se encuentra, cae a la pantalla de combos.
+function pedirAlmuerzoPromo() {
+    const burger = latestProducts.find((p) => {
+        const cat = normalizeCategoryKey(p.categoria || p.category || '');
+        const nom = normalizeCategoryKey(p.nombre || p.name || '');
+        return cat.includes('burger clasicas') && nom.includes('normal');
+    });
+    const packs = _latestCombosPacks.filter((c) => c.estado === 'active' && c.activo_menu);
+    const pack = packs.find((c) => /250/.test(c.bebida_nombre || '') && Number(c.valor) === 7000)
+        || packs.find((c) => /250/.test(c.bebida_nombre || ''));
+    if (!burger || !pack) { openCombosScreen(); return; }
+    const nombre = String(burger.nombre || burger.name || 'Burger Normal').trim();
+    const categoria = String(burger.categoria || burger.category || '').trim();
+    addItemToCart(`${nombre} - Mediana | 1 carne`, categoria, { type: 'solo', staticPrice: 17000 }, 'almuerzo-promo');
+    if (!_publicUpgradePending) return; // se agregó directo (sin hoja de combos)
+    const sabores = Array.isArray(pack.bebida_sabores) ? pack.bebida_sabores.filter(Boolean) : [];
+    if (sabores.length) _renderPublicUpgradeComboSabor(pack, sabores);
+    else _renderPublicUpgradeCombos();
+}
+
 // Re-evalúa cada minuto para que aparezca/desaparezca solo al llegar la hora.
 setInterval(renderAlmuerzoPromoHome, 60000);
 document.addEventListener('DOMContentLoaded', renderAlmuerzoPromoHome);
