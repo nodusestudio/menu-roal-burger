@@ -16411,6 +16411,28 @@ function renderOrders() {
     _ptsMarkOccupiedMesas();
 }
 
+// Al pasar el mouse: 💵 = lo que hay EXACTAMENTE en el cajón (fondo de apertura + efectivo neto de la jornada:
+// ventas − gastos ± traslados, el mismo cálculo de Caja Diaria); 💳 = saldo neto digital de la jornada.
+let _salesDayTipsReady = false;
+function _salesDayTooltipsInit() {
+    if (_salesDayTipsReady) return;
+    _salesDayTipsReady = true;
+    const sumDig = (s) => Object.keys(s).filter((k) => k !== 'efectivo').reduce((a, k) => a + (Number(s[k]) || 0), 0);
+    salesDayDeliveredTotal?.addEventListener('mouseenter', () => {
+        try { renderCajaDiaria(); } catch (_) {}
+        const s = _cajaDiariaSumMethod || {};
+        const fondo = Math.max(0, Math.round(Number(_cajaFondoInicial) || 0));
+        const neto = Math.round(Number(s.efectivo) || 0);
+        salesDayDeliveredTotal.title = cajaAperturaAt > 0
+            ? `En el cajón ahora: ${formatMoney(fondo + neto)}\nFondo inicial ${formatMoney(fondo)} + efectivo neto de la jornada ${formatMoney(neto)} (ventas − gastos ± traslados)`
+            : 'Caja cerrada';
+    });
+    salesDayGrandTotal?.addEventListener('mouseenter', () => {
+        try { renderCajaDiaria(); } catch (_) {}
+        salesDayGrandTotal.title = `Saldo digital de la jornada (cobros − gastos ± traslados): ${formatMoney(sumDig(_cajaDiariaSumMethod || {}))}`;
+    });
+}
+
 function renderSalesDayBanner() {
     const todayStr = _diaBogota(); // día de hoy en Colombia
 
@@ -16489,29 +16511,13 @@ function renderSalesDayBanner() {
         }
     }
 
-    // Saldo real al pasar el mouse: cobros − gastos de la jornada del mismo tipo (± traslados)
-    let gastoEf = 0, gastoDig = 0, trasEf = 0, trasDig = 0;
-    try {
-        const { gastos: _gj, traslados: _tj } = _splitGastosDeJornada();
-        _gj.forEach((g) => { const m = Number(g.monto || 0); if (g.paymentMethod === 'efectivo') gastoEf += m; else gastoDig += m; });
-        _tj.forEach((t) => {
-            const m = Number(t.monto || 0);
-            if (t.methodFrom === 'efectivo') trasEf -= m; else trasDig -= m;
-            if (t.methodTo === 'efectivo') trasEf += m; else trasDig += m;
-        });
-    } catch (_) {}
-    const _saldoTip = (nombre, cobros, gastos, tras) =>
-        `Saldo real de ${nombre}: ${formatMoney(cobros - gastos + tras)}\nCobros ${formatMoney(cobros)} − gastos ${formatMoney(gastos)}` +
-        (tras ? `${tras > 0 ? ' + ' : ' − '}traslados ${formatMoney(Math.abs(tras))}` : '');
-
     if (salesDayDeliveredTotal) {
         salesDayDeliveredTotal.textContent = `💵 ${formatMoney(efectivoTotal)}`;
-        salesDayDeliveredTotal.title = _saldoTip('efectivo', efectivoTotal, gastoEf, trasEf);
+        _salesDayTooltipsInit();
     }
 
     if (salesDayGrandTotal) {
         salesDayGrandTotal.textContent = `💳 ${formatMoney(digitalTotal)}`;
-        salesDayGrandTotal.title = _saldoTip('tarjeta/digital', digitalTotal, gastoDig, trasDig);
     }
 
     const totalChip = document.getElementById('salesDayTotalChip');
