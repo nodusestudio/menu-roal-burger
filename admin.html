@@ -628,6 +628,8 @@
         }
 
         .sales-day-chip[hidden] { display: none !important; }
+        .sales-day-eye { background: transparent; border: 1px solid rgba(255,255,255,0.25); border-radius: 999px; width: 30px; height: 30px; cursor: pointer; font-size: 15px; line-height: 1; color: inherit; flex: 0 0 auto; }
+        .sales-day-banner.saldos-ocultos .sales-day-banner-data .sales-day-chip { filter: blur(8px); user-select: none; pointer-events: none; }
         .sales-day-chip {
             min-height: 28px;
             padding: 0 10px;
@@ -14571,6 +14573,7 @@
                             </div>
                             <div class="sales-day-banner-metrics">
                                 <div class="sales-day-banner-data">
+                                    <button type="button" class="sales-day-eye" id="salesDayEyeBtn" title="Ocultar / mostrar saldos" aria-label="Ocultar saldos" aria-pressed="false">👁️</button>
                                     <span class="sales-day-chip" id="salesDayDeliveredTotal">💵 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                     <span class="sales-day-chip" id="salesDayGrandTotal">💳 <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>
                                     <span class="sales-day-chip sales-day-chip--total" id="salesDayTotalChip">= <span class="admin-skel" style="width:52px;height:0.8em;"></span></span>

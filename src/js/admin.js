@@ -304,6 +304,26 @@ const mobileTicketCloseBtn = document.getElementById('mobileTicketCloseBtn');
 const mobileTicketBackdrop = document.getElementById('mobileTicketBackdrop');
 const salesDayStatusLabel = document.getElementById('salesDayStatusLabel');
 const salesDayStatusMeta = document.getElementById('salesDayStatusMeta');
+// Ojito: oculta/muestra los saldos de la jornada activa (se recuerda en este dispositivo)
+(function () {
+    const btn = document.getElementById('salesDayEyeBtn');
+    const banner = document.getElementById('salesDayBanner');
+    if (!btn || !banner) return;
+    const aplicar = (ocultos) => {
+        banner.classList.toggle('saldos-ocultos', ocultos);
+        btn.textContent = ocultos ? '🙈' : '👁️';
+        btn.setAttribute('aria-pressed', String(ocultos));
+        btn.setAttribute('aria-label', ocultos ? 'Mostrar saldos' : 'Ocultar saldos');
+    };
+    let ocultos = false;
+    try { ocultos = localStorage.getItem('saldosOcultos') === '1'; } catch (_) {}
+    aplicar(ocultos);
+    btn.addEventListener('click', () => {
+        ocultos = !ocultos;
+        aplicar(ocultos);
+        try { localStorage.setItem('saldosOcultos', ocultos ? '1' : '0'); } catch (_) {}
+    });
+})();
 const salesDayDeliveredTotal = document.getElementById('salesDayDeliveredTotal');
 const salesDayGrandTotal     = document.getElementById('salesDayGrandTotal');
 const openCreateInternalOrderBtn = document.getElementById('openCreateInternalOrderBtn');
