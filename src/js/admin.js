@@ -29197,15 +29197,40 @@ function gastoOrigen(monto, hoyNeto, saldoAnterior) {
 function gastoEsEfectivo(metodo) { return String(metodo) === 'efectivo'; }
 function gastoTipoPorMetodo(metodo) { return gastoEsEfectivo(metodo) ? 'caja' : 'externo'; } // 'caja' = del turno · 'externo' = desde una cuenta
 // SYNC:origen-gasto:fin
+// De dónde sale el efectivo: 'hoy' (lo que entró en la jornada abierta) o 'guardado' (efectivo de días anteriores, ya en el cajón).
+// 'guardado' se registra como gasto externo: resta del saldo guardado y NO toca las entradas ni el cierre de hoy.
+let _gastoFuenteEfectivo = 'hoy';
+function _gastoEsDelGuardado(metodo) { return _gastoFuenteEfectivo === 'guardado'; }
+function _gastoRenderFuenteEfectivo() {
+    const el = document.getElementById('gastoFuenteEfectivo');
+    if (!el) return;
+    const metodo = _gastoSplitOn ? (Object.keys(_gastoSplitAmounts).find((k) => Number(_gastoSplitAmounts[k]) > 0) || null) : _gastoSelectedMethod;
+    el.hidden = !metodo;
+    if (!metodo) { el.innerHTML = ''; return; }
+    const m = findPaymentMethodOrOtro(metodo);
+    const nombre = m ? m.label : metodo;
+    const guardado = Number((_historicoSumMethod || {})[metodo] || 0);
+    const hoy = Number((_cajaDiariaSumMethod || {})[metodo] || 0);
+    el.innerHTML = `<div class="gasto-fuente-titulo">¿De cuál ${escapeHtml(nombre)} sale?</div>
+        <button type="button" class="dpm-method-btn${_gastoFuenteEfectivo === 'hoy' ? ' dpm-method-btn--active' : ''}" data-gasto-fuente="hoy"><span class="dpm-method-icon">📅</span><span>De lo de hoy</span><small class="dpm-method-saldo">${formatMoney(hoy)}</small></button>
+        <button type="button" class="dpm-method-btn${_gastoFuenteEfectivo === 'guardado' ? ' dpm-method-btn--active' : ''}" data-gasto-fuente="guardado"><span class="dpm-method-icon">🗄️</span><span>Del guardado</span><small class="dpm-method-saldo">${formatMoney(guardado)}</small></button>`;
+}
 function _gastoOrigenDe(metodo, monto) {
+    if (_gastoEsDelGuardado(metodo)) {
+        const m = Math.round(Number(monto) || 0);
+        const ant = Math.round(Number((_historicoSumMethod || {})[metodo]) || 0);
+        return { monto: m, hoy: 0, hoyReal: 0, saldoAnterior: ant, disponible: ant, deHoy: 0, desdeSaldoAnterior: m, origen: 'saldo_anterior', insuficiente: m > ant, faltante: Math.max(0, m - ant) };
+    }
     return gastoOrigen(monto, (_cajaDiariaSumMethod || {})[metodo], (_historicoSumMethod || {})[metodo]);
 }
 function _gastoOrigenTexto(metodo, o) {
     const m = findPaymentMethodOrOtro(metodo);
     const nombre = m ? `${m.icon} ${m.label}` : metodo;
     if (o.insuficiente) return { clase: 'warn', texto: `⚠️ No alcanza: en ${nombre} hay ${formatMoney(o.disponible)} (hoy ${formatMoney(o.hoyReal)} + días anteriores ${formatMoney(o.saldoAnterior)}) y este gasto es de ${formatMoney(o.monto)}. El saldo quedaría en −${formatMoney(o.faltante)}.` };
+    if (_gastoEsDelGuardado(metodo) && !o.insuficiente) return { clase: 'info', texto: `🗄️ Sale del saldo guardado de días anteriores (hay ${formatMoney(o.saldoAnterior)}). No se descuenta de las entradas de hoy.` };
     if (o.origen === 'hoy') return { clase: 'ok', texto: `💵 Sale de lo que entró hoy en ${nombre} (hoy hay ${formatMoney(o.hoy)}).` };
     if (o.origen === 'mixto') return { clase: 'info', texto: `📅 Hoy en ${nombre} solo hay ${formatMoney(o.hoy)}: ${formatMoney(o.deHoy)} sale de hoy y ${formatMoney(o.desdeSaldoAnterior)} del saldo de días anteriores (${formatMoney(o.saldoAnterior)}).` };
+    if (_gastoEsDelGuardado(metodo)) return { clase: 'info', texto: `🗄️ Sale del saldo guardado de días anteriores (hay ${formatMoney(o.saldoAnterior)}). No se descuenta de las entradas de hoy.` };
     return { clase: 'info', texto: `📅 Hoy no ha entrado plata por ${nombre}: este gasto sale del saldo de días anteriores (${formatMoney(o.saldoAnterior)}).` };
 }
 function _gastoActualizarOrigen() {
@@ -29306,6 +29331,7 @@ function _updateGastoSplitStatus() {
 function _updateGastoConfirmState() {
     const btn = document.getElementById('gastoRegistrarBtn');
     if (!btn) return;
+    _gastoRenderFuenteEfectivo();
     const monto = _gastoMontoTotal();
     if (_gastoSplitOn) {
         const { falta } = _gastoSplitResumen();
@@ -29419,7 +29445,7 @@ function _gastoShowStep2(catId) {
     const montoEl  = document.getElementById('gastoMonto');
     if (descEl)  descEl.value  = '';
     if (montoEl) montoEl.value = '';
-    _gastoSelectedMethod = null;
+    _gastoSelectedMethod = null; _gastoFuenteEfectivo = 'hoy';
     _gastoSplitOn = false;
     _gastoSplitAmounts = {};
     document.querySelectorAll('#gastoMethodsGrid .dpm-method-btn').forEach((b) => b.classList.remove('dpm-method-btn--active'));
@@ -29615,7 +29641,7 @@ function openGastoModal(prefill) {
     _gastoPendienteEnCurso = _gastoPrefill ? (_gastoPrefill.pendienteId || null) : null;
     // Los saldos acumulados se refrescan en segundo plano: así «Disp.» y «de dónde sale» usan datos al día.
     loadCierresCaja().then(() => { renderGastoMethodButtons(); _gastoActualizarOrigen(); }).catch(() => { /* sin red: se usan los últimos saldos conocidos */ });
-    _gastoSelectedMethod = null;
+    _gastoSelectedMethod = null; _gastoFuenteEfectivo = 'hoy';
     _gastoCategoriaId = null;
     _gastoSubcategoria = null;
     const modal = document.getElementById('gastoModal');
@@ -29626,7 +29652,7 @@ function openGastoModal(prefill) {
 
 function closeGastoModal() {
     document.getElementById('gastoModal')?.setAttribute('hidden', '');
-    _gastoSelectedMethod = null;
+    _gastoSelectedMethod = null; _gastoFuenteEfectivo = 'hoy';
     _gastoCategoriaId = null;
     _gastoSubcategoria = null;
     _gastoPrefill = null;
@@ -29907,6 +29933,14 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
         document.querySelectorAll('[data-gasto-method]').forEach((b) => b.classList.remove('dpm-method-btn--active'));
         methodBtn.classList.add('dpm-method-btn--active');
         _gastoSelectedMethod = methodBtn.dataset.gastoMethod;
+        _gastoRenderFuenteEfectivo();
+        _updateGastoConfirmState();
+        return;
+    }
+    const fuenteBtn = e.target.closest('[data-gasto-fuente]');
+    if (fuenteBtn) {
+        _gastoFuenteEfectivo = fuenteBtn.dataset.gastoFuente === 'guardado' ? 'guardado' : 'hoy';
+        _gastoRenderFuenteEfectivo();
         _updateGastoConfirmState();
         return;
     }
@@ -30174,7 +30208,7 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             registradoAt: Date.now(),
         };
         // tipo 'caja' = del turno abierto (entra al cierre) · tipo 'externo' = desde una cuenta (resta directo del saldo de esa cuenta).
-        const _segunMetodo = (metodo) => (gastoTipoPorMetodo(metodo) === 'caja' ? { cajaAperturaAt, tipo: 'caja' } : { cajaAperturaAt: null, tipo: 'externo' });
+        const _segunMetodo = (metodo) => (gastoTipoPorMetodo(metodo) === 'caja' && !_gastoEsDelGuardado(metodo) ? { cajaAperturaAt, tipo: 'caja' } : { cajaAperturaAt: null, tipo: 'externo' });
         // Un documento por método (con `grupoId` común si fue dividido): los saldos por método
         // y los informes siguen leyendo paymentMethod/monto sin cambios.
         const _origenes = (partes.length > 1 ? partes.map((p) => ({ metodo: p.method, monto: p.amount })) : [{ metodo: partes.length === 1 ? partes[0].method : _gastoSelectedMethod, monto }])
@@ -30207,6 +30241,11 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
         // para el caso "no viene de Historial", y el ledger de Informes quedaba desfasado
         // hasta el próximo refresco manual).
         _gastosCajaState = [...docs, ..._gastosCajaState];
+        // Los externos (incluido el efectivo guardado) restan del saldo guardado: se actualiza al instante.
+        if (docs.some((d) => d.tipo === 'externo')) {
+            _gastosExternosState = [...docs.filter((d) => d.tipo === 'externo'), ..._gastosExternosState];
+            try { _historicoSumMethod = _computeHistoricoSumMethod(); } catch (_) { /* se recalcula al recargar */ }
+        }
         const pendienteId = _gastoPendienteEnCurso; // si venía de un recordatorio, se quita ahora que ya quedó registrado
         closeGastoModal();
         renderCajaDiaria();
