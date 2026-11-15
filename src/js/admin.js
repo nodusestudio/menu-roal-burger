@@ -12004,6 +12004,7 @@ const SQ_INICIO_MS = Date.parse('2026-10-30T00:00:00-05:00');
 let _sqUnsubs = [];
 let _sqActive = [];
 let _sqArchived = [];
+let _sqMalos = {}; // por colección: documentos leídos y cuántos no se pudieron interpretar
 let _sqEstado = {}; // por colección: 'ok' cuando llegó la primera lectura, o el texto del error
 
 function _sqDetach() {
@@ -12015,12 +12016,17 @@ function _sqAttach() {
     _sqDetach();
     if (!firebaseDb) return;
     const start = firebase.firestore.Timestamp.fromMillis(SQ_INICIO_MS);
-    _sqEstado = {};
+    _sqEstado = {}; _sqMalos = {};
     const listen = (col, setter) => firebaseDb.collection(col)
         .where('createdAt', '>=', start)
         .orderBy('createdAt', 'desc')
         .onSnapshot(
-            (snap) => { setter(snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() }))); _sqEstado[col] = 'ok'; renderMetricasSabe(); },
+            (snap) => {
+                const arr = []; let malos = 0; let ultimo = '';
+                snap.docs.forEach((d) => { try { arr.push(normalizeOrder({ id: d.id, ...d.data() })); } catch (e) { malos += 1; ultimo = (e && e.message) || 'error'; } });
+                setter(arr); _sqEstado[col] = 'ok'; _sqMalos[col] = { leidos: snap.size, malos, ultimo };
+                renderMetricasSabe();
+            },
             (err) => { console.error(`[Sabe a Quindío] ${col}:`, (err && (err.code || err.message)) || err); _sqEstado[col] = `${(err && (err.code || err.message)) || 'error'}`; renderMetricasSabe(); }
         );
     _sqUnsubs = [
@@ -13053,7 +13059,7 @@ function _tempStats(ed) {
     const fin = ed.fin || Infinity;
     const clave = normalizeCategoryKey(ed.palabra || '');
     const byId = new Map();
-    [..._sqArchived, ..._sqActive].forEach((o) => byId.set(o.id, o));
+    [..._metricsOrdersState, ..._sqArchived, ..._sqActive].forEach((o) => byId.set(o.id, o)); // el historial (400 días) también cuenta: si la escucha en vivo falla, no queda en cero
     const prev = new Set();
     for (const o of _metricsOrdersState) {
         const ts = _orderTs(o); if (!ts || ts >= ed.inicio || o.voided || o.anulado) continue;
@@ -13142,11 +13148,11 @@ function _tempHtml() {
         return `<tr><td style="padding:7px 10px;opacity:.8">${lbl}</td>${celdas}</tr>`;
     }).join('');
     // Diagnóstico visible: cuántos pedidos se leyeron y qué productos con 2×1 existen (para confirmar la «palabra» del producto estrella).
-    const leidos = new Map(); [..._sqArchived, ..._sqActive].forEach((o) => leidos.set(o.id, o));
+    const leidos = new Map(); [..._metricsOrdersState, ..._sqArchived, ..._sqActive].forEach((o) => { if ((_orderTs(o) || 0) >= SQ_INICIO_MS) leidos.set(o.id, o); });
     const nombres2x1 = new Map();
     leidos.forEach((o) => (o.items || []).forEach((it) => { if (_sqItemEs2x1(it) && it.productName) nombres2x1.set(it.productName, (nombres2x1.get(it.productName) || 0) + 1); }));
     const top2x1 = [...nombres2x1.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n, c]) => `${escapeHtml(n)} (${c})`).join(', ');
-    const diag = `<p class="admin-hint" style="margin-top:8px;opacity:.75">🔎 Pedidos leídos desde el 30 de oct: ${nf(_sqActive.length)} activos + ${nf(_sqArchived.length)} archivados. Productos con 2×1 encontrados: ${top2x1 || 'ninguno'}.</p>`;
+    const diag = `<p class="admin-hint" style="margin-top:8px;opacity:.75">🔎 Pedidos desde el 30 de oct: ${nf(leidos.size)} (en vivo: ${nf(_sqActive.length)} activos + ${nf(_sqArchived.length)} archivados; historial cargado: ${nf(_metricsOrdersState.length)}). ${cols.map((c) => (_sqMalos[c] && _sqMalos[c].malos ? `${_sqMalos[c].malos} de ${_sqMalos[c].leidos} pedidos de ${c} no se pudieron interpretar (${escapeHtml(_sqMalos[c].ultimo)}).` : '')).join(' ')} Productos con 2×1 encontrados: ${top2x1 || 'ninguno'}.</p>`;
     const tabla = stats.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.88rem">
         <thead><tr><th style="padding:7px 10px;text-align:left;opacity:.6;font-weight:600">Métrica</th>${stats.map(({ e }) => `<th style="padding:7px 10px;text-align:right">${escapeHtml(e.nombre.replace(/^Sabe a Quindío · /, ''))}</th>`).join('')}</tr></thead>
         <tbody>${filasMetricas}</tbody></table></div>
