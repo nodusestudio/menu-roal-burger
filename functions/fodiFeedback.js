@@ -34,7 +34,7 @@ function contarMotivos(filas, clave, etiquetas) {
 }
 
 async function feedbackClientes(db, args = {}) {
-    const parte = ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos', 'fidelizacion'].includes(args.parte) ? args.parte : 'resumen';
+    const parte = ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos', 'fidelizacion', 'ab_mensajes', 'temporadas'].includes(args.parte) ? args.parte : 'resumen';
     // 'quindio' = pedidos con 2×1; 'general' = fidelización (cualquier otro pedido). El tipo lo da el pedido.
     const tipo = args.tipo === 'general' ? 'general' : 'quindio';
     const E2 = tipo === 'general' ? ETIQ_Q2_GEN : ETIQ_Q2;
@@ -90,6 +90,51 @@ async function feedbackClientes(db, args = {}) {
         return { clientes_con_cumpleanos: snap.size, en_los_proximos_dias: dias, total: lista.length, cumpleanos: lista.slice(0, 40), nota: 'Fecha en formato MM-DD. El saludo se copia desde Feedback → Cumpleaños.' };
     }
 
+    if (parte === 'ab_mensajes') {
+        // Prueba A/B de los mensajes de Reactivar: qué variante canjea más (la variante se guarda en el cupón al copiar el mensaje).
+        const snap = await db.collection('cupones_fidelizacion').where('motivo', '==', 'reactivar').limit(2000).get();
+        const g = { A: { emitidos: 0, canjeados: 0 }, B: { emitidos: 0, canjeados: 0 }, sin_variante: { emitidos: 0, canjeados: 0 } };
+        snap.docs.forEach((d) => { const x = d.data(); const k = x.variante === 'A' || x.variante === 'B' ? x.variante : 'sin_variante'; g[k].emitidos += 1; if (x.estado === 'canjeado') g[k].canjeados += 1; });
+        const filas = Object.keys(g).map((k) => ({ variante: k, ...g[k], canje_pct: pct(g[k].canjeados, g[k].emitidos) }));
+        const poco = Math.min(g.A.emitidos, g.B.emitidos) < 30;
+        return { cupones_reactivar: snap.size, variantes: filas, descripcion: 'A = mensaje cálido y directo; B = mensaje con pregunta y «te guardamos tu lugar».', nota: poco ? 'Menos de 30 envíos en alguna variante: no es concluyente, dilo.' : 'Con 30+ envíos por variante ya hay una señal razonable.' };
+    }
+
+    if (parte === 'temporadas') {
+        // Ediciones de eventos (Sabe a Quindío 2026, 2027…): pedidos con el producto estrella de cada edición, comparados por día.
+        const cfg = await db.collection('configuracion').doc('fidelizacion').get();
+        const SQ_INICIO = Date.parse('2026-10-30T00:00:00-05:00');
+        const guardadas = cfg.exists && Array.isArray(cfg.data().temporadas) ? cfg.data().temporadas : [];
+        const eds = (guardadas.length ? guardadas : [{ id: 'sq-2026-1', nombre: 'Sabe a Quindío · Edición 1 (2026)', inicio: SQ_INICIO, fin: 0, palabra: 'trifasica' }]).sort((a, b) => a.inicio - b.inicio);
+        const TS = require('firebase-admin/firestore').Timestamp;
+        const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+        const ahora = Date.now();
+        const out = [];
+        for (const e of eds) {
+            const fin = Number(e.fin) || 0;
+            const clave = norm(e.palabra);
+            const docs = [];
+            for (const col of ['pedidos', 'pedidos_archivados']) {
+                let q = db.collection(col).where('createdAt', '>=', TS.fromMillis(Number(e.inicio)));
+                if (fin) q = q.where('createdAt', '<', TS.fromMillis(fin));
+                docs.push(...(await q.get()).docs);
+            }
+            const vistos = new Set(); let pedidos = 0, unidades = 0, ventas = 0; const clientes = new Set();
+            docs.forEach((d) => {
+                if (vistos.has(d.id)) return; vistos.add(d.id);
+                const o = d.data(); if (o.anulado === true || o.voided === true) return;
+                let u = 0, v = 0;
+                (o.items || []).forEach((it) => { if (clave && norm(it.productName).includes(clave)) { const q = Number(it.quantity || 0); if (q > 0) { u += q; v += Number(it.subtotal || 0); } } });
+                if (!u) return;
+                pedidos += 1; unidades += u; ventas += v;
+                const t = String(o.customerPhoneDigits || o.customerPhone || '').replace(/\D/g, '').slice(-10); if (t.length >= 7) clientes.add(t);
+            });
+            const dias = Math.max(1, Math.ceil(((fin && fin < ahora ? fin : ahora) - Number(e.inicio)) / 86400000));
+            out.push({ edicion: e.nombre, desde: fechaBogota(Number(e.inicio)).slice(0, 10), hasta: fin ? fechaBogota(fin - 86400000).slice(0, 10) : 'en curso', dias, producto: e.palabra, pedidos, unidades, ventas_producto: ventas, clientes_distintos: clientes.size, pedidos_por_dia: Math.round((pedidos / dias) * 10) / 10, ventas_por_dia: Math.round(ventas / dias) });
+        }
+        return { ediciones: out, nota: 'Compara usando los promedios por día (las ediciones duran distinto). Clientes nuevos vs habituales y la calificación se ven en el panel (Feedback → Temporadas).' };
+    }
+
     if (parte === 'pendientes') {
         const ahora = Date.now();
         const snap = await db.collection('pedidos').where('status', 'in', ['enviado', 'entregado']).get();
@@ -143,8 +188,8 @@ async function feedbackClientes(db, args = {}) {
 
 const TOOL = {
     name: 'feedback_clientes',
-    description: 'FEEDBACK de clientes (encuesta que se manda por WhatsApp 2 h después de entregar): parte "resumen" = respuestas, tasa de respuesta, satisfacción, sabor/calidad, cómo se enteraron, app instalada y satisfacción por canal; "respuestas" = las últimas respuestas cliente por cliente; "sugerencias" = lo que escribieron en la pregunta abierta; "pendientes" = pedidos entregados a los que aún no se les pidió feedback. Úsala para "¿qué opinan los clientes?", "¿qué piden?", "¿quién falta por encuestar?" y para armar el informe de mejoras del festival (cruza con ventas y da acciones concretas).',
-    input_schema: { type: 'object', properties: { parte: { type: 'string', enum: ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos', 'fidelizacion'] }, semanas_atras: { type: 'number', description: 'Solo para fidelizacion: 0 = esta semana, 1 = la pasada, etc.' }, dias: { type: 'number', description: 'Solo para cumpleanos: cuántos días hacia adelante (por defecto 30).' }, tipo: { type: 'string', enum: ['quindio', 'general'], description: 'quindio = encuesta de pedidos con 2×1 (Sabe a Quindío); general = fidelización (pedidos sin 2×1). Por defecto quindio.' } } }
+    description: 'FEEDBACK de clientes (encuesta que se manda por WhatsApp 2 h después de entregar): parte "resumen" = respuestas, tasa de respuesta, satisfacción, sabor/calidad, cómo se enteraron, app instalada y satisfacción por canal; "respuestas" = las últimas respuestas cliente por cliente; "sugerencias" = lo que escribieron en la pregunta abierta; "pendientes" = pedidos entregados a los que aún no se les pidió feedback. Úsala para "¿qué opinan los clientes?", "¿qué piden?", "¿quién falta por encuestar?" "ab_mensajes" = prueba A/B de los mensajes de Reactivar (qué variante canjea más); "temporadas" = ediciones de eventos (Sabe a Quindío 2026, 2027…) comparadas por día. Úsala también para armar el informe de mejoras del festival (cruza con ventas y da acciones concretas).',
+    input_schema: { type: 'object', properties: { parte: { type: 'string', enum: ['resumen', 'respuestas', 'sugerencias', 'pendientes', 'cumpleanos', 'fidelizacion', 'ab_mensajes', 'temporadas'] }, semanas_atras: { type: 'number', description: 'Solo para fidelizacion: 0 = esta semana, 1 = la pasada, etc.' }, dias: { type: 'number', description: 'Solo para cumpleanos: cuántos días hacia adelante (por defecto 30).' }, tipo: { type: 'string', enum: ['quindio', 'general'], description: 'quindio = encuesta de pedidos con 2×1 (Sabe a Quindío); general = fidelización (pedidos sin 2×1). Por defecto quindio.' } } }
 };
 
 module.exports = { feedbackClientes, TOOL };

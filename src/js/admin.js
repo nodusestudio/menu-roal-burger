@@ -13511,7 +13511,24 @@ function _fidVenceTexto(dias) {
 
 // Mensaje manual para reactivar. Cambia el tono según cuánto lleva sin pedir (cálido → te guardamos → último aviso),
 // usa el nombre, su historial real y el vencimiento real del cupón (nunca urgencia inventada).
-function _fidMensajeReactivar(c, codigo, dias) {
+// Prueba A/B: la variante se reparte por el último carácter del id del cliente (mitad y mitad, estable: al mismo cliente
+// siempre le toca la misma) y se guarda en el cupón para medir cuál canjea más (Resultados → Cupones).
+function _fidVariante(clienteId) {
+    const s = String(clienteId || '');
+    return s && s.charCodeAt(s.length - 1) % 2 ? 'B' : 'A';
+}
+
+function _fidMensajeReactivar(c, codigo, dias, variante = 'A') {
+    if (variante === 'B') {
+        const nombreB = String(c.customerName || '').trim().split(/\s+/)[0];
+        const holaB = nombreB && nombreB !== 'Cliente' ? nombreB : 'Hola';
+        const sinB = Math.floor((Date.now() - _tsMs(c.lastOrderAt)) / 86400000);
+        const venceB = _fidVenceTexto(dias);
+        const ofertaB = _fidCfg.reactivarOferta;
+        if (sinB >= 90) return `${holaB}, ¿todo bien? 🙌 Hace ${Math.max(3, Math.round(sinB / 30))} meses que no te vemos y queremos que vuelvas: ${ofertaB}, solo para ti hasta el *${venceB}*. Tu código: *${codigo}*. ¿Te lo dejo listo?`;
+        if (sinB >= 46) return `${holaB}, te guardamos tu lugar en la mesa 🍔 ${ofertaB} te espera hasta el *${venceB}*. Tu código: *${codigo}*. Respóndeme *QUIERO* y lo activo.`;
+        return `${holaB} 🍔 Pregunta rápida: ¿cuál es tu burger favorita de ROAL? Respóndeme y de paso te regalo ${ofertaB} en tu próximo pedido, válido hasta el *${venceB}*. Tu código: *${codigo}*.`;
+    }
     const nombre = String(c.customerName || '').trim().split(/\s+/)[0];
     const hola = nombre && nombre !== 'Cliente' ? ` ${nombre}` : '';
     const sin = Math.floor((Date.now() - _tsMs(c.lastOrderAt)) / 86400000);
@@ -14083,6 +14100,22 @@ function _fbRenderFid(body) {
                 ${_fidKpi('met-kpi-card--purple', formatMoney(ventas), 'Ventas del pedido de quienes canjearon')}
             </div>
         </article>
+        ${(() => {
+            const ab = ['A', 'B'].map((v) => {
+                const g = enRango.filter((k) => k.motivo === 'reactivar' && k.variante === v);
+                const c = g.filter((k) => k.estado === 'canjeado').length;
+                return { v, n: g.length, c, pct: g.length ? Math.round((c / g.length) * 100) : 0 };
+            });
+            const tot = ab[0].n + ab[1].n;
+            if (!tot) return '';
+            const lider = ab[0].pct === ab[1].pct ? '' : (ab[0].pct > ab[1].pct ? 'A' : 'B');
+            const poco = Math.min(ab[0].n, ab[1].n) < 30;
+            return `<article class="admin-card">
+                <div class="met-section-title">🧪 Prueba de mensajes (Reactivar)</div>
+                <div class="met-kpi-row">${ab.map((x) => _fidKpi(lider === x.v ? 'met-kpi-card--green' : '', `${x.pct}%`, `Mensaje ${x.v}: ${nf(x.c)} canjes de ${nf(x.n)}`)).join('')}</div>
+                <p class="admin-hint" style="margin-top:8px">A = mensaje cálido y directo. B = mensaje con pregunta y «te guardamos tu lugar». ${poco ? 'Aún hay pocos envíos por variante (menos de 30): no concluyas todavía.' : (lider ? `Va ganando el mensaje ${lider}.` : 'Van empatados.')}</p>
+            </article>`;
+        })()}
         ${rangoSelectorHtml('fid')}
         <article class="admin-card">
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${chips}</div>
@@ -14253,8 +14286,9 @@ function _fidClick(e) {
         const dias = Number(_fidCfg.vigenciaDias) || 3;
         const codigo = _fidNuevoCodigo(cliente.customerName);
         // El copiado va PRIMERO (el navegador solo deja escribir al portapapeles durante el clic); el registro sigue en segundo plano.
-        const copiado = copyTextToClipboard(_fidMensajeReactivar(cliente, codigo, dias));
-        _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias, productoId: _fidCfg.reactivarProductoId });
+        const variante = _fidVariante(cliente.id);
+        const copiado = copyTextToClipboard(_fidMensajeReactivar(cliente, codigo, dias, variante));
+        _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias, productoId: _fidCfg.reactivarProductoId, envioExtra: { variante }, cuponExtra: { variante } });
         copiado.then((ok) => showNotice(ok ? `Mensaje con cupón listo para ${cliente.customerName}.` : 'No se pudo copiar el mensaje. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
         renderMetricasFeedback();
         return true;
