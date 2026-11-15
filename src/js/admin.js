@@ -39049,6 +39049,13 @@ async function rdTgLlamar(accion, payload = {}) {
 
 function rdCuentaTgHtml() {
     const tg = rdState.tg;
+    const m = rdState.tgMsg;
+    const msg = `<div id="rdTgMsg">${m ? `<p class="${m.ok ? 'cd-hist-ok' : 'cd-aviso'}" role="status">${escapeHtml(m.texto)}</p>` : ''}</div>`;
+    const estado = rdCuentaTgHtmlBase(tg);
+    return estado + msg;
+}
+
+function rdCuentaTgHtmlBase(tg) {
     if (!tg) return '<p class="cd-muted">No se pudo leer el estado de Telegram. Recarga la página; si sigue igual, la función de Telegram aún no está desplegada.</p>';
     if (!tg.conectado) {
         return `
@@ -39118,22 +39125,39 @@ function rdRenderCuentas(body) {
         btn.disabled = false;
         btn.textContent = 'Buscar mis páginas';
     });
+    // Telegram: el resultado (bueno o malo) queda ESCRITO dentro de la tarjeta, no en un aviso que desaparece.
+    const accionTg = async (btn, espera, fn, ok) => {
+        const label = btn.textContent;
+        btn.disabled = true;
+        if (espera) btn.textContent = espera;
+        const caja = body.querySelector('#rdTgMsg');
+        if (caja) caja.innerHTML = `<p class="cd-muted">⏳ ${escapeHtml(espera || 'Guardando…')}</p>`;
+        try {
+            const r = await fn();
+            rdState.tgMsg = { ok: true, texto: typeof ok === 'function' ? ok(r) : ok };
+        } catch (err) {
+            rdState.tgMsg = { ok: false, texto: String(err?.message || 'No se pudo completar.') };
+        }
+        btn.disabled = false;
+        btn.textContent = label;
+        await refrescar();
+    };
     body.querySelector('#rdTgConectar')?.addEventListener('click', (e) => {
         const token = String(body.querySelector('#rdTgToken')?.value || '').trim();
         const chat = String(body.querySelector('#rdTgChat')?.value || '').trim();
-        if (!token || !chat) { showNotice('Pega el token del bot y el nombre del canal.', 'error'); return; }
-        accion(e.currentTarget, 'Conectando…', () => rdTgLlamar('conectar', { token, chat }), (r) => `Conectado el canal ${r.chatTitle}. Activa la publicación automática cuando quieras.`);
+        if (!token || !chat) { rdState.tgMsg = { ok: false, texto: 'Pega el token del bot y el nombre del canal (con @).' }; rdRenderCuentas(body); return; }
+        accionTg(e.currentTarget, 'Conectando…', () => rdTgLlamar('conectar', { token, chat }), (r) => `✅ Conectado el canal ${r.chatTitle}. Ahora envía el mensaje de prueba y activa la publicación automática.`);
     });
-    body.querySelector('#rdTgActivo')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdTgLlamar('ajustes', { activo: e.currentTarget.checked }), (r) => (r.activo ? 'Publicación automática en Telegram ACTIVADA.' : 'Publicación automática en Telegram apagada.')));
-    body.querySelector('#rdTgCodigo')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdTgLlamar('ajustes', { historiasCodigo: e.currentTarget.checked }), 'Ajuste guardado.'));
-    body.querySelector('#rdTgProbar')?.addEventListener('click', (e) => accion(e.currentTarget, 'Enviando…', async () => {
+    body.querySelector('#rdTgActivo')?.addEventListener('change', (e) => accionTg(e.currentTarget, '', () => rdTgLlamar('ajustes', { activo: e.currentTarget.checked }), (r) => (r.activo ? '✅ Publicación automática en Telegram ACTIVADA.' : 'Publicación automática en Telegram apagada.')));
+    body.querySelector('#rdTgCodigo')?.addEventListener('change', (e) => accionTg(e.currentTarget, '', () => rdTgLlamar('ajustes', { historiasCodigo: e.currentTarget.checked }), 'Ajuste guardado.'));
+    body.querySelector('#rdTgProbar')?.addEventListener('click', (e) => accionTg(e.currentTarget, 'Enviando…', async () => {
         const r = await rdTgLlamar('probar');
         if (!r.ok) throw new Error(`Telegram rechazó la prueba: ${r.error || 'error desconocido'}`);
         return r;
     }, (r) => `✅ Mensaje enviado al canal ${r.chatTitle}. Revísalo en Telegram.`));
     body.querySelector('#rdTgDesconectar')?.addEventListener('click', (e) => {
         if (!window.confirm('¿Desconectar Telegram? Se borra el token guardado y se deja de publicar en el canal.')) return;
-        accion(e.currentTarget, 'Desconectando…', () => rdTgLlamar('desconectar'), 'Telegram desconectado.');
+        accionTg(e.currentTarget, 'Desconectando…', () => rdTgLlamar('desconectar'), 'Telegram desconectado.');
     });
     body.querySelector('#rdFbActivo')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdFbLlamar('ajustes', { activo: e.currentTarget.checked }), (r) => (r.activo ? 'Publicación automática en Facebook ACTIVADA.' : 'Publicación automática en Facebook apagada.')));
     body.querySelector('#rdFbHashtags')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdFbLlamar('ajustes', { conHashtags: e.currentTarget.checked }), 'Ajuste guardado.'));
