@@ -13141,6 +13141,12 @@ function _tempHtml() {
         }).join('');
         return `<tr><td style="padding:7px 10px;opacity:.8">${lbl}</td>${celdas}</tr>`;
     }).join('');
+    // Diagnóstico visible: cuántos pedidos se leyeron y qué productos con 2×1 existen (para confirmar la «palabra» del producto estrella).
+    const leidos = new Map(); [..._sqArchived, ..._sqActive].forEach((o) => leidos.set(o.id, o));
+    const nombres2x1 = new Map();
+    leidos.forEach((o) => (o.items || []).forEach((it) => { if (_sqItemEs2x1(it) && it.productName) nombres2x1.set(it.productName, (nombres2x1.get(it.productName) || 0) + 1); }));
+    const top2x1 = [...nombres2x1.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n, c]) => `${escapeHtml(n)} (${c})`).join(', ');
+    const diag = `<p class="admin-hint" style="margin-top:8px;opacity:.75">🔎 Pedidos leídos desde el 30 de oct: ${nf(_sqActive.length)} activos + ${nf(_sqArchived.length)} archivados. Productos con 2×1 encontrados: ${top2x1 || 'ninguno'}.</p>`;
     const tabla = stats.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.88rem">
         <thead><tr><th style="padding:7px 10px;text-align:left;opacity:.6;font-weight:600">Métrica</th>${stats.map(({ e }) => `<th style="padding:7px 10px;text-align:right">${escapeHtml(e.nombre.replace(/^Sabe a Quindío · /, ''))}</th>`).join('')}</tr></thead>
         <tbody>${filasMetricas}</tbody></table></div>
@@ -13152,6 +13158,7 @@ function _tempHtml() {
         <article class="admin-card">
             <div class="met-section-title">📈 Comparar ediciones</div>
             ${tabla}
+            ${diag}
         </article>
         <article class="admin-card">
             <div class="met-section-title">➕ Nueva edición</div>
