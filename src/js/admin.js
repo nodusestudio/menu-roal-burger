@@ -30452,6 +30452,11 @@ function renderCajaDiaria() {
         if (headEl) headEl.innerHTML = '';
         bodyEl.innerHTML = `<tr><td class="caja-empty" colspan="${totalCols}">No hay movimientos registrados en esta jornada.</td></tr>`;
         if (footEl) footEl.innerHTML = '';
+        // Jornada vacía: limpiar los saldos de la jornada anterior (si no, "De lo de hoy" y "Efectivo que debe haber" muestran lo de ayer).
+        const _ceros = {};
+        methodKeys.forEach((k) => { _ceros[k] = 0; });
+        _cajaDiariaSumMethod = { ..._ceros, [OTRO_PAYMENT_METHOD.id]: 0 };
+        _renderEfectivoEsperado(_ceros);
         return;
     }
 
