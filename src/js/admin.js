@@ -12004,6 +12004,7 @@ const SQ_INICIO_MS = Date.parse('2026-10-30T00:00:00-05:00');
 let _sqUnsubs = [];
 let _sqActive = [];
 let _sqArchived = [];
+let _sqEstado = {}; // por colección: 'ok' cuando llegó la primera lectura, o el texto del error
 
 function _sqDetach() {
     _sqUnsubs.forEach((u) => { try { u(); } catch (_) {} });
@@ -12014,12 +12015,13 @@ function _sqAttach() {
     _sqDetach();
     if (!firebaseDb) return;
     const start = firebase.firestore.Timestamp.fromMillis(SQ_INICIO_MS);
+    _sqEstado = {};
     const listen = (col, setter) => firebaseDb.collection(col)
         .where('createdAt', '>=', start)
         .orderBy('createdAt', 'desc')
         .onSnapshot(
-            (snap) => { setter(snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() }))); renderMetricasSabe(); },
-            (err) => console.error(`[Sabe a Quindío] ${col}:`, (err && (err.code || err.message)) || err)
+            (snap) => { setter(snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() }))); _sqEstado[col] = 'ok'; renderMetricasSabe(); },
+            (err) => { console.error(`[Sabe a Quindío] ${col}:`, (err && (err.code || err.message)) || err); _sqEstado[col] = `${(err && (err.code || err.message)) || 'error'}`; renderMetricasSabe(); }
         );
     _sqUnsubs = [
         listen(ORDERS_COLLECTION, (v) => { _sqActive = v; }),
@@ -13097,6 +13099,12 @@ function _tempStats(ed) {
 function _tempHtml() {
     if (!_tempEdiciones) { _tempCargar(); return '<article class="admin-card"><p class="met-empty-note">Cargando temporadas…</p></article>'; }
     if (!_sqUnsubs.length) _sqAttach();
+    const cols = [ORDERS_COLLECTION, ORDERS_ARCHIVE_COLLECTION];
+    const errores = cols.filter((c) => _sqEstado[c] && _sqEstado[c] !== 'ok');
+    const listos = cols.every((c) => _sqEstado[c] === 'ok') && _metricsOrdersLoadedAt > 0;
+    const aviso = errores.length
+        ? `<article class="admin-card"><p class="met-empty-note" style="color:#f87171">⚠️ No se pudieron leer los pedidos (${errores.map((c) => `${c}: ${escapeHtml(_sqEstado[c])}`).join(' · ')}). Las cifras de abajo están incompletas. <button type="button" class="ghost-button" data-temp-reintentar>Reintentar</button></p></article>`
+        : (listos ? '' : '<article class="admin-card"><p class="met-empty-note">⏳ Cargando pedidos y clientes… las cifras se actualizan solas en unos segundos.</p></article>');
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const fecha = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric' });
     const lista = _tempEdiciones.slice().sort((a, b) => a.inicio - b.inicio);
@@ -13137,7 +13145,7 @@ function _tempHtml() {
         <thead><tr><th style="padding:7px 10px;text-align:left;opacity:.6;font-weight:600">Métrica</th>${stats.map(({ e }) => `<th style="padding:7px 10px;text-align:right">${escapeHtml(e.nombre.replace(/^Sabe a Quindío · /, ''))}</th>`).join('')}</tr></thead>
         <tbody>${filasMetricas}</tbody></table></div>
         <p class="admin-hint" style="margin-top:8px">Las flechas comparan cada edición con la anterior usando promedios por día, para que una edición más corta no salga perdiendo. Clientes «nuevos» = su primer pedido fue durante esa edición.</p>` : '';
-    return `<article class="admin-card">
+    return `${aviso}<article class="admin-card">
             <div class="met-section-title">🏆 Temporadas <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· cada edición se mide sola</small></div>
             <div class="metrics-users-list">${cartas}</div>
         </article>
@@ -13159,6 +13167,7 @@ function _tempHtml() {
 
 function _tempClick(e) {
     const t = e.target;
+    if (t.closest('[data-temp-reintentar]')) { _sqAttach(); return true; }
     if (t.closest('[data-temp-nueva]')) {
         const nombre = String(document.getElementById('tempNombre')?.value || '').trim();
         const dia = String(document.getElementById('tempInicio')?.value || '');
