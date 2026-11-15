@@ -13277,7 +13277,7 @@ function _fbRenderCumple(body) {
         return `<div class="met-user-row-v2">
             <div class="met-avatar">🎂</div>
             <div class="met-user-info-v2">
-                <div class="met-user-name-v2">${escapeHtml(c.customerName)} · ${escapeHtml(_cumpleFechaLarga(c.fechaCumple))}</div>
+                <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(c.customerName)}" title="Tocar para copiar el nombre">${escapeHtml(c.customerName)}</button> · ${escapeHtml(_cumpleFechaLarga(c.fechaCumple))}</div>
                 <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <strong>${badge}</strong>${saludado ? ' · <span style="color:#34d399;font-weight:700">✅ Saludado</span>' : ''}</div>
             </div>
             ${phone ? `<button type="button" class="ghost-button" data-fid-img="cumple" data-fid-img-nombre="${escapeHtml(c.customerName)}" title="Copia una imagen con frase para pegar en el chat">🖼️ Imagen</button>` : ''}
@@ -13846,7 +13846,7 @@ function _fidReferidosHtml() {
         return `<div class="met-user-row-v2">
             <div class="met-avatar">🤝</div>
             <div class="met-user-info-v2">
-                <div class="met-user-name-v2">${escapeHtml(c.customerName)}</div>
+                <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(c.customerName)}" title="Tocar para copiar el nombre">${escapeHtml(c.customerName)}</button></div>
                 <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}</div>
             </div>
             <button type="button" class="feedback-pending-btn" data-fid-invitar="${escapeHtml(c.id)}">Copiar invitación</button>
@@ -13972,7 +13972,7 @@ function _fbRenderFid(body) {
         const conTel = (c) => String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '');
         const fila = (ico, nombre, meta, tipoImg, btn) => `<div class="met-user-row-v2">
             <div class="met-avatar">${ico}</div>
-            <div class="met-user-info-v2"><div class="met-user-name-v2">${escapeHtml(nombre)}</div><div class="met-user-meta-v2">${meta}</div></div>
+            <div class="met-user-info-v2"><div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(nombre)}" title="Tocar para copiar el nombre">${escapeHtml(nombre)}</button></div><div class="met-user-meta-v2">${meta}</div></div>
             <button type="button" class="ghost-button" data-fid-img="${tipoImg}" data-fid-img-nombre="${escapeHtml(nombre)}" title="Copia una imagen con frase para pegar en el chat">1 · 🖼️ Imagen</button>
             ${btn}
         </div>`;
@@ -13986,8 +13986,8 @@ function _fbRenderFid(body) {
             return k && libre && dias >= (Number(_fidCfg.reactivarDias) || 21) && dias <= 150 ? { c, dias } : null;
         }).filter(Boolean).sort((a, b) => b.c.totalSpent - a.c.totalSpent).slice(0, 15);
         const pend = _fidAtenderPendientes();
-        const filasCumple = cumples.map((c) => fila('🎂', c.customerName, `${escapeHtml(conTel(c))} · cumple hoy`, 'cumple', `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">2 · Copiar saludo</button>`)).join('');
-        const filasReact = reactivar.map(({ c, dias }) => fila('🔁', c.customerName, `${escapeHtml(conTel(c))} · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}`, 'reactivar', `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">2 · Copiar mensaje</button>`)).join('');
+        const filasCumple = cumples.map((c) => fila('🎂', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · cumple hoy`, 'cumple', `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">2 · Copiar saludo</button>`)).join('');
+        const filasReact = reactivar.map(({ c, dias }) => fila('🔁', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}`, 'reactivar', `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">2 · Copiar mensaje</button>`)).join('');
         html = `<article class="admin-card">
             <div class="met-section-title">☀️ Tu cola de hoy <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en orden de importancia</small></div>
             <p class="admin-hint" style="margin:4px 0 10px">Paso 1: copia la imagen y pégala en el chat. Paso 2: copia el mensaje y pégalo como texto. Al copiar el mensaje, la persona sale de la cola.</p>
@@ -14030,7 +14030,7 @@ function _fbRenderFid(body) {
             return `<div class="met-user-row-v2">
                 <div class="met-avatar">🔁</div>
                 <div class="met-user-info-v2">
-                    <div class="met-user-name-v2">${escapeHtml(c.customerName)}</div>
+                    <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(c.customerName)}" title="Tocar para copiar el nombre">${escapeHtml(c.customerName)}</button></div>
                     <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedido${c.totalOrders === 1 ? '' : 's'} · ${escapeHtml(formatMoney(c.totalSpent))}</div>
                 </div>
                 <button type="button" class="ghost-button" data-fid-img="reactivar" data-fid-img-nombre="${escapeHtml(c.customerName)}" title="Copia una imagen con frase para pegar en el chat">🖼️ Imagen</button>
@@ -14345,7 +14345,9 @@ function _fbBind(body) {
             if (tipoBtn) { _fbTipo = ['general', ...FB_TIPOS_FID].includes(tipoBtn.dataset.fbTipo) ? tipoBtn.dataset.fbTipo : 'quindio'; _fbQ = { seg: '', resp: '' }; renderMetricasFeedback(); return; }
             if (_fbCumpleClick(e) || _fidClick(e)) return;
             const phoneBtn = e.target.closest('[data-fb-phone]');
-            if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.fbPhone); return; }
+            if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.fbPhone).then((ok) => showNotice(ok ? `Teléfono copiado: ${phoneBtn.dataset.fbPhone}` : 'No se pudo copiar el teléfono.', ok ? 'ok' : 'error')); return; }
+            const nomBtn = e.target.closest('[data-fb-nombre]');
+            if (nomBtn) { copyTextToClipboard(nomBtn.dataset.fbNombre).then((ok) => showNotice(ok ? `Nombre copiado: ${nomBtn.dataset.fbNombre}` : 'No se pudo copiar el nombre.', ok ? 'ok' : 'error')); return; }
             const seg = e.target.closest('[data-fb-copy], [data-fb-recopy]');
             if (seg) {
                 const id = seg.dataset.fbCopy || seg.dataset.fbRecopy;
