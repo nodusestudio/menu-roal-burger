@@ -11623,6 +11623,7 @@ let _prodQ = ''; // texto del buscador de productos
 // consultar ambas colecciones y combinar.
 let _metricsOrdersState = [];
 let _metricsOrdersLoadedAt = 0;
+let _metricsOrdersErr = {}; // última falla de lectura por colección (para mostrarla en pantalla)
 const METRICS_ORDERS_LOOKBACK_DAYS = 400;
 const METRICS_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -11640,6 +11641,7 @@ async function _loadMetricsOrders({ force = false } = {}) {
         .then((snap) => snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() })))
         .catch((err) => {
             console.error(`[Métricas] Falló la consulta de pedidos en ${collectionName}:`, (err && (err.code || err.message)) || err);
+            _metricsOrdersErr[collectionName] = String((err && (err.code || err.message)) || 'error');
             return [];
         });
     const [activeOrders, archivedOrders] = await Promise.all([
@@ -13059,7 +13061,7 @@ function _tempStats(ed) {
     const fin = ed.fin || Infinity;
     const clave = normalizeCategoryKey(ed.palabra || '');
     const byId = new Map();
-    [..._metricsOrdersState, ..._sqArchived, ..._sqActive].forEach((o) => byId.set(o.id, o)); // el historial (400 días) también cuenta: si la escucha en vivo falla, no queda en cero
+    [..._metricsOrdersState, ..._fbArchOrders, ...ordersState, ..._sqArchived, ..._sqActive].forEach((o) => { if (o && o.id) byId.set(o.id, o); }); // el historial (400 días) también cuenta: si la escucha en vivo falla, no queda en cero
     const prev = new Set();
     for (const o of _metricsOrdersState) {
         const ts = _orderTs(o); if (!ts || ts >= ed.inicio || o.voided || o.anulado) continue;
@@ -13148,11 +13150,11 @@ function _tempHtml() {
         return `<tr><td style="padding:7px 10px;opacity:.8">${lbl}</td>${celdas}</tr>`;
     }).join('');
     // Diagnóstico visible: cuántos pedidos se leyeron y qué productos con 2×1 existen (para confirmar la «palabra» del producto estrella).
-    const leidos = new Map(); [..._metricsOrdersState, ..._sqArchived, ..._sqActive].forEach((o) => { if ((_orderTs(o) || 0) >= SQ_INICIO_MS) leidos.set(o.id, o); });
+    const leidos = new Map(); [..._metricsOrdersState, ..._fbArchOrders, ...ordersState, ..._sqArchived, ..._sqActive].forEach((o) => { if (o && o.id && (_orderTs(o) || 0) >= SQ_INICIO_MS) leidos.set(o.id, o); });
     const nombres2x1 = new Map();
     leidos.forEach((o) => (o.items || []).forEach((it) => { if (_sqItemEs2x1(it) && it.productName) nombres2x1.set(it.productName, (nombres2x1.get(it.productName) || 0) + 1); }));
     const top2x1 = [...nombres2x1.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n, c]) => `${escapeHtml(n)} (${c})`).join(', ');
-    const diag = `<p class="admin-hint" style="margin-top:8px;opacity:.75">🔎 Pedidos desde el 30 de oct: ${nf(leidos.size)} (en vivo: ${nf(_sqActive.length)} activos + ${nf(_sqArchived.length)} archivados; historial cargado: ${nf(_metricsOrdersState.length)}). ${cols.map((c) => (_sqMalos[c] && _sqMalos[c].malos ? `${_sqMalos[c].malos} de ${_sqMalos[c].leidos} pedidos de ${c} no se pudieron interpretar (${escapeHtml(_sqMalos[c].ultimo)}).` : '')).join(' ')} Productos con 2×1 encontrados: ${top2x1 || 'ninguno'}.</p>`;
+    const diag = `<p class="admin-hint" style="margin-top:8px;opacity:.75">🔎 Pedidos desde el 30 de oct: ${nf(leidos.size)} (en vivo: ${nf(_sqActive.length)} activos + ${nf(_sqArchived.length)} archivados; historial: ${nf(_metricsOrdersState.length)}, ${_metricsOrdersLoadedAt ? 'cargado' : 'sin cargar'}; pedidos de hoy en pantalla: ${nf(ordersState.length)}; cerrados con encuesta: ${nf(_fbArchOrders.length)}). Estado de lectura: ${cols.map((c) => `${c}=${escapeHtml(_sqEstado[c] || 'esperando')}${_metricsOrdersErr[c] ? ` (historial: ${escapeHtml(_metricsOrdersErr[c])})` : ''}`).join(', ')}. ${cols.map((c) => (_sqMalos[c] && _sqMalos[c].malos ? `${_sqMalos[c].malos} de ${_sqMalos[c].leidos} pedidos de ${c} no se pudieron interpretar (${escapeHtml(_sqMalos[c].ultimo)}).` : '')).join(' ')} Productos con 2×1 encontrados: ${top2x1 || 'ninguno'}.</p>`;
     const tabla = stats.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.88rem">
         <thead><tr><th style="padding:7px 10px;text-align:left;opacity:.6;font-weight:600">Métrica</th>${stats.map(({ e }) => `<th style="padding:7px 10px;text-align:right">${escapeHtml(e.nombre.replace(/^Sabe a Quindío · /, ''))}</th>`).join('')}</tr></thead>
         <tbody>${filasMetricas}</tbody></table></div>
