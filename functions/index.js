@@ -3634,6 +3634,27 @@ exports.adminFacebook = onCall(
 );
 
 // ─────────────────────────────────────────────────────────────
+// TELEGRAM (canal de Roal Burger): conexión y ajustes desde Redes → Cuentas. Lógica en telegramCanal.js.
+// El token del bot vive en telegram_config/conexion (cerrado a clientes) y NUNCA sale hacia el panel.
+// ─────────────────────────────────────────────────────────────
+exports.adminTelegram = onCall(
+    { region: 'us-central1', cors: ALLOWED_ORIGINS, memory: '256MiB', cpu: 0.5, timeoutSeconds: 60 },
+    async (request) => {
+        const db = getFirestore();
+        const uid = await cuponPana.ensureAdmin(db, request);
+        const d = request.data || {};
+        const accion = String(d.accion || '');
+        const tg = require('./telegramCanal');
+        if (accion === 'estado') return tg.estadoConexion(db);
+        if (accion === 'conectar') return tg.conectar(db, { token: d.token, chat: d.chat }, uid);
+        if (accion === 'probar') return tg.probarConexion(db);
+        if (accion === 'ajustes') return tg.setAjustes(db, { activo: d.activo, historiasCodigo: d.historiasCodigo });
+        if (accion === 'desconectar') return tg.desconectar(db);
+        throw new HttpsError('invalid-argument', 'Acción desconocida.');
+    }
+);
+
+// ─────────────────────────────────────────────────────────────
 // ASISTENTE DE IA DEL ADMIN (solo lectura): el modelo elige herramienta y redacta; las cifras las
 // calcula functions/adminAsistente.js. Sin persistir hilos; el cliente reenvía el historial.
 // ─────────────────────────────────────────────────────────────

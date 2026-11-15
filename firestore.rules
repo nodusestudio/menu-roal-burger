@@ -565,6 +565,10 @@ service cloud.firestore {
     match /facebook_config/{doc} {
       allow read, write: if false;
     }
+    // Conexión con el canal de Telegram (token del bot): nadie la lee ni escribe desde el navegador.
+    match /telegram_config/{doc} {
+      allow read, write: if false;
+    }
     match /instagram_posts/{id} {
       allow read: if isAdmin();
       allow write: if false;

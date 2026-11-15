@@ -37094,6 +37094,7 @@ const rdState = {
     historias: {}, // estado de las historias por fecha
     ig: null,
     fb: null,      // estado de la página de Facebook (sin token)
+    tg: null,      // estado del canal de Telegram (sin token)
     config: null,  // contenido de la IA (tono, hashtags, horarios)
     resaltar: '',  // día a destacar un momento en el calendario (la publicación recién programada)
     ed: null       // publicación en edición
@@ -37160,6 +37161,7 @@ async function rdCargar() {
         rdState.ig = ig;
         if (!rdState.config) rdState.config = await rdIALlamar('leerConfig').catch(() => null);
         rdState.fb = await rdFbLlamar('estado').catch(() => null);
+        rdState.tg = await rdTgLlamar('estado').catch(() => null);
         await rdCargarHistorias();
         rdState.cargado = true;
     } finally {
@@ -39040,11 +39042,49 @@ function rdCuentaFbHtml() {
             <div id="rdFbPaginas"></div></details>`;
 }
 
+async function rdTgLlamar(accion, payload = {}) {
+    if (!firebaseFunctions) throw new Error('Servicio no disponible. Recarga la página.');
+    return (await firebaseFunctions.httpsCallable('adminTelegram')({ accion, ...payload })).data;
+}
+
+function rdCuentaTgHtml() {
+    const tg = rdState.tg;
+    if (!tg) return '<p class="cd-muted">No se pudo leer el estado de Telegram. Recarga la página; si sigue igual, la función de Telegram aún no está desplegada.</p>';
+    if (!tg.conectado) {
+        return `
+            <p class="cd-muted">Publica el Código del día (y el aviso de agotado) en un canal de Telegram. Se hace una sola vez:</p>
+            <ol class="cd-ig-pasos">
+                <li>En Telegram abre <strong>@BotFather</strong>, escribe <code>/newbot</code>, ponle nombre y copia el <strong>token</strong> que te da.</li>
+                <li>Crea un <strong>canal</strong> (Nuevo canal → público, con un nombre como <code>@roalburger</code>).</li>
+                <li>En el canal: Administradores → Agregar administrador → busca tu bot y déjale activado <strong>Publicar mensajes</strong>.</li>
+                <li>Pega aquí el token y el nombre del canal. El token se guarda en el servidor y nunca se vuelve a mostrar.</li>
+            </ol>
+            <div class="cd-ig-fila">
+                <input type="password" id="rdTgToken" placeholder="Token del bot (123456789:AAH...)" autocomplete="off" spellcheck="false">
+                <input type="text" id="rdTgChat" placeholder="@nombredelcanal" autocomplete="off" spellcheck="false">
+                <button type="button" class="section-action-btn primary" id="rdTgConectar">Conectar</button>
+            </div>`;
+    }
+    return `
+        <p class="rd-cuenta-estado">✅ Conectado el canal <strong>${escapeHtml(tg.chatTitle)}</strong>${tg.chatUsername ? ` (@${escapeHtml(tg.chatUsername)})` : ''} con el bot @${escapeHtml(tg.botUsername)} · publicación automática ${tg.activo ? '<strong class="cd-hist-ok">ACTIVA</strong>' : '<strong class="cd-hist-warn">APAGADA</strong>'}</p>
+        ${tg.ultimoError ? `<p class="cd-aviso">${escapeHtml(tg.ultimoError)}</p>` : ''}
+        <label class="cpana-toggle"><input type="checkbox" id="rdTgActivo"${tg.activo ? ' checked' : ''}><span><strong>Publicar automáticamente en Telegram</strong><br><span class="cd-muted">Apagado: nada sale solo en el canal.</span></span></label>
+        <label class="cpana-toggle"><input type="checkbox" id="rdTgCodigo"${tg.historiasCodigo ? ' checked' : ''}><span><strong>Publicar el Código del día y el aviso de agotado</strong></span></label>
+        <div class="cd-ig-fila">
+            <button type="button" class="cd-btn" id="rdTgProbar" title="Envía un mensaje de prueba al canal">🧪 Enviar mensaje de prueba</button>
+            <button type="button" class="cd-btn" id="rdTgDesconectar">Desconectar</button>
+        </div>`;
+}
+
 function rdRenderCuentas(body) {
     body.innerHTML = `
         <section class="cd-ig"><h4 class="cd-ig-titulo">📸 Instagram</h4>${rdCuentaIgHtml()}</section>
-        <section class="cd-ig"><h4 class="cd-ig-titulo">📘 Facebook (página)</h4>${rdCuentaFbHtml()}</section>`;
-    const refrescar = async () => { rdState.fb = await rdFbLlamar('estado').catch(() => null); rdRenderCuentas(body); };
+        <section class="cd-ig"><h4 class="cd-ig-titulo">📘 Facebook (página)</h4>${rdCuentaFbHtml()}</section>
+        <section class="cd-ig"><h4 class="cd-ig-titulo">✈️ Telegram (canal)</h4>${rdCuentaTgHtml()}</section>`;
+    const refrescar = async () => {
+        [rdState.fb, rdState.tg] = await Promise.all([rdFbLlamar('estado').catch(() => null), rdTgLlamar('estado').catch(() => null)]);
+        rdRenderCuentas(body);
+    };
     const accion = async (btn, espera, fn, ok) => {
         const label = btn.textContent;
         btn.disabled = true;
@@ -39077,6 +39117,23 @@ function rdRenderCuentas(body) {
         }
         btn.disabled = false;
         btn.textContent = 'Buscar mis páginas';
+    });
+    body.querySelector('#rdTgConectar')?.addEventListener('click', (e) => {
+        const token = String(body.querySelector('#rdTgToken')?.value || '').trim();
+        const chat = String(body.querySelector('#rdTgChat')?.value || '').trim();
+        if (!token || !chat) { showNotice('Pega el token del bot y el nombre del canal.', 'error'); return; }
+        accion(e.currentTarget, 'Conectando…', () => rdTgLlamar('conectar', { token, chat }), (r) => `Conectado el canal ${r.chatTitle}. Activa la publicación automática cuando quieras.`);
+    });
+    body.querySelector('#rdTgActivo')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdTgLlamar('ajustes', { activo: e.currentTarget.checked }), (r) => (r.activo ? 'Publicación automática en Telegram ACTIVADA.' : 'Publicación automática en Telegram apagada.')));
+    body.querySelector('#rdTgCodigo')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdTgLlamar('ajustes', { historiasCodigo: e.currentTarget.checked }), 'Ajuste guardado.'));
+    body.querySelector('#rdTgProbar')?.addEventListener('click', (e) => accion(e.currentTarget, 'Enviando…', async () => {
+        const r = await rdTgLlamar('probar');
+        if (!r.ok) throw new Error(`Telegram rechazó la prueba: ${r.error || 'error desconocido'}`);
+        return r;
+    }, (r) => `✅ Mensaje enviado al canal ${r.chatTitle}. Revísalo en Telegram.`));
+    body.querySelector('#rdTgDesconectar')?.addEventListener('click', (e) => {
+        if (!window.confirm('¿Desconectar Telegram? Se borra el token guardado y se deja de publicar en el canal.')) return;
+        accion(e.currentTarget, 'Desconectando…', () => rdTgLlamar('desconectar'), 'Telegram desconectado.');
     });
     body.querySelector('#rdFbActivo')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdFbLlamar('ajustes', { activo: e.currentTarget.checked }), (r) => (r.activo ? 'Publicación automática en Facebook ACTIVADA.' : 'Publicación automática en Facebook apagada.')));
     body.querySelector('#rdFbHashtags')?.addEventListener('change', (e) => accion(e.currentTarget, '', () => rdFbLlamar('ajustes', { conHashtags: e.currentTarget.checked }), 'Ajuste guardado.'));

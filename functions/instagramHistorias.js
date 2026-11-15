@@ -382,13 +382,25 @@ async function marcar(db, fecha, tipo, campos) {
 // Espejo en Facebook de una historia del Código del día. Se carga el módulo al usarlo (no al iniciar) para
 // no crear un ciclo de dependencias. Nunca lanza: un fallo de Facebook no puede afectar a Instagram.
 async function espejoFacebook(db, { fecha, tipo, status, parte, baseUrl, origen, nowMs, fetchFn }) {
+    if (!status?.imgToken) return;
+    const url = urlImagen(baseUrl, fecha, tipo, status.imgToken);
+    const org = parte?.origen || origen || 'automatica';
     try {
-        if (parte?.facebook?.estado === 'publicada' || !status?.imgToken) return;
-        await require('./facebookPagina').publicarHistoriaCodigo(db, {
-            fecha, tipo, urlImagen: urlImagen(baseUrl, fecha, tipo, status.imgToken), origen: parte?.origen || origen || 'automatica', nowMs, fetchFn
-        });
+        if (parte?.facebook?.estado !== 'publicada') {
+            await require('./facebookPagina').publicarHistoriaCodigo(db, { fecha, tipo, urlImagen: url, origen: org, nowMs, fetchFn });
+        }
     } catch (err) {
         console.error('espejo Facebook:', err.message);
+    }
+    // Telegram: mismo patrón, independiente de Facebook. Nunca lanza.
+    try {
+        if (parte?.telegram?.estado !== 'publicada') {
+            await require('./telegramCanal').publicarHistoriaCodigo(db, {
+                fecha, tipo, urlImagen: url, palabra: status?.[tipo]?.palabra || '', productoNombre: status?.[tipo]?.productoNombre || '', origen: org, nowMs, fetchFn
+            });
+        }
+    } catch (err) {
+        console.error('espejo Telegram:', err.message);
     }
 }
 
@@ -517,7 +529,7 @@ async function registrarPublicacion(db, { fecha, tipo, origen, ok, mediaId = '',
         await db.collection(PUBLICACIONES_COLLECTION).add({
             atMs: nowMs, at: Timestamp.fromMillis(nowMs), fecha, tipo, origen: origen || 'automatica', ok: ok === true,
             mediaId: String(mediaId || ''), error: String(error || '').slice(0, 300), palabra, productoNombre,
-            postId: String(postId || ''), resumen: String(resumen || '').slice(0, 120), canal: canal === 'facebook' ? 'facebook' : 'instagram'
+            postId: String(postId || ''), resumen: String(resumen || '').slice(0, 120), canal: ['facebook', 'telegram'].includes(canal) ? canal : 'instagram'
         });
     } catch (err) {
         console.error('registrarPublicacion:', err.message); // la bitácora nunca debe tumbar una publicación
