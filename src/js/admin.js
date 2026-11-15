@@ -12107,7 +12107,7 @@ function _sqCompute(periodo = 'todo') {
 
 function renderMetricasSabe() {
     const body = document.getElementById('sqBody');
-    if (!body) return;
+    if (!body) { if (_fbTipo === 'temporadas' && document.getElementById('fbBody') && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName || '')) renderMetricasFeedback(); return; }
     const periodo = rangoState('sabe').preset === 'todo' ? 'todo' : 'rango';
     const rango = _sqRango();
     const { festival, rows, customers, sinRegistro, mesaSinCliente, historyReady } = _sqCompute(periodo);
@@ -13014,13 +13014,186 @@ let _cumpleRegaloCargado = false;
 let _cumpleVentana = 7; // días hacia adelante: 0 = solo hoy, 1 = mañana, 7, 30 o 366 = todos
 let _cumpleQ = '';
 
+// ── Temporadas: cada edición de un evento (ej. Sabe a Quindío 2026, 2027…) se mide sola y se compara con las otras ──
+// Se guardan en configuracion/fidelizacion.temporadas (documento solo-admin). Una edición = nombre + fechas + palabra del
+// producto estrella. La primera es Sabe a Quindío 2026 (Burger Trifásica, desde el 30 de octubre).
+const TEMP_DEF = [{ id: 'sq-2026-1', nombre: 'Sabe a Quindío · Edición 1 (2026)', inicio: SQ_INICIO_MS, fin: 0, palabra: 'trifasica' }];
+let _tempEdiciones = null;
+let _tempCargando = false;
+
+async function _tempCargar() {
+    if (_tempEdiciones || _tempCargando || !firebaseDb) return;
+    _tempCargando = true;
+    try {
+        const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').get();
+        const lista = snap.exists && Array.isArray((snap.data() || {}).temporadas) ? snap.data().temporadas : [];
+        _tempEdiciones = lista.length ? lista.map((e) => ({ id: String(e.id), nombre: String(e.nombre || ''), inicio: Number(e.inicio) || 0, fin: Number(e.fin) || 0, palabra: String(e.palabra || '') })) : TEMP_DEF.map((e) => ({ ...e }));
+    } catch (err) {
+        console.warn('[Temporadas] config:', err.code || err.message);
+        _tempEdiciones = TEMP_DEF.map((e) => ({ ...e }));
+    }
+    _tempCargando = false;
+    if (_fbTipo === 'temporadas') renderMetricasFeedback();
+}
+
+function _tempGuardar(lista, aviso) {
+    const previa = _tempEdiciones;
+    _tempEdiciones = lista;
+    renderMetricasFeedback();
+    return firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').set({ temporadas: lista, actualizadoAt: firestoreNow() }, { merge: true })
+        .then(() => showNotice(aviso, 'ok'))
+        .catch((err) => { _tempEdiciones = previa; renderMetricasFeedback(); showNotice(`No se pudo guardar: ${err.message || 'error'}`, 'error'); });
+}
+
+// Números de una edición (puro sobre los datos ya cargados). Para comparar ediciones de distinta duración se dan también los promedios por día.
+function _tempStats(ed) {
+    const ahora = Date.now();
+    const fin = ed.fin || Infinity;
+    const clave = normalizeCategoryKey(ed.palabra || '');
+    const byId = new Map();
+    [..._sqArchived, ..._sqActive].forEach((o) => byId.set(o.id, o));
+    const prev = new Set();
+    for (const o of _metricsOrdersState) {
+        const ts = _orderTs(o); if (!ts || ts >= ed.inicio || o.voided || o.anulado) continue;
+        const k = _sqPhoneKey(o.customerPhoneDigits || o.customerPhone); if (k) prev.add(k);
+    }
+    for (const c of (clientsState || [])) {
+        const first = c.firstOrderAt ? (c.firstOrderAt.seconds ? c.firstOrderAt.seconds * 1000 : Number(c.firstOrderAt)) : 0;
+        const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
+        if (k && Number(c.totalOrders || 0) > 0 && first && first < ed.inicio) prev.add(k);
+    }
+    let pedidos = 0, unidades = 0, ventas = 0;
+    const clientes = new Map();
+    byId.forEach((o) => {
+        const ts = _orderTs(o) || 0;
+        if (o.voided || o.anulado || ts < ed.inicio || ts >= fin) return;
+        let u = 0, v = 0;
+        for (const it of (o.items || [])) {
+            if (!clave || !normalizeCategoryKey(it?.productName).includes(clave)) continue;
+            const q = Number(it.quantity || 0); if (q <= 0) continue;
+            u += q; v += Number(it.subtotal || 0);
+        }
+        if (!u) return;
+        pedidos += 1; unidades += u; ventas += v;
+        const k = _sqPhoneKey(o.customerPhoneDigits || o.customerPhone);
+        if (k) clientes.set(k, (clientes.get(k) || 0) + 1);
+    });
+    const dias = Math.max(1, Math.ceil((Math.min(fin, ahora) - ed.inicio) / 86400000));
+    const nClientes = clientes.size;
+    const nuevos = [...clientes.keys()].filter((k) => !prev.has(k)).length;
+    const repiten = [...clientes.values()].filter((n) => n >= 2).length;
+    const encuestas = _fbResponses.filter((r) => r.tipo === 'quindio' && r.ts && r.ts >= ed.inicio && r.ts < fin);
+    const positivas = encuestas.filter(_fbPositiva).length;
+    return {
+        dias, pedidos, unidades, ventas, nClientes, nuevos, repiten,
+        ticket: pedidos ? Math.round(ventas / pedidos) : 0,
+        pedidosDia: pedidos / dias, ventasDia: ventas / dias,
+        pctNuevos: nClientes ? Math.round(nuevos / nClientes * 100) : 0,
+        pctRepiten: nClientes ? Math.round(repiten / nClientes * 100) : 0,
+        encuestas: encuestas.length, pctPositivo: encuestas.length ? Math.round(positivas / encuestas.length * 100) : null
+    };
+}
+
+function _tempHtml() {
+    if (!_tempEdiciones) { _tempCargar(); return '<article class="admin-card"><p class="met-empty-note">Cargando temporadas…</p></article>'; }
+    if (!_sqUnsubs.length) _sqAttach();
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const fecha = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric' });
+    const lista = _tempEdiciones.slice().sort((a, b) => a.inicio - b.inicio);
+    const stats = lista.map((e) => ({ e, s: _tempStats(e) }));
+    const cartas = stats.map(({ e, s }) => {
+        const enCurso = !e.fin || e.fin > Date.now();
+        return `<div class="met-user-row-v2">
+            <div class="met-avatar">${enCurso ? '🟢' : '🏁'}</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(e.nombre)}</div>
+                <div class="met-user-meta-v2">${fecha(e.inicio)} → ${e.fin ? fecha(e.fin - 86400000) : 'sin cierre'} · ${enCurso ? '<strong style="color:#34d399">En curso</strong>' : 'Cerrada'} · ${s.dias} día${s.dias === 1 ? '' : 's'} · producto «${escapeHtml(e.palabra || '—')}»</div>
+            </div>
+            ${enCurso ? `<button type="button" class="ghost-button" data-temp-cerrar="${escapeHtml(e.id)}">Cerrar hoy</button>` : ''}
+            ${lista.length > 1 ? `<button type="button" class="ghost-button" data-temp-borrar="${escapeHtml(e.id)}" title="Quitar esta edición de la lista (no borra pedidos)">🗑️</button>` : ''}
+        </div>`;
+    }).join('');
+    const filasMetricas = [
+        ['Pedidos con el producto', (s) => nf(s.pedidos), (s) => s.pedidosDia],
+        ['Pedidos por día', (s) => s.pedidosDia.toFixed(1), (s) => s.pedidosDia],
+        ['Unidades vendidas', (s) => nf(s.unidades), null],
+        ['Ventas del producto', (s) => formatMoney(s.ventas), (s) => s.ventasDia],
+        ['Ventas por día', (s) => formatMoney(Math.round(s.ventasDia)), (s) => s.ventasDia],
+        ['Ticket por pedido', (s) => formatMoney(s.ticket), (s) => s.ticket],
+        ['Clientes distintos', (s) => nf(s.nClientes), null],
+        ['Clientes nuevos', (s) => `${nf(s.nuevos)} (${s.pctNuevos}%)`, (s) => s.pctNuevos],
+        ['Clientes que repitieron', (s) => `${nf(s.repiten)} (${s.pctRepiten}%)`, (s) => s.pctRepiten],
+        ['Encuestas respondidas', (s) => nf(s.encuestas), null],
+        ['Calificación positiva', (s) => (s.pctPositivo === null ? '—' : `${s.pctPositivo}%`), (s) => (s.pctPositivo === null ? 0 : s.pctPositivo)]
+    ].map(([lbl, fmt, cmp]) => {
+        const celdas = stats.map(({ s }, i) => {
+            let flecha = '';
+            if (cmp && i > 0) { const a = cmp(stats[i - 1].s), b = cmp(s); if (a > 0 && b !== a) flecha = ` <small style="color:${b > a ? '#34d399' : '#f87171'}">${b > a ? '▲' : '▼'} ${Math.abs(Math.round((b - a) / a * 100))}%</small>`; }
+            return `<td style="padding:7px 10px;text-align:right;white-space:nowrap">${fmt(s)}${flecha}</td>`;
+        }).join('');
+        return `<tr><td style="padding:7px 10px;opacity:.8">${lbl}</td>${celdas}</tr>`;
+    }).join('');
+    const tabla = stats.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.88rem">
+        <thead><tr><th style="padding:7px 10px;text-align:left;opacity:.6;font-weight:600">Métrica</th>${stats.map(({ e }) => `<th style="padding:7px 10px;text-align:right">${escapeHtml(e.nombre.replace(/^Sabe a Quindío · /, ''))}</th>`).join('')}</tr></thead>
+        <tbody>${filasMetricas}</tbody></table></div>
+        <p class="admin-hint" style="margin-top:8px">Las flechas comparan cada edición con la anterior usando promedios por día, para que una edición más corta no salga perdiendo. Clientes «nuevos» = su primer pedido fue durante esa edición.</p>` : '';
+    return `<article class="admin-card">
+            <div class="met-section-title">🏆 Temporadas <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· cada edición se mide sola</small></div>
+            <div class="metrics-users-list">${cartas}</div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">📈 Comparar ediciones</div>
+            ${tabla}
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">➕ Nueva edición</div>
+            <p class="admin-hint" style="margin:4px 0 10px">Úsala cuando vuelva el evento (ej. la 2.ª temporada de las cuponeras). Si hay una edición en curso, se cierra sola el día anterior al inicio de la nueva.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                <label class="admin-hint">Nombre<input type="text" id="tempNombre" class="admin-input" maxlength="80" placeholder="Sabe a Quindío · Edición 2 (2027)"></label>
+                <label class="admin-hint">Inicio<input type="date" id="tempInicio" class="admin-input"></label>
+                <label class="admin-hint">Producto estrella (palabra)<input type="text" id="tempPalabra" class="admin-input" maxlength="40" placeholder="trifásica"></label>
+                <button type="button" class="section-action-btn" data-temp-nueva>Crear edición</button>
+            </div>
+        </article>`;
+}
+
+function _tempClick(e) {
+    const t = e.target;
+    if (t.closest('[data-temp-nueva]')) {
+        const nombre = String(document.getElementById('tempNombre')?.value || '').trim();
+        const dia = String(document.getElementById('tempInicio')?.value || '');
+        const palabra = String(document.getElementById('tempPalabra')?.value || '').trim();
+        const inicio = Date.parse(`${dia}T00:00:00-05:00`);
+        if (!nombre || !palabra) { showNotice('Escribe el nombre y la palabra del producto estrella.', 'error'); return true; }
+        if (!Number.isFinite(inicio)) { showNotice('Elige la fecha de inicio.', 'error'); return true; }
+        if (inicio < SQ_INICIO_MS) { showNotice('Los datos de pedidos se cargan desde el 30 de octubre de 2026: elige una fecha posterior.', 'error'); return true; }
+        const lista = _tempEdiciones.map((x) => (!x.fin || x.fin > inicio) && x.inicio < inicio ? { ...x, fin: inicio } : x);
+        lista.push({ id: `t-${Date.now().toString(36)}`, nombre, inicio, fin: 0, palabra });
+        _tempGuardar(lista, 'Edición creada.');
+        return true;
+    }
+    const cerrar = t.closest('[data-temp-cerrar]');
+    if (cerrar) {
+        const manana = Date.parse(`${_sqDayKey(Date.now() + 86400000)}T00:00:00-05:00`);
+        _tempGuardar(_tempEdiciones.map((x) => (x.id === cerrar.dataset.tempCerrar ? { ...x, fin: manana } : x)), 'Edición cerrada: termina hoy.');
+        return true;
+    }
+    const borrar = t.closest('[data-temp-borrar]');
+    if (borrar) {
+        const ed = _tempEdiciones.find((x) => x.id === borrar.dataset.tempBorrar);
+        if (ed && window.confirm(`¿Quitar «${ed.nombre}» de la lista? No se borran pedidos ni encuestas.`)) _tempGuardar(_tempEdiciones.filter((x) => x.id !== ed.id), 'Edición quitada.');
+        return true;
+    }
+    return false;
+}
+
 function _fbNavTipoHtml(extra = '') {
     // 5 grupos arriba; los grupos con varias vistas muestran una segunda fila de subpestañas.
     const GRUPOS = [
         ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día']]],
         ['opiniones', '💛', 'Opiniones', [['general', 'Fidelización'], ['atender', 'Atender']]],
         ['campanas', '📣', 'Campañas', [['reactivar', 'Reactivar'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
-        ['temporadas', '🏆', 'Temporadas', [['quindio', 'Sabe a Quindío']]],
+        ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones'], ['quindio', 'Encuesta Sabe a Quindío']]],
         ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas'], ['config', 'Configuración']]]
     ];
     const grupoActivo = GRUPOS.find((g) => g[3].some((s) => s[0] === _fbTipo)) || GRUPOS[0];
@@ -13181,7 +13354,7 @@ function _fbCumpleClick(e) {
 //  · cupones_fidelizacion/{codigo}: cupón personal (cliente, beneficio, vigencia, estado, canje).
 //  · configuracion/fidelizacion: textos, umbrales y metas semanales editables.
 // Atribución: un cliente "volvió" si hizo un pedido pagado dentro de los 14 días siguientes al último mensaje/cupón que recibió.
-const FB_TIPOS_FID = ['hoy', 'cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
+const FB_TIPOS_FID = ['hoy', 'temporadas', 'cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
@@ -13811,6 +13984,8 @@ function _fbRenderFid(body) {
             <div class="met-section-title">🔁 Mejores clientes para reactivar (top ${reactivar.length})</div>
             <div class="metrics-users-list">${filasReact || '<p class="met-empty-note">Nadie por reactivar por ahora.</p>'}</div>
         </article>`;
+    } else if (_fbTipo === 'temporadas') {
+        html = _tempHtml();
     } else if (_fbTipo === 'config') {
         html = _fidConfigHtml();
     } else if (_fbTipo === 'atender') {
@@ -13967,6 +14142,7 @@ function _fbRenderFid(body) {
 // Clics de Reactivar, Cupones y Metas (listener delegado de #fbBody).
 function _fidClick(e) {
     const t = e.target;
+    if (_tempClick(e)) return true;
     const imgBtn = t.closest('[data-fid-img]');
     if (imgBtn) { _fidCopiarImagen(imgBtn.dataset.fidImgNombre, imgBtn.dataset.fidImg); return true; }
     const minBtn = t.closest('[data-fid-react-min]');
