@@ -12603,7 +12603,7 @@ let _fbReqActive = [];
 let _fbReqArchived = [];
 let _fbFilter = 'todos';
 let _fbRespListRef = null; // repinta la lista de respuestas (la define renderMetricasFeedback)
-let _fbTipo = 'quindio'; // cuestionario que se está viendo: 'quindio' (pedidos con 2×1) o 'general' (fidelización)
+let _fbTipo = 'hoy'; // cuestionario que se está viendo: 'quindio' (pedidos con 2×1) o 'general' (fidelización)
 let _fbQ = { seg: '', resp: '' }; // textos de los buscadores de Feedback
 let _fbTab = 'seguimiento'; // pestaña interna visible: seguimiento | metricas | respuestas | descargas
 let _fbArchOrders = []; // pedidos ya archivados al cerrar caja (para el seguimiento por día)
@@ -13015,11 +13015,25 @@ let _cumpleVentana = 7; // días hacia adelante: 0 = solo hoy, 1 = mañana, 7, 3
 let _cumpleQ = '';
 
 function _fbNavTipoHtml(extra = '') {
-    const TIPOS = [['quindio', '🏆', 'Sabe a Quindío'], ['general', '💛', 'Fidelización'], ['cumple', '🎂', 'Cumpleaños'], ['reactivar', '🔁', 'Reactivar'], ['atender', '⚠️', 'Atender'], ['referidos', '🤝', 'Referidos'], ['cupones', '🎟️', 'Cupones'], ['metas', '🎯', 'Metas'], ['config', '⚙️', 'Configuración']];
+    // 5 grupos arriba; los grupos con varias vistas muestran una segunda fila de subpestañas.
+    const GRUPOS = [
+        ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día']]],
+        ['opiniones', '💛', 'Opiniones', [['general', 'Fidelización'], ['atender', 'Atender']]],
+        ['campanas', '📣', 'Campañas', [['reactivar', 'Reactivar'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
+        ['temporadas', '🏆', 'Temporadas', [['quindio', 'Sabe a Quindío']]],
+        ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas'], ['config', 'Configuración']]]
+    ];
+    const grupoActivo = GRUPOS.find((g) => g[3].some((s) => s[0] === _fbTipo)) || GRUPOS[0];
+    const pend = _fidAtenderPendientes();
+    const badge = (n) => (n ? ` <b style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:.72rem">${n}</b>` : '');
+    const subHtml = grupoActivo[3].length > 1
+        ? `<nav class="menu-inner-tabs-nav" role="tablist" aria-label="Vistas de ${escapeHtml(grupoActivo[2])}" style="margin-top:6px">${grupoActivo[3].map(([id, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span>${lbl}${id === 'atender' ? badge(pend) : ''}</span></button>`).join('')}</nav>`
+        : '';
     return `<article class="admin-card menu-section-card" style="padding-bottom:0">
         <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Tipo de feedback">
-            ${TIPOS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}${id === 'atender' && _fidAtenderPendientes() ? ` <b style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:.72rem">${_fidAtenderPendientes()}</b>` : ''}</span></button>`).join('')}
+            ${GRUPOS.map(([gid, ico, lbl, subs]) => `<button type="button" class="menu-inner-tab${grupoActivo[0] === gid ? ' active' : ''}" data-fb-tipo="${grupoActivo[0] === gid ? _fbTipo : subs[0][0]}" role="tab" aria-selected="${grupoActivo[0] === gid}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}${gid === 'opiniones' ? badge(pend) : ''}</span></button>`).join('')}
         </nav>
+        ${subHtml}
         ${extra}
     </article>`;
 }
@@ -13045,8 +13059,8 @@ function _cumpleFechaLarga(mmdd) {
 
 function _cumpleMensaje(c, codigo = '', dias = 7) {
     const nombre = String(c.customerName || '').trim().split(/\s+/)[0];
-    const cupon = codigo ? ` Tu código personal: ${codigo} (válido ${dias} días).` : '';
-    return `¡Feliz cumpleaños${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! 🎂🎉 En ROAL BURGER queremos celebrarlo contigo: ${_cumpleRegalo}.${cupon} Respóndenos este mensaje y te lo dejamos listo 🍔`;
+    const cupon = codigo ? ` Tu código personal: *${codigo}* (válido ${dias} días, hasta el *${_fidVenceTexto(dias)}*).` : '';
+    return `🎂 ¡Feliz cumpleaños${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! Hoy la celebración va por nuestra cuenta: ${_cumpleRegalo}.${cupon} Respóndeme con un 🍔 y te lo dejo listo 🎉`;
 }
 
 async function _fbCumpleCargarConfig() {
@@ -13093,6 +13107,7 @@ function _fbRenderCumple(body) {
                 <div class="met-user-name-v2">${escapeHtml(c.customerName)} · ${escapeHtml(_cumpleFechaLarga(c.fechaCumple))}</div>
                 <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <strong>${badge}</strong>${saludado ? ' · <span style="color:#34d399;font-weight:700">✅ Saludado</span>' : ''}</div>
             </div>
+            ${phone ? `<button type="button" class="ghost-button" data-fid-img="cumple" data-fid-img-nombre="${escapeHtml(c.customerName)}" title="Copia una imagen con frase para pegar en el chat">🖼️ Imagen</button>` : ''}
             ${phone ? (saludado
                 ? `<button type="button" class="ghost-button" data-cumple-recopy="${escapeHtml(c.id)}">Volver a copiar</button>`
                 : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">Copiar saludo</button>`) : ''}
@@ -13166,7 +13181,7 @@ function _fbCumpleClick(e) {
 //  · cupones_fidelizacion/{codigo}: cupón personal (cliente, beneficio, vigencia, estado, canje).
 //  · configuracion/fidelizacion: textos, umbrales y metas semanales editables.
 // Atribución: un cliente "volvió" si hizo un pedido pagado dentro de los 14 días siguientes al último mensaje/cupón que recibió.
-const FB_TIPOS_FID = ['cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
+const FB_TIPOS_FID = ['hoy', 'cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
@@ -13313,9 +13328,79 @@ function _fidSemaforo(real, meta) {
 }
 
 // Mensaje manual para reactivar a un cliente que lleva tiempo sin pedir.
+// Fecha de vencimiento legible («jueves 20 de noviembre») para el cupón que vence en `dias` días.
+function _fidVenceTexto(dias) {
+    try {
+        return new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' })
+            .format(new Date(Date.now() + Math.max(1, Number(dias) || 1) * 86400000));
+    } catch (_) { return `en ${dias} días`; }
+}
+
+// Mensaje manual para reactivar. Cambia el tono según cuánto lleva sin pedir (cálido → te guardamos → último aviso),
+// usa el nombre, su historial real y el vencimiento real del cupón (nunca urgencia inventada).
 function _fidMensajeReactivar(c, codigo, dias) {
     const nombre = String(c.customerName || '').trim().split(/\s+/)[0];
-    return `¡Hola${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! 🍔 Hace rato no te vemos por ROAL BURGER y te extrañamos. Para tu próximo pedido te damos ${_fidCfg.reactivarOferta}. Tu código personal: ${codigo} (válido ${dias} días). Escríbenos y te lo dejamos listo 🙌`;
+    const hola = nombre && nombre !== 'Cliente' ? ` ${nombre}` : '';
+    const sin = Math.floor((Date.now() - _tsMs(c.lastOrderAt)) / 86400000);
+    const n = Number(c.totalOrders) || 0;
+    const oferta = _fidCfg.reactivarOferta;
+    const vence = _fidVenceTexto(dias);
+    const cierre = `Respóndeme *QUIERO* y te lo dejo listo 🙌`;
+    if (sin >= 90) {
+        const historia = n >= 5 ? `Eres de los que más nos ha pedido (${n} pedidos 🙌) y se nota la falta.` : `Hace ${Math.round(sin / 30)} meses que no pasas por ROAL y se nota la falta.`;
+        return `Hola${hola} 👋 ${historia} Te dejamos guardado ${oferta}, es solo tuyo hasta el *${vence}*; después lo liberamos. Tu código: *${codigo}*. ${cierre}`;
+    }
+    if (sin >= 46) {
+        return `Hola${hola} 🍔 Tu antojo de ROAL nos quedó pensando. Te guardamos ${oferta}, válido hasta el *${vence}*. Tu código personal: *${codigo}*. ${cierre}`;
+    }
+    return `¡Hola${hola}! 🍔 ¿Ya se te antojó una burger de las buenas? Para tu próximo pedido te damos ${oferta}, válido hasta el *${vence}*. Tu código personal: *${codigo}*. ${cierre}`;
+}
+
+// Frases motivacionales para la imagen que acompaña los mensajes de fidelización (se rotan para no repetir).
+const FID_FRASES = {
+    reactivar: ['Los mejores antojos siempre vuelven 🍔', 'Un buen día se arregla con una buena burger', 'Hoy es un gran día para consentirte', 'Lo bueno se disfruta, y mejor si es con papas'],
+    cumple: ['Que este nuevo año te sepa a victoria', 'Hoy se celebra a lo grande, ¡te lo mereces!', 'Cumplir años es sumar historias; la de hoy va con burger', 'Que tus sueños se cumplan igual que tus antojos'],
+    referido: ['Compartir una buena burger hace mejor el día de dos', 'Gracias por traer a los tuyos a la mesa', 'Las mejores recomendaciones vienen de amigos como tú'],
+    gracias: ['Gracias por contarnos, así crecemos juntos', 'Tu opinión nos hace mejores cada día', 'Con clientes como tú, cada burger sale mejor']
+};
+function _fidFrase(tipo) {
+    const lista = FID_FRASES[tipo] || FID_FRASES.reactivar;
+    return lista[Math.floor(Math.random() * lista.length)];
+}
+
+// Genera una tarjeta PNG (marca ROAL + nombre + frase) y la deja en el portapapeles para pegarla en WhatsApp junto al texto.
+// Si el navegador no deja copiar imágenes, la descarga.
+async function _fidCopiarImagen(nombre, tipo) {
+    const W = 1080, H = 1080;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#1a1210'); bg.addColorStop(1, '#3a1a08');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    const glow = g.createRadialGradient(W / 2, 360, 20, W / 2, 360, 620); glow.addColorStop(0, 'rgba(255,122,26,0.38)'); glow.addColorStop(1, 'rgba(255,122,26,0)');
+    g.fillStyle = glow; g.fillRect(0, 0, W, H);
+    try {
+        const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = '/logo.png'; });
+        const lw = 300, lh = lw * (img.height / img.width); g.drawImage(img, (W - lw) / 2, 90, lw, lh);
+    } catch (_) { /* sin logo: queda el texto */ }
+    g.textAlign = 'center'; g.fillStyle = '#ffb066'; g.font = '700 46px system-ui, sans-serif';
+    const n = String(nombre || '').trim().split(/\s+/)[0];
+    g.fillText(n && n !== 'Cliente' ? `${n},` : 'Para ti,', W / 2, 560);
+    g.fillStyle = '#ffffff'; g.font = '800 68px system-ui, sans-serif';
+    const palabras = _fidFrase(tipo).split(' '); const lineas = []; let cur = '';
+    palabras.forEach((p) => { const t = cur ? `${cur} ${p}` : p; if (g.measureText(t).width > W - 160 && cur) { lineas.push(cur); cur = p; } else cur = t; });
+    if (cur) lineas.push(cur);
+    lineas.forEach((l, i) => g.fillText(l, W / 2, 660 + i * 86));
+    g.fillStyle = '#ff7a1a'; g.font = '700 38px system-ui, sans-serif'; g.fillText('ROAL BURGER · Armenia, Quindío', W / 2, H - 70);
+    const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
+    if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return; }
+    try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        showNotice('Imagen copiada: pégala en el chat junto al mensaje.', 'ok');
+    } catch (_) {
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'roal-mensaje.png'; a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        showNotice('Tu navegador no copia imágenes: se descargó para adjuntarla.', 'ok');
+    }
 }
 
 function _fidOpcionesProducto(sel) {
@@ -13690,7 +13775,43 @@ function _fbRenderFid(body) {
     const hoyMs = Date.now();
     let html = '';
 
-    if (_fbTipo === 'config') {
+    if (_fbTipo === 'hoy') {
+        _fbCumpleCargarConfig();
+        const anio = Number(_sqDayKey(hoyMs).slice(0, 4));
+        const contactos = _fidContactos();
+        const conTel = (c) => String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '');
+        const fila = (ico, nombre, meta, tipoImg, btn) => `<div class="met-user-row-v2">
+            <div class="met-avatar">${ico}</div>
+            <div class="met-user-info-v2"><div class="met-user-name-v2">${escapeHtml(nombre)}</div><div class="met-user-meta-v2">${meta}</div></div>
+            <button type="button" class="ghost-button" data-fid-img="${tipoImg}" data-fid-img-nombre="${escapeHtml(nombre)}" title="Copia una imagen con frase para pegar en el chat">1 · 🖼️ Imagen</button>
+            ${btn}
+        </div>`;
+        const cumples = (clientsState || []).filter((c) => /^\d{2}-\d{2}$/.test(c.fechaCumple) && conTel(c).length >= 10 && _cumpleDiasFaltan(c.fechaCumple) === 0 && Number(c.cumpleSaludoAnio) !== anio);
+        const reactivar = (clientsState || []).map((c) => {
+            if (!(c.totalOrders > 0) || !(_tsMs(c.lastOrderAt) > 0)) return null;
+            const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
+            const ult = (contactos.get(k) || []).slice(-1)[0] || 0;
+            const dias = Math.floor((hoyMs - _tsMs(c.lastOrderAt)) / 86400000);
+            const libre = !ult || hoyMs - ult > FID_VENTANA_MS || ult < _tsMs(c.lastOrderAt);
+            return k && libre && dias >= (Number(_fidCfg.reactivarDias) || 21) && dias <= 150 ? { c, dias } : null;
+        }).filter(Boolean).sort((a, b) => b.c.totalSpent - a.c.totalSpent).slice(0, 15);
+        const pend = _fidAtenderPendientes();
+        const filasCumple = cumples.map((c) => fila('🎂', c.customerName, `${escapeHtml(conTel(c))} · cumple hoy`, 'cumple', `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">2 · Copiar saludo</button>`)).join('');
+        const filasReact = reactivar.map(({ c, dias }) => fila('🔁', c.customerName, `${escapeHtml(conTel(c))} · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}`, 'reactivar', `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">2 · Copiar mensaje</button>`)).join('');
+        html = `<article class="admin-card">
+            <div class="met-section-title">☀️ Tu cola de hoy <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en orden de importancia</small></div>
+            <p class="admin-hint" style="margin:4px 0 10px">Paso 1: copia la imagen y pégala en el chat. Paso 2: copia el mensaje y pégalo como texto. Al copiar el mensaje, la persona sale de la cola.</p>
+            ${pend ? `<button type="button" class="section-action-btn" data-fb-tipo="atender" style="margin-bottom:10px">⚠️ ${pend} cliente${pend === 1 ? '' : 's'} por atender (lo más urgente) →</button>` : ''}
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">🎂 Cumpleaños de hoy (${cumples.length})</div>
+            <div class="metrics-users-list">${filasCumple || '<p class="met-empty-note">Hoy nadie cumple años sin saludar.</p>'}</div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">🔁 Mejores clientes para reactivar (top ${reactivar.length})</div>
+            <div class="metrics-users-list">${filasReact || '<p class="met-empty-note">Nadie por reactivar por ahora.</p>'}</div>
+        </article>`;
+    } else if (_fbTipo === 'config') {
         html = _fidConfigHtml();
     } else if (_fbTipo === 'atender') {
         html = _fidAtenderHtml();
@@ -13720,6 +13841,7 @@ function _fbRenderFid(body) {
                     <div class="met-user-name-v2">${escapeHtml(c.customerName)}</div>
                     <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedido${c.totalOrders === 1 ? '' : 's'} · ${escapeHtml(formatMoney(c.totalSpent))}</div>
                 </div>
+                <button type="button" class="ghost-button" data-fid-img="reactivar" data-fid-img-nombre="${escapeHtml(c.customerName)}" title="Copia una imagen con frase para pegar en el chat">🖼️ Imagen</button>
                 <button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">Copiar mensaje + cupón</button>
             </div>`;
         }).join('');
@@ -13845,6 +13967,8 @@ function _fbRenderFid(body) {
 // Clics de Reactivar, Cupones y Metas (listener delegado de #fbBody).
 function _fidClick(e) {
     const t = e.target;
+    const imgBtn = t.closest('[data-fid-img]');
+    if (imgBtn) { _fidCopiarImagen(imgBtn.dataset.fidImgNombre, imgBtn.dataset.fidImg); return true; }
     const minBtn = t.closest('[data-fid-react-min]');
     if (minBtn) { _fidReactMin = Number(minBtn.dataset.fidReactMin); renderMetricasFeedback(); return true; }
     const estBtn = t.closest('[data-fid-cup-estado]');
@@ -13886,7 +14010,7 @@ function _fidClick(e) {
         if (!k) return true;
         const nombre = String(k.nombre || '').trim().split(/\s+/)[0];
         const dias = Math.max(1, Math.round((_tsMs(k.venceAt) - _tsMs(k.creadoAt)) / 86400000));
-        const copiado = copyTextToClipboard(`¡Hola${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! 🎉 Tu amigo ya pidió con tu invitación, ¡gracias por traerlo a ROAL BURGER! Tu recompensa: ${k.beneficio}. Tu código personal: ${k.codigo} (válido ${dias} días) 🙌`);
+        const copiado = copyTextToClipboard(`¡Hola${nombre && nombre !== 'Cliente' ? ` ${nombre}` : ''}! 🎉 Tu amigo ya pidió con tu invitación: ¡gracias por traerlo a la mesa de ROAL BURGER! Como agradecimiento tienes ${k.beneficio}. Tu código personal: *${k.codigo}* (válido hasta el *${_fidVenceTexto(dias)}*). Respóndeme *LISTO* y te lo dejo armado 🙌`);
         k.enviadoAt = firebase.firestore.Timestamp.now();
         firebaseDb.collection('cupones_fidelizacion').doc(k.codigo).update({ enviadoAt: k.enviadoAt }).catch((err) => { k.enviadoAt = null; showNotice(`No se pudo marcar la recompensa: ${err.message || 'error'}`, 'error'); renderMetricasFeedback(); });
         _fidGuardarEnvio({ id: k.clientId, customerName: k.nombre, customerPhoneDigits: k.telefono }, 'recompensa_referido', {});
