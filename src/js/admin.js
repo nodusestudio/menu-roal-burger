@@ -13118,14 +13118,16 @@ function _tempHtml() {
     const lista = _tempEdiciones.slice().sort((a, b) => a.inicio - b.inicio);
     const stats = lista.map((e) => ({ e, s: _tempStats(e) }));
     const cartas = stats.map(({ e, s }) => {
-        const enCurso = !e.fin || e.fin > Date.now();
+        const enCurso = !e.fin; // con fecha de cierre ya está cerrada (si el cierre es hoy, se dice «termina hoy»)
+        const cierraHoy = !!e.fin && e.fin > Date.now();
         return `<div class="met-user-row-v2">
             <div class="met-avatar">${enCurso ? '🟢' : '🏁'}</div>
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2">${escapeHtml(e.nombre)}</div>
-                <div class="met-user-meta-v2">${fecha(e.inicio)} → ${e.fin ? fecha(e.fin - 86400000) : 'sin cierre'} · ${enCurso ? '<strong style="color:#34d399">En curso</strong>' : 'Cerrada'} · ${s.dias} día${s.dias === 1 ? '' : 's'} · producto «${escapeHtml(e.palabra || '—')}»</div>
+                <div class="met-user-meta-v2">${fecha(e.inicio)} → ${e.fin ? fecha(e.fin - 86400000) : 'sin cierre'} · ${enCurso ? '<strong style="color:#34d399">En curso</strong>' : (cierraHoy ? '<strong style="color:#fbbf24">Cerrada · termina hoy</strong>' : 'Cerrada')} · ${s.dias} día${s.dias === 1 ? '' : 's'} · producto «${escapeHtml(e.palabra || '—')}»</div>
             </div>
             ${enCurso ? `<button type="button" class="ghost-button" data-temp-cerrar="${escapeHtml(e.id)}">Cerrar hoy</button>` : ''}
+            ${!enCurso ? `<button type="button" class="ghost-button" data-temp-reabrir="${escapeHtml(e.id)}" title="Quitar la fecha de cierre">Reabrir</button>` : ''}
             ${lista.length > 1 ? `<button type="button" class="ghost-button" data-temp-borrar="${escapeHtml(e.id)}" title="Quitar esta edición de la lista (no borra pedidos)">🗑️</button>` : ''}
         </div>`;
     }).join('');
@@ -13200,6 +13202,11 @@ function _tempClick(e) {
     if (cerrar) {
         const manana = Date.parse(`${_sqDayKey(Date.now() + 86400000)}T00:00:00-05:00`);
         _tempGuardar(_tempEdiciones.map((x) => (x.id === cerrar.dataset.tempCerrar ? { ...x, fin: manana } : x)), 'Edición cerrada: termina hoy.');
+        return true;
+    }
+    const reabrir = t.closest('[data-temp-reabrir]');
+    if (reabrir) {
+        _tempGuardar(_tempEdiciones.map((x) => (x.id === reabrir.dataset.tempReabrir ? { ...x, fin: 0 } : x)), 'Edición reabierta.');
         return true;
     }
     const borrar = t.closest('[data-temp-borrar]');
