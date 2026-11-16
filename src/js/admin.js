@@ -13030,6 +13030,7 @@ let _cumpleQ = '';
 const TEMP_DEF = [{ id: 'sq-2026-1', nombre: 'Sabe a Quindío · Edición 1 (2026)', inicio: SQ_INICIO_MS, fin: 0, palabra: 'trifasica' }];
 let _tempEdiciones = null;
 let _tempCargando = false;
+let _tempVerCerradas = false; // las ediciones cerradas se ocultan hasta que se pide verlas
 
 async function _tempCargar() {
     if (_tempEdiciones || _tempCargando || !firebaseDb) return;
@@ -13115,8 +13116,11 @@ function _tempHtml() {
         : (listos ? '' : '<article class="admin-card"><p class="met-empty-note">⏳ Cargando pedidos y clientes… las cifras se actualizan solas en unos segundos.</p></article>');
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const fecha = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric' });
-    const lista = _tempEdiciones.slice().sort((a, b) => a.inicio - b.inicio);
-    const stats = lista.map((e) => ({ e, s: _tempStats(e) }));
+    // La más nueva arriba. Las cerradas se ocultan (con su columna en la tabla) hasta pulsar «Ver ediciones cerradas».
+    const lista = _tempEdiciones.slice().sort((a, b) => b.inicio - a.inicio);
+    const nCerradas = lista.filter((e) => e.fin).length;
+    const visibles = _tempVerCerradas ? lista : lista.filter((e) => !e.fin);
+    const stats = visibles.map((e) => ({ e, s: _tempStats(e) }));
     const cartas = stats.map(({ e, s }) => {
         const enCurso = !e.fin; // con fecha de cierre ya está cerrada (si el cierre es hoy, se dice «termina hoy»)
         const cierraHoy = !!e.fin && e.fin > Date.now();
@@ -13146,7 +13150,7 @@ function _tempHtml() {
     ].map(([lbl, fmt, cmp]) => {
         const celdas = stats.map(({ s }, i) => {
             let flecha = '';
-            if (cmp && i > 0) { const a = cmp(stats[i - 1].s), b = cmp(s); if (a > 0 && b !== a) flecha = ` <small style="color:${b > a ? '#34d399' : '#f87171'}">${b > a ? '▲' : '▼'} ${Math.abs(Math.round((b - a) / a * 100))}%</small>`; }
+            if (cmp && i < stats.length - 1) { const a = cmp(stats[i + 1].s), b = cmp(s); if (a > 0 && b !== a) flecha = ` <small style="color:${b > a ? '#34d399' : '#f87171'}">${b > a ? '▲' : '▼'} ${Math.abs(Math.round((b - a) / a * 100))}%</small>`; }
             return `<td style="padding:7px 10px;text-align:right;white-space:nowrap">${fmt(s)}${flecha}</td>`;
         }).join('');
         return `<tr><td style="padding:7px 10px;opacity:.8">${lbl}</td>${celdas}</tr>`;
@@ -13160,10 +13164,11 @@ function _tempHtml() {
     const tabla = stats.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.88rem">
         <thead><tr><th style="padding:7px 10px;text-align:left;opacity:.6;font-weight:600">Métrica</th>${stats.map(({ e }) => `<th style="padding:7px 10px;text-align:right">${escapeHtml(e.nombre.replace(/^Sabe a Quindío · /, ''))}</th>`).join('')}</tr></thead>
         <tbody>${filasMetricas}</tbody></table></div>
-        <p class="admin-hint" style="margin-top:8px">Las flechas comparan cada edición con la anterior usando promedios por día, para que una edición más corta no salga perdiendo. Clientes «nuevos» = su primer pedido fue durante esa edición.</p>` : '';
+        <p class="admin-hint" style="margin-top:8px">Las flechas comparan cada edición con la anterior usando promedios por día, para que una edición más corta no salga perdiendo. Clientes «nuevos» = su primer pedido fue durante esa edición.${stats.length < 2 && nCerradas ? ' Para comparar con una edición anterior, abre «Ver ediciones cerradas».' : ''}</p>` : '';
     return `${aviso}<article class="admin-card">
             <div class="met-section-title">🏆 Temporadas <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· cada edición se mide sola</small></div>
-            <div class="metrics-users-list">${cartas}</div>
+            <div class="metrics-users-list">${cartas || '<p class="met-empty-note">No hay ediciones en curso. Crea una abajo o abre las cerradas.</p>'}</div>
+            ${nCerradas ? `<button type="button" class="ghost-button" data-temp-toggle style="margin-top:8px">${_tempVerCerradas ? '▲ Ocultar ediciones cerradas' : `▼ Ver ediciones cerradas (${nCerradas})`}</button>` : ''}
         </article>
         <article class="admin-card">
             <div class="met-section-title">📈 Comparar ediciones</div>
@@ -13185,6 +13190,7 @@ function _tempHtml() {
 function _tempClick(e) {
     const t = e.target;
     if (t.closest('[data-temp-reintentar]')) { _sqAttach(); return true; }
+    if (t.closest('[data-temp-toggle]')) { _tempVerCerradas = !_tempVerCerradas; renderMetricasFeedback(); return true; }
     if (t.closest('[data-temp-nueva]')) {
         const nombre = String(document.getElementById('tempNombre')?.value || '').trim();
         const dia = String(document.getElementById('tempInicio')?.value || '');
