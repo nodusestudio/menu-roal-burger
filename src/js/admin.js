@@ -13317,7 +13317,7 @@ function _fbRenderCumple(body) {
                 <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(c.customerName)}" title="Tocar para copiar el nombre">${escapeHtml(c.customerName)}</button> · ${escapeHtml(_cumpleFechaLarga(c.fechaCumple))}</div>
                 <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <strong>${badge}</strong>${saludado ? ' · <span style="color:#34d399;font-weight:700">✅ Saludado</span>' : ''}</div>
             </div>
-            ${phone ? `<button type="button" class="ghost-button" data-fid-img="cumple" data-fid-img-nombre="${escapeHtml(c.customerName)}" title="Copia una imagen con frase para pegar en el chat">🖼️ Imagen</button>` : ''}
+            ${phone ? `<button type="button" class="ghost-button" data-fid-prev="cumple" data-fid-id="${escapeHtml(c.id)}" title="Ver la imagen y el mensaje antes de copiarlos">👁 Vista previa</button>` : ''}
             ${phone ? (saludado
                 ? `<button type="button" class="ghost-button" data-cumple-recopy="${escapeHtml(c.id)}">Volver a copiar</button>`
                 : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">Copiar saludo</button>`) : ''}
@@ -13369,7 +13369,8 @@ function _fbCumpleClick(e) {
         renderMetricasFeedback();
         return true;
     }
-    const codigo = _fidNuevoCodigo(cliente.customerName);
+    const codigo = _fidPrevioCodigo.get(cliente.id) || _fidNuevoCodigo(cliente.customerName); // el de la vista previa: el cupon es el mismo que se vio
+    _fidPrevioCodigo.delete(cliente.id);
     const copiado = copyTextToClipboard(_cumpleMensaje(cliente, codigo, 7));
     _fidGuardarEnvio(cliente, 'cumple', { codigo, beneficio: _cumpleRegalo, dias: 7, productoId: _fidCfg.cumpleProductoId });
     cliente.cumpleSaludoAnio = anio;
@@ -13634,7 +13635,7 @@ function _fidCargarImg(src) {
 
 // Genera una tarjeta PNG 1080x1350 (logo, nombre, frase, foto de hamburguesa que rota y botón) y la deja en el portapapeles
 // para pegarla en WhatsApp junto al texto. Si el navegador no deja copiar imágenes, la descarga.
-async function _fidCopiarImagen(nombre, tipo) {
+async function _fidCopiarImagen(nombre, tipo, soloBlob = false) {
     const W = 1080, H = 1350;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
@@ -13705,7 +13706,12 @@ async function _fidCopiarImagen(nombre, tipo) {
     }
     g.fillStyle = '#ffd6aa'; g.font = '700 32px "Segoe UI", system-ui, sans-serif'; g.fillText('roalburger.com  ·  Armenia, Quindío', W / 2, 1306);
     const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
-    if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return; }
+    if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return null; }
+    if (soloBlob) return blob; // la vista previa la muestra y la copia despues sin volver a generarla
+    return _fidCopiarBlob(blob);
+}
+
+async function _fidCopiarBlob(blob) {
     try {
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
         showNotice('Imagen copiada: pégala en el chat junto al mensaje.', 'ok');
@@ -13714,6 +13720,75 @@ async function _fidCopiarImagen(nombre, tipo) {
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);
         showNotice('Tu navegador no copia imágenes: se descargó para adjuntarla.', 'ok');
     }
+}
+
+// ── Vista previa: muestra la imagen y el texto exactos antes de copiarlos ──────────────────────
+const _fidPrevioCodigo = new Map(); // cumpleaños: el código que se vio en la vista previa es el que se guarda
+let _fidPrevio = null; // { blob, url }
+
+function _fidCerrarPrevia() {
+    document.getElementById('fidPreviaOverlay')?.remove();
+    if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
+    _fidPrevio = null;
+}
+
+async function _fidAbrirPrevia(tipo, clienteId) {
+    const cliente = (clientsState || []).find((c) => c.id === clienteId);
+    if (!cliente) return;
+    _fidCerrarPrevia();
+    const ov = document.createElement('div');
+    ov.id = 'fidPreviaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    ov.innerHTML = '<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:920px;width:100%;color:#fff">Preparando la vista previa…</div>';
+    document.body.appendChild(ov);
+    _bindOverlayClose(ov, _fidCerrarPrevia);
+    const esCumple = tipo === 'cumple';
+    let texto = '';
+    let yaSaludado = false;
+    if (esCumple) {
+        const anio = Number(_sqDayKey(Date.now()).slice(0, 4));
+        yaSaludado = Number(cliente.cumpleSaludoAnio) === anio;
+        if (!yaSaludado) _fidPrevioCodigo.set(cliente.id, _fidNuevoCodigo(cliente.customerName));
+        texto = _cumpleMensaje(cliente, _fidPrevioCodigo.get(cliente.id) || '', 7);
+    } else {
+        let extra = [];
+        try { extra = await _fidPedidosCliente(cliente); } catch (_) { extra = []; }
+        texto = _fidMensajeReactivar(cliente, '', Number(_fidCfg.vigenciaDias) || 3, extra);
+    }
+    const pintarImagen = async () => {
+        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true);
+        if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
+        _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
+        const img = document.getElementById('fidPreviaImg');
+        if (img && _fidPrevio) img.src = _fidPrevio.url;
+    };
+    const btnCopiar = esCumple
+        ? (yaSaludado
+            ? `<button type="button" class="ghost-button" data-cumple-recopy="${escapeHtml(cliente.id)}">Volver a copiar el mensaje</button>`
+            : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(cliente.id)}">Copiar mensaje</button>`)
+        : `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(cliente.id)}">Copiar mensaje</button>`;
+    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:920px;width:100%;max-height:92vh;overflow:auto;color:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(cliente.customerName)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+            <div style="flex:0 0 300px;max-width:100%">
+                <img id="fidPreviaImg" alt="Imagen del mensaje" style="width:100%;border-radius:12px;background:#000;min-height:200px">
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
+            </div>
+            <div style="flex:1;min-width:260px">
+                <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
+                <div style="white-space:pre-wrap;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${btnCopiar}</div>
+                <p class="admin-hint" style="margin-top:10px">Pega primero la imagen en el chat y luego el mensaje como texto. Al copiar el mensaje, la persona sale de la cola.</p>
+            </div>
+        </div></div>`;
+    ov.addEventListener('click', (e) => {
+        if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
+        if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
+        if (e.target.closest('[data-fid-prev-otra]')) { pintarImagen(); return; }
+        const hecho = _fbCumpleClick(e) || _fidClick(e);
+        if (hecho) _fidCerrarPrevia();
+    });
+    pintarImagen();
 }
 
 function _fidOpcionesProducto(sel) {
@@ -14093,10 +14168,10 @@ function _fbRenderFid(body) {
         const anio = Number(_sqDayKey(hoyMs).slice(0, 4));
         const contactos = _fidContactos();
         const conTel = (c) => String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '');
-        const fila = (ico, nombre, meta, tipoImg, btn) => `<div class="met-user-row-v2">
+        const fila = (ico, nombre, meta, tipoImg, btn, idCli) => `<div class="met-user-row-v2">
             <div class="met-avatar">${ico}</div>
             <div class="met-user-info-v2"><div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(nombre)}" title="Tocar para copiar el nombre">${escapeHtml(nombre)}</button></div><div class="met-user-meta-v2">${meta}</div></div>
-            <button type="button" class="ghost-button" data-fid-img="${tipoImg}" data-fid-img-nombre="${escapeHtml(nombre)}" title="Copia una imagen con frase para pegar en el chat">1 · 🖼️ Imagen</button>
+            <button type="button" class="ghost-button" data-fid-prev="${tipoImg}" data-fid-id="${escapeHtml(idCli)}" title="Ver la imagen y el mensaje antes de copiarlos">👁 Vista previa</button>
             ${btn}
         </div>`;
         const cumples = (clientsState || []).filter((c) => /^\d{2}-\d{2}$/.test(c.fechaCumple) && conTel(c).length >= 10 && _cumpleDiasFaltan(c.fechaCumple) === 0 && Number(c.cumpleSaludoAnio) !== anio);
@@ -14109,11 +14184,11 @@ function _fbRenderFid(body) {
             return k && libre && dias >= (Number(_fidCfg.reactivarDias) || 21) && dias <= 150 ? { c, dias } : null;
         }).filter(Boolean).sort((a, b) => b.c.totalSpent - a.c.totalSpent).slice(0, 15);
         const pend = _fidAtenderPendientes();
-        const filasCumple = cumples.map((c) => fila('🎂', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · cumple hoy`, 'cumple', `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">2 · Copiar saludo</button>`)).join('');
-        const filasReact = reactivar.map(({ c, dias }) => fila('🔁', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}`, 'reactivar', `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">2 · Copiar mensaje</button>`)).join('');
+        const filasCumple = cumples.map((c) => fila('🎂', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · cumple hoy`, 'cumple', `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">Copiar saludo</button>`, c.id)).join('');
+        const filasReact = reactivar.map(({ c, dias }) => fila('🔁', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}`, 'reactivar', `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">Copiar mensaje</button>`, c.id)).join('');
         html = `<article class="admin-card">
             <div class="met-section-title">☀️ Tu cola de hoy <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en orden de importancia</small></div>
-            <p class="admin-hint" style="margin:4px 0 10px">Paso 1: copia la imagen y pégala en el chat. Paso 2: copia el mensaje y pégalo como texto. Al copiar el mensaje, la persona sale de la cola.</p>
+            <p class="admin-hint" style="margin:4px 0 10px">Toca «👁 Vista previa» para ver la imagen y el mensaje tal como los recibirá la persona; desde ahí copias cada uno y los pegas en el chat. Al copiar el mensaje, la persona sale de la cola.</p>
             ${_fidEnvios.some((e) => e.motivo === 'reactivar' && e.pendiente === true && e.descartado !== true) ? `<button type="button" class="section-action-btn" data-fb-tipo="reactivar" style="margin-bottom:10px">⏳ Tienes mensajes copiados sin confirmar como enviados →</button>` : ''}
             ${pend ? `<button type="button" class="section-action-btn" data-fb-tipo="atender" style="margin-bottom:10px">⚠️ ${pend} cliente${pend === 1 ? '' : 's'} por atender (lo más urgente) →</button>` : ''}
         </article>
@@ -14157,7 +14232,7 @@ function _fbRenderFid(body) {
                     <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(c.customerName)}" title="Tocar para copiar el nombre">${escapeHtml(c.customerName)}</button></div>
                     <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedido${c.totalOrders === 1 ? '' : 's'} · ${escapeHtml(formatMoney(c.totalSpent))}</div>
                 </div>
-                <button type="button" class="ghost-button" data-fid-img="reactivar" data-fid-img-nombre="${escapeHtml(c.customerName)}" title="Copia una imagen con frase para pegar en el chat">🖼️ Imagen</button>
+                <button type="button" class="ghost-button" data-fid-prev="reactivar" data-fid-id="${escapeHtml(c.id)}" title="Ver la imagen y el mensaje antes de copiarlos">👁 Vista previa</button>
                 <button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">Copiar mensaje</button>
             </div>`;
         }).join('');
@@ -14320,6 +14395,8 @@ function _fbRenderFid(body) {
 function _fidClick(e) {
     const t = e.target;
     if (_tempClick(e)) return true;
+    const prevBtn = t.closest('[data-fid-prev]');
+    if (prevBtn) { _fidAbrirPrevia(prevBtn.dataset.fidPrev, prevBtn.dataset.fidId); return true; }
     const imgBtn = t.closest('[data-fid-img]');
     if (imgBtn) { _fidCopiarImagen(imgBtn.dataset.fidImgNombre, imgBtn.dataset.fidImg); return true; }
     const minBtn = t.closest('[data-fid-react-min]');
