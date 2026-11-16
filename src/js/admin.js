@@ -14185,7 +14185,12 @@ function _fidConfigHtml() {
 function _fbRenderFid(body) {
     if (_fbTipo === 'cumple') { _fbRenderCumple(body); return; }
     _fidCargarCfg();
-    fetchClients().then(() => { if (FB_TIPOS_FID.includes(_fbTipo) && !document.getElementById('fidMarca')) renderMetricasFeedback(); }).catch(() => {});
+    const repintarSiCambio = () => {
+        if (!FB_TIPOS_FID.includes(_fbTipo)) return;
+        const marca = document.getElementById('fidMarca');
+        if (!marca || marca.dataset.clientes !== String(clientsState.length) || marca.dataset.carga !== _clientsLoad.estado) renderMetricasFeedback();
+    };
+    fetchClients().then(repintarSiCambio).catch(repintarSiCambio);
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const hoyMs = Date.now();
     let html = '';
@@ -14213,7 +14218,11 @@ function _fbRenderFid(body) {
         const pend = _fidAtenderPendientes();
         const filasCumple = cumples.map((c) => fila('🎂', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · cumple hoy`, 'cumple', `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">Copiar saludo</button>`, c.id)).join('');
         const filasReact = reactivar.map(({ c, dias }) => fila('🔁', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}`, 'reactivar', `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">Copiar mensaje</button>`, c.id)).join('');
+        const avisoClientes = _clientsLoad.estado === 'error'
+            ? `<p class="met-empty-note" style="color:#f87171">⚠️ No se pudieron cargar los clientes (${escapeHtml(_clientsLoad.error)}). <button type="button" class="ghost-button" data-fid-hoy-reintentar>Reintentar</button></p>`
+            : (!clientsState.length ? '<p class="met-empty-note">⏳ Cargando clientes… la cola se llena sola en unos segundos.</p>' : '');
         html = `<article class="admin-card">
+            ${avisoClientes}
             <div class="met-section-title">☀️ Tu cola de hoy <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en orden de importancia</small></div>
             <p class="admin-hint" style="margin:4px 0 10px">Toca «👁 Vista previa» para ver la imagen y el mensaje tal como los recibirá la persona; desde ahí copias cada uno y los pegas en el chat. Al copiar el mensaje, la persona sale de la cola.</p>
             ${_fidEnvios.some((e) => e.motivo === 'reactivar' && e.pendiente === true && e.descartado !== true) ? `<button type="button" class="section-action-btn" data-fb-tipo="reactivar" style="margin-bottom:10px">⏳ Tienes mensajes copiados sin confirmar como enviados →</button>` : ''}
@@ -14417,13 +14426,14 @@ function _fbRenderFid(body) {
         cupones: 'Cada cupón es único por cliente, con vigencia. Canjéalo aquí cuando el cliente dé su código.',
         metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Todo sale de los mensajes y cupones registrados y de los pedidos.',
         config: 'Todos los ajustes de fidelización en un solo lugar: ofertas, productos regalo, vigencias, reseña de Google y metas. Lo que guardes aquí lo usan las demás pestañas.'
-    }[_fbTipo] || ''}</p>`) + `<span id="fidMarca" hidden></span>` + html;
+    }[_fbTipo] || ''}</p>`) + `<span id="fidMarca" hidden data-clientes="${clientsState.length}" data-carga="${_clientsLoad.estado}"></span>` + html;
 }
 
 // Clics de Reactivar, Cupones y Metas (listener delegado de #fbBody).
 function _fidClick(e) {
     const t = e.target;
     if (_tempClick(e)) return true;
+    if (t.closest('[data-fid-hoy-reintentar]')) { fetchClients({ force: true }).then(() => renderMetricasFeedback()).catch(() => renderMetricasFeedback()); renderMetricasFeedback(); return true; }
     const prevBtn = t.closest('[data-fid-prev]');
     if (prevBtn) { _fidAbrirPrevia(prevBtn.dataset.fidPrev, prevBtn.dataset.fidId); return true; }
     const imgBtn = t.closest('[data-fid-img]');
