@@ -13439,8 +13439,9 @@ function _fidGuardarEnvio(cliente, motivo, { codigo = '', beneficio = '', dias =
     const telefono = String(cliente.customerPhoneDigits || cliente.customerPhone || '').replace(/\D/g, '');
     const base = { clientId: cliente.id || '', telefono, nombre: cliente.customerName || '', motivo };
     const envio = { ...base, creadoAt: ahora, cuponCodigo: codigo, ...envioExtra };
-    _fidEnvios = [..._fidEnvios, { id: `local-${Date.now()}`, ...envio }];
-    const escrituras = [firebaseDb.collection('fidelizacion_envios').add(envio)];
+    const envioRef = firebaseDb.collection('fidelizacion_envios').doc();
+    _fidEnvios = [..._fidEnvios, { id: envioRef.id, ...envio }];
+    const escrituras = [envioRef.set(envio)];
     if (codigo) {
         const prod = productoId ? productsState.find((p) => p.id === productoId) : null;
         const cupon = { ...base, codigo, beneficio, productoId: prod ? prod.id : '', productoNombre: prod ? String(prod.nombre || '') : '', ...cuponExtra, creadoAt: ahora, venceAt: firebase.firestore.Timestamp.fromMillis(ahora.toMillis() + dias * 86400000), estado: 'activo' };
@@ -13457,10 +13458,10 @@ function _fidEstadoCupon(k) {
 }
 
 // Contactos por teléfono: mensajes registrados, cupones, saludos de cumpleaños y solicitudes de feedback.
-function _fidContactos() {
+function _fidContactos(incluirPendientes = true) {
     const m = new Map();
     const add = (tel, ts) => { const k = _sqPhoneKey(tel); if (!k || !ts) return; if (!m.has(k)) m.set(k, []); m.get(k).push(ts); };
-    _fidEnvios.forEach((e) => add(e.telefono, _tsMs(e.creadoAt)));
+    _fidEnvios.forEach((e) => { if (e.descartado === true || (!incluirPendientes && e.pendiente === true)) return; add(e.telefono, _tsMs(e.creadoAt)); });
     (clientsState || []).forEach((c) => { if (c.cumpleSaludoAt) add(c.customerPhoneDigits || c.customerPhone, _tsMs(c.cumpleSaludoAt)); });
     const ords = new Map();
     [..._fbArchOrders, ...ordersState].forEach((o) => { if (o.id) ords.set(o.id, o); });
@@ -13480,7 +13481,7 @@ function _fidSemanaRango(offset) {
 function _fidMetasSemana(offset) {
     const { desde, hasta } = _fidSemanaRango(offset);
     const dentro = (t) => t >= desde && t < hasta;
-    const contactos = _fidContactos();
+    const contactos = _fidContactos(false); // lo copiado y aún sin confirmar «Ya lo envié» no cuenta como mensaje enviado
     const mensajes = [...contactos.values()].reduce((n, arr) => n + arr.filter(dentro).length, 0);
     const cuponesEmitidos = _fidCupones.filter((k) => dentro(_tsMs(k.creadoAt))).length;
     const canjes = _fidCupones.filter((k) => k.estado === 'canjeado' && dentro(_tsMs(k.canjeadoAt))).length;
@@ -13542,32 +13543,37 @@ function _fidVariante(clienteId) {
     return s && s.charCodeAt(s.length - 1) % 2 ? 'B' : 'A';
 }
 
-function _fidMensajeReactivar(c, codigo, dias, variante = 'A') {
-    if (variante === 'B') {
-        const nombreB = String(c.customerName || '').trim().split(/\s+/)[0];
-        const holaB = nombreB && nombreB !== 'Cliente' ? nombreB : 'Hola';
-        const sinB = Math.floor((Date.now() - _tsMs(c.lastOrderAt)) / 86400000);
-        const venceB = _fidVenceTexto(dias);
-        const ofertaB = _fidCfg.reactivarOferta;
-        if (sinB >= 90) return `${holaB}, ¿todo bien? 🙌 Hace ${Math.max(3, Math.round(sinB / 30))} meses que no te vemos y queremos que vuelvas: ${ofertaB}, solo para ti hasta el *${venceB}*. Tu código: *${codigo}*. ¿Te lo dejo listo?`;
-        if (sinB >= 46) return `${holaB}, te guardamos tu lugar en la mesa 🍔 ${ofertaB} te espera hasta el *${venceB}*. Tu código: *${codigo}*. Respóndeme *QUIERO* y lo activo.`;
-        return `${holaB} 🍔 Pregunta rápida: ¿cuál es tu burger favorita de ROAL? Respóndeme y de paso te regalo ${ofertaB} en tu próximo pedido, válido hasta el *${venceB}*. Tu código: *${codigo}*.`;
-    }
+// Producto que más ha pedido el cliente (suma de cantidades en sus pedidos disponibles). Ignora extras, cortesías, ajustes,
+// bebidas y salsas: la idea es nombrar su plato, no «tu Coca-Cola». Devuelve { nombre, veces } o null si no hay dato claro.
+function _fidProductoFavorito(c) {
+    const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
+    if (!k) return null;
+    const cuenta = new Map(); const vistos = new Set();
+    [..._fbArchOrders, ...ordersState].forEach((o) => {
+        if (!o || !o.id || vistos.has(o.id)) return;
+        vistos.add(o.id);
+        if (o.anulado === true || o.voided === true) return;
+        if (_sqPhoneKey(o.customerPhoneDigits || o.customerPhone) !== k) return;
+        (o.items || []).forEach((it) => {
+            if (!it || it.parentItemKey || it.cortesia) return;
+            const nom = String(it.productName || '').trim();
+            if (!nom || nom === 'Producto' || /bebida|gaseosa|jugo|adicion|extra|salsa|ajuste/i.test(String(it.categoryName || ''))) return;
+            cuenta.set(nom, (cuenta.get(nom) || 0) + (Number(it.quantity) || 1));
+        });
+    });
+    let mejor = null;
+    cuenta.forEach((veces, nombre) => { if (!mejor || veces > mejor.veces) mejor = { nombre, veces }; });
+    return mejor;
+}
+
+// Mensaje cálido firmado por Johan (modelo aprobado 2026-11-15): conecta primero, regala después, sin código ni presión.
+// El cupón se sigue registrando en el sistema (el cajero lo aplica por nombre/teléfono); el cliente solo responde.
+function _fidMensajeReactivar(c, codigo, dias) {
     const nombre = String(c.customerName || '').trim().split(/\s+/)[0];
     const hola = nombre && nombre !== 'Cliente' ? ` ${nombre}` : '';
-    const sin = Math.floor((Date.now() - _tsMs(c.lastOrderAt)) / 86400000);
-    const n = Number(c.totalOrders) || 0;
-    const oferta = _fidCfg.reactivarOferta;
-    const vence = _fidVenceTexto(dias);
-    const cierre = `Respóndeme *QUIERO* y te lo dejo listo 🙌`;
-    if (sin >= 90) {
-        const historia = n >= 5 ? `Eres de los que más nos ha pedido (${n} pedidos 🙌) y se nota la falta.` : `Hace ${Math.round(sin / 30)} meses que no pasas por ROAL y se nota la falta.`;
-        return `Hola${hola} 👋 ${historia} Te dejamos guardado ${oferta}, es solo tuyo hasta el *${vence}*; después lo liberamos. Tu código: *${codigo}*. ${cierre}`;
-    }
-    if (sin >= 46) {
-        return `Hola${hola} 🍔 Tu antojo de ROAL nos quedó pensando. Te guardamos ${oferta}, válido hasta el *${vence}*. Tu código personal: *${codigo}*. ${cierre}`;
-    }
-    return `¡Hola${hola}! 🍔 ¿Ya se te antojó una burger de las buenas? Para tu próximo pedido te damos ${oferta}, válido hasta el *${vence}*. Tu código personal: *${codigo}*. ${cierre}`;
+    const fav = _fidProductoFavorito(c);
+    const linFav = fav ? (fav.veces >= 2 ? `Me acordé de tu favorito, ${fav.nombre}: pocos lo piden tanto como tú.\n` : `Me acordé de tu pedido: ${fav.nombre}.\n`) : '';
+    return `Hola${hola} 👋 Soy Johan, de Roal Burger. Hace rato no te veo por aquí y quería saber cómo vas. 🍔\n${linFav}Cuando se te antoje, escríbeme y esa vez te regalo ${_fidCfg.reactivarOferta}. Te la tengo guardada hasta el *${_fidVenceTexto(dias)}*, sin afán 🙌`;
 }
 
 // Frases motivacionales para la imagen que acompaña los mensajes de fidelización (se rotan para no repetir).
@@ -13582,29 +13588,83 @@ function _fidFrase(tipo) {
     return lista[Math.floor(Math.random() * lista.length)];
 }
 
-// Genera una tarjeta PNG (marca ROAL + nombre + frase) y la deja en el portapapeles para pegarla en WhatsApp junto al texto.
-// Si el navegador no deja copiar imágenes, la descarga.
+// Fotos que rotan en la imagen (nunca la misma dos veces seguidas). Están en /productos-img/.
+const FID_FOTOS = ['burger-premium-papuda', 'burger-premium-triplete', 'burger-premium-caracas', 'burger-premium-cordillera', 'burger-premium-ranchera', 'burger-premium-plus'];
+function _fidFotoSiguiente() {
+    let ult = '';
+    try { ult = localStorage.getItem('fidFotoUlt') || ''; } catch (_) { /* sin almacenamiento */ }
+    const opciones = FID_FOTOS.filter((f) => f !== ult);
+    const f = opciones[Math.floor(Math.random() * opciones.length)];
+    try { localStorage.setItem('fidFotoUlt', f); } catch (_) { /* sin almacenamiento */ }
+    return f;
+}
+function _fidCargarImg(src) {
+    return new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
+}
+
+// Genera una tarjeta PNG 1080x1350 (logo, nombre, frase, foto de hamburguesa que rota y botón) y la deja en el portapapeles
+// para pegarla en WhatsApp junto al texto. Si el navegador no deja copiar imágenes, la descarga.
 async function _fidCopiarImagen(nombre, tipo) {
-    const W = 1080, H = 1080;
+    const W = 1080, H = 1350;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
-    const bg = g.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#1a1210'); bg.addColorStop(1, '#3a1a08');
+    const ORG = '#ff7a18', CRE = '#fff4e2';
+    // Fondo marrón con brillo naranja detrás de la hamburguesa
+    const bg = g.createRadialGradient(W / 2, H * 0.58, 40, W / 2, H * 0.58, W * 0.95);
+    bg.addColorStop(0, '#70340e'); bg.addColorStop(1, '#0e0703');
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    const glow = g.createRadialGradient(W / 2, 360, 20, W / 2, 360, 620); glow.addColorStop(0, 'rgba(255,122,26,0.38)'); glow.addColorStop(1, 'rgba(255,122,26,0)');
-    g.fillStyle = glow; g.fillRect(0, 0, W, H);
-    try {
-        const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = '/logo.png'; });
-        const lw = 300, lh = lw * (img.height / img.width); g.drawImage(img, (W - lw) / 2, 90, lw, lh);
-    } catch (_) { /* sin logo: queda el texto */ }
-    g.textAlign = 'center'; g.fillStyle = '#ffb066'; g.font = '700 46px system-ui, sans-serif';
+    const [foto, logo] = await Promise.all([_fidCargarImg(`/productos-img/${_fidFotoSiguiente()}.webp`), _fidCargarImg('/logo-blanco.png')]);
+    // Foto con bordes que se funden con el fondo
+    if (foto) {
+        const ph = document.createElement('canvas'); ph.width = 1080; ph.height = 850;
+        const p = ph.getContext('2d');
+        const k = foto.width / 900;
+        p.drawImage(foto, 24 * k, 118 * k, 853 * k, 671 * k, 0, 0, 1080, 850);
+        p.globalCompositeOperation = 'destination-in';
+        const vy = p.createLinearGradient(0, 0, 0, 850);
+        vy.addColorStop(0, 'rgba(0,0,0,0)'); vy.addColorStop(0.28, '#000'); vy.addColorStop(0.84, '#000'); vy.addColorStop(1, 'rgba(0,0,0,0)');
+        p.fillStyle = vy; p.fillRect(0, 0, 1080, 850);
+        const hx = p.createLinearGradient(0, 0, 1080, 0);
+        hx.addColorStop(0, 'rgba(0,0,0,0)'); hx.addColorStop(0.1, '#000'); hx.addColorStop(0.9, '#000'); hx.addColorStop(1, 'rgba(0,0,0,0)');
+        p.fillStyle = hx; p.fillRect(0, 0, 1080, 850);
+        g.drawImage(ph, 0, 470);
+    }
+    // Oscurece abajo para que se lea el botón y el pie
+    const sombra = g.createLinearGradient(0, 1060, 0, H);
+    sombra.addColorStop(0, 'rgba(12,6,2,0)'); sombra.addColorStop(1, 'rgba(12,6,2,0.85)');
+    g.fillStyle = sombra; g.fillRect(0, 1060, W, H - 1060);
+    // Logo
+    g.textAlign = 'center';
+    if (logo) { const lw = 440, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 46, lw, lh); }
+    else { g.fillStyle = CRE; g.font = '900 64px Impact, sans-serif'; g.fillText('ROAL BURGER', W / 2, 120); }
+    // Titular: frase en mayúsculas, última línea en naranja; el tamaño baja si la frase es larga
+    const frase = _fidFrase(tipo).replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim().toUpperCase();
+    const envolver = (size) => {
+        g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
+        const lineas = []; let cur = '';
+        frase.split(' ').forEach((w) => { const t = cur ? `${cur} ${w}` : w; if (g.measureText(t).width > W - 110 && cur) { lineas.push(cur); cur = w; } else cur = t; });
+        if (cur) lineas.push(cur);
+        return lineas;
+    };
+    let size = 112; let lineas = envolver(size);
+    while (lineas.length > 3 && size > 64) { size -= 8; lineas = envolver(size); }
+    if (lineas.length === 1) { const m = Math.ceil(frase.split(' ').length / 2); const a = frase.split(' '); lineas = [a.slice(0, m).join(' '), a.slice(m).join(' ')].filter(Boolean); }
+    g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
+    const lh = Math.round(size * 1.03);
+    const fin = 548; const ini = fin - lineas.length * lh;
     const n = String(nombre || '').trim().split(/\s+/)[0];
-    g.fillText(n && n !== 'Cliente' ? `${n},` : 'Para ti,', W / 2, 560);
-    g.fillStyle = '#ffffff'; g.font = '800 68px system-ui, sans-serif';
-    const palabras = _fidFrase(tipo).split(' '); const lineas = []; let cur = '';
-    palabras.forEach((p) => { const t = cur ? `${cur} ${p}` : p; if (g.measureText(t).width > W - 160 && cur) { lineas.push(cur); cur = p; } else cur = t; });
-    if (cur) lineas.push(cur);
-    lineas.forEach((l, i) => g.fillText(l, W / 2, 660 + i * 86));
-    g.fillStyle = '#ff7a1a'; g.font = '700 38px system-ui, sans-serif'; g.fillText('ROAL BURGER · Armenia, Quindío', W / 2, H - 70);
+    g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 8; g.shadowOffsetY = 4;
+    g.fillStyle = ORG; g.font = '700 46px "Segoe UI", system-ui, sans-serif';
+    g.fillText(n && n !== 'Cliente' ? `${n},` : 'Para ti,', W / 2, ini - 14);
+    g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
+    lineas.forEach((l, i) => { g.fillStyle = i === lineas.length - 1 ? ORG : CRE; g.fillText(l, W / 2, ini + (i + 1) * lh - 10); });
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    // Botón y pie
+    g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 24; g.shadowOffsetY = 8;
+    g.fillStyle = ORG; g.beginPath(); g.roundRect(250, 1148, 580, 96, 48); g.fill();
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    g.fillStyle = '#140802'; g.font = '700 44px "Segoe UI", system-ui, sans-serif'; g.fillText('PIDE AHORA  ›', W / 2, 1210);
+    g.fillStyle = '#ffd6aa'; g.font = '700 32px "Segoe UI", system-ui, sans-serif'; g.fillText('roalburger.com  ·  Armenia, Quindío', W / 2, 1306);
     const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
     if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return; }
     try {
@@ -14015,6 +14075,7 @@ function _fbRenderFid(body) {
         html = `<article class="admin-card">
             <div class="met-section-title">☀️ Tu cola de hoy <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en orden de importancia</small></div>
             <p class="admin-hint" style="margin:4px 0 10px">Paso 1: copia la imagen y pégala en el chat. Paso 2: copia el mensaje y pégalo como texto. Al copiar el mensaje, la persona sale de la cola.</p>
+            ${_fidEnvios.some((e) => e.motivo === 'reactivar' && e.pendiente === true && e.descartado !== true) ? `<button type="button" class="section-action-btn" data-fb-tipo="reactivar" style="margin-bottom:10px">⏳ Tienes mensajes copiados sin confirmar como enviados →</button>` : ''}
             ${pend ? `<button type="button" class="section-action-btn" data-fb-tipo="atender" style="margin-bottom:10px">⚠️ ${pend} cliente${pend === 1 ? '' : 's'} por atender (lo más urgente) →</button>` : ''}
         </article>
         <article class="admin-card">
@@ -14058,10 +14119,30 @@ function _fbRenderFid(body) {
                     <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedido${c.totalOrders === 1 ? '' : 's'} · ${escapeHtml(formatMoney(c.totalSpent))}</div>
                 </div>
                 <button type="button" class="ghost-button" data-fid-img="reactivar" data-fid-img-nombre="${escapeHtml(c.customerName)}" title="Copia una imagen con frase para pegar en el chat">🖼️ Imagen</button>
-                <button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">Copiar mensaje + cupón</button>
+                <button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">Copiar mensaje</button>
             </div>`;
         }).join('');
-        html = `<article class="admin-card">
+        const pendEnv = _fidEnvios.filter((e) => e.motivo === 'reactivar' && e.pendiente === true && e.descartado !== true).sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt));
+        const filasPend = pendEnv.map((e) => {
+            const min = Math.max(0, Math.round((hoyMs - _tsMs(e.creadoAt)) / 60000));
+            const hace = min < 60 ? `${min} min` : (min < 1440 ? `${Math.round(min / 60)} h` : `${Math.round(min / 1440)} d`);
+            return `<div class="met-user-row-v2">
+                <div class="met-avatar">⏳</div>
+                <div class="met-user-info-v2">
+                    <div class="met-user-name-v2">${escapeHtml(e.nombre || 'Cliente')}</div>
+                    <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(e.telefono || '')}" title="Tocar para copiar el número">📋 ${escapeHtml(e.telefono || '')}</button> · copiado hace ${hace}</div>
+                </div>
+                <button type="button" class="ghost-button" data-fid-recopiar="${escapeHtml(e.id)}">Copiar de nuevo</button>
+                <button type="button" class="feedback-pending-btn" data-fid-enviado="${escapeHtml(e.id)}">✅ Ya lo envié</button>
+                <button type="button" class="ghost-button" data-fid-descartar="${escapeHtml(e.id)}" title="No lo envié: anula el cupón y la persona vuelve a la lista">Descartar</button>
+            </div>`;
+        }).join('');
+        const tarjetaPend = pendEnv.length ? `<article class="admin-card">
+            <div class="met-section-title">⏳ Copiados, falta enviar (${pendEnv.length})</div>
+            <p class="admin-hint" style="margin:4px 0 10px">Copiaste el mensaje pero aún no lo confirmas. Recupéralo con «Copiar de nuevo» y, cuando lo envíes, toca «Ya lo envié».</p>
+            <div class="metrics-users-list">${filasPend}</div>
+        </article>` : '';
+        html = `${tarjetaPend}<article class="admin-card">
             <div class="met-section-title">🔁 Clientes para reactivar <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· sin pedir hace ${minDias} días o más</small></div>
             <div class="met-kpi-row">
                 ${_fidKpi('met-kpi-card--hi', nf(lista.length), 'Para escribir hoy')}
@@ -14303,6 +14384,39 @@ function _fidClick(e) {
         return true;
     }
 
+    const recop = t.closest('[data-fid-recopiar]');
+    if (recop) {
+        const e = _fidEnvios.find((x) => x.id === recop.dataset.fidRecopiar);
+        if (!e || !e.mensaje) { showNotice('Este mensaje no se guardó. Cópialo de nuevo desde la lista.', 'error'); return true; }
+        copyTextToClipboard(e.mensaje).then((ok) => showNotice(ok ? `Mensaje de ${e.nombre || 'cliente'} copiado de nuevo.` : 'No se pudo copiar. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
+        return true;
+    }
+    const enviado = t.closest('[data-fid-enviado]');
+    if (enviado) {
+        const e = _fidEnvios.find((x) => x.id === enviado.dataset.fidEnviado);
+        if (!e) return true;
+        e.pendiente = false;
+        firebaseDb.collection('fidelizacion_envios').doc(e.id).update({ pendiente: false, enviadoAt: firebase.firestore.Timestamp.now() })
+            .catch((err) => { e.pendiente = true; showNotice(`No se pudo confirmar: ${err.message || 'error'}`, 'error'); renderMetricasFeedback(); });
+        showNotice(`Listo: mensaje a ${e.nombre || 'cliente'} confirmado como enviado.`, 'ok');
+        renderMetricasFeedback();
+        return true;
+    }
+    const descartar = t.closest('[data-fid-descartar]');
+    if (descartar) {
+        const e = _fidEnvios.find((x) => x.id === descartar.dataset.fidDescartar);
+        if (!e) return true;
+        if (!window.confirm(`¿Descartar el mensaje a ${e.nombre || 'este cliente'}? Se anula su cupón y vuelve a la lista de reactivar.`)) return true;
+        e.descartado = true; e.pendiente = false;
+        const escrituras = [firebaseDb.collection('fidelizacion_envios').doc(e.id).update({ descartado: true, pendiente: false })];
+        const k = e.cuponCodigo ? _fidCupones.find((x) => x.codigo === e.cuponCodigo) : null;
+        if (k && _fidEstadoCupon(k) === 'activo') { k.estado = 'anulado'; escrituras.push(firebaseDb.collection('cupones_fidelizacion').doc(k.codigo).update({ estado: 'anulado' })); }
+        Promise.all(escrituras).catch((err) => showNotice(`No se pudo descartar: ${err.message || 'error'}`, 'error'));
+        showNotice('Mensaje descartado: la persona vuelve a la lista.', 'ok');
+        renderMetricasFeedback();
+        return true;
+    }
+
     const react = t.closest('[data-fid-reactivar]');
     if (react) {
         const cliente = (clientsState || []).find((c) => c.id === react.dataset.fidReactivar);
@@ -14311,9 +14425,11 @@ function _fidClick(e) {
         const codigo = _fidNuevoCodigo(cliente.customerName);
         // El copiado va PRIMERO (el navegador solo deja escribir al portapapeles durante el clic); el registro sigue en segundo plano.
         const variante = _fidVariante(cliente.id);
-        const copiado = copyTextToClipboard(_fidMensajeReactivar(cliente, codigo, dias, variante));
-        _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias, productoId: _fidCfg.reactivarProductoId, envioExtra: { variante }, cuponExtra: { variante } });
-        copiado.then((ok) => showNotice(ok ? `Mensaje con cupón listo para ${cliente.customerName}.` : 'No se pudo copiar el mensaje. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
+        const mensaje = _fidMensajeReactivar(cliente, codigo, dias);
+        const copiado = copyTextToClipboard(mensaje);
+        // Queda «pendiente de envío» con el texto guardado: si no alcanzas a enviarlo, lo recuperas en Reactivar → «Copiados, falta enviar».
+        _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias, productoId: _fidCfg.reactivarProductoId, envioExtra: { variante, pendiente: true, mensaje }, cuponExtra: { variante } });
+        copiado.then((ok) => showNotice(ok ? `Mensaje listo para ${cliente.customerName}. Cuando lo envíes, márcalo «Ya lo envié» en Reactivar.` : 'No se pudo copiar el mensaje. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
         renderMetricasFeedback();
         return true;
     }
