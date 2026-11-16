@@ -13407,6 +13407,7 @@ let _fidReactMin = 0;        // 0 = usar el umbral configurado
 let _fidCupEstado = 'todos'; // todos | activo | canjeado | vencido
 let _metasSemana = 0;        // 0 = esta semana, -1 = la pasada, -2 = hace dos…
 let _fidCfgCargada = false;
+const _fidReactOcupado = new Set(); // clientes cuyo mensaje se está preparando (evita doble clic)
 
 async function _fidCargarCfg() {
     if (_fidCfgCargada || !firebaseDb) return;
@@ -13558,11 +13559,11 @@ function _fidVariante(clienteId) {
 
 // Producto que más ha pedido el cliente (suma de cantidades en sus pedidos disponibles). Ignora extras, cortesías, ajustes,
 // bebidas y salsas: la idea es nombrar su plato, no «tu Coca-Cola». Devuelve { nombre, veces } o null si no hay dato claro.
-function _fidProductoFavorito(c) {
+function _fidProductoFavorito(c, extra = []) {
     const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
     if (!k) return null;
     const cuenta = new Map(); const vistos = new Set();
-    [..._fbArchOrders, ...ordersState].forEach((o) => {
+    [..._fbArchOrders, ...ordersState, ...extra].forEach((o) => {
         if (!o || !o.id || vistos.has(o.id)) return;
         vistos.add(o.id);
         if (o.anulado === true || o.voided === true) return;
@@ -13579,19 +13580,35 @@ function _fidProductoFavorito(c) {
     return mejor;
 }
 
+// Historial del cliente: sus pedidos activos y archivados (de todas las fechas), por teléfono. Se pide una vez por cliente y se guarda.
+const _fidHistCache = new Map();
+async function _fidPedidosCliente(c) {
+    const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
+    if (!k) return [];
+    if (_fidHistCache.has(k)) return _fidHistCache.get(k);
+    const valores = [...new Set([c.customerPhoneDigits, c.customerPhone, String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '')].map((v) => String(v || '').trim()).filter(Boolean))];
+    const consultas = [];
+    [ORDERS_COLLECTION, ORDERS_ARCHIVE_COLLECTION].forEach((col) => ['customerPhoneDigits', 'customerPhone'].forEach((campo) => valores.forEach((v) => {
+        consultas.push(firebaseDb.collection(col).where(campo, '==', v).limit(200).get().then((snap) => snap.docs.map((d) => normalizeOrder({ id: d.id, ...d.data() }))).catch(() => []));
+    })));
+    const lista = (await Promise.all(consultas)).flat();
+    _fidHistCache.set(k, lista);
+    return lista;
+}
+
 // Mensaje cálido firmado por Johan (modelo aprobado 2026-11-15): conecta primero, regala después, sin código ni presión.
 // El cupón se sigue registrando en el sistema (el cajero lo aplica por nombre/teléfono); el cliente solo responde.
-function _fidMensajeReactivar(c, codigo, dias) {
+function _fidMensajeReactivar(c, codigo, dias, extra = []) {
     const nombre = String(c.customerName || '').trim().split(/\s+/)[0];
     const hola = nombre && nombre !== 'Cliente' ? ` ${nombre}` : '';
-    const fav = _fidProductoFavorito(c);
+    const fav = _fidProductoFavorito(c, extra);
     const linFav = fav ? (fav.veces >= 2 ? `Me acordé de tu favorito, ${fav.nombre}: pocos lo piden tanto como tú.\n` : `Me acordé de tu pedido: ${fav.nombre}.\n`) : '';
     return `Hola${hola} 👋 Soy Johan, de Roal Burger. Hace rato no te veo por aquí y quería saber cómo vas. 🍔\n${linFav}Cuando se te antoje, escríbeme y esa vez te regalo ${_fidCfg.reactivarOferta}. Te la tengo guardada hasta el *${_fidVenceTexto(dias)}*, sin afán 🙌`;
 }
 
 // Frases motivacionales para la imagen que acompaña los mensajes de fidelización (se rotan para no repetir).
 const FID_FRASES = {
-    reactivar: ['Los mejores antojos siempre vuelven 🍔', 'Un buen día se arregla con una buena burger', 'Hoy es un gran día para consentirte', 'Lo bueno se disfruta, y mejor si es con papas'],
+    reactivar: ['Los mejores antojos siempre vuelven 🍔', 'Un buen día se arregla con una buena burger', 'Hoy es un gran día para consentirte', 'Tu antojo te está esperando'],
     cumple: ['Que este nuevo año te sepa a victoria', 'Hoy se celebra a lo grande, ¡te lo mereces!', 'Cumplir años es sumar historias; la de hoy va con burger', 'Que tus sueños se cumplan igual que tus antojos'],
     referido: ['Compartir una buena burger hace mejor el día de dos', 'Gracias por traer a los tuyos a la mesa', 'Las mejores recomendaciones vienen de amigos como tú'],
     gracias: ['Gracias por contarnos, así crecemos juntos', 'Tu opinión nos hace mejores cada día', 'Con clientes como tú, cada burger sale mejor']
@@ -13664,7 +13681,7 @@ async function _fidCopiarImagen(nombre, tipo) {
     if (lineas.length === 1) { const m = Math.ceil(frase.split(' ').length / 2); const a = frase.split(' '); lineas = [a.slice(0, m).join(' '), a.slice(m).join(' ')].filter(Boolean); }
     g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
     const lh = Math.round(size * 1.03);
-    const fin = 548; const ini = fin - lineas.length * lh;
+    const fin = 548; const ini = Math.max(fin - lineas.length * lh, 262); // el nombre nunca pisa el logo
     const n = String(nombre || '').trim().split(/\s+/)[0];
     g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 8; g.shadowOffsetY = 4;
     g.fillStyle = ORG; g.font = '700 46px "Segoe UI", system-ui, sans-serif';
@@ -13677,6 +13694,15 @@ async function _fidCopiarImagen(nombre, tipo) {
     g.fillStyle = ORG; g.beginPath(); g.roundRect(250, 1148, 580, 96, 48); g.fill();
     g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
     g.fillStyle = '#140802'; g.font = '700 44px "Segoe UI", system-ui, sans-serif'; g.fillText('PIDE AHORA  ›', W / 2, 1210);
+    // En reactivar, la imagen nombra el mismo regalo que promete el texto (así imagen y mensaje dicen lo mismo).
+    if (tipo === 'reactivar' && _fidCfg.reactivarOferta) {
+        const regalo = `🎁 Tu regalo: ${_fidCfg.reactivarOferta}`;
+        g.font = '700 34px "Segoe UI", system-ui, sans-serif';
+        const rw = Math.min(W - 80, g.measureText(regalo).width + 70);
+        g.fillStyle = 'rgba(12,6,2,0.82)'; g.beginPath(); g.roundRect((W - rw) / 2, 1062, rw, 62, 31); g.fill();
+        g.strokeStyle = ORG; g.lineWidth = 2; g.stroke();
+        g.fillStyle = CRE; g.fillText(regalo, W / 2, 1104);
+    }
     g.fillStyle = '#ffd6aa'; g.font = '700 32px "Segoe UI", system-ui, sans-serif'; g.fillText('roalburger.com  ·  Armenia, Quindío', W / 2, 1306);
     const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
     if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return; }
@@ -14434,16 +14460,25 @@ function _fidClick(e) {
     if (react) {
         const cliente = (clientsState || []).find((c) => c.id === react.dataset.fidReactivar);
         if (!cliente) return true;
-        const dias = Number(_fidCfg.vigenciaDias) || 3;
-        const codigo = _fidNuevoCodigo(cliente.customerName);
-        // El copiado va PRIMERO (el navegador solo deja escribir al portapapeles durante el clic); el registro sigue en segundo plano.
-        const variante = _fidVariante(cliente.id);
-        const mensaje = _fidMensajeReactivar(cliente, codigo, dias);
-        const copiado = copyTextToClipboard(mensaje);
-        // Queda «pendiente de envío» con el texto guardado: si no alcanzas a enviarlo, lo recuperas en Reactivar → «Copiados, falta enviar».
-        _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias, productoId: _fidCfg.reactivarProductoId, envioExtra: { variante, pendiente: true, mensaje }, cuponExtra: { variante } });
-        copiado.then((ok) => showNotice(ok ? `Mensaje listo para ${cliente.customerName}. Cuando lo envíes, márcalo «Ya lo envié» en Reactivar.` : 'No se pudo copiar el mensaje. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
-        renderMetricasFeedback();
+        if (_fidReactOcupado.has(cliente.id)) return true;
+        _fidReactOcupado.add(cliente.id);
+        (async () => {
+            try {
+                const dias = Number(_fidCfg.vigenciaDias) || 3;
+                const codigo = _fidNuevoCodigo(cliente.customerName);
+                const variante = _fidVariante(cliente.id);
+                // Trae su historial completo para nombrar lo que más ha pedido (si falla, el mensaje sale igual, sin esa línea).
+                let extra = [];
+                try { extra = await _fidPedidosCliente(cliente); } catch (_) { extra = []; }
+                const mensaje = _fidMensajeReactivar(cliente, codigo, dias, extra);
+                const copiado = copyTextToClipboard(mensaje);
+                // Queda «pendiente de envío» con el texto guardado: si no alcanzas a enviarlo, lo recuperas en Reactivar → «Copiados, falta enviar».
+                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias, productoId: _fidCfg.reactivarProductoId, envioExtra: { variante, pendiente: true, mensaje }, cuponExtra: { variante } });
+                const ok = await copiado;
+                showNotice(ok ? `Mensaje listo para ${cliente.customerName}. Cuando lo envíes, márcalo «Ya lo envié» en Reactivar.` : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');
+                renderMetricasFeedback();
+            } finally { _fidReactOcupado.delete(cliente.id); }
+        })();
         return true;
     }
 
