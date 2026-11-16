@@ -13395,7 +13395,7 @@ function _fbCumpleClick(e) {
 const FB_TIPOS_FID = ['hoy', 'temporadas', 'cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
-    reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
+    reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', reactivarOfertaPapas: 'unas papas gratis con tu pedido', reactivarProductoPapasId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
     disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: 'https://g.page/r/CWR7IKp8khuOEAE/review',
     referidoAmigo: 'una bebida gratis en tu primer pedido', referidoRecompensa: 'unas papas gratis en tu próximo pedido', referidoAmigoProductoId: '', referidoRecompensaProductoId: '',
     metaMensajes: 30, metaReactivados: 8, metaCanjes: 6, metaVentas: 500000, margenPct: 35, costoRegalo: 3000
@@ -13421,6 +13421,7 @@ async function _fidCargarCfg() {
         _fidCfg = {
             reactivarOferta: String(x.reactivarOferta || FID_CFG_DEF.reactivarOferta),
             reactivarProductoId: String(x.reactivarProductoId || ''), cumpleProductoId: String(x.cumpleProductoId || ''),
+            reactivarOfertaPapas: String(x.reactivarOfertaPapas || FID_CFG_DEF.reactivarOfertaPapas), reactivarProductoPapasId: String(x.reactivarProductoPapasId || ''),
             disculpaOferta: String(x.disculpaOferta || FID_CFG_DEF.disculpaOferta), disculpaProductoId: String(x.disculpaProductoId || ''), googleResenaUrl: String(x.googleResenaUrl || FID_CFG_DEF.googleResenaUrl),
             referidoAmigo: String(x.referidoAmigo || FID_CFG_DEF.referidoAmigo), referidoRecompensa: String(x.referidoRecompensa || FID_CFG_DEF.referidoRecompensa),
             referidoAmigoProductoId: String(x.referidoAmigoProductoId || ''), referidoRecompensaProductoId: String(x.referidoRecompensaProductoId || ''),
@@ -13563,7 +13564,7 @@ function _fidVariante(clienteId) {
 function _fidProductoFavorito(c, extra = []) {
     const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
     if (!k) return null;
-    const cuenta = new Map(); const vistos = new Set();
+    const cuenta = new Map(); const vistos = new Set(); const combos = new Set();
     [..._fbArchOrders, ...ordersState, ...extra].forEach((o) => {
         if (!o || !o.id || vistos.has(o.id)) return;
         vistos.add(o.id);
@@ -13572,12 +13573,15 @@ function _fidProductoFavorito(c, extra = []) {
         (o.items || []).forEach((it) => {
             if (!it || it.parentItemKey || it.cortesia) return;
             const nom = String(it.productName || '').trim();
-            if (!nom || nom === 'Producto' || /bebida|gaseosa|jugo|adicion|extra|salsa|ajuste/i.test(String(it.categoryName || ''))) return;
+            const cat = String(it.categoryName || '');
+            const esCombo = /combo/i.test(`${nom} ${cat}`); // los combos cuentan como plato (traen bebida y papas)
+            if (!nom || nom === 'Producto' || (!esCombo && /bebida|gaseosa|jugo|adicion|extra|salsa|ajuste/i.test(cat))) return;
             cuenta.set(nom, (cuenta.get(nom) || 0) + (Number(it.quantity) || 1));
+            if (esCombo) combos.add(nom);
         });
     });
     let mejor = null;
-    cuenta.forEach((veces, nombre) => { if (!mejor || veces > mejor.veces) mejor = { nombre, veces }; });
+    cuenta.forEach((veces, nombre) => { if (!mejor || veces > mejor.veces) mejor = { nombre, veces, esCombo: combos.has(nombre) }; });
     return mejor;
 }
 
@@ -13597,6 +13601,24 @@ async function _fidPedidosCliente(c) {
     return lista;
 }
 
+// Regalo de Reactivar: juega entre bebida y papas. Si lo que más pide es un combo (ya trae bebida) siempre papas;
+// con los demás se alterna contra el último regalo que recibió (si es la primera vez, se reparte parejo por cliente).
+function _fidRegaloReactivar(c, extra = []) {
+    const fav = _fidProductoFavorito(c, extra);
+    let tipo;
+    if (fav && fav.esCombo) tipo = 'papas';
+    else {
+        const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
+        const previos = (_fidCupones || []).filter((x) => x.motivo === 'reactivar' && x.regalo && _sqPhoneKey(x.telefono) === k)
+            .sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt));
+        if (previos.length) tipo = previos[0].regalo === 'papas' ? 'bebida' : 'papas';
+        else { let h = 0; String(c.id || '').split('').forEach((ch) => { h += ch.charCodeAt(0); }); tipo = h % 2 ? 'papas' : 'bebida'; }
+    }
+    return tipo === 'papas'
+        ? { tipo, oferta: _fidCfg.reactivarOfertaPapas || FID_CFG_DEF.reactivarOfertaPapas, productoId: _fidCfg.reactivarProductoPapasId || '' }
+        : { tipo, oferta: _fidCfg.reactivarOferta, productoId: _fidCfg.reactivarProductoId || '' };
+}
+
 // Mensaje cálido firmado por Johan (modelo aprobado 2026-11-15): conecta primero, regala después, sin código ni presión.
 // El cupón se sigue registrando en el sistema (el cajero lo aplica por nombre/teléfono); el cliente solo responde.
 function _fidMensajeReactivar(c, codigo, dias, extra = []) {
@@ -13604,7 +13626,7 @@ function _fidMensajeReactivar(c, codigo, dias, extra = []) {
     const hola = nombre && nombre !== 'Cliente' ? ` ${nombre}` : '';
     const fav = _fidProductoFavorito(c, extra);
     const linFav = fav ? (fav.veces >= 2 ? `Me acordé de tu favorito, ${fav.nombre}: pocos lo piden tanto como tú.\n` : `Me acordé de tu pedido: ${fav.nombre}.\n`) : '';
-    return `Hola${hola} 👋 Soy Johan, de Roal Burger. Hace rato no te veo por aquí y quería saber cómo vas. 🍔\n${linFav}Cuando se te antoje, escríbeme y esa vez te regalo ${_fidCfg.reactivarOferta}. Te la tengo guardada hasta el *${_fidVenceTexto(dias)}*, sin afán 🙌`;
+    return `Hola${hola} 👋 Soy Johan, de Roal Burger. Hace rato no te veo por aquí y quería saber cómo vas. 🍔\n${linFav}Cuando se te antoje, escríbeme y esa vez te regalo ${_fidRegaloReactivar(c, extra).oferta}. Te la tengo guardada hasta el *${_fidVenceTexto(dias)}*, sin afán 🙌`;
 }
 
 // Frases motivacionales para la imagen que acompaña los mensajes de fidelización (se rotan para no repetir).
@@ -13635,7 +13657,7 @@ function _fidCargarImg(src) {
 
 // Genera una tarjeta PNG 1080x1350 (logo, nombre, frase, foto de hamburguesa que rota y botón) y la deja en el portapapeles
 // para pegarla en WhatsApp junto al texto. Si el navegador no deja copiar imágenes, la descarga.
-async function _fidCopiarImagen(nombre, tipo, soloBlob = false) {
+async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = '') {
     const W = 1080, H = 1350;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
@@ -13696,8 +13718,9 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false) {
     g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
     g.fillStyle = '#140802'; g.font = '700 44px "Segoe UI", system-ui, sans-serif'; g.fillText('PIDE AHORA  ›', W / 2, 1210);
     // En reactivar, la imagen nombra el mismo regalo que promete el texto (así imagen y mensaje dicen lo mismo).
-    if (tipo === 'reactivar' && _fidCfg.reactivarOferta) {
-        const regalo = `🎁 Tu regalo: ${_fidCfg.reactivarOferta}`;
+    const ofertaImg = regaloTexto || _fidCfg.reactivarOferta;
+    if (tipo === 'reactivar' && ofertaImg) {
+        const regalo = `🎁 Tu regalo: ${ofertaImg}`;
         g.font = '700 34px "Segoe UI", system-ui, sans-serif';
         const rw = Math.min(W - 80, g.measureText(regalo).width + 70);
         g.fillStyle = 'rgba(12,6,2,0.82)'; g.beginPath(); g.roundRect((W - rw) / 2, 1062, rw, 62, 31); g.fill();
@@ -13745,6 +13768,7 @@ async function _fidAbrirPrevia(tipo, clienteId) {
     const esCumple = tipo === 'cumple';
     let texto = '';
     let yaSaludado = false;
+    let regaloImg = '';
     if (esCumple) {
         const anio = Number(_sqDayKey(Date.now()).slice(0, 4));
         yaSaludado = Number(cliente.cumpleSaludoAnio) === anio;
@@ -13754,9 +13778,10 @@ async function _fidAbrirPrevia(tipo, clienteId) {
         let extra = [];
         try { extra = await _fidPedidosCliente(cliente); } catch (_) { extra = []; }
         texto = _fidMensajeReactivar(cliente, '', Number(_fidCfg.vigenciaDias) || 3, extra);
+        regaloImg = _fidRegaloReactivar(cliente, extra).oferta;
     }
     const pintarImagen = async () => {
-        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true);
+        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true, regaloImg);
         if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
         _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
         const img = document.getElementById('fidPreviaImg');
@@ -14116,8 +14141,10 @@ function _fidConfigHtml() {
     return `<article class="admin-card">
         <div class="met-section-title">🔁 Reactivar clientes</div>
         <div style="display:grid;gap:8px">
-            ${campo('fcgReactOferta', 'Oferta del mensaje («te damos <em>oferta</em>»)', c.reactivarOferta)}
-            ${prod('fcgReactProducto', 'Producto regalo (el POS lo agrega gratis al aplicar el cupón)', c.reactivarProductoId)}
+            ${campo('fcgReactOferta', 'Regalo 1 — bebida («te regalo <em>oferta</em>»)', c.reactivarOferta)}
+            ${prod('fcgReactProducto', 'Producto del regalo 1 (el POS lo agrega gratis al aplicar el cupón)', c.reactivarProductoId)}
+            ${campo('fcgReactOfertaPapas', 'Regalo 2 — papas (se usa si lo que más pide es un combo, que ya trae bebida; y se alterna con la bebida)', c.reactivarOfertaPapas)}
+            ${prod('fcgReactProductoPapas', 'Producto del regalo 2 (papas)', c.reactivarProductoPapasId)}
             <div style="display:flex;gap:10px;flex-wrap:wrap">${num('fcgReactDias', 'Días sin pedir', c.reactivarDias, 7, 120)}${num('fcgVigencia', 'Vigencia del cupón (días)', c.vigenciaDias, 1, 30)}</div>
         </div>
     </article>
@@ -14264,8 +14291,10 @@ function _fbRenderFid(body) {
                 ${_fidKpi('', nf(todos.length), 'Clientes con pedidos')}
             </div>
             <div style="margin-top:12px;display:grid;gap:8px">
-                <label class="admin-hint">Oferta del mensaje («te damos <em>oferta</em>»)<input type="text" id="fidOferta" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.reactivarOferta)}"></label>
-                <label class="admin-hint">Producto regalo (el POS lo agrega gratis al aplicar el cupón)<select id="fidProductoReactivar" class="admin-input">${_fidOpcionesProducto(_fidCfg.reactivarProductoId)}</select></label>
+                <label class="admin-hint">Regalo 1 — bebida («te regalo <em>oferta</em>»)<input type="text" id="fidOferta" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.reactivarOferta)}"></label>
+                <label class="admin-hint">Producto del regalo 1 (el POS lo agrega gratis al aplicar el cupón)<select id="fidProductoReactivar" class="admin-input">${_fidOpcionesProducto(_fidCfg.reactivarProductoId)}</select></label>
+                <label class="admin-hint">Regalo 2 — papas (si lo que más pide es un combo, que ya trae bebida, siempre se regalan papas; con los demás se alterna con la bebida)<input type="text" id="fidOfertaPapas" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.reactivarOfertaPapas)}"></label>
+                <label class="admin-hint">Producto del regalo 2 (papas)<select id="fidProductoPapas" class="admin-input">${_fidOpcionesProducto(_fidCfg.reactivarProductoPapasId)}</select></label>
                 <label class="admin-hint">Producto regalo de cumpleaños<select id="fidProductoCumple" class="admin-input">${_fidOpcionesProducto(_fidCfg.cumpleProductoId)}</select></label>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
                     <label class="admin-hint">Días sin pedir<input type="number" id="fidDias" class="admin-input" min="7" max="120" style="width:100px" value="${Number(_fidCfg.reactivarDias) || 21}"></label>
@@ -14461,7 +14490,7 @@ function _fidClick(e) {
         const regalo = v('fcgCumpleRegalo');
         _cumpleRegalo = regalo;
         guardar({
-            reactivarOferta: v('fcgReactOferta'), reactivarProductoId: v('fcgReactProducto'), reactivarDias: n('fcgReactDias', 21, 7, 120), vigenciaDias: n('fcgVigencia', 3, 1, 30),
+            reactivarOferta: v('fcgReactOferta'), reactivarProductoId: v('fcgReactProducto'), reactivarOfertaPapas: v('fcgReactOfertaPapas') || FID_CFG_DEF.reactivarOfertaPapas, reactivarProductoPapasId: v('fcgReactProductoPapas'), reactivarDias: n('fcgReactDias', 21, 7, 120), vigenciaDias: n('fcgVigencia', 3, 1, 30),
             cumpleRegalo: regalo, cumpleProductoId: v('fcgCumpleProducto'),
             disculpaOferta: v('fcgDisculpaOferta'), disculpaProductoId: v('fcgDisculpaProducto'), googleResenaUrl: url,
             referidoAmigo: v('fcgRefAmigo'), referidoAmigoProductoId: v('fcgRefAmigoProducto'), referidoRecompensa: v('fcgRefRecompensa'), referidoRecompensaProductoId: v('fcgRefRecompensaProducto'),
@@ -14472,7 +14501,7 @@ function _fidClick(e) {
     if (t.closest('[data-fid-guardar-cfg]')) {
         const oferta = String(document.getElementById('fidOferta')?.value || '').trim();
         if (!oferta) { showNotice('Escribe la oferta del mensaje.', 'error'); return true; }
-        guardar({ reactivarOferta: oferta, reactivarProductoId: String(document.getElementById('fidProductoReactivar')?.value || ''), cumpleProductoId: String(document.getElementById('fidProductoCumple')?.value || ''), reactivarDias: Math.max(7, Number(document.getElementById('fidDias')?.value) || 21), vigenciaDias: Math.max(1, Number(document.getElementById('fidVigencia')?.value) || 3) }, 'Configuración guardada.');
+        guardar({ reactivarOferta: oferta, reactivarProductoId: String(document.getElementById('fidProductoReactivar')?.value || ''), reactivarOfertaPapas: String(document.getElementById('fidOfertaPapas')?.value || '').trim() || FID_CFG_DEF.reactivarOfertaPapas, reactivarProductoPapasId: String(document.getElementById('fidProductoPapas')?.value || ''), cumpleProductoId: String(document.getElementById('fidProductoCumple')?.value || ''), reactivarDias: Math.max(7, Number(document.getElementById('fidDias')?.value) || 21), vigenciaDias: Math.max(1, Number(document.getElementById('fidVigencia')?.value) || 3) }, 'Configuración guardada.');
         return true;
     }
     if (t.closest('[data-fid-guardar-atender]')) {
@@ -14550,7 +14579,8 @@ function _fidClick(e) {
                 const mensaje = _fidMensajeReactivar(cliente, codigo, dias, extra);
                 const copiado = copyTextToClipboard(mensaje);
                 // Queda «pendiente de envío» con el texto guardado: si no alcanzas a enviarlo, lo recuperas en Reactivar → «Copiados, falta enviar».
-                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: _fidCfg.reactivarOferta, dias, productoId: _fidCfg.reactivarProductoId, envioExtra: { variante, pendiente: true, mensaje }, cuponExtra: { variante } });
+                const regalo = _fidRegaloReactivar(cliente, extra);
+                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: regalo.oferta, dias, productoId: regalo.productoId, envioExtra: { variante, pendiente: true, mensaje, regalo: regalo.tipo }, cuponExtra: { variante, regalo: regalo.tipo } });
                 const ok = await copiado;
                 showNotice(ok ? `Mensaje listo para ${cliente.customerName}. Cuando lo envíes, márcalo «Ya lo envié» en Reactivar.` : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');
                 renderMetricasFeedback();
