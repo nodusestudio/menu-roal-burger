@@ -17933,6 +17933,8 @@
             body.admin-unlocked:not(.mesero-mode) #printSnack{bottom:48px!important}
             #rrWrap #bancoSilencioBtn[data-tip]:hover::after{content:attr(data-tip);position:absolute;right:0;bottom:34px;white-space:nowrap;background:#0d111b;color:#fff;font:.78rem system-ui,sans-serif;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);pointer-events:none}
             #rrVozPanel{right:16px;left:auto;bottom:42px;position:fixed}
+            /* la barra no tapa el final de ninguna pantalla */
+            body.admin-unlocked:not(.mesero-mode) .admin-page{padding-bottom:60px}
             /* botones cuadrados de esquinas curvas, todos del mismo tamaño */
             #rrVoz.rr-bar-btn,#rrFodi.rr-bar-btn,#rrBtn,#rrWrap #bancoSilencioBtn{width:30px!important;height:26px!important;border-radius:8px!important;margin:0!important;float:none!important;font-size:.95rem!important;line-height:1;box-shadow:none!important;padding:0!important;display:flex!important;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.22)}
             #rrVoz.rr-bar-btn{background:rgba(255,255,255,.08)}
@@ -18097,5 +18099,39 @@
         </div>
         <button type="button" id="fodiFlotBurbuja" aria-label="Hablar con FODI" title="FODI"></button>
     </div>
+    <script>
+    /* REGLA: la barra fija de abajo (#rrWrap) nunca tapa nada. Toda ventana/desplegable fijo hijo del body
+       que llegue hasta el borde de abajo se recorta para terminar justo encima de la barra. */
+    (function(){
+        var IGNORAR={rrWrap:1,fodiFlot:1,cobroQrCard:1,printSnack:1,bancoSilencioCaja:1};
+        var pend=false;
+        function ajustar(){
+            pend=false;
+            try{
+                var bar=document.getElementById('rrWrap');
+                if(!bar||getComputedStyle(bar).display==='none'){document.documentElement.style.setProperty('--rr-bar-h','0px');return;}
+                var h=bar.offsetHeight||0;
+                document.documentElement.style.setProperty('--rr-bar-h',h+'px');
+                var limite=window.innerHeight-h;
+                var kids=document.body.children;
+                for(var i=0;i<kids.length;i++){
+                    var el=kids[i];
+                    if(IGNORAR[el.id]||el.tagName==='SCRIPT'||el.tagName==='STYLE')continue;
+                    var cs=getComputedStyle(el);
+                    if(cs.position!=='fixed'||cs.display==='none'||cs.visibility==='hidden')continue;
+                    var r=el.getBoundingClientRect();
+                    if(r.height<120||r.top>=limite)continue;          /* chicos o ya por debajo: no tocar */
+                    if(r.bottom<=limite+1){if(el.dataset.rrAj){el.style.removeProperty('max-height');}continue;}
+                    if(cs.bottom!=='auto'&&parseFloat(cs.bottom)<h){el.style.setProperty('bottom',h+'px','important');el.dataset.rrAj='1';}
+                    else if(cs.bottom==='auto'){el.style.setProperty('max-height',Math.max(120,limite-r.top)+'px','important');el.style.setProperty('overflow-y','auto','important');el.dataset.rrAj='1';}
+                }
+            }catch(e){}
+        }
+        function pedir(){if(!pend){pend=true;requestAnimationFrame(ajustar);}}
+        new MutationObserver(pedir).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden','open']});
+        window.addEventListener('resize',pedir);
+        pedir();
+    })();
+    </script>
 </body>
 </html>
