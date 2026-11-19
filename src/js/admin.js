@@ -30257,6 +30257,7 @@ function _updateGastoSplitStatus() {
 function _updateGastoConfirmState() {
     const btn = document.getElementById('gastoRegistrarBtn');
     if (!btn) return;
+    _gastoSyncNext();
     _gastoRenderFuenteEfectivo();
     const monto = _gastoMontoTotal();
     if (_gastoSplitOn) {
@@ -30318,12 +30319,86 @@ async function _addGastoSubcategoria() {
     if (typeof renderCategoriasGastosPanel === 'function') { try { renderCategoriasGastosPanel(); } catch (_) {} }
 }
 
+// ── Asistente paso a paso del gasto: tipo → proveedor → descripción → monto → pago ─────────────────────────
+// Recuerda (en este dispositivo) lo último usado por tipo: proveedor, descripciones recientes y método de pago.
+const GASTO_ULT_KEY = 'roalGastoUltimos';
+function _gastoUlt() { try { return JSON.parse(localStorage.getItem(GASTO_ULT_KEY) || '{}') || {}; } catch (_) { return {}; } }
+function _gastoUltGuardar(catId, sub, desc, metodo) {
+    try {
+        const u = _gastoUlt();
+        u.c = u.c || {};
+        const e = u.c[catId] = u.c[catId] || {};
+        e.sub = sub || '';
+        e.descs = e.descs || {};
+        if (desc) {
+            const k = sub || '_';
+            const arr = (e.descs[k] || []).filter((d) => d.toLowerCase() !== desc.toLowerCase());
+            arr.unshift(desc);
+            e.descs[k] = arr.slice(0, 5);
+        }
+        if (metodo) u.metodo = metodo;
+        localStorage.setItem(GASTO_ULT_KEY, JSON.stringify(u));
+    } catch (_) { /* sin almacenamiento: simplemente no recuerda */ }
+}
+const GASTO_STAGE_EL = { sub: 'gastoSubSection', desc: 'gastoFldDesc', monto: 'gastoFldMonto', pago: 'gastoPagoBox' };
+const GASTO_STAGE_Q = { sub: '¿Qué proveedor o subtipo?', desc: '¿Alguna descripción?', monto: '¿Cuánto fue?', pago: '¿Con qué se pagó?' };
+let _gastoStage = 'sub';
+let _gastoStages = [];
+function _gastoRenderDescRecientes() {
+    const box = document.getElementById('gastoDescRecientes');
+    if (!box) return;
+    const e = (_gastoUlt().c || {})[_gastoCategoriaId] || {};
+    const lista = (e.descs || {})[_gastoSubcategoria || '_'] || [];
+    box.innerHTML = lista.map((d) => `<button type="button" class="gasto-sub-chip" data-gasto-desc="${escapeHtml(d)}">${escapeHtml(d)}</button>`).join('');
+}
+function _gastoSyncNext() {
+    const next = document.getElementById('gastoNextBtn');
+    if (!next) return;
+    const ultimo = _gastoStage === 'pago';
+    next.hidden = ultimo || !_gastoStages.length;
+    next.disabled = _gastoStage === 'monto' && !(_gastoMontoTotal() > 0);
+}
+function _gastoStageGo(stage) {
+    _gastoStage = stage;
+    Object.entries(GASTO_STAGE_EL).forEach(([k, id]) => { const el = document.getElementById(id); if (el) el.hidden = k !== stage; });
+    const q = document.getElementById('gastoStageQ');
+    if (q) q.textContent = GASTO_STAGE_Q[stage] || '';
+    const reg = document.getElementById('gastoRegistrarBtn');
+    if (reg) reg.hidden = stage !== 'pago';
+    if (stage === 'desc') {
+        const descEl = document.getElementById('gastoDescripcion');
+        _gastoRenderDescRecientes();
+        descEl?.focus();
+    } else if (stage === 'monto') {
+        document.getElementById('gastoMonto')?.focus();
+    } else if (stage === 'pago' && !_gastoSplitOn && !_gastoSelectedMethod) {
+        const ult = _gastoUlt().metodo;
+        const btn = ult ? document.querySelector(`#gastoMethodsGrid [data-gasto-method="${String(ult).replace(/"/g, '')}"]`) : null;
+        if (btn && !btn.disabled) btn.click();
+    }
+    _gastoSyncNext();
+    _updateGastoConfirmState();
+}
+function _gastoStageNext() {
+    const i = _gastoStages.indexOf(_gastoStage);
+    if (i < 0 || i >= _gastoStages.length - 1) return;
+    if (_gastoStage === 'monto' && !(_gastoMontoTotal() > 0)) return;
+    _gastoStageGo(_gastoStages[i + 1]);
+}
+function _gastoStagePrev() {
+    const i = _gastoStages.indexOf(_gastoStage);
+    if (i <= 0) { _gastoShowStep1(); return; }
+    _gastoStageGo(_gastoStages[i - 1]);
+}
+
 function _gastoShowStep1() {
     const title   = document.getElementById('gastoModalTitle');
     const backBtn = document.getElementById('gastoBackBtn');
     const step1   = document.getElementById('gastoStep1');
     const step2   = document.getElementById('gastoStep2');
     const regBtn  = document.getElementById('gastoRegistrarBtn');
+    _gastoStages = [];
+    document.getElementById('gastoNextBtn')?.setAttribute('hidden', '');
     if (title)   title.textContent = 'Tipo de gasto';
     if (backBtn) backBtn.setAttribute('hidden', '');
     if (step1)   step1.removeAttribute('hidden');
@@ -30356,11 +30431,12 @@ function _gastoShowStep2(catId) {
     if (backBtn) backBtn.removeAttribute('hidden');
     if (step1)   step1.setAttribute('hidden', '');
     if (step2)   step2.removeAttribute('hidden');
-    if (regBtn)  regBtn.removeAttribute('hidden');
+    if (regBtn)  regBtn.setAttribute('hidden', '');
 
     // La sección de subcategorías siempre está visible (aunque la categoría no tenga ninguna):
     // así el botón "+ Nueva" está disponible para agregarlas desde acá mismo.
-    document.getElementById('gastoSubSection')?.removeAttribute('hidden');
+    const _ultCat = (_gastoUlt().c || {})[catId] || {};
+    if (_ultCat.sub && (cat.subs || []).includes(_ultCat.sub)) _gastoSubcategoria = _ultCat.sub;
     const addRow = document.getElementById('gastoSubAddRow');
     if (addRow) addRow.setAttribute('hidden', '');
     const addInput = document.getElementById('gastoSubAddInput');
@@ -30383,7 +30459,9 @@ function _gastoShowStep2(catId) {
         if (montoEl) montoEl.value = Number(_gastoPrefill.monto) > 0 ? String(Math.round(_gastoPrefill.monto)).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
         _updateGastoConfirmState();
     }
-    descEl?.focus();
+    // Pasos: proveedor (solo si el tipo tiene) → descripción → monto → pago.
+    _gastoStages = [...((cat.subs || []).length ? ['sub'] : []), 'desc', 'monto', 'pago'];
+    _gastoStageGo(_gastoStages[0]);
 }
 
 // ── GASTOS: SOLO CON LA CAJA ABIERTA + RECORDATORIOS ─────────────────────────────────────────────────────────
@@ -30815,13 +30893,20 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
 
     const subBtn = e.target.closest('[data-gasto-sub]');
     if (subBtn) {
-        const alreadyActive = subBtn.classList.contains('active');
         document.querySelectorAll('[data-gasto-sub]').forEach((b) => b.classList.remove('active'));
-        // Segundo toque en la misma chip = deseleccionar (la subcategoría es opcional).
-        if (alreadyActive) { _gastoSubcategoria = null; }
-        else { subBtn.classList.add('active'); _gastoSubcategoria = subBtn.dataset.gastoSub; }
+        subBtn.classList.add('active');
+        _gastoSubcategoria = subBtn.dataset.gastoSub;
+        _gastoStageNext(); // tocar un proveedor ya avanza a la siguiente pregunta (omitir = «Siguiente»)
         return;
     }
+    const descBtn = e.target.closest('[data-gasto-desc]');
+    if (descBtn) {
+        const d = document.getElementById('gastoDescripcion');
+        if (d) d.value = descBtn.dataset.gastoDesc;
+        _gastoStageNext();
+        return;
+    }
+    if (e.target.closest('#gastoNextBtn')) { _gastoStageNext(); return; }
 
     // "+ Nueva" — mostrar/ocultar la fila para escribir una subcategoría nueva
     if (e.target.closest('#gastoSubAddToggle')) {
@@ -30842,7 +30927,7 @@ document.getElementById('gastoModal')?.addEventListener('click', (e) => {
     if (e.target.closest('#gastoSubAddConfirm')) { _addGastoSubcategoria(); return; }
 
     const backBtn = e.target.closest('#gastoBackBtn');
-    if (backBtn) { _gastoShowStep1(); return; }
+    if (backBtn) { _gastoStagePrev(); return; }
 
     if (e.target.closest('#gastoSplitToggle')) {
         _gastoSplitOn = !_gastoSplitOn;
@@ -30876,6 +30961,11 @@ document.getElementById('gastoModal')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target && e.target.id === 'gastoSubAddInput') {
         e.preventDefault();
         _addGastoSubcategoria();
+        return;
+    }
+    if (e.key === 'Enter' && e.target && (e.target.id === 'gastoDescripcion' || e.target.id === 'gastoMonto')) {
+        e.preventDefault();
+        _gastoStageNext();
     }
 });
 
@@ -31163,6 +31253,7 @@ document.getElementById('gastoRegistrarBtn')?.addEventListener('click', async ()
             ? { ...base, tipo: docs.some((d) => d.tipo === 'caja') ? 'caja' : 'externo', id: gastoId, monto, paymentMethod: 'split', partes }
             : docs[0];
         for (const d of docs) await saveGasto(d);
+        _gastoUltGuardar(_gastoCategoriaId || 'otros', _gastoSubcategoria, descripcion, partes.length > 1 ? '' : _gastoSelectedMethod);
         // Informes → Gastos lee de _gastosCajaState sin importar el tipo/origen, así que
         // se actualiza sin importar desde qué pantalla se registró (antes solo se hacía
         // para el caso "no viene de Historial", y el ledger de Informes quedaba desfasado

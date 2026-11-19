@@ -17701,6 +17701,7 @@
             </div>
             <!-- Paso 2: subcategoría + formulario -->
             <div id="gastoStep2" class="dpm-unified-body" hidden>
+                <p id="gastoStageQ" style="margin:0 0 12px;font-size:1.05rem;font-weight:700;color:#fff;"></p>
                 <div id="gastoSubSection" hidden style="margin-bottom:14px;">
                     <div class="dpm-sub-label-row">
                         <p class="dpm-sub-label">Subcategoría <span class="dpm-sub-optional">(opcional)</span></p>
@@ -17714,11 +17715,12 @@
                     <div class="gasto-sub-chips" id="gastoSubGrid"></div>
                 </div>
                 <div class="gasto-form">
-                    <div class="gasto-field">
-                        <label>Descripción</label>
+                    <div class="gasto-field" id="gastoFldDesc">
+                        <label>Descripción <span class="dpm-sub-optional">(opcional)</span></label>
                         <input type="text" id="gastoDescripcion" placeholder="¿En qué se gastó?" maxlength="100">
+                        <div class="gasto-sub-chips" id="gastoDescRecientes" style="margin-top:6px;"></div>
                     </div>
-                    <div class="gasto-field">
+                    <div class="gasto-field" id="gastoFldMonto">
                         <label>Monto</label>
                         <div class="dpm-cash-wrap">
                             <span class="dpm-cash-prefix">$</span>
@@ -17726,6 +17728,7 @@
                         </div>
                     </div>
                 </div>
+                <div id="gastoPagoBox" hidden>
                 <div class="dpm-pay-divider"><span>¿CON QUÉ SE PAGÓ?</span></div>
                 <div class="dpm-methods" id="gastoMethodsGrid"></div>
                 <div id="gastoFuenteEfectivo" class="dpm-methods" hidden style="margin-top:10px;"></div>
@@ -17733,9 +17736,11 @@
                 <div id="gastoOrigenInfo" class="gasto-origen" hidden aria-live="polite"></div>
                 <button type="button" id="gastoSplitToggle" class="gasto-sub-addbtn" style="margin-top:10px;">✂️ Dividir entre varios métodos</button>
                 <div id="gastoSplitBox" hidden style="margin-top:10px;"></div>
+                </div>
             </div>
             <div class="dpm-footer">
                 <button type="button" class="dpm-btn-cancel" id="gastoCancelBtn">Cancelar</button>
+                <button type="button" class="dpm-btn-confirm" id="gastoNextBtn" hidden>Siguiente →</button>
                 <button type="button" class="dpm-btn-confirm" id="gastoRegistrarBtn" disabled hidden>Registrar gasto</button>
             </div>
         </article>
