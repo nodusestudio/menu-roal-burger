@@ -5096,9 +5096,10 @@ function renderPosCategoriesPanel() {
     // "Más vendidos": los productos que más se piden (últimos 30 días) a un toque, sin recorrer categorías.
     const topList = _posTopProducts();
     const topTab = topList.length >= 3 ? { value: '__POS_TOP__', label: '⭐ MÁS VENDIDOS' } : null;
-    const allTabs = (topTab ? [topTab] : []).concat(catTabs, [promoTab]);
+    const cuponeraTab = { value: '__POS_CUPONERA__', label: '🎟️ CUPONERA' };
+    const allTabs = (topTab ? [topTab] : []).concat(catTabs, [promoTab, cuponeraTab]);
 
-    const specialKeys = ['__POS_PROMOCIONES__', ...(topTab ? ['__POS_TOP__'] : [])];
+    const specialKeys = ['__POS_PROMOCIONES__', '__POS_CUPONERA__', ...(topTab ? ['__POS_TOP__'] : [])];
     const validCatValues = catTabs.map((t) => t.value);
     if (!(posSelectedCategory && (specialKeys.includes(posSelectedCategory) || validCatValues.includes(posSelectedCategory)))) {
         posSelectedCategory = topTab ? topTab.value : (catTabs.length > 0 ? catTabs[0].value : null);
@@ -5177,6 +5178,85 @@ function _renderPosProductCards(grid, products) {
     });
 }
 
+// ── Cuponera física (cartón) ─────────────────────────────────────────────────
+// El cliente entrega el cupón de papel: NO hay código. El cajero toca el bono y entra al ticket
+// como un combo con el regalo incluido. productId "cuponera-<bono>" + orderOptions.cuponeraBono
+// es lo que cuenta Métricas > Cuponera. Cada cuponera trae 1 de Bienvenida y 4 de A, B y C.
+const POS_CUPONERA_BEBIDAS = ['Coca-Cola', 'Postobon', 'Jugos Hit', 'Agua'];
+const POS_CUPONERA_BONOS = [
+    { id: 'bienvenida', nombre: 'Bono de Bienvenida', precio: 7000,
+      items: ['1 papas de 75 g (una sola)', '1 Burger Normal (REGALO, va sola)'] },
+    { id: 'a', nombre: 'Bono A · Ranchera', precio: 37000,
+      items: ['2 Burger Ranchera (la 2.ª es REGALO, va sola)', '1 papas de 75 g (una sola)'] },
+    { id: 'b', nombre: 'Bono B · Trifásica', precio: 44000,
+      items: ['2 Burger Trifásica (la 2.ª es REGALO, va sola)', '1 papas de 75 g (una sola)'] },
+    { id: 'c', nombre: 'Bono C · Pepito Urbano', precio: 37000,
+      items: ['2 Pepito Urbano (el 2.º es REGALO, va solo)', '1 papas de 75 g (una sola)'] }
+];
+
+function _posRenderCuponera(grid) {
+    grid.innerHTML = '';
+    POS_CUPONERA_BONOS.forEach((b) => {
+        const card = document.createElement('div');
+        card.className = 'pos-product-card';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pos-product-btn has-image';
+        btn.innerHTML = `<img class="pos-product-btn-img" src="promociones/cuponera-${b.id}.webp" alt="" loading="lazy" onerror="this.style.display='none'">`;
+        const label = document.createElement('div');
+        label.className = 'pos-product-label';
+        label.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(b.nombre)}</span><span class="pos-product-btn-price">${formatMoney(b.precio)}</span>`;
+        card.appendChild(btn);
+        card.appendChild(label);
+        card.addEventListener('click', () => _posElegirBebidaCuponera(b));
+        grid.appendChild(card);
+    });
+}
+
+function _posElegirBebidaCuponera(bono) {
+    document.getElementById('posCuponeraBebidaOv')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'posCuponeraBebidaOv';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10500;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML = `<div style="background:#1b1b22;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:20px;max-width:360px;width:100%;color:#fff;">
+        <h4 style="margin:0 0 4px;">${escapeHtml(bono.nombre)}</h4>
+        <p style="margin:0 0 12px;font-size:.85rem;opacity:.7;">Bebida de 250 ml (una sola)</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${POS_CUPONERA_BEBIDAS.map((x) => `<button type="button" class="pos-product-btn" data-beb="${escapeHtml(x)}" style="padding:14px 8px;">${escapeHtml(x)}</button>`).join('')}</div>
+        <button type="button" data-cancel="1" style="margin-top:12px;width:100%;padding:10px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">Cancelar</button>
+    </div>`;
+    ov.addEventListener('click', (e) => {
+        const beb = e.target.closest('[data-beb]');
+        if (beb) { _posAgregarCuponera(bono, beb.dataset.beb); ov.remove(); return; }
+        if (e.target === ov || e.target.closest('[data-cancel]')) ov.remove();
+    });
+    document.body.appendChild(ov);
+}
+
+function _posAgregarCuponera(bono, bebida) {
+    const comboItems = [...bono.items, `1 bebida 250 ml: ${bebida} (una sola)`];
+    internalOrderItems.push({
+        itemKey: `cuponera-${bono.id}-${Date.now()}`,
+        productId: `cuponera-${bono.id}`,
+        productName: bono.nombre,
+        categoryName: 'CUPONERA',
+        quantity: 1,
+        unitPrice: bono.precio,
+        originalUnitPrice: null,
+        subtotal: bono.precio,
+        note: comboItems.join(' + '),
+        optionLabel: comboItems.join(' + '),
+        promoLabel: 'CUPONERA',
+        isComboEspecial: true,
+        comboItems,
+        origOrderOptions: { cuponeraBono: bono.id },
+        parentKey: null
+    });
+    renderPosOrderItems();
+    renderPosTotals();
+    renderPosBottomBar();
+    showNotice(`${bono.nombre} agregado al ticket.`, 'ok');
+}
+
 // Botón rápido fijo de la Burger Trifásica en 2×1 (Festival Sabe a Quindío), siempre visible arriba
 // del POS hasta el 08/11/2026 23:59 (hora Colombia). Suma el 2×1 directo, sin cupón ni código.
 const POS_TRIFASICA_HASTA = Date.parse('2026-11-08T23:59:59-05:00');
@@ -5239,6 +5319,11 @@ function renderPosProductsPanel() {
     // Categoría principal agrupando varias categorías reales
     if (posSelectedCategory.startsWith('__POS_GROUP__:')) {
         renderPosGroupedProductsPanel(grid, posSelectedCategory.slice('__POS_GROUP__:'.length));
+        return;
+    }
+
+    if (posSelectedCategory === '__POS_CUPONERA__') {
+        _posRenderCuponera(grid);
         return;
     }
 
@@ -36165,74 +36250,70 @@ async function renderCuponPanaMetricas() {
     _cpanaRenderPendientes(camp, cupones);
 }
 
-// Métricas > Cuponera: todos los bonos (campañas con temporada "Cuponera" o id CUPONERA-*) juntos
-// y comparados. Lee las mismas colecciones que Fuera del Menú; no escribe nada.
+// Métricas > Cuponera: cuenta los bonos que el cajero agregó desde el POS (pestaña 🎟️ CUPONERA).
+// La cuponera es de cartón: no hay códigos ni cupones emitidos; la fuente son los pedidos
+// (líneas con productId "cuponera-<bono>"). Los pedidos anulados no cuentan.
 async function renderMetricasCuponera() {
     const body = document.getElementById('cuponeraBody');
     if (!body) return;
     body.innerHTML = '<p class="met-empty-note">Cargando…</p>';
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     try {
-        const snap = await firebaseDb.collection(CUPONES_CAMPANAS_COLLECTION).get();
-        const camps = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-            .filter((c) => c.temporada === 'Cuponera' || /^CUPONERA-/i.test(c.id))
-            .sort((a, b) => a.id.localeCompare(b.id));
-        if (!camps.length) { body.innerHTML = '<p class="met-empty-note">Aún no hay campañas de cuponera.</p>'; return; }
-        const datos = [];
-        for (const c of camps) datos.push({ c, cupones: await _cpanaFetchCupones(c.id, true) });
-
-        const todos = [];
-        const filas = datos.map(({ c, cupones }) => {
-            const canj = cupones.filter((x) => x.estado === 'canjeado');
-            canj.forEach((x) => todos.push(x));
-            const tasa = cupones.length ? Math.round((canj.length / cupones.length) * 1000) / 10 : 0;
-            return { c, emitidos: cupones.length, canj: canj.length, tasa, ingreso: canj.length * Number(c.precio || 0) };
+        const orders = await _loadMetricsOrders();
+        const porBono = {}; const porHora = {}; const porZona = {}; const porTipo = {};
+        POS_CUPONERA_BONOS.forEach((b) => { porBono[b.id] = { n: 0, ventas: 0 }; });
+        const dias = {};
+        let total = 0; let ventas = 0;
+        orders.forEach((o) => {
+            if (!o || o.voided || o.anulado) return;
+            const lineas = (o.items || []).filter((i) => String(i.productId || '').startsWith('cuponera-'));
+            if (!lineas.length) return;
+            const ms = o.createdAt?.toMillis ? o.createdAt.toMillis() : Number(o.createdAt || 0);
+            const zona = _cpanaZona({ modalidad: o.orderType === 'domicilio' ? 'domicilio' : (o.orderType === 'retiro' ? 'recoger' : 'local'), direccion: o.deliveryAddress, barrio: '' });
+            lineas.forEach((i) => {
+                const id = String(i.productId).replace('cuponera-', '');
+                const q = Math.max(1, Number(i.quantity || 1));
+                const v = Number(i.subtotal || 0);
+                if (!porBono[id]) porBono[id] = { n: 0, ventas: 0 };
+                porBono[id].n += q; porBono[id].ventas += v;
+                total += q; ventas += v;
+                if (ms) {
+                    const k = new Date(ms - 5 * 3600000).toISOString().slice(0, 10);
+                    const dow = new Date(`${k}T12:00:00Z`).getUTCDay();
+                    dias[k] = { et: `${CUPON_PANA_DIAS[dow]} ${k.slice(5)}`, n: ((dias[k] || {}).n || 0) + q };
+                    const h = `${String(new Date(ms - 5 * 3600000).getUTCHours()).padStart(2, '0')}:00`;
+                    porHora[h] = (porHora[h] || 0) + q;
+                }
+                porZona[zona] = (porZona[zona] || 0) + q;
+                const tipo = o.orderType === 'domicilio' ? 'Domicilio' : (o.orderType === 'mesa' ? 'Mesa' : 'Para llevar');
+                porTipo[tipo] = (porTipo[tipo] || 0) + q;
+            });
         });
-        const totEmit = filas.reduce((s, f) => s + f.emitidos, 0);
-        const totCanj = filas.reduce((s, f) => s + f.canj, 0);
-        const totIng = filas.reduce((s, f) => s + f.ingreso, 0);
-        const mejor = filas.slice().sort((a, b) => b.canj - a.canj)[0];
-
-        const porDia = {}; const porHora = {}; const porZona = {};
-        todos.forEach((x) => {
-            const k = _cpanaDateKey(x.canjeadoAt);
-            if (k) {
-                const dow = new Date(`${k}T12:00:00Z`).getUTCDay();
-                const et = `${CUPON_PANA_DIAS[dow]} ${k.slice(5)}`;
-                porDia[k] = { et, n: ((porDia[k] || {}).n || 0) + 1 };
-            }
-            const ms = x.canjeadoAt?.toMillis ? x.canjeadoAt.toMillis() : Number(x.canjeadoAt || 0);
-            if (ms) {
-                const h = `${String(new Date(ms - 5 * 3600000).getUTCHours()).padStart(2, '0')}:00`;
-                porHora[h] = (porHora[h] || 0) + 1;
-            }
-            const z = _cpanaZona(x.pedidoPreparado);
-            porZona[z] = (porZona[z] || 0) + 1;
-        });
-        const diasConteo = {}; Object.keys(porDia).sort().forEach((k) => { diasConteo[porDia[k].et] = porDia[k].n; });
-        const porBono = {}; filas.forEach((f) => { porBono[f.c.titulo] = f.canj; });
+        const diasConteo = {}; Object.keys(dias).sort().forEach((k) => { diasConteo[dias[k].et] = dias[k].n; });
+        const nombres = {}; POS_CUPONERA_BONOS.forEach((b) => { nombres[b.id] = b.nombre; });
+        const topId = Object.keys(porBono).sort((a, b) => porBono[b].n - porBono[a].n)[0];
+        const vacio = '<p class="admin-hint">Aún no hay bonos canjeados.</p>';
 
         body.innerHTML = `
             <div class="met-kpi-row" style="margin-bottom:16px;">
-                <div class="met-kpi-card met-kpi-card--hi"><span class="met-kpi-val">${nf(totEmit)}</span><span class="met-kpi-lbl">Cupones emitidos</span></div>
-                <div class="met-kpi-card met-kpi-card--green"><span class="met-kpi-val">${nf(totCanj)}</span><span class="met-kpi-lbl">Canjeados</span></div>
-                <div class="met-kpi-card met-kpi-card--purple"><span class="met-kpi-val">$${nf(totIng)}</span><span class="met-kpi-lbl">Ventas por canjes</span><span class="met-kpi-sub">canjes × precio del bono</span></div>
-                <div class="met-kpi-card"><span class="met-kpi-val">${mejor && mejor.canj ? escapeHtml(mejor.c.titulo) : '—'}</span><span class="met-kpi-lbl">Bono que más se canjea</span></div>
+                <div class="met-kpi-card met-kpi-card--green"><span class="met-kpi-val">${nf(total)}</span><span class="met-kpi-lbl">Bonos canjeados</span></div>
+                <div class="met-kpi-card met-kpi-card--purple"><span class="met-kpi-val">$${nf(ventas)}</span><span class="met-kpi-lbl">Ventas por bonos</span></div>
+                <div class="met-kpi-card"><span class="met-kpi-val">${total ? escapeHtml(nombres[topId] || topId) : '—'}</span><span class="met-kpi-lbl">Bono que más se canjea</span></div>
             </div>
             <div class="met-section-title">Comparación por bono</div>
             <div class="cpana-table-wrap"><table class="cpana-table">
-                <thead><tr><th>Bono</th><th>Precio</th><th>Cupos</th><th>Emitidos</th><th>Canjeados</th><th>Tasa</th><th>Ventas</th><th>Estado</th></tr></thead>
-                <tbody>${filas.map((f) => `<tr><td><strong>${escapeHtml(f.c.titulo)}</strong></td><td>$${nf(f.c.precio)}</td><td>${nf(f.c.cuposTotales)}</td><td>${f.emitidos}</td><td>${f.canj}</td><td>${f.tasa}%</td><td>$${nf(f.ingreso)}</td><td>${f.c.activa ? 'Activa' : 'Inactiva'}</td></tr>`).join('')}</tbody>
+                <thead><tr><th>Bono</th><th>Precio</th><th>Canjeados</th><th>Ventas</th></tr></thead>
+                <tbody>${POS_CUPONERA_BONOS.map((b) => `<tr><td><strong>${escapeHtml(b.nombre)}</strong></td><td>$${nf(b.precio)}</td><td>${porBono[b.id].n}</td><td>$${nf(porBono[b.id].ventas)}</td></tr>`).join('')}</tbody>
             </table></div>
-            <div class="met-section-title" style="margin-top:16px;">Canjes por bono</div>
-            ${_cpanaBarrasHTML(porBono) }
             <div class="met-section-title" style="margin-top:16px;">Canjes por día</div>
-            ${totCanj ? _cpanaBarrasHTML(diasConteo, Object.keys(diasConteo)) : '<p class="admin-hint">Aún no hay canjes.</p>'}
+            ${total ? _cpanaBarrasHTML(diasConteo, Object.keys(diasConteo)) : vacio}
             <div class="met-section-title" style="margin-top:16px;">Canjes por hora</div>
-            ${totCanj ? _cpanaBarrasHTML(porHora, Object.keys(porHora).sort()) : '<p class="admin-hint">Aún no hay canjes.</p>'}
-            <div class="met-section-title" style="margin-top:16px;">Dónde piden</div>
-            ${totCanj ? _cpanaBarrasHTML(porZona) : '<p class="admin-hint">Aún no hay canjes.</p>'}
-            <p class="admin-hint" style="margin-top:12px;">La zona sale de la dirección y el barrio que escribe el cliente, así que es aproximada.</p>`;
+            ${total ? _cpanaBarrasHTML(porHora, Object.keys(porHora).sort()) : vacio}
+            <div class="met-section-title" style="margin-top:16px;">Mesa, llevar o domicilio</div>
+            ${total ? _cpanaBarrasHTML(porTipo) : vacio}
+            <div class="met-section-title" style="margin-top:16px;">Dónde piden (domicilios)</div>
+            ${total ? _cpanaBarrasHTML(porZona) : vacio}
+            <p class="admin-hint" style="margin-top:12px;">La zona sale de la dirección escrita en el pedido, así que es aproximada.</p>`;
     } catch (err) {
         console.error('metricas cuponera:', err);
         body.innerHTML = '<p class="met-empty-note">No se pudieron cargar las métricas de la cuponera.</p>';
