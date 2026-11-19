@@ -20119,29 +20119,60 @@ async function _btEnsureConnected(opts = {}) {
 
 // Envía los bytes por Bluetooth. Si la conexión se corta a mitad del ticket, reconecta y sigue desde el mismo trozo
 // (antes el ticket quedaba cortado y había que reimprimirlo).
+// Barra fija de estado de impresión (independiente de FODI): "Conectando…" → "Imprimiendo 45%" → "✓ Enviado" / "✗ Falló".
+let _btBarTimer = null;
+function _btBarra(texto, estado, ms) {
+    let el = document.getElementById('btPrintBar');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'btPrintBar';
+        el.setAttribute('role', 'status');
+        el.style.cssText = 'position:fixed;left:50%;bottom:76px;transform:translateX(-50%);z-index:99999;padding:12px 20px;border-radius:14px;font:700 15px system-ui,sans-serif;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,.45);max-width:92vw;text-align:center;pointer-events:none';
+        document.body.appendChild(el);
+    }
+    clearTimeout(_btBarTimer);
+    el.textContent = texto;
+    el.style.background = estado === 'ok' ? '#1f8a4c' : estado === 'error' ? '#c0392b' : '#b8650a';
+    el.style.display = 'block';
+    if (ms) _btBarTimer = setTimeout(() => { el.style.display = 'none'; }, ms);
+}
+
 async function _btEnviarBytes(data) {
-    const CHUNK = 20;
+    // Con respuesta la impresora confirma cada trozo (sin pérdida de letras): se usan trozos grandes y sin pausa.
+    // Sin respuesta (modo inseguro) se queda en 20 bytes con pausa. Si un trozo grande falla, se baja a 20.
+    let char = null;
     let i = 0;
     let reconexiones = 0;
     _btImprimiendo = true;
+    _btBarra('Conectando con la impresora…', 'work');
     try {
-        let char = await _btEnsureConnected();
-        if (!char) return false;
+        char = await _btEnsureConnected();
+        if (!char) { _btBarra('✗ No se pudo conectar con la impresora', 'error', 5000); return false; }
+        const conRespuesta = !!char.properties?.write;
+        let chunk = conRespuesta ? 100 : 20;
+        const pausa = conRespuesta ? 0 : 60;
         while (i < data.length) {
+            _btBarra(`Imprimiendo… ${Math.round((i / data.length) * 100)}%`, 'work');
             try {
-                await _btWriteChunk(char, data.slice(i, i + CHUNK));
-                i += CHUNK;
-                await _btEsperar(80);
+                await _btWriteChunk(char, data.slice(i, i + chunk));
+                i += chunk;
+                if (pausa) await _btEsperar(pausa);
             } catch (err) {
+                if (chunk > 20) { chunk = 20; continue; }
                 if (reconexiones >= 3) throw err;
                 reconexiones++;
+                _btBarra('Reconectando con la impresora…', 'work');
                 _btPrinterCharacteristic = null;
                 char = await _btConectarConReintentos(_btPrinterDevice, { intentos: 3, espera: 500 });
                 if (!char) throw err;
                 _btPrinterCharacteristic = char;
             }
         }
+        _btBarra('✓ Enviado a la impresora', 'ok', 3500);
         return true;
+    } catch (err) {
+        _btBarra('✗ Falló el envío a la impresora', 'error', 6000);
+        throw err;
     } finally {
         _btImprimiendo = false;
     }
@@ -20543,6 +20574,7 @@ async function openOrderPrintTicket(orderId) {
     // Bluetooth: se recupera la conexión sola (reintentos + impresora que el navegador ya recuerda). Solo si no hay forma,
     // se abre el selector — y ese selector muestra únicamente la impresora ya usada, un toque.
     if (navigator.bluetooth) {
+        _btBarra('Conectando con la impresora…', 'work');
         let char = await _btEnsureConnected({ rapido: true });
         if (!char && _btNombreGuardado()) {
             showNotice('Buscando la impresora Bluetooth…', 'ok');
