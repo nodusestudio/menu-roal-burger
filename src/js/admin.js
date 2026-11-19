@@ -5104,7 +5104,7 @@ function renderPosCategoriesPanel() {
     const topList = _posTopProducts();
     const topTab = topList.length >= 3 ? { value: '__POS_TOP__', label: '⭐ MÁS VENDIDOS' } : null;
     const cuponeraTab = { value: '__POS_CUPONERA__', label: '🎟️ CUPONERA' };
-    const allTabs = (topTab ? [topTab] : []).concat(catTabs, [promoTab, cuponeraTab]);
+    const allTabs = (topTab ? [topTab] : []).concat([cuponeraTab], catTabs, [promoTab]);
 
     const specialKeys = ['__POS_PROMOCIONES__', '__POS_CUPONERA__', ...(topTab ? ['__POS_TOP__'] : [])];
     const validCatValues = catTabs.map((t) => t.value);
@@ -5298,35 +5298,27 @@ function _posCuponeraOtraBebida() {
 }
 
 function _posAgregarCuponera(bono, sabor1, sabor2) {
-    // Una línea por producto, con lo que vale cada parte; el regalo siempre va al final.
+    // Línea del bono: hamburguesa + su combo + el regalo (siempre al final). Va junta porque es lo que
+    // cubre el cartón. El 2.º combo (si lo piden) es OTRA línea del ticket: se cobra y se quita aparte.
     const m = (n) => formatMoney(n);
     const lineas = [];
     if (bono.pagado) lineas.push(`${bono.pagado} — ${m(bono.precioPagado)}`);
     lineas.push(`Combo — ${m(POS_CUPONERA_COMBO2)}:`, '1 papas 75 g', `1 bebida 250 ml: ${sabor1}`);
-    let precio = bono.precio;
-    if (sabor2) {
-        lineas.push(`2.º combo — ${m(POS_CUPONERA_COMBO2)}:`, '1 papas 75 g', `1 bebida 250 ml: ${sabor2}`);
-        precio += POS_CUPONERA_COMBO2;
-    }
     lineas.push(`REGALO: ${bono.regalo} — ${m(0)}`);
-    internalOrderItems.push({
-        itemKey: `cuponera-${bono.id}-${Date.now()}`,
-        productId: `cuponera-${bono.id}`,
-        productName: bono.nombre,
-        categoryName: 'CUPONERA',
-        quantity: 1,
-        unitPrice: precio,
-        originalUnitPrice: null,
-        subtotal: precio,
-        note: lineas.join(' + '),
-        optionLabel: lineas.join(' + '),
-        promoLabel: 'CUPONERA',
-        isComboEspecial: true,
-        comboItems: lineas,
-        comboLineas: true,
-        origOrderOptions: { cuponeraBono: bono.id, ...(sabor2 ? { cuponeraCombo2: true } : {}) },
-        parentKey: null
+    const ahora = Date.now();
+    const empujar = (itemKey, productId, nombre, precio, items, opciones) => internalOrderItems.push({
+        itemKey, productId, productName: nombre, categoryName: 'CUPONERA',
+        quantity: 1, unitPrice: precio, originalUnitPrice: null, subtotal: precio,
+        note: items.join(' + '), optionLabel: items.join(' + '), promoLabel: 'CUPONERA',
+        isComboEspecial: true, comboItems: items, comboLineas: true,
+        origOrderOptions: opciones, parentKey: null
     });
+    empujar(`cuponera-${bono.id}-${ahora}`, `cuponera-${bono.id}`, bono.nombre, bono.precio, lineas, { cuponeraBono: bono.id });
+    if (sabor2) {
+        // productId distinto a "cuponera-…": no cuenta como bono canjeado, sí como venta adicional.
+        empujar(`cuponeracombo2-${bono.id}-${ahora}`, 'cuponeracombo2', 'Combo 2.ª hamburguesa', POS_CUPONERA_COMBO2,
+            ['1 papas 75 g', `1 bebida 250 ml: ${sabor2}`], { cuponeraCombo2: bono.id });
+    }
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
