@@ -1,6 +1,8 @@
 // FODI · calculadora de simulaciones ("¿y si…?") sobre la calculadora de costos propia.
 // Núcleo puro (sin Firestore): recibe { insumos, recetas, platos } y devuelve antes/después por plato.
 //   node --test --test-concurrency=1 tests/fodi-simulador.test.js
+// PENDIENTE (decidido 2026-11-19): este simulador SE QUEDA con la calculadora vieja (costos_*) y marca sus resultados como "viejo".
+// La simulación "¿y si sube un insumo?" se construirá dentro de la app Costos, que ya tiene el motor y los insumos; entonces se apaga este archivo.
 const { calcularPlatos } = require('./costos');
 
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -56,7 +58,7 @@ async function simularCostos(db, args = {}) {
     const r = simular({ insumos, recetas, platos }, cfg, { insumos: args.insumos, platos: args.platos });
     if (r.error) return r;
     if (args.solo_activos !== false) { r.platos = r.platos.filter((p) => p.activo); r.platos_afectados = r.platos.length; }
-    return { ...r, margen_objetivo_pct: Number(cfg.margenObjetivoPct) || null };
+    return { ...r, costo_fuente: 'viejo', nota: (r.nota || '') + ' Costos de la calculadora VIEJA (viejo): la simulación de insumos aún no existe en Costos (nuevo); al citar costos di (viejo).', margen_objetivo_pct: Number(cfg.margenObjetivoPct) || null };
 }
 
 const TOOL = {

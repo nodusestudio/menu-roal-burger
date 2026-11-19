@@ -25,3 +25,11 @@ test('errores claros', () => {
     assert.ok(simular(base, cfg, { insumos: [{ nombre: 'zzz', variacion_pct: 5 }] }).error);
     assert.ok(simular(base, cfg, { insumos: [{ nombre: 'carne' }] }).error);
 });
+
+test('simularCostos marca el resultado como "viejo" (la simulación sigue con la calculadora vieja)', async () => {
+    const { simularCostos } = require('../functions/fodiSimulador');
+    const col = { costos_insumos: base.insumos, costos_recetas: [], costos_platos: base.platos.map((p) => ({ ...p, precio: p.precio })) };
+    const db = { collection: (c) => ({ get: async () => ({ docs: (col[c] || []).map((x) => ({ id: x.id, data: () => x })) }), doc: () => ({ get: async () => ({ exists: true, data: () => cfg }) }) }) };
+    const r = await simularCostos(db, { insumos: [{ nombre: 'carne', variacion_pct: 50 }] });
+    assert.strictEqual(r.costo_fuente, 'viejo'); assert.match(r.nota, /\(viejo\)/);
+});
