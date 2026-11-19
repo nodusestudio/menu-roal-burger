@@ -20220,7 +20220,16 @@ function _ticketDetalleLineas(item, { categoria = true } = {}) {
             // Cuponera: los renglones con precio ("1 Burger Ranchera — $30.000", "Combo — $7.000:", "REGALO: … — $0") son
             // encabezados y lo que va debajo (papas, bebida con sabor) queda sangrado: se lee qué es cada cosa y cuánto vale.
             const hayEncabezados = esCuponeraTicket && partesCombo.some((q) => /—\s*\$|^REGALO:/i.test(q));
-            partesCombo.forEach((q) => out.push({ t: hayEncabezados ? (/—\s*\$|^REGALO:/i.test(q) ? 'hdr' : 'sub') : 'opt', x: q }));
+            // Un precio no se repite: si solo UN renglón cuesta algo, ese valor ya es el de la línea del producto → se quita de los
+            // renglones. Si hay varios con precio (burger + combo) se deja el desglose, pero el "$0" del regalo siempre sobra.
+            const _valor = (q) => { const m = q.match(/—\s*\$\s*([\d.,]+)/); return m ? Number(m[1].replace(/[.,]/g, '')) : null; };
+            const conPrecio = partesCombo.filter((q) => (_valor(q) || 0) > 0).length;
+            const sinPrecio = (q) => q.replace(/\s*—\s*\$\s*[\d.,]+/, '');
+            partesCombo.forEach((q0) => {
+                const v = _valor(q0);
+                const q = hayEncabezados && v !== null && (conPrecio <= 1 || v === 0) ? sinPrecio(q0) : q0;
+                out.push({ t: hayEncabezados ? (/—\s*\$|^REGALO:/i.test(q0) ? 'hdr' : 'sub') : 'opt', x: q });
+            });
         });
     const note = String(item.note || '').trim();
     if (note && note !== opt) {
