@@ -5325,7 +5325,7 @@ function _posAgregarCuponera(bono, sabor1, sabor2) {
     renderPosOrderItems();
     renderPosTotals();
     renderPosBottomBar();
-    showNotice(`${bono.nombre} agregado al ticket.`, 'ok');
+    showNotice(`${bono.nombre} agregado. Pídele el celular al cliente: sin él no se mide si es nuevo ni si vuelve.`, 'ok');
 }
 
 // Botón rápido fijo de la Burger Trifásica en 2×1 (Festival Sabe a Quindío), siempre visible arriba
@@ -36324,6 +36324,47 @@ async function renderCuponPanaMetricas() {
 // Métricas > Cuponera: cuenta los bonos que el cajero agregó desde el POS (pestaña 🎟️ CUPONERA).
 // La cuponera es de cartón: no hay códigos ni cupones emitidos; la fuente son los pedidos
 // (líneas con productId "cuponera-<bono>"). Los pedidos anulados no cuentan.
+// Quién canjea es el cliente del pedido (la cuponera se reparte entre varias personas: cada una
+// pide por separado y cuenta como cliente aparte; no se asume que quien la compró canjea todo).
+// "Nuevo" = su primer pedido en el historial cargado es uno con bono de cuponera.
+function _cuponeraClientes(orders) {
+    const esCup = (i) => String(i.productId || '').startsWith('cuponera-');
+    const msDe = (o) => (o.createdAt?.toMillis ? o.createdAt.toMillis() : Number(o.createdAt || 0));
+    const porCliente = new Map();
+    let sinTelefono = 0;
+    orders.forEach((o) => {
+        if (!o || o.voided || o.anulado || o.status === 'en_espera') return;
+        const tieneCup = (o.items || []).some(esCup);
+        const d = String(o.customerPhoneDigits || o.customerPhone || '').replace(/\D/g, '');
+        if (d.length < 10) { if (tieneCup) sinTelefono += 1; return; }
+        const k = d.slice(-10);
+        if (!porCliente.has(k)) porCliente.set(k, []);
+        porCliente.get(k).push({ o, ms: msDe(o), tieneCup });
+    });
+    const cuponeros = [];
+    porCliente.forEach((lista, tel) => {
+        lista.sort((a, b) => a.ms - b.ms);
+        if (!lista.some((x) => x.tieneCup)) return;
+        const primera = lista[0];
+        const primeraCup = lista.find((x) => x.tieneCup);
+        const bonos = lista.reduce((s, x) => s + (x.o.items || []).filter(esCup).reduce((q, i) => q + Math.max(1, Number(i.quantity || 1)), 0), 0);
+        // venta adicional en el mismo pedido del bono (lo que no es cuponera)
+        const adicionalMismo = lista.filter((x) => x.tieneCup).reduce((s, x) => s + (x.o.items || []).filter((i) => !esCup(i)).reduce((t, i) => t + Number(i.subtotal || 0), 0), 0);
+        // pedidos posteriores al primer bono que NO llevan bono (compras normales)
+        const otros = lista.filter((x) => !x.tieneCup && x.ms > primeraCup.ms);
+        const otrosTotal = otros.reduce((s, x) => s + Number(x.o.total ?? x.o.subtotal ?? 0), 0);
+        const despues = lista.filter((x) => x.ms > primera.ms).length;
+        const segundo = lista[1];
+        cuponeros.push({
+            tel, nuevo: primera.tieneCup, primeraMs: primera.ms, pedidos: lista.length, despues, bonos,
+            adicionalMismo, otrosPedidos: otros.length, otrosTotal,
+            diasA2: segundo ? (segundo.ms - primera.ms) / 86400000 : null,
+            compraOtros: adicionalMismo > 0 || otros.length > 0
+        });
+    });
+    return { cuponeros, sinTelefono };
+}
+
 async function renderMetricasCuponera() {
     const body = document.getElementById('cuponeraBody');
     if (!body) return;
@@ -36360,6 +36401,58 @@ async function renderMetricasCuponera() {
                 porTipo[tipo] = (porTipo[tipo] || 0) + q;
             });
         });
+        const { cuponeros, sinTelefono } = _cuponeraClientes(orders);
+        const nuevos = cuponeros.filter((c) => c.nuevo);
+        const dtKey = (ms) => new Date(ms - 5 * 3600000).toISOString().slice(0, 10);
+        const nuevosDia = {}; const nuevosSemana = {}; const nuevosMes = {};
+        const DOW = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+        nuevos.forEach((c) => {
+            const k = dtKey(c.primeraMs);
+            nuevosDia[k] = (nuevosDia[k] || 0) + 1;
+            const dw = DOW[new Date(`${k}T12:00:00Z`).getUTCDay()];
+            nuevosSemana[dw] = (nuevosSemana[dw] || 0) + 1;
+            nuevosMes[k.slice(0, 7)] = (nuevosMes[k.slice(0, 7)] || 0) + 1;
+        });
+        const nuevosDiaConteo = {}; Object.keys(nuevosDia).sort().forEach((k) => { nuevosDiaConteo[`${k.slice(5)}`] = nuevosDia[k]; });
+        const nuevosSemanaConteo = {}; DOW.forEach((d) => { if (nuevosSemana[d]) nuevosSemanaConteo[d] = nuevosSemana[d]; });
+        const volvieron = nuevos.filter((c) => c.despues > 0);
+        const pct = (a, b) => (b ? `${Math.round((a / b) * 1000) / 10}%` : '—');
+        const prom = (arr) => (arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : 0);
+        const diasA2 = nuevos.map((c) => c.diasA2).filter((x) => x !== null);
+        const recurrencia = { '1 pedido (no volvió)': 0, '2 pedidos': 0, '3 o más pedidos': 0 };
+        nuevos.forEach((c) => { if (c.pedidos >= 3) recurrencia['3 o más pedidos'] += 1; else if (c.pedidos === 2) recurrencia['2 pedidos'] += 1; else recurrencia['1 pedido (no volvió)'] += 1; });
+        const bonosCli = { '1 bono': 0, '2 a 3 bonos': 0, '4 o más bonos': 0 };
+        cuponeros.forEach((c) => { if (c.bonos >= 4) bonosCli['4 o más bonos'] += 1; else if (c.bonos >= 2) bonosCli['2 a 3 bonos'] += 1; else bonosCli['1 bono'] += 1; });
+        const adicionalMismoTot = cuponeros.reduce((s, c) => s + c.adicionalMismo, 0);
+        const otrosTot = cuponeros.reduce((s, c) => s + c.otrosTotal, 0);
+        const compraronOtros = cuponeros.filter((c) => c.compraOtros).length;
+        const nCli = cuponeros.length;
+        const clientesHTML = `
+            <div class="met-section-title" style="margin-top:22px;">👥 Clientes de la cuponera</div>
+            <div class="met-kpi-row" style="margin-bottom:12px;">
+                <div class="met-kpi-card met-kpi-card--hi"><span class="met-kpi-val">${nCli}</span><span class="met-kpi-lbl">Clientes que canjearon</span><span class="met-kpi-sub">cada persona cuenta aparte</span></div>
+                <div class="met-kpi-card met-kpi-card--green"><span class="met-kpi-val">${nuevos.length}</span><span class="met-kpi-lbl">Clientes nuevos</span><span class="met-kpi-sub">su 1.er pedido fue con bono</span></div>
+                <div class="met-kpi-card met-kpi-card--purple"><span class="met-kpi-val">${volvieron.length}</span><span class="met-kpi-lbl">Nuevos que volvieron</span><span class="met-kpi-sub">${pct(volvieron.length, nuevos.length)} de los nuevos</span></div>
+                <div class="met-kpi-card"><span class="met-kpi-val">${diasA2.length ? Math.round(prom(diasA2) * 10) / 10 : '—'}</span><span class="met-kpi-lbl">Días al 2.º pedido</span><span class="met-kpi-sub">promedio</span></div>
+            </div>
+            <div class="met-section-title">Clientes nuevos por día</div>
+            ${nuevos.length ? _cpanaBarrasHTML(nuevosDiaConteo, Object.keys(nuevosDiaConteo)) : '<p class="admin-hint">Aún no hay clientes nuevos con bono.</p>'}
+            <div class="met-section-title" style="margin-top:12px;">Clientes nuevos por día de la semana</div>
+            ${nuevos.length ? _cpanaBarrasHTML(nuevosSemanaConteo, Object.keys(nuevosSemanaConteo)) : '<p class="admin-hint">—</p>'}
+            <div class="met-section-title" style="margin-top:12px;">Clientes nuevos por mes</div>
+            ${nuevos.length ? _cpanaBarrasHTML(nuevosMes, Object.keys(nuevosMes).sort()) : '<p class="admin-hint">—</p>'}
+            <div class="met-section-title" style="margin-top:12px;">¿Qué tan recurrentes son los nuevos?</div>
+            ${nuevos.length ? _cpanaBarrasHTML(recurrencia, Object.keys(recurrencia)) : '<p class="admin-hint">—</p>'}
+            <div class="met-section-title" style="margin-top:12px;">Bonos canjeados por cliente</div>
+            ${nCli ? _cpanaBarrasHTML(bonosCli, Object.keys(bonosCli)) : '<p class="admin-hint">—</p>'}
+            <div class="met-section-title" style="margin-top:16px;">💰 Lo que gastan además del bono</div>
+            <div class="met-kpi-row" style="margin-bottom:12px;">
+                <div class="met-kpi-card"><span class="met-kpi-val">${compraronOtros}</span><span class="met-kpi-lbl">Compraron algo más</span><span class="met-kpi-sub">${pct(compraronOtros, nCli)} de los clientes</span></div>
+                <div class="met-kpi-card met-kpi-card--green"><span class="met-kpi-val">$${nf(adicionalMismoTot)}</span><span class="met-kpi-lbl">Extra en el mismo pedido</span><span class="met-kpi-sub">productos que no son del bono</span></div>
+                <div class="met-kpi-card met-kpi-card--purple"><span class="met-kpi-val">$${nf(otrosTot)}</span><span class="met-kpi-lbl">Pedidos posteriores sin bono</span><span class="met-kpi-sub">compras normales después del 1.er bono</span></div>
+                <div class="met-kpi-card met-kpi-card--hi"><span class="met-kpi-val">$${nf(adicionalMismoTot + otrosTot)}</span><span class="met-kpi-lbl">Ventas adicionales</span><span class="met-kpi-sub">${nCli ? `$${nf(Math.round((adicionalMismoTot + otrosTot) / nCli))} por cliente` : ''}</span></div>
+            </div>
+            <p class="admin-hint">${sinTelefono ? `${sinTelefono} pedido(s) con bono no traen celular: no se pueden contar como clientes. ` : ''}"Nuevo" se mide con el historial de los últimos 400 días y se identifica por el celular del pedido. Si el cajero no lo escribe, el cliente no se puede seguir.</p>`;
         const diasConteo = {}; Object.keys(dias).sort().forEach((k) => { diasConteo[dias[k].et] = dias[k].n; });
         const nombres = {}; POS_CUPONERA_BONOS.forEach((b) => { nombres[b.id] = b.nombre; });
         const topId = Object.keys(porBono).sort((a, b) => porBono[b].n - porBono[a].n)[0];
@@ -36384,7 +36477,8 @@ async function renderMetricasCuponera() {
             ${total ? _cpanaBarrasHTML(porTipo) : vacio}
             <div class="met-section-title" style="margin-top:16px;">Dónde piden (domicilios)</div>
             ${total ? _cpanaBarrasHTML(porZona) : vacio}
-            <p class="admin-hint" style="margin-top:12px;">La zona sale de la dirección escrita en el pedido, así que es aproximada.</p>`;
+            <p class="admin-hint" style="margin-top:12px;">La zona sale de la dirección escrita en el pedido, así que es aproximada.</p>
+            ${clientesHTML}`;
     } catch (err) {
         console.error('metricas cuponera:', err);
         body.innerHTML = '<p class="met-empty-note">No se pudieron cargar las métricas de la cuponera.</p>';
