@@ -227,3 +227,33 @@ test('normalizarVenta conserva teléfono y nombre', () => {
   assert.equal(v.tel, '300111');
   assert.equal(v.nombre, 'Ana');
 });
+
+// ── Paso 12: costo_por_plato pide el costo a costosFuente (nuevo si hay enlace, viejo si no) ──
+test('costoPorPlato: con enlace sale el costo nuevo marcado; sin enlace el viejo; si Costos falla, viejo', async () => {
+    const { costoPorPlato } = require('../functions/adminAsistente');
+    const { limpiarCache } = require('../functions/costosFuente');
+    const col = {
+        costos_insumos: [{ id: 'i1', nombre: 'Carne', precioCompra: 10000, pesoEmpaque: 1000, mermaPct: 0 }],
+        costos_recetas: [],
+        costos_platos: [
+            { id: 'p1', nombre: 'Burger', activo: true, precio: 20000, manoObra: 0, productoMenuId: 'mA', items: [{ tipo: 'insumo', id: 'i1', cantidad: 1000 }] },
+            { id: 'p2', nombre: 'Otro', activo: true, precio: 10000, manoObra: 0, productoMenuId: 'mB', items: [{ tipo: 'insumo', id: 'i1', cantidad: 100 }] }
+        ],
+        costos_promos: [{ id: 'm1', nombre: 'Combo', precio: 30000, items: [{ tipo: 'plato', id: 'p1', cantidad: 1 }, { tipo: 'plato', id: 'p2', cantidad: 1 }] }]
+    };
+    const db = { collection: (c) => ({
+        get: async () => ({ docs: (col[c] || []).map((x) => ({ id: x.id, data: () => x })) }),
+        where: (_c, _o, v) => ({ get: async () => ({ docs: v === 'mA' ? [{ id: 'C1', data: () => ({ estado: 'enlazado' }) }] : [] }) }),
+        doc: () => ({ get: async () => ({ exists: true, data: () => ({ colchonPct: 0, margenObjetivoPct: 50 }) }) })
+    }) };
+    limpiarCache();
+    const r = await costoPorPlato({}, db, { leerNuevo: async () => [{ id: 'C1', costoCalculado: 8000 }] });
+    const a = r.platos.find((x) => x.plato === 'Burger'), b = r.platos.find((x) => x.plato === 'Otro');
+    assert.strictEqual(a.costo_fuente, 'nuevo'); assert.strictEqual(a.costo, 8000);
+    assert.strictEqual(b.costo_fuente, 'viejo'); assert.strictEqual(b.costo, 1000);
+    const pr = await costoPorPlato({ parte: 'promociones' }, db, { leerNuevo: async () => [{ id: 'C1', costoCalculado: 8000 }] });
+    assert.strictEqual(pr.promociones[0].costo, 9000); assert.match(pr.promociones[0].costo_fuente, /mixto/);
+    limpiarCache();
+    const f = await costoPorPlato({}, db, { leerNuevo: async () => { throw new Error('caído'); } });
+    assert.ok(f.platos.every((x) => x.costo_fuente === 'viejo'));
+});

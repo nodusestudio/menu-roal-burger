@@ -476,7 +476,30 @@ async function codigoDelDia(db, desde, hasta) {
 
 // Costos y recetas propios de FODEXA (colecciones costos_*, motor puro en costos.js). Reemplaza a CostoX.
 // Todo se recalcula en vivo; cada plato trae costo_real y costo con colchón (el que mide alertas/margen).
-async function costoPorPlato(args = {}, db) {
+// Paso 12: el costo de cada plato lo pide costosFuente: con enlace en Costos (app nueva) sale el costo "nuevo"; sin enlace, el de la
+// calculadora vieja ("viejo"). Reescribe las filas de calcularPlatos y deja `fuente` ('nuevo'|'viejo') en cada una.
+async function aplicarCostosNuevos(db, platos, calc, margenObjetivoPct, leerNuevo) {
+    const { obtenerCostoPorMenuId } = require('./costosFuente');
+    const { precioSugerido } = require('./costos');
+    const pct1 = (x) => Math.round(x * 10) / 10;
+    const docPorId = Object.fromEntries(platos.map((d) => [d.id, d]));
+    const out = [];
+    for (const c of calc) {
+        const d = docPorId[c.id];
+        if (!d || !d.productoMenuId) { out.push({ ...c, fuente: 'viejo' }); continue; }
+        const r = await obtenerCostoPorMenuId(d.productoMenuId, { db, leerNuevo, costoViejo: () => ({ costo: c.costo, costoReal: c.costo_real }) });
+        if (!r || r.fuente !== 'nuevo') { out.push({ ...c, fuente: 'viejo' }); continue; }
+        const costo = Math.round(r.costo), real = Math.round(r.costoReal), precio = c.precio;
+        const f = { ...c, costo, costo_real: real, fc_pct: precio ? pct1((costo / precio) * 100) : null, fc_real_pct: precio ? pct1((real / precio) * 100) : null,
+            margen: precio - costo, margen_pct: precio ? pct1(((precio - costo) / precio) * 100) : null, margen_real: precio - real,
+            precio_sugerido: precioSugerido(costo, margenObjetivoPct), faltantes: [], fuente: 'nuevo' };
+        f.alerta = !costo ? 'sin costo' : !precio ? 'sin precio' : costo >= precio ? 'costo ≥ precio' : (margenObjetivoPct && f.margen_pct < margenObjetivoPct) ? `margen bajo el objetivo (${margenObjetivoPct}%)` : undefined;
+        out.push(f);
+    }
+    return out;
+}
+
+async function costoPorPlato(args = {}, db, opts = {}) {
     const admin = require('firebase-admin');
     const { calcularPlatos, alzasDePrecio } = require('./costos');
     db = db || admin.firestore();
@@ -514,21 +537,24 @@ async function costoPorPlato(args = {}, db) {
         const todo = [...platos.filter((p) => args.incluir_ideas || p.activo === true).map((d) => fila('plato', d)), ...recetas.map((d) => fila('receta', d))].filter((f) => filtra(f.nombre));
         return { fuente, total: todo.length, sin_preparacion: todo.filter((f) => !f.preparacion).length, items: todo.slice(0, 15), nota: 'preparacion = modo de preparación escrito por el administrador (null si no lo ha escrito). Úsalo para manuales de usuario/fichas; no inventes pasos que no estén.' };
     }
-    const calc = calcularPlatos({ insumos, recetas, platos }, { colchonPct, margenObjetivoPct });
+    const leerNuevo = opts.leerNuevo || (process.env.COSTOS_SA_KEY ? () => require('./costosRoal').leerCostosRoal(process.env.COSTOS_SA_KEY) : undefined);
+    const calc = await aplicarCostosNuevos(db, platos, calcularPlatos({ insumos, recetas, platos }, { colchonPct, margenObjetivoPct }), margenObjetivoPct, leerNuevo);
     const porId = Object.fromEntries(calc.map((c) => [c.id, c]));
     if (parte === 'promociones') {
         const filas = promos.map((p) => {
             let real = 0, costo = 0, roto = false;
+            const fuentes = new Set();
             for (const it of p.items || []) {
                 const pl = it.tipo === 'plato' ? porId[it.id] : null;
                 if (!pl) { roto = true; continue; }
+                fuentes.add(pl.fuente);
                 real += (Number(it.cantidad) || 1) * pl.costo_real;
                 costo += (Number(it.cantidad) || 1) * pl.costo;
             }
             const precio = Number(p.precio) || 0;
             const alerta = roto ? 'referencias a platos inexistentes' : !costo ? 'sin costo' : !precio ? 'sin precio' : costo >= precio ? 'costo con colchón ≥ precio' : undefined;
             const mP = margenPromoPct / 100, sugerido = costo > 0 && mP > 0 && mP < 1 ? Math.ceil(costo / (1 - mP) / 500) * 500 : null;
-            return { id: p.id, promo: p.nombre || p.id, precio, costo_real: Math.round(real), costo: Math.round(costo), margen_pct: precio ? Math.round(((precio - costo) / precio) * 1000) / 10 : null, margen_objetivo_promos_pct: margenPromoPct, precio_sugerido: sugerido, alerta };
+            return { id: p.id, promo: p.nombre || p.id, costo_fuente: fuentes.size === 1 ? [...fuentes][0] : fuentes.size ? 'mixto (parte nuevo, parte viejo)' : 'viejo', precio, costo_real: Math.round(real), costo: Math.round(costo), margen_pct: precio ? Math.round(((precio - costo) / precio) * 1000) / 10 : null, margen_objetivo_promos_pct: margenPromoPct, precio_sugerido: sugerido, alerta };
         }).filter((f) => filtra(f.promo));
         return { fuente, total: filas.length, promociones: filas.sort((a, b) => (a.margen_pct ?? 999) - (b.margen_pct ?? 999)) };
     }
@@ -536,7 +562,7 @@ async function costoPorPlato(args = {}, db) {
     // Mientras ningún plato esté marcado activo, se muestran las ideas (si no, la respuesta saldría vacía).
     const todos = args.incluir_ideas === true || activos === 0;
     const filas = calc.filter((c) => (todos || c.activo) && filtra(c.plato)).map((c) => ({
-        id: c.id, plato: c.plato, activo: c.activo, precio: c.precio,
+        id: c.id, plato: c.plato, activo: c.activo, costo_fuente: c.fuente, precio: c.precio,
         costo_real: c.costo_real, fc_real_pct: c.fc_real_pct, costo: c.costo, fc_pct: c.fc_pct,
         margen: c.margen, margen_pct: c.margen_pct, precio_sugerido: c.precio_sugerido, alerta: c.alerta
     }));
@@ -545,7 +571,7 @@ async function costoPorPlato(args = {}, db) {
         aviso: activos === 0 ? 'Aún no hay platos marcados como activos: se muestran todos como ideas en estudio.' : undefined,
         total_platos: filas.length, platos_activos_en_total: activos, platos_ideas_en_total: calc.length - activos,
         con_alerta: filas.filter((f) => f.alerta).length,
-        nota: 'costo_real = precio de compra + merma real + mano de obra. costo = ingredientes × (1+colchón) + mano de obra; fc_pct, margen y precio_sugerido se miden sobre ese costo con colchón. Por defecto solo platos ACTIVOS (los que se venden); incluir_ideas:true añade los que están en estudio. Ordenado de mayor a menor food cost.',
+        nota: 'costo_fuente: (nuevo) = costo de la app Costos, (viejo) = calculadora vieja; al citar un costo di cuál es. costo_real = precio de compra + merma real + mano de obra. costo = ingredientes × (1+colchón) + mano de obra; fc_pct, margen y precio_sugerido se miden sobre ese costo con colchón. Por defecto solo platos ACTIVOS (los que se venden); incluir_ideas:true añade los que están en estudio. Ordenado de mayor a menor food cost.',
         platos: filas.sort((a, b) => (b.fc_pct ?? 999) - (a.fc_pct ?? 999))
     };
 }
@@ -1262,7 +1288,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
 }
 
 module.exports = {
-    MAX_RANGO_DIAS, MAX_RESULT_CHARS, TOOLS,
+    MAX_RANGO_DIAS, MAX_RESULT_CHARS, TOOLS, costoPorPlato, aplicarCostosNuevos,
     toMs, bogotaDateKey, dateKeyToMs, parseRango, claveGrupo,
     totalPedido, fechaVentaMs, esPagado, normalizarVenta, unirVentas, cargarPedidosRango,
     resumenDe, resumenVentas, ventasPorDiaHora, ventasPorMetodo, ventasPorOrigenTipo, topProductos,
