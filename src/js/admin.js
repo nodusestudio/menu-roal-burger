@@ -16361,6 +16361,8 @@ function buildThermalTicketMarkup(order, options = {}) {
         const detailParts = _ticketDetalleLineas(item).map((d) => {
             if (d.t === 'cat') return d.x;
             if (d.t === 'cortesia') return '🎁 CORTESÍA';
+            if (d.t === 'hdr') return `${printMode ? '' : '▪ '}${d.x}`;
+            if (d.t === 'sub') return `\u00a0\u00a0\u00a0- ${d.x}`;
             if (d.t === 'beb') return `${_guion}Bebida: ${d.x}`;
             if (d.t === 'nota') return `${_guion}${/^(sin|poca|con)\b/i.test(d.x) ? '' : 'Nota: '}${d.x}`;
             return _guion + d.x;
@@ -20154,6 +20156,7 @@ function _ticketDetalleLineas(item, { categoria = true } = {}) {
     const out = [];
     if (categoria && !item.parentItemKey && item.categoryName) out.push({ t: 'cat', x: String(item.categoryName).trim() });
     if (item.cortesia) out.push({ t: 'cortesia', x: 'CORTESÍA' });
+    const esCuponeraTicket = /^cuponera/.test(String(item.productId || '')) || item.categoryName === 'CUPONERA';
     const opt = String(item.optionLabel || '').trim();
     const partes = opt.split(/\s+\|\s+/).filter((p) => p && !/si es para (llevar|domicilio)/i.test(p));
     const esPromo2x1 = partes.some((p) => /PROMOCI[OÓ]N\s*2\s*[x×]\s*1/i.test(p));
@@ -20164,7 +20167,11 @@ function _ticketDetalleLineas(item, { categoria = true } = {}) {
             // "Sin tomate, sin cebolla" / "Con La Jeva (BBQ)" / "Poca salsa" es lo que cocina NO debe pasar por alto: va como nota resaltada
             if (/^(sin|poca|con)\b/i.test(p)) { out.push({ t: 'nota', x: p }); return; }
             // un combo llega como "1 persona + Postobon 250ml (colombiana) ×2": cada parte en su línea
-            p.split(/\s+\+\s+/).map((q) => q.trim()).filter(Boolean).forEach((q) => out.push({ t: 'opt', x: q }));
+            const partesCombo = p.split(/\s+\+\s+/).map((q) => q.trim()).filter(Boolean);
+            // Cuponera: los renglones con precio ("1 Burger Ranchera — $30.000", "Combo — $7.000:", "REGALO: … — $0") son
+            // encabezados y lo que va debajo (papas, bebida con sabor) queda sangrado: se lee qué es cada cosa y cuánto vale.
+            const hayEncabezados = esCuponeraTicket && partesCombo.some((q) => /—\s*\$|^REGALO:/i.test(q));
+            partesCombo.forEach((q) => out.push({ t: hayEncabezados ? (/—\s*\$|^REGALO:/i.test(q) ? 'hdr' : 'sub') : 'opt', x: q }));
         });
     const note = String(item.note || '').trim();
     if (note && note !== opt) {
@@ -20406,9 +20413,9 @@ function buildESCPOSData(order) {
             ? { ...item, optionLabel: item._combo.resto.join(' | '), note: item._combo.resto.join(' | ') }
             : item;
         _ticketDetalleLineas(_itemDet, { categoria: false }).forEach((d) => {
-            const pfx = esHijo ? '       - ' : '    - ';
+            const pfx = esHijo ? '       - ' : d.t === 'sub' ? '       - ' : d.t === 'hdr' ? '    ' : '    - ';
             const txt = d.t === 'cortesia' ? '*** CORTESIA ***' : d.t === 'beb' ? 'Beb: ' + d.x : d.x;
-            const resalta = d.t === 'cortesia' || /^(sin|poca|con)\b/i.test(d.x);
+            const resalta = d.t === 'cortesia' || d.t === 'hdr' || /^(sin|poca|con)\b/i.test(d.x);
             if (resalta) pb(ESC, 0x45, 0x01);
             wh(pfx, txt);
             if (resalta) pb(ESC, 0x45, 0x00);
@@ -21032,8 +21039,12 @@ function buildKitchenTicketHtml(order) {
     const products = topItems.map((item) => {
         // Un dato por línea: el combo y la bebida en su renglón, y lo que hay que QUITAR o cuidar resaltado con ⚠.
         const _det = _ticketDetalleLineas(item);
-        const details = _det.filter((d) => d.t === 'cat' || d.t === 'opt' || d.t === 'beb')
-            .map((d) => `<div class="k-detail">${d.t === 'beb' ? '🥤 ' : (d.t === 'opt' ? '· ' : '')}${escapeHtml(d.x)}</div>`)
+        const details = _det.filter((d) => d.t === 'cat' || d.t === 'opt' || d.t === 'beb' || d.t === 'hdr' || d.t === 'sub')
+            .map((d) => (d.t === 'hdr'
+                ? `<div class="k-detail" style="font-weight:800;margin-top:4px;">${escapeHtml(d.x.replace(/\s*—\s*\$[\d.,]+/g, ''))}</div>`
+                : d.t === 'sub'
+                    ? `<div class="k-detail" style="padding-left:16px;">- ${escapeHtml(d.x)}</div>`
+                    : `<div class="k-detail">${d.t === 'beb' ? '🥤 ' : (d.t === 'opt' ? '· ' : '')}${escapeHtml(d.x)}</div>`))
             .join('');
         const note = _det.filter((d) => d.t === 'nota' || d.t === 'cortesia')
             .map((d) => `<div class="k-note">⚠ ${escapeHtml(d.x)}</div>`)
