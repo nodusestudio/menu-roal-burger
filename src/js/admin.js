@@ -43471,7 +43471,7 @@ function _almTextoMenuDia() {
 
 
 // ── Costos (nuevo): lee los costos que calcula la app Costos (solo lectura) vía obtenerCostosRoal ──
-let _cnDatos = null, _cnCargando = false;
+let _cnDatos = null, _cnCargando = false, _cnCat = '';
 function _cnColor(pct) {
     if (pct == null) return 'inherit';
     return pct <= 33 ? '#2e9e5b' : (pct <= 45 ? '#d9a406' : '#d64545');
@@ -43481,7 +43481,18 @@ function _cnRender() {
     if (!body || !_cnDatos) return;
     const q = (document.getElementById('costosNuevoBuscar')?.value || '').trim().toLowerCase();
     const soloActivos = (document.getElementById('costosNuevoFiltro')?.value || 'activos') === 'activos';
-    const lista = _cnDatos.filter(p => (!soloActivos || p.activo) && (!q || p.nombre.toLowerCase().includes(q)));
+    const base = _cnDatos.filter(p => (!soloActivos || p.activo) && (!q || p.nombre.toLowerCase().includes(q)));
+    const cuentas = {};
+    _cnDatos.forEach(p => { cuentas[p.categoria] = cuentas[p.categoria] || 0; });
+    base.forEach(p => { cuentas[p.categoria]++; });
+    if (_cnCat && !(_cnCat in cuentas)) _cnCat = '';
+    const chips = document.getElementById('costosNuevoCats');
+    if (chips) {
+        chips.innerHTML = `<button type="button" class="category-filter-btn${_cnCat ? '' : ' active'}" data-cncat="">Todas (${base.length})</button>` +
+            Object.keys(cuentas).sort((a, b) => a.localeCompare(b, 'es')).map(c =>
+                `<button type="button" class="category-filter-btn${_cnCat === c ? ' active' : ''}" data-cncat="${escapeHtml(c)}">${escapeHtml(c)} (${cuentas[c]})</button>`).join('');
+    }
+    const lista = _cnCat ? base.filter(p => p.categoria === _cnCat) : base;
     if (!lista.length) { body.innerHTML = '<p style="color:var(--admin-muted)">Sin productos para mostrar.</p>'; return; }
     const fmt = n => n == null ? '—' : '$' + Math.round(n).toLocaleString('es-CO');
     const fecha = iso => iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -43510,5 +43521,11 @@ async function _costosNuevoCargar(force) {
     } finally { _cnCargando = false; }
 }
 document.getElementById('costosNuevoRefreshBtn')?.addEventListener('click', () => _costosNuevoCargar(true));
+document.getElementById('costosNuevoCats')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cncat]');
+    if (!b) return;
+    _cnCat = b.getAttribute('data-cncat') || '';
+    _cnRender();
+});
 document.getElementById('costosNuevoBuscar')?.addEventListener('input', _cnRender);
 document.getElementById('costosNuevoFiltro')?.addEventListener('change', _cnRender);
