@@ -98,7 +98,7 @@ test('el aviso de calificación baja dice qué falló', () => {
 });
 
 // ── Cuponera física ──
-const RESP_CUP = { consentimiento: true, q1: 'muy_buena', sistema: 'bueno', origen: 'regalo', sinCupon: 'no_conocia', recompra: 'seguro', precio: 'igual', q4: 'más bonos', q5: 'nada' };
+const RESP_CUP = { consentimiento: true, q1: 'muy_buena', sistema: 'bueno', sinCupon: 'no_conocia', recompra: 'seguro', precio: 'igual', q4: 'más bonos', q5: 'nada' };
 
 test('un pedido con bono de cuponera usa el cuestionario cuponera, incluso con 2x1', () => {
     assert.equal(feedbackTipoDePedido({ items: [{ productId: 'cuponera-a' }] }), 'cuponera');
@@ -106,10 +106,10 @@ test('un pedido con bono de cuponera usa el cuestionario cuponera, incluso con 2
     assert.equal(feedbackTipoDePedido({ items: [{ productId: 'cuponera-c' }, { orderOptions: { promo2x1: true } }] }), 'cuponera');
 });
 
-test('cuponera: valida las 6 respuestas y guarda las 2 de texto', () => {
+test('cuponera: valida las 5 respuestas y guarda las 2 de texto', () => {
     const r = validarRespuestasFeedback('cuponera', RESP_CUP);
     assert.equal(r.ok, true);
-    assert.deepEqual(r.value.cuponera, { sistema: 'bueno', origen: 'regalo', sinCupon: 'no_conocia', recompra: 'seguro', precio: 'igual' });
+    assert.deepEqual(r.value.cuponera, { sistema: 'bueno', sinCupon: 'no_conocia', recompra: 'seguro', precio: 'igual' });
     assert.equal(r.value.q4, 'más bonos');
     assert.equal(r.value.q5, 'nada');
 });

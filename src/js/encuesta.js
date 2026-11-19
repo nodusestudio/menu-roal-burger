@@ -39,15 +39,13 @@ const PREGUNTAS_GENERAL = [
         opciones: [['excelente', '🌟', 'Excelente'], ['bien', '👍', 'Bien'], ['mejorable', '🤏', 'Se puede mejorar'], ['mal', '👎', 'Mal']]
     }
 ];
-// Cuponera física (bonos de papel): 6 preguntas de un clic + 2 de texto. Las claves deben coincidir con
+// Cuponera física (bonos de papel): 5 preguntas de un clic + 2 de texto. Las claves deben coincidir con
 // CUPONERA en functions/feedbackTipo.js.
 const PREGUNTAS_CUPONERA = [
     { key: 'q1', titulo: '¿Qué tal estuvo el sabor y la calidad de tu pedido?',
       opciones: [['brutal', '🔥', 'Brutal 10/10'], ['muy_buena', '😋', 'Muy buena'], ['normalita', '😐', 'Normalita'], ['no_convencio', '😕', 'No me convenció']] },
     { key: 'sistema', titulo: '¿Qué te pareció el sistema de la cuponera?',
       opciones: [['muy_bueno', '🤩', 'Muy bueno'], ['bueno', '👍', 'Bueno'], ['regular', '🤏', 'Regular'], ['malo', '👎', 'Malo']] },
-    { key: 'origen', titulo: '¿Cómo conseguiste tu bono?',
-      opciones: [['compre', '🎟️', 'Compré la cuponera'], ['regalo', '🎁', 'Me regalaron un bono'], ['companero', '🤝', 'Me lo dio un compañero o familiar'], ['otro', '✨', 'Otra forma']] },
     { key: 'sinCupon', titulo: '¿Habrías pedido en ROAL BURGER sin la cuponera?',
       opciones: [['si', '✅', 'Sí'], ['no', '❌', 'No'], ['no_conocia', '🆕', 'No los conocía']] },
     { key: 'recompra', titulo: '¿Volverías a comprar otra cuponera?',

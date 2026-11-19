@@ -51,7 +51,6 @@ function filtrarMulti(valor, permitidos) {
 // Cuestionario de la cuponera (valores permitidos; el servidor descarta cualquier otra cosa).
 const CUPONERA = {
     sistema: ['muy_bueno', 'bueno', 'regular', 'malo'],   // ¿qué te pareció el sistema de cupones?
-    origen: ['compre', 'regalo', 'companero', 'otro'],    // ¿cómo conseguiste el bono?
     sinCupon: ['si', 'no', 'no_conocia'],                 // ¿habrías pedido sin la cuponera?
     recompra: ['seguro', 'tal_vez', 'no'],                // ¿volverías a comprar otra cuponera?
     precio: ['menos', 'igual', 'mas']                     // ¿cuánto pagarías por una cuponera así?

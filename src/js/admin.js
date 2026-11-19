@@ -4071,8 +4071,7 @@ function renderFeedbackPending() {
             if (btn) sendFeedbackRequest(btn.dataset.feedbackSend, btn);
         });
     }
-    host.hidden = pending.length === 0;
-    host.innerHTML = pending.map((order) => {
+    const filaHtml = (order) => {
         const phone = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '');
         return `<div class="feedback-pending-row">
             <span class="feedback-pending-ico" aria-hidden="true">${{ general: '💛', cuponera: '🎟️' }[feedbackTipoOrden(order)] || '⭐'}</span>
@@ -4082,7 +4081,26 @@ function renderFeedbackPending() {
             </div>
             <button type="button" class="feedback-pending-btn" data-feedback-send="${escapeHtml(order.id)}">Copiar mensaje</button>
         </div>`;
-    }).join('');
+    };
+    host.hidden = pending.length === 0;
+    host.innerHTML = pending.map(filaHtml).join('');
+
+    // POS: solo los pendientes de cuponera, para que el cajero tenga el número y el mensaje a la mano.
+    const posHost = document.getElementById('posFeedbackHost');
+    if (posHost) {
+        const cup = pending.filter((o) => feedbackTipoOrden(o) === 'cuponera');
+        posHost.hidden = cup.length === 0;
+        posHost.innerHTML = cup.map(filaHtml).join('');
+        if (posHost.dataset.listener !== '1') {
+            posHost.dataset.listener = '1';
+            posHost.addEventListener('click', (event) => {
+                const phoneBtn = event.target.closest('[data-feedback-phone]');
+                if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.feedbackPhone); return; }
+                const btn = event.target.closest('[data-feedback-send]');
+                if (btn) sendFeedbackRequest(btn.dataset.feedbackSend, btn);
+            });
+        }
+    }
 }
 
 async function sendFeedbackRequest(orderId, btn, orderOverride) {
@@ -36396,7 +36414,6 @@ async function _cuponeraEncuestaHTML() {
             </div>
             ${pregunta('Sabor y calidad', dist((x) => x.q1, { brutal: 'Brutal 10/10', muy_buena: 'Muy buena', normalita: 'Normalita', no_convencio: 'No me convenció' }))}
             ${pregunta('Sistema de la cuponera', dist((x) => x.cuponera?.sistema, { muy_bueno: 'Muy bueno', bueno: 'Bueno', regular: 'Regular', malo: 'Malo' }))}
-            ${pregunta('¿Cómo consiguió el bono?', dist((x) => x.cuponera?.origen, { compre: 'Compró la cuponera', regalo: 'Se la regalaron', companero: 'Compañero o familiar', otro: 'Otra forma' }))}
             ${pregunta('¿Habría pedido sin la cuponera?', dist((x) => x.cuponera?.sinCupon, { si: 'Sí', no: 'No', no_conocia: 'No nos conocía' }))}
             ${pregunta('¿Volvería a comprar otra cuponera?', dist((x) => x.cuponera?.recompra, { seguro: 'Seguro', tal_vez: 'Tal vez', no: 'No' }))}
             ${pregunta('¿Cuánto pagaría?', dist((x) => x.cuponera?.precio, { menos: 'Menos de lo que costó', igual: 'Igual', mas: 'Más' }))}
