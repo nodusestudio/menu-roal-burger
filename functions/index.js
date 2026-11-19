@@ -4013,7 +4013,7 @@ ${ejemplos.map((e) => `- [${e.tipo || 'caso'}${e.corregida ? ', corregida' : ''}
 // Alertas proactivas de FODI: cada día 7:30 a. m. (Bogotá) calcula insumos que subieron, márgenes bajos,
 // caída/alza de ventas de ayer y resultados de sugerencias; el admin las ve en la pestaña Asistente.
 exports.fodiAlertasDiarias = onSchedule(
-    { cpu: 0.5, schedule: '30 7 * * *', timeZone: 'America/Bogota', region: 'us-central1', timeoutSeconds: 180, memory: '512MiB' },
+    { cpu: 0.5, schedule: '30 7 * * *', timeZone: 'America/Bogota', region: 'us-central1', secrets: [COSTOS_SA_KEY], timeoutSeconds: 180, memory: '512MiB' },
     async () => {
         try {
             const r = await fodiInteligencia.guardarAlertas(getFirestore());
@@ -4071,7 +4071,7 @@ exports.adminGenerarInformeSemanal = onCall(
 
 // Recalcular alertas de FODI a demanda (botón "Recalcular ahora" del admin).
 exports.adminRecalcularAlertas = onCall(
-    { region: 'us-central1', cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB' },
+    { region: 'us-central1', secrets: [COSTOS_SA_KEY], cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: '512MiB' },
     async (request) => {
         await ensureAdminCaller(request);
         try { return await fodiInteligencia.guardarAlertas(getFirestore()); } catch (e) { console.error('adminRecalcularAlertas:', e); throw new HttpsError('internal', 'No se pudieron calcular las alertas.'); }

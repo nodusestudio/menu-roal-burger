@@ -6,6 +6,29 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const A = () => require('./adminAsistente'); // carga perezosa: adminAsistente también requiere este módulo
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const pct1 = (n) => Math.round(n * 10) / 10;
+const { obtenerCostoPorMenuId } = require('./costosFuente');
+
+// Costos "nuevo" (app Costos): con el secret COSTOS_SA_KEY en el entorno; sin él todo sigue con la calculadora vieja ("viejo").
+const leerNuevoDefault = () => (process.env.COSTOS_SA_KEY ? () => require('./costosRoal').leerCostosRoal(process.env.COSTOS_SA_KEY) : undefined);
+
+/** Pide el costo de cada plato (y producto del menú) a costosFuente: con enlace en Costos -> "nuevo"; si no, el de la calculadora vieja -> "viejo".
+ *  Devuelve las filas de calcularMenu con costo/margen/sugerido recalculados cuando el costo es nuevo y `fuente` en cada fila. */
+async function costosPorFuente(db, costos, menu, leerNuevo = leerNuevoDefault()) {
+    const docPorId = Object.fromEntries(costos.platos.map((d) => [d.id, d]));
+    const filas = [];
+    for (const f of menu) {
+        const d = f.tipo === 'plato' ? docPorId[f.id] : null;
+        if (!d || !d.productoMenuId) { filas.push({ ...f, fuente: 'viejo' }); continue; }
+        const r = await obtenerCostoPorMenuId(d.productoMenuId, { db, leerNuevo, costoViejo: () => ({ costo: f.costo, costoReal: f.costoReal }) });
+        if (!r || r.fuente !== 'nuevo') { filas.push({ ...f, fuente: 'viejo' }); continue; }
+        const m = f.objetivo / 100;
+        filas.push({ ...f, costo: Math.round(r.costo), costoReal: Math.round(r.costoReal), fuente: 'nuevo',
+            margenPct: f.precio && r.costo ? pct1(((f.precio - r.costo) / f.precio) * 100) : null,
+            sugerido: r.costo > 0 && m > 0 && m < 1 ? Math.ceil(r.costo / (1 - m) / 500) * 500 : null,
+            alerta: r.costo ? undefined : 'sin costo' });
+    }
+    return filas;
+}
 
 async function cargarCostos(db) {
     const lee = (c) => db.collection(c).get().then((sn) => sn.docs.map((d) => ({ ...d.data(), id: d.id })));
@@ -46,7 +69,7 @@ function calcularMenu(c) {
 }
 
 // ───────── 1. Rentabilidad real del menú ─────────
-async function rentabilidadMenu(db, args = {}) {
+async function rentabilidadMenu(db, args = {}, opts = {}) {
     const a = A();
     const hoy = a.bogotaDateKey(Date.now());
     const hasta = args.hasta || hoy;
@@ -54,8 +77,10 @@ async function rentabilidadMenu(db, args = {}) {
     const r = a.parseRango(desde, hasta);
     if (r.error) return { error: r.error };
     const [costos, ventas] = await Promise.all([cargarCostos(db), a.cargarPedidosRango(db, r.desdeMs, r.hastaMs)]);
-    const menu = calcularMenu(costos);
+    const leerNuevo = opts.leerNuevo || leerNuevoDefault();
+    const menu = await costosPorFuente(db, costos, calcularMenu(costos), leerNuevo);
     const nombreProd = Object.fromEntries(costos.productos.map((p) => [p.id, p.nombre]));
+    const prodPorNombre = new Map(costos.productos.map((p) => [norm(p.nombre), p]));
     const porClave = new Map();
     const docs = [...costos.platos.map((d) => ({ tipo: 'plato', d })), ...costos.promos.map((d) => ({ tipo: 'promo', d }))];
     for (const { tipo, d } of docs) {
@@ -73,12 +98,17 @@ async function rentabilidadMenu(db, args = {}) {
     const filas = [], sinCosto = [];
     for (const [n, e] of vendidos) {
         if (e.cant <= 0) continue;
-        const f = porClave.get(norm(n));
+        let f = porClave.get(norm(n));
+        // Producto del menú enlazado en Costos pero sin plato en la calculadora vieja: igual tiene costo nuevo.
+        if (!f && prodPorNombre.has(norm(n))) {
+            const r = await obtenerCostoPorMenuId(prodPorNombre.get(norm(n)).id, { db, leerNuevo, costoViejo: () => null });
+            if (r && r.fuente === 'nuevo' && r.costo > 0) f = { tipo: 'plato', costo: Math.round(r.costo), objetivo: costos.margenObjetivoPct, fuente: 'nuevo' };
+        }
         if (!f) { sinCosto.push({ producto: n, unidades: e.cant, ingresos: Math.round(e.monto) }); continue; }
         const precioProm = e.monto / e.cant;
         filas.push({
             producto: n, tipo: f.tipo, unidades: e.cant, ingresos: Math.round(e.monto), precio_promedio_real: Math.round(precioProm),
-            costo_unitario: f.costo, margen_pct_real: precioProm ? pct1(((precioProm - f.costo) / precioProm) * 100) : null,
+            costo_unitario: f.costo, costo_fuente: f.fuente || 'viejo', margen_pct_real: precioProm ? pct1(((precioProm - f.costo) / precioProm) * 100) : null,
             utilidad_total: Math.round(e.monto - e.cant * f.costo), margen_objetivo_pct: f.objetivo
         });
     }
@@ -96,7 +126,7 @@ async function rentabilidadMenu(db, args = {}) {
         mejores_aportes: filas.slice(0, 10), peores_aportes: filas.slice(-5).reverse(),
         bajo_objetivo: filas.filter((f) => f.margen_pct_real != null && f.margen_pct_real < f.margen_objetivo_pct).slice(0, 10),
         vendidos_sin_costo: sinCosto.sort((x, y) => y.ingresos - x.ingresos).slice(0, 12),
-        nota: 'utilidad_total = ingresos − unidades × costo con colchón (sin gastos fijos). Los productos "vendidos_sin_costo" no tienen plato/promo con el mismo nombre en Costos y recetas (o no están vinculados en Conexión): sugiere vincularlos. Margen de promos medido contra su objetivo propio.'
+        nota: 'Cada fila trae costo_fuente: (nuevo) = costo de la app Costos, (viejo) = calculadora vieja; al citar un costo di cuál es. utilidad_total = ingresos − unidades × costo con colchón (sin gastos fijos). Los productos "vendidos_sin_costo" no tienen plato/promo con el mismo nombre en Costos y recetas (o no están vinculados en Conexión): sugiere vincularlos. Margen de promos medido contra su objetivo propio.'
     };
 }
 
@@ -173,9 +203,9 @@ async function calcularAlertas(db) {
     const alzas = alzasDePrecio({ insumos: costos.insumos, recetas: costos.recetas, platos: costos.platos }, { dias: 7 });
     for (const z of alzas.slice(0, 5)) alertas.push({ tipo: 'alza_insumo', severidad: z.alza_pct >= 15 ? 'alta' : 'media', titulo: `Subió ${z.insumo}: +${z.alza_pct}%`, detalle: `De ${z.desde} a ${z.hasta}${z.platos_afectados && z.platos_afectados.length ? `. Afecta: ${z.platos_afectados.slice(0, 5).join(', ')}` : ''}. Revisa los precios de esos platos.` });
     // b) márgenes bajo el objetivo
-    const menu = calcularMenu(costos);
+    const menu = await costosPorFuente(db, costos, calcularMenu(costos));
     const bajos = menu.filter((m) => m.activo && m.margenPct != null && m.margenPct < m.objetivo).sort((x, y) => x.margenPct - y.margenPct);
-    for (const m of bajos.slice(0, 5)) alertas.push({ tipo: 'margen_bajo', severidad: m.margenPct < m.objetivo - 15 ? 'alta' : 'media', titulo: `${m.tipo === 'promo' ? 'Promo' : 'Plato'} con margen bajo: ${m.nombre}`, detalle: `Margen ${m.margenPct}% vs objetivo ${m.objetivo}%. Precio ${m.precio}${m.sugerido ? `, sugerido ${m.sugerido}` : ''}.` });
+    for (const m of bajos.slice(0, 5)) alertas.push({ tipo: 'margen_bajo', severidad: m.margenPct < m.objetivo - 15 ? 'alta' : 'media', titulo: `${m.tipo === 'promo' ? 'Promo' : 'Plato'} con margen bajo: ${m.nombre}`, detalle: `Margen ${m.margenPct}% vs objetivo ${m.objetivo}%. Precio ${m.precio}${m.sugerido ? `, sugerido ${m.sugerido}` : ''}. Costo (${m.fuente || 'viejo'}).` });
     if (bajos.length > 5) alertas.push({ tipo: 'margen_bajo', severidad: 'media', titulo: `Hay ${bajos.length - 5} productos más con margen bajo`, detalle: 'Pídeme la lista completa de rentabilidad.' });
     // c) ventas de ayer vs mismo día de las últimas 4 semanas
     const hoyMs = a.dateKeyToMs(a.bogotaDateKey(Date.now())), ayer = hoyMs - DAY_MS;
@@ -208,4 +238,4 @@ async function leerAlertas(db) {
     return sn.empty ? null : sn.docs[0].data();
 }
 
-module.exports = { norm, cargarCostos, calcularMenu, rentabilidadMenu, registrarSugerencia, evaluarVencidas, listarSugerencias, calcularAlertas, guardarAlertas, leerAlertas };
+module.exports = { norm, cargarCostos, calcularMenu, costosPorFuente, rentabilidadMenu, registrarSugerencia, evaluarVencidas, listarSugerencias, calcularAlertas, guardarAlertas, leerAlertas };

@@ -30,3 +30,27 @@ test('registrar_sugerencia valida entradas', async () => {
     assert.ok((await FI.registrarSugerencia({}, { titulo: '' })).error);
     assert.ok((await FI.registrarSugerencia({}, { titulo: 'x', metrica: 'producto' })).error);
 });
+
+// ── Paso 12: costos por costosFuente (nuevo si hay enlace, viejo si no) ──
+test('costosPorFuente: con enlace usa el costo nuevo y lo marca; sin enlace queda "viejo"', async () => {
+    const { limpiarCache } = require('../functions/costosFuente');
+    limpiarCache();
+    const c = { ...costos, platos: [
+        { ...costos.platos[0], productoMenuId: 'mA' },                                    // enlazado -> nuevo
+        { id: 'p2', nombre: 'Otro', activo: true, precio: 10000, manoObra: 0, productoMenuId: 'mB', items: [{ tipo: 'insumo', id: 'i1', cantidad: 100 }] } // sin enlace -> viejo
+    ] };
+    const db = { collection: () => ({ where: (_c, _o, v) => ({ get: async () => ({ docs: v === 'mA' ? [{ id: 'C1', data: () => ({ menuId: 'mA', estado: 'enlazado' }) }] : [] }) }) }) };
+    const filas = await FI.costosPorFuente(db, c, FI.calcularMenu(c), async () => [{ id: 'C1', costoCalculado: 8000 }]);
+    const a = filas.find((x) => x.id === 'p1'), b = filas.find((x) => x.id === 'p2');
+    assert.strictEqual(a.fuente, 'nuevo'); assert.strictEqual(a.costo, 8000); assert.strictEqual(a.margenPct, 60);
+    assert.strictEqual(b.fuente, 'viejo'); assert.strictEqual(b.costo, 1000);
+});
+
+test('costosPorFuente: si Costos no responde, cae al viejo sin romper', async () => {
+    const { limpiarCache } = require('../functions/costosFuente');
+    limpiarCache();
+    const c = { ...costos, platos: [{ ...costos.platos[0], productoMenuId: 'mA' }] };
+    const db = { collection: () => ({ where: () => ({ get: async () => ({ docs: [{ id: 'C1', data: () => ({ estado: 'enlazado' }) }] }) }) }) };
+    const filas = await FI.costosPorFuente(db, c, FI.calcularMenu(c), async () => { throw new Error('caído'); });
+    assert.strictEqual(filas[0].fuente, 'viejo'); assert.strictEqual(filas[0].costo, 10000);
+});
