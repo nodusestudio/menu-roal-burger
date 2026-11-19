@@ -20353,6 +20353,8 @@ function createEscPosLineBuilder(pb, COLS_TOTAL) {
 // (o el nombre de la bebida si no tiene sabor) y el resto del detalle (nota, "sin ...") sin la parte del combo.
 function _ticketParseCombo(item) {
     if (!item || item.parentItemKey || item.isComboEspecial || /CUPONES EXCLUSIVOS/i.test(item.categoryName || '')) return null;
+    // Cuponera: sus partes se unen con " + " pero NO es un combo de variante; va por renglones (producto / combo / regalo) en _ticketDetalleLineas.
+    if (/^cuponera/.test(String(item.productId || '')) || item.categoryName === 'CUPONERA' || item.promoLabel === 'CUPONERA') return null;
     const partes = String(item.optionLabel || '').trim().split(/\s+\|\s+/).filter(Boolean);
     const segs = (partes[0] || '').split(/\s+\+\s+/).map((s) => s.trim()).filter(Boolean);
     if (segs.length < 2) return null;
