@@ -4,6 +4,8 @@
 // administrador confirma con un botón; el panel (admin.js) es quien guarda, con las mismas rutas de siempre.
 //   node --test --test-concurrency=1 tests/fodi-catalogo.test.js
 
+// COSTOS (paso 12): este módulo NO pide ni muestra ningún costo; solo crea/edita fichas (insumos, recetas, platos) de la calculadora
+// vieja y resuelve nombres. Por eso no usa costosFuente. Se apaga junto con la calculadora vieja, cuando todo esté enlazado en Costos.
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : NaN; };
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
