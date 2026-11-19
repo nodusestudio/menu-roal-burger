@@ -12533,6 +12533,7 @@ async function _sqFinCargar() {
     _sqFinError = '';
     try {
         if (!_costosLoaded) await _costosCargar();
+        await _cfPrecargar().catch(() => {});
         if (!_sqFinCfgLoaded) {
             const d = await firebaseDb.collection(CONFIG_COLLECTION).doc('finanzas_festival').get();
             if (d.exists) {
@@ -12553,9 +12554,9 @@ function _sqFinCostoBurger() {
     if (!plato) plato = _costos.platos.find((pl) => /trif/i.test(String(pl.productoMenuId || '')) && !/mini/i.test(String(pl.productoMenuId || '')));
     if (!plato) plato = _costos.platos.find((pl) => _cNorm(pl.nombre) === 'burger trifasica');
     if (!plato) return null;
-    const c = _cCalcPlato(plato, _cCtx());
+    const c = _cfAjustar(plato, _cCalcPlato(plato, _cCtx()));
     // La receta "Burger TRIFASICA" lleva 2 panes y 300 g de carne (150 g c/u): rinde 2 hamburguesas (un 2×1).
-    return { nombre: plato.nombre, recetaReal: c.real, recetaColch: c.colch, real: c.real / SQ_BURGERS_POR_RECETA, colch: c.colch / SQ_BURGERS_POR_RECETA, faltantes: c.faltantes };
+    return { nombre: plato.nombre, recetaReal: c.real, recetaColch: c.colch, real: c.real / SQ_BURGERS_POR_RECETA, colch: c.colch / SQ_BURGERS_POR_RECETA, faltantes: c.faltantes, fuente: c.fuente };
 }
 
 // Reparto de la utilidad DÍA POR DÍA: cuánto se vendió, cuánto costó y cuánto toca guardar (sueldos + reserva) cada día,
@@ -12681,7 +12682,7 @@ function renderMetricasSqFin() {
                 ${kpi('', costo ? `${margen}%` : '—', 'Margen de utilidad')}
             </div>
             ${aviso}
-            ${costo ? `<p class="met-empty-note" style="margin-top:10px">Costo por hamburguesa: <strong>${escapeHtml(formatMoney(Math.round(costo.colch)))}</strong> con colchón (${escapeHtml(formatMoney(Math.round(costo.real)))} real). La receta "${escapeHtml(costo.nombre)}" (${escapeHtml(formatMoney(costo.recetaColch))} con colchón, ${escapeHtml(formatMoney(costo.recetaReal))} real) rinde ${SQ_BURGERS_POR_RECETA} hamburguesas: 2 panes y 300 g de carne. Con el costo real la utilidad sería ${escapeHtml(formatMoney(utilReal))}. ${cortBurgers ? `Incluye ${nf(cortBurgers)} hamburguesa(s) regaladas en cortesía (${escapeHtml(formatMoney(costoCort))} de costo, sin ingreso).` : ''}</p>` : ''}
+            ${costo ? `<p class="met-empty-note" style="margin-top:10px">Costo por hamburguesa: <strong>${escapeHtml(formatMoney(Math.round(costo.colch)))}</strong> con colchón${_cfTag(costo.fuente)} (${escapeHtml(formatMoney(Math.round(costo.real)))} real). La receta "${escapeHtml(costo.nombre)}" (${escapeHtml(formatMoney(costo.recetaColch))} con colchón, ${escapeHtml(formatMoney(costo.recetaReal))} real) rinde ${SQ_BURGERS_POR_RECETA} hamburguesas: 2 panes y 300 g de carne. Con el costo real la utilidad sería ${escapeHtml(formatMoney(utilReal))}. ${cortBurgers ? `Incluye ${nf(cortBurgers)} hamburguesa(s) regaladas en cortesía (${escapeHtml(formatMoney(costoCort))} de costo, sin ingreso).` : ''}</p>` : ''}
         </article>
         <article class="admin-card">
             <div class="met-section-title">¿Cómo se reparte la utilidad?</div>
@@ -41210,6 +41211,35 @@ async function _costosCargar() {
     if (!_cProdMenu().length) { try { await fetchProducts(); } catch (_) { /* sin menú: la conexión queda vacía */ } }
     _costosLoaded = true;
 }
+// ── Costos: fuente única (costosFuente.js, el MISMO módulo que usan las functions; se empaqueta como window.CostosFuente) ──
+// Con enlace en costos_enlaces el costo sale de la app Costos ("nuevo"); sin enlace, de la calculadora vieja ("viejo").
+// Si Costos no responde, cae al costo viejo sin romper nada.
+let _cfRes = {}, _cfT = 0;
+async function _cfPrecargar(force) {
+    const CF = window.CostosFuente;
+    if (!CF || (!force && Date.now() - _cfT < 5 * 60 * 1000)) return;
+    _cfT = Date.now();
+    const leerNuevo = () => firebaseFunctions.httpsCallable('obtenerCostosRoal')({}).then((r) => (r.data && r.data.productos) || []);
+    const ids = [...new Set(_costos.platos.map((p) => p.productoMenuId).filter(Boolean))];
+    const out = {};
+    await Promise.all(ids.map(async (id) => {
+        try { const r = await CF.obtenerCostoPorMenuId(id, { db: firebaseDb, leerNuevo, costoViejo: () => ({ costo: null, costoReal: null }) }); if (r && r.fuente === 'nuevo') out[id] = r; } catch (_) { /* cae al costo viejo */ }
+    }));
+    _cfRes = out;
+}
+// Fila de plato: con costo nuevo reemplaza real/colchón y recalcula %, margen y sugerido; siempre deja la `fuente`.
+function _cfAjustar(p, c) {
+    const r = p && p.productoMenuId ? _cfRes[p.productoMenuId] : null;
+    if (!r) return { ...c, fuente: 'viejo' };
+    const precio = c.precio, real = Math.round(r.costoReal), colch = Math.round(r.costo);
+    const m = _cNum(_costos.cfg.margenObjetivoPct) / 100;
+    return { ...c, real, colch, faltantes: [], fuente: 'nuevo',
+        sug: colch > 0 && m > 0 && m < 1 ? Math.ceil(colch / (1 - m) / 500) * 500 : null,
+        fcReal: precio ? _cPct1(real / precio * 100) : null, fc: precio ? _cPct1(colch / precio * 100) : null,
+        margen: precio ? _cPct1((precio - colch) / precio * 100) : null };
+}
+const _cfTag = (f) => `<small class="cs-muted" title="${f === 'nuevo' ? 'Costo de la app Costos' : 'Calculadora vieja (aún sin enlace en Costos)'}"> · ${f}</small>`;
+
 async function _ensureCostosLoaded(force = false) {
     if (!_costosBound) _costosBind();
     if (!_costosLoaded || force) {
@@ -41217,6 +41247,7 @@ async function _ensureCostosLoaded(force = false) {
         if (body && !_costosLoaded) body.innerHTML = '<p class="cs-muted">Cargando costos…</p>';
         try { await _costosCargar(); } catch (e) { if (body) body.innerHTML = `<p class="cs-muted">No se pudieron cargar los costos (${escapeHtml(e.message || e)}).</p>`; return; }
     }
+    await _cfPrecargar(force).catch(() => {});
     _costosRender();
 }
 const _costosGuardar = (col, id, data) => firebaseDb.collection(col).doc(id).set({ ...data, actualizadoAt: firestoreNow() }, { merge: true });
@@ -41282,11 +41313,11 @@ function _costosRender() {
         html += `${q ? `<p class="cs-muted">Resultados de "${escapeHtml(_costosBuscar.trim())}" entre platos activos e ideas (${lista.length}).</p>` : ''}<p class="cs-muted">Costo real = precio de compra + merma real + mano de obra. Con colchón = ingredientes × ${1 + _costos.cfg.colchonPct / 100} + mano de obra. Margen = lo que te queda del precio después del costo con colchón. <strong>Sugerido</strong> = el precio mínimo de venta para lograr tu margen objetivo (${_costos.cfg.margenObjetivoPct}%): costo con colchón ÷ (1 − ${_costos.cfg.margenObjetivoPct}%), redondeado a los $500 siguientes. Si tu precio está por debajo, el margen sale en rojo. Toca un plato para editarlo.</p>
         <div class="cs-scroll"><table class="cs-tbl"><thead><tr><th>Activo</th><th>Plato</th><th>Precio</th><th>Costo real</th><th>Con colchón</th><th>Margen</th><th title="Precio mínimo para lograr el margen objetivo">Sugerido</th></tr></thead><tbody>`;
         lista.forEach((p) => {
-            const c = _cCalcPlato(p, ctx);
+            const c = _cfAjustar(p, _cCalcPlato(p, ctx));
             const bajo = c.margen != null && c.margen < _costos.cfg.margenObjetivoPct;
             html += `<tr data-cs-open="${escapeHtml(p.id)}" class="cs-row"><td><input type="checkbox" data-cs-activo="${escapeHtml(p.id)}" ${p.activo === true ? 'checked' : ''}></td>
               <td>${escapeHtml(p.nombre)}${q && p.activo !== true ? ' <small>(idea)</small>' : ''}${c.faltantes.length ? ' ⚠️' : ''}${_costosVinculoTag(p)}</td><td>${money(c.precio)}</td>
-              <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small></td>
+              <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small>${_cfTag(c.fuente)}</td>
               <td style="color:${bajo ? '#fca5a5' : '#6ee7b7'}">${c.margen ?? '–'}%</td><td>${c.sug ? money(c.sug) : '–'}</td></tr>`;
             if (_costosAbierto === p.id) html += `<tr><td colspan="7">${_costosEditorItems('platos', p)}</td></tr>`;
         });
@@ -41319,7 +41350,7 @@ function _costosRender() {
             const c = _cCalcPlato(pr, ctx, [], _costos.cfg.margenPromoPct);
             const bajo = c.margen != null && c.margen < _costos.cfg.margenPromoPct;
             html += `<tr data-cs-open="${escapeHtml(pr.id)}" class="cs-row"><td>${escapeHtml(pr.nombre)}${c.faltantes.length ? ` ⚠️ <small>(${c.faltantes.length} rotas)</small>` : ''}${_costosVinculoTag(pr)}</td><td>${money(c.precio)}</td>
-              <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small></td>
+              <td>${money(c.real)}<small> ${c.fcReal ?? '–'}%</small></td><td>${money(c.colch)}<small> ${c.fc ?? '–'}%</small>${_cfTag('viejo')}</td>
               <td style="color:${bajo ? '#fca5a5' : '#6ee7b7'}">${c.margen ?? '–'}%</td><td>${c.sug ? money(c.sug) : '–'}</td><td>${(pr.items || []).length}</td></tr>`;
             if (_costosAbierto === pr.id) html += `<tr><td colspan="7">${_costosEditorItems('promos', pr)}</td></tr>`;
         });
