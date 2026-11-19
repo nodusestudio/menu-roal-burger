@@ -14351,6 +14351,7 @@
             <button type="button" class="admin-accordion-trigger" data-accordion-target="finanzas"><span class="nav-icon">💰</span><span>Finanzas</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="banco"><span class="nav-icon">💸</span><span>Pagos Bancolombia</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="costos"><span class="nav-icon">🧮</span><span>Costos y recetas</span></button>
+            <button type="button" class="admin-accordion-trigger" data-accordion-target="costosnuevo"><span class="nav-icon">🧾</span><span>Costos (nuevo)</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="cuponpana"><span class="nav-icon">🎟️</span><span>Fuera del Menú</span></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="tv" style="display:none" tabindex="-1" aria-hidden="true"></button>
             <button type="button" class="admin-accordion-trigger" data-accordion-target="redes"><span class="nav-icon">📣</span><span>Redes</span></button>
@@ -16170,6 +16171,22 @@
                         <strong>🔊 Voz por computador</strong>
                         <p style="font-size:0.78rem;color:var(--admin-muted);margin:4px 0 6px;">Aquí silencias o activas la voz de cada computador. El del negocio y este pueden ser distintos.</p>
                         <div id="bancoEquiposInline" style="margin-bottom:18px;"></div>
+                    </div>
+                </article>
+            </div>
+
+            <div class="admin-tab-panel" data-tab-panel="costosnuevo">
+                <div class="section-toolbar">
+                    <button type="button" class="section-save-btn" id="costosNuevoRefreshBtn">Actualizar</button>
+                </div>
+                <article class="admin-card">
+                    <div class="card-head"><h2>🧾 Costos (nuevo)</h2></div>
+                    <div class="card-body">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                            <input type="search" id="costosNuevoBuscar" placeholder="Buscar producto…" style="flex:1;min-width:160px;">
+                            <select id="costosNuevoFiltro"><option value="activos">Solo activos</option><option value="todos">Todos</option></select>
+                        </div>
+                        <div id="costosNuevoBody"><!-- render JS --></div>
                     </div>
                 </article>
             </div>

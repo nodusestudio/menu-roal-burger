@@ -62,6 +62,7 @@ const ULTRAMSG_TOKEN    = defineSecret('ULTRAMSG_TOKEN');
 const RECAPTCHA_SECRET  = defineSecret('RECAPTCHA_SECRET');
 // Agente de IA (Claude): firebase functions:secrets:set ANTHROPIC_API_KEY
 const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
+const COSTOS_SA_KEY = defineSecret('COSTOS_SA_KEY');
 const GITHUB_TOKEN = defineSecret('GITHUB_TOKEN'); // FODI: leer el codigo y abrir Pull Requests (nunca publica)
 // Token compartido para validar que el webhook entrante viene de UltraMsg (UltraMsg no firma
 // sus webhooks): firebase functions:secrets:set ULTRAMSG_WEBHOOK_TOKEN
@@ -4173,5 +4174,23 @@ exports.adminFodiBase = onCall(
         else if (d.accion !== 'listar') throw new HttpsError('invalid-argument', 'Acción inválida.');
         if (r.error) throw new HttpsError('failed-precondition', r.error);
         return await fodiBase.listar(db);
+    }
+);
+
+// Costos (proyecto fodexa-costos) -> admin de FODEXA, SOLO LECTURA. Solo admins. Ver costosRoal.js.
+exports.obtenerCostosRoal = onCall(
+    { region: 'us-central1', secrets: [COSTOS_SA_KEY], cors: ALLOWED_ORIGINS, timeoutSeconds: 60 },
+    async (request) => {
+        const uid = request.auth?.uid;
+        if (!uid) throw new HttpsError('unauthenticated', 'Debes iniciar sesión.');
+        const adminDoc = await getFirestore().collection('admins').doc(uid).get();
+        if (!adminDoc.exists) throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
+        try {
+            const productos = await require('./costosRoal').leerCostosRoal(COSTOS_SA_KEY.value());
+            return { ok: true, productos, leidoEn: new Date().toISOString() };
+        } catch (err) {
+            console.error('[obtenerCostosRoal]', err);
+            throw new HttpsError('failed-precondition', 'No se pudieron leer los costos: ' + String(err && err.message || '').slice(0, 150));
+        }
     }
 );

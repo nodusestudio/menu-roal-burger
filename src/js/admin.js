@@ -2968,7 +2968,8 @@ const NAV2_GRUPOS = [
     ] },
     { id: 'catalogo', icono: '🍔', etiqueta: 'Catálogo', items: [
         { id: 'catalogo.articulos', etiqueta: 'Artículos', target: 'menu' },
-        { id: 'catalogo.costos', etiqueta: 'Costos y recetas', target: 'costos' }
+        { id: 'catalogo.costos', etiqueta: 'Costos y recetas', target: 'costos' },
+        { id: 'catalogo.costosnuevo', etiqueta: 'Costos (nuevo)', target: 'costosnuevo' }
     ] },
     { id: 'clientes', icono: '👥', etiqueta: 'Clientes', items: [
         { id: 'clientes.clientes', etiqueta: 'Clientes', target: 'clientes' },
@@ -3212,6 +3213,7 @@ function setupAccordion() {
         feedback: ['feedback'],
         finanzas: ['finanzas'],
         costos: ['costos'],
+        costosnuevo: ['costosnuevo'],
         banco: ['banco'],
         asistente: ['asistente'],
         cuponpana: ['cuponpana'],
@@ -3269,6 +3271,10 @@ function setupAccordion() {
 
         if (target === 'costos') {
             _ensureCostosLoaded();
+        }
+
+        if (target === 'costosnuevo') {
+            _costosNuevoCargar(false);
         }
 
         if (target === 'asistente') {
@@ -43462,3 +43468,47 @@ function _almTextoMenuDia() {
     }
     return [`🍽️ *ALMUERZO EJECUTIVO DE HOY* — ${formatMoney(precio)}`, 'Arroz incluido + elige 1 de cada una:', '', ...lineas, '', '🛵 Domicilio se cobra aparte', '📲 Pídelo en roalburger.com'].join('\n');
 }
+
+
+// ── Costos (nuevo): lee los costos que calcula la app Costos (solo lectura) vía obtenerCostosRoal ──
+let _cnDatos = null, _cnCargando = false;
+function _cnColor(pct) {
+    if (pct == null) return 'inherit';
+    return pct <= 33 ? '#2e9e5b' : (pct <= 45 ? '#d9a406' : '#d64545');
+}
+function _cnRender() {
+    const body = document.getElementById('costosNuevoBody');
+    if (!body || !_cnDatos) return;
+    const q = (document.getElementById('costosNuevoBuscar')?.value || '').trim().toLowerCase();
+    const soloActivos = (document.getElementById('costosNuevoFiltro')?.value || 'activos') === 'activos';
+    const lista = _cnDatos.filter(p => (!soloActivos || p.activo) && (!q || p.nombre.toLowerCase().includes(q)));
+    if (!lista.length) { body.innerHTML = '<p style="color:var(--admin-muted)">Sin productos para mostrar.</p>'; return; }
+    const fmt = n => n == null ? '—' : '$' + Math.round(n).toLocaleString('es-CO');
+    const fecha = iso => iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+    const grupos = {};
+    lista.forEach(p => { (grupos[p.categoria] = grupos[p.categoria] || []).push(p); });
+    body.innerHTML = Object.keys(grupos).map(cat => `
+        <h3 style="margin:14px 0 6px">${escapeHtml(cat)}</h3>
+        <div style="overflow-x:auto"><table class="admin-table" style="width:100%">
+            <thead><tr><th>Producto</th><th>Costo</th><th>Precio</th><th>% costo</th><th>Actualizado</th></tr></thead>
+            <tbody>${grupos[cat].map(p => `<tr${p.activo ? '' : ' style="opacity:.55"'}>
+                <td>${escapeHtml(p.nombre)}</td><td>${fmt(p.costoCalculado)}</td><td>${fmt(p.precioVenta)}</td>
+                <td style="font-weight:700;color:${_cnColor(p.costoPct)}">${p.costoPct == null ? '—' : p.costoPct.toFixed(1) + '%'}</td>
+                <td>${fecha(p.costoActualizadoEn)}</td></tr>`).join('')}</tbody></table></div>`).join('');
+}
+async function _costosNuevoCargar(force) {
+    const body = document.getElementById('costosNuevoBody');
+    if (!body || _cnCargando || (_cnDatos && !force)) { _cnRender(); return; }
+    _cnCargando = true;
+    body.innerHTML = '<p>Cargando costos…</p>';
+    try {
+        const r = await firebaseFunctions.httpsCallable('obtenerCostosRoal')({});
+        _cnDatos = (r.data && r.data.productos) || [];
+        _cnRender();
+    } catch (e) {
+        body.innerHTML = '<p style="color:#d64545">No se pudieron cargar los costos: ' + escapeHtml(String(e && e.message || e)) + '</p>';
+    } finally { _cnCargando = false; }
+}
+document.getElementById('costosNuevoRefreshBtn')?.addEventListener('click', () => _costosNuevoCargar(true));
+document.getElementById('costosNuevoBuscar')?.addEventListener('input', _cnRender);
+document.getElementById('costosNuevoFiltro')?.addEventListener('change', _cnRender);

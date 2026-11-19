@@ -31,8 +31,8 @@ test('ids de grupos y de elementos son únicos', () => {
     assert.equal(new Set(itemsTodos.map((i) => i.id)).size, itemsTodos.length);
 });
 
-test('el menú viejo tiene los 15 botones de siempre + el oculto de la TV', () => {
-    assert.equal(viejos.length, 16, `botones viejos: ${viejos.join(', ')}`);
+test('el menú viejo tiene los 16 botones (15 + Costos nuevo) + el oculto de la TV', () => {
+    assert.equal(viejos.length, 17, `botones viejos: ${viejos.join(', ')}`);
     assert.ok(viejos.includes('tv'));
 });
 
