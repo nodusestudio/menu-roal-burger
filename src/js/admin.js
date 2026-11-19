@@ -4017,6 +4017,10 @@ const _feedbackMarcadosLocal = new Set();
 // Dos mensajes manuales: Sabe a Quindío (pedido con 2×1) y fidelización (cualquier otro pedido). Ambos llevan el link
 // /encuesta?orderId=…; el servidor decide el cuestionario según los ítems del pedido (functions/feedbackTipo.js).
 function buildFeedbackMessage(order) {
+    if (feedbackTipoOrden(order) === 'cuponera') {
+        const nombre = String(order.customerName || '').trim().split(/\s+/)[0];
+        return `¡Hola${nombre ? ` ${nombre}` : ''}! 🎟️ Gracias por usar tu cuponera de ROAL BURGER. ¿Nos regalas 1 minuto para contarnos qué te pareció? Tu opinión nos ayuda a mejorar la cuponera 👉 ${FEEDBACK_OPINION_URL}?orderId=${encodeURIComponent(order.id)}`;
+    }
     if (feedbackTipoOrden(order) === 'general') {
         const nombre = String(order.customerName || '').trim().split(/\s+/)[0];
         return `¡Hola${nombre ? ` ${nombre}` : ''}! 🍔 Gracias por pedir en ROAL BURGER. ¿Nos regalas 30 segundos para contarnos qué tal te fue con tu pedido? Tu opinión nos ayuda a mejorar 👉 ${FEEDBACK_OPINION_URL}?orderId=${encodeURIComponent(order.id)}\n\n🎂 Y si quieres, déjanos tu cumpleaños en la encuesta para sorprenderte.`;
@@ -4029,8 +4033,11 @@ function buildFeedbackMessage(order) {
 function orderHas2x1ForFeedback(order) {
     return Array.isArray(order?.items) && order.items.some((item) => _sqItemEs2x1(item));
 }
-function feedbackTipoOrden(order) { return orderHas2x1ForFeedback(order) ? 'quindio' : 'general'; }
-const FEEDBACK_MAX_AGE_TIPO = { quindio: 24 * 60 * 60 * 1000, general: 7 * 24 * 60 * 60 * 1000 }; // fidelización: hasta 7 días
+function orderHasCuponeraForFeedback(order) {
+    return Array.isArray(order?.items) && order.items.some((i) => String(i.productId || '').startsWith('cuponera-') || i.orderOptions?.cuponeraBono);
+}
+function feedbackTipoOrden(order) { return orderHasCuponeraForFeedback(order) ? 'cuponera' : (orderHas2x1ForFeedback(order) ? 'quindio' : 'general'); }
+const FEEDBACK_MAX_AGE_TIPO = { quindio: 24 * 60 * 60 * 1000, general: 7 * 24 * 60 * 60 * 1000, cuponera: 7 * 24 * 60 * 60 * 1000 }; // fidelización: hasta 7 días
 
 function getPendingFeedbackOrders() {
     const now = Date.now();
@@ -4068,9 +4075,9 @@ function renderFeedbackPending() {
     host.innerHTML = pending.map((order) => {
         const phone = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '');
         return `<div class="feedback-pending-row">
-            <span class="feedback-pending-ico" aria-hidden="true">${feedbackTipoOrden(order) === 'general' ? '💛' : '⭐'}</span>
+            <span class="feedback-pending-ico" aria-hidden="true">${{ general: '💛', cuponera: '🎟️' }[feedbackTipoOrden(order)] || '⭐'}</span>
             <div class="feedback-pending-info">
-                <strong>${feedbackTipoOrden(order) === 'general' ? 'Fidelización pendiente' : 'Feedback pendiente'}</strong>
+                <strong>${{ general: 'Fidelización pendiente', cuponera: 'Feedback de cuponera pendiente' }[feedbackTipoOrden(order)] || 'Feedback pendiente'}</strong>
                 <span>${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)} · <button type="button" class="feedback-pending-phone" data-feedback-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button></span>
             </div>
             <button type="button" class="feedback-pending-btn" data-feedback-send="${escapeHtml(order.id)}">Copiar mensaje</button>
@@ -4112,7 +4119,7 @@ async function sendFeedbackRequest(orderId, btn, orderOverride) {
         _feedbackMarcadosLocal.add(orderId);
         order.feedbackRequestedAt = new Date();
         marcado = true;
-        showNotice(`Mensaje de ${feedbackTipoOrden(order) === 'general' ? 'fidelización' : 'feedback'} listo para ${nombre}.`, 'ok');
+        showNotice(`Mensaje de ${{ general: 'fidelización', cuponera: 'cuponera' }[feedbackTipoOrden(order)] || 'feedback'} listo para ${nombre}.`, 'ok');
         // Marca de hora del cliente (no serverTimestamp): así el valor local es real desde el primer momento y no
         // "null" hasta que el servidor responda.
         let confirmado = false;
@@ -12797,7 +12804,7 @@ function _fbAttach() {
                 const x = d.data();
                 return {
                     id: d.id, orderCode: String(x.orderCode || ''), name: String(x.customerName || ''), phone: String(x.customerPhone || ''),
-                    tipo: x.tipo === 'general' ? 'general' : 'quindio', cumple: String(x.cumple || ''), clientId: String(x.clientId || ''), requiere: x.requiereAtencion === true, motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [], q1: x.q1, q2: x.q2, q3: x.q3, q1d: Array.isArray(x.q1d) ? x.q1d : [], q2d: Array.isArray(x.q2d) ? x.q2d : [], q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
+                    tipo: ['general', 'cuponera'].includes(x.tipo) ? x.tipo : 'quindio', cumple: String(x.cumple || ''), clientId: String(x.clientId || ''), requiere: x.requiereAtencion === true, motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [], q1: x.q1, q2: x.q2, q3: x.q3, q1d: Array.isArray(x.q1d) ? x.q1d : [], q2d: Array.isArray(x.q2d) ? x.q2d : [], q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
                 };
             });
             renderMetricasFeedback();
@@ -32397,7 +32404,7 @@ function _showFeedbackCierreGate(orders, onDone) {
         const phone = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '');
         return `<div class="fbc-row" data-fbc-order="${escapeHtml(order.id)}" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,0.1);">
             <div style="flex:1;min-width:0;text-align:left;">
-                <div style="color:#fff;font-weight:700;font-size:0.9rem;">${escapeHtml(getOrderDisplayCustomerName(order))} <span style="opacity:0.5;font-weight:400;">· ${escapeHtml(order.code)}</span> <span style="font-size:0.7rem;font-weight:600;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);">${feedbackTipoOrden(order) === 'quindio' ? '🏆 Quindío' : '💛 Fidelización'}</span></div>
+                <div style="color:#fff;font-weight:700;font-size:0.9rem;">${escapeHtml(getOrderDisplayCustomerName(order))} <span style="opacity:0.5;font-weight:400;">· ${escapeHtml(order.code)}</span> <span style="font-size:0.7rem;font-weight:600;padding:2px 7px;border-radius:8px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);">${{ quindio: '🏆 Quindío', cuponera: '🎟️ Cuponera' }[feedbackTipoOrden(order)] || '💛 Fidelización'}</span></div>
                 <button type="button" data-fbc-phone="${escapeHtml(phone)}" title="Tocar para copiar el número" style="margin-top:3px;padding:3px 9px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.06);color:#fbbf24;font-size:0.82rem;cursor:pointer;">📋 ${escapeHtml(phone)}</button>
             </div>
             <button type="button" data-fbc-send="${escapeHtml(order.id)}" style="padding:9px 12px;border-radius:10px;border:none;background:linear-gradient(135deg,#ff7a1a,#e8420a);color:#fff;font-weight:700;font-size:0.82rem;cursor:pointer;white-space:nowrap;">Copiar mensaje</button>
@@ -36365,6 +36372,41 @@ function _cuponeraClientes(orders) {
     return { cuponeros, sinTelefono };
 }
 
+// Resultados del feedback de la cuponera (encuestas_pedido con tipo 'cuponera'), dentro de Métricas > Cuponera.
+async function _cuponeraEncuestaHTML() {
+    try {
+        const snap = await firebaseDb.collection('encuestas_pedido').where('tipo', '==', 'cuponera').get();
+        const docs = snap.docs.map((d) => d.data());
+        const titulo = '<div class="met-section-title" style="margin-top:22px;">💬 Feedback de la cuponera</div>';
+        if (!docs.length) return `${titulo}<p class="admin-hint">Aún no hay respuestas. El mensaje de WhatsApp sale solo en los pendientes de Feedback cuando un pedido lleva bono.</p>`;
+        const dist = (get, etiquetas) => {
+            const c = {};
+            docs.forEach((x) => { const k = etiquetas[get(x)]; if (k) c[k] = (c[k] || 0) + 1; });
+            return _cpanaBarrasHTML(c, Object.values(etiquetas).filter((e) => c[e]));
+        };
+        const sat = docs.filter((x) => x.q1 === 'brutal' || x.q1 === 'muy_buena').length;
+        const pregunta = (t, h) => `<div class="met-section-title" style="margin-top:12px;">${t}</div>${h}`;
+        const textos = (campo) => docs.map((x) => String(x[campo] || '').trim()).filter(Boolean);
+        const lista = (arr) => (arr.length ? `<ul class="admin-hint" style="margin:6px 0 0 18px;">${arr.slice(0, 40).map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : '<p class="admin-hint">Sin comentarios.</p>');
+        return `${titulo}
+            <div class="met-kpi-row" style="margin-bottom:12px;">
+                <div class="met-kpi-card met-kpi-card--hi"><span class="met-kpi-val">${docs.length}</span><span class="met-kpi-lbl">Respuestas</span></div>
+                <div class="met-kpi-card met-kpi-card--green"><span class="met-kpi-val">${Math.round((sat / docs.length) * 100)}%</span><span class="met-kpi-lbl">Sabor brutal o muy bueno</span></div>
+            </div>
+            ${pregunta('Sabor y calidad', dist((x) => x.q1, { brutal: 'Brutal 10/10', muy_buena: 'Muy buena', normalita: 'Normalita', no_convencio: 'No me convenció' }))}
+            ${pregunta('Sistema de la cuponera', dist((x) => x.cuponera?.sistema, { muy_bueno: 'Muy bueno', bueno: 'Bueno', regular: 'Regular', malo: 'Malo' }))}
+            ${pregunta('¿Cómo consiguió el bono?', dist((x) => x.cuponera?.origen, { compre: 'Compró la cuponera', regalo: 'Se la regalaron', companero: 'Compañero o familiar', otro: 'Otra forma' }))}
+            ${pregunta('¿Habría pedido sin la cuponera?', dist((x) => x.cuponera?.sinCupon, { si: 'Sí', no: 'No', no_conocia: 'No nos conocía' }))}
+            ${pregunta('¿Volvería a comprar otra cuponera?', dist((x) => x.cuponera?.recompra, { seguro: 'Seguro', tal_vez: 'Tal vez', no: 'No' }))}
+            ${pregunta('¿Cuánto pagaría?', dist((x) => x.cuponera?.precio, { menos: 'Menos de lo que costó', igual: 'Igual', mas: 'Más' }))}
+            ${pregunta('Qué le gustaría que incluyera', lista(textos('q4')))}
+            ${pregunta('Qué no incluiría o cambiaría', lista(textos('q5')))}`;
+    } catch (err) {
+        console.error('feedback cuponera:', err);
+        return '<p class="admin-hint">No se pudo cargar el feedback de la cuponera.</p>';
+    }
+}
+
 async function renderMetricasCuponera() {
     const body = document.getElementById('cuponeraBody');
     if (!body) return;
@@ -36478,7 +36520,8 @@ async function renderMetricasCuponera() {
             <div class="met-section-title" style="margin-top:16px;">Dónde piden (domicilios)</div>
             ${total ? _cpanaBarrasHTML(porZona) : vacio}
             <p class="admin-hint" style="margin-top:12px;">La zona sale de la dirección escrita en el pedido, así que es aproximada.</p>
-            ${clientesHTML}`;
+            ${clientesHTML}
+            ${await _cuponeraEncuestaHTML()}`;
     } catch (err) {
         console.error('metricas cuponera:', err);
         body.innerHTML = '<p class="met-empty-note">No se pudieron cargar las métricas de la cuponera.</p>';

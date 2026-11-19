@@ -9,7 +9,7 @@ const ETIQ_Q2_GEN = { excelente: 'Excelente', bien: 'Bien', mejorable: 'Se puede
 const ETIQ_Q3_GEN = { seguro: 'Seguro que vuelve', tal_vez: 'Tal vez', no: 'Creo que no' };
 const { feedbackTipoDePedido, Q1D_FALLO, Q1D_GUSTO, Q2D_PROBLEMA } = require('./feedbackTipo');
 const DOS_HORAS_MS = 2 * 3600e3;
-const MAX_EDAD_PENDIENTE_MS = { quindio: 24 * 3600e3, general: 7 * 24 * 3600e3 }; // fidelización: hasta 7 días
+const MAX_EDAD_PENDIENTE_MS = { quindio: 24 * 3600e3, general: 7 * 24 * 3600e3, cuponera: 7 * 24 * 3600e3 }; // fidelización: hasta 7 días
 
 const BAJO = ['normalita', 'no_convencio'];
 const pct = (n, t) => (t ? Math.round((n / t) * 100) : 0);
@@ -143,7 +143,7 @@ async function feedbackClientes(db, args = {}) {
             return t && !o.anulado && !o.feedbackRequestedAt && !o.feedbackAnsweredAt
                 && String(o.customerPhoneDigits || '').replace(/\D/g, '').length >= 10
                 && ahora - t >= DOS_HORAS_MS && ahora - t <= MAX_EDAD_PENDIENTE_MS[feedbackTipoDePedido(o)];
-        }).map((o) => ({ tipo: feedbackTipoDePedido(o) === 'quindio' ? 'Sabe a Quindío (2×1)' : 'Fidelización', pedido: o.code || o.id, cliente: o.customerName || 'Cliente', telefono: enmascarar(o.customerPhoneDigits), despachado: fechaBogota(ms(o.enviadoAt) || ms(o.entregadoAt) || ms(o.deliveredAt)) }));
+        }).map((o) => ({ tipo: { quindio: 'Sabe a Quindío (2×1)', cuponera: 'Cuponera' }[feedbackTipoDePedido(o)] || 'Fidelización', pedido: o.code || o.id, cliente: o.customerName || 'Cliente', telefono: enmascarar(o.customerPhoneDigits), despachado: fechaBogota(ms(o.enviadoAt) || ms(o.entregadoAt) || ms(o.deliveredAt)) }));
         return { total: items.length, pendientes: items.slice(0, 40), nota: 'Pedidos entregados hace 2 h o más (máx. 24 h los 2×1 y 7 días los demás) a los que aún no se les pidió el feedback. Los pedidos con 2×1 llevan la encuesta de Sabe a Quindío; los demás, la de fidelización. El botón "Copiar y abrir WhatsApp" está en Recepción de Pedidos. Solo cubre pedidos activos (los archivados al cerrar caja no se listan).' };
     }
 

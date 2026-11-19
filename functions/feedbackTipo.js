@@ -2,6 +2,7 @@
 
 // Encuesta de feedback con DOS cuestionarios (puro, sin Firebase; lo prueba tests/feedback-tipo.test.js):
 //  · 'quindio'  — el pedido trae al menos un ítem 2×1 (Sabe a Quindío / Burger Trifásica).
+//  · 'cuponera' — el pedido trae un bono de la cuponera física (POS, productId "cuponera-…"); gana sobre los demás.
 //  · 'general'  — cualquier otro pedido: encuesta de fidelización (sabor, servicio, si volvería, sugerencia y,
 //                 si quiere, su cumpleaños para sorprenderlo).
 // El tipo lo decide SIEMPRE el servidor a partir de los ítems del pedido (el cliente no lo elige).
@@ -47,6 +48,20 @@ function filtrarMulti(valor, permitidos) {
     return out;
 }
 
+// Cuestionario de la cuponera (valores permitidos; el servidor descarta cualquier otra cosa).
+const CUPONERA = {
+    sistema: ['muy_bueno', 'bueno', 'regular', 'malo'],   // ¿qué te pareció el sistema de cupones?
+    origen: ['compre', 'regalo', 'companero', 'otro'],    // ¿cómo conseguiste el bono?
+    sinCupon: ['si', 'no', 'no_conocia'],                 // ¿habrías pedido sin la cuponera?
+    recompra: ['seguro', 'tal_vez', 'no'],                // ¿volverías a comprar otra cuponera?
+    precio: ['menos', 'igual', 'mas']                     // ¿cuánto pagarías por una cuponera así?
+};
+
+function itemEsCuponera(item) {
+    const o = (item && item.orderOptions) || {};
+    return String((item && item.productId) || '').startsWith('cuponera-') || Boolean(o.cuponeraBono);
+}
+
 const DIAS_POR_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 function itemEs2x1(item) {
@@ -56,6 +71,7 @@ function itemEs2x1(item) {
 
 function feedbackTipoDePedido(order) {
     const items = Array.isArray(order && order.items) ? order.items : [];
+    if (items.some(itemEsCuponera)) return 'cuponera';
     return items.some(itemEs2x1) ? 'quindio' : 'general';
 }
 
@@ -72,7 +88,23 @@ function normalizarCumple(value) {
 }
 
 // { ok:true, value:{ q1,q2,q3,q4,cumple } } o { ok:false, error:'mensaje para el cliente' }
+function validarCuponera(data) {
+    if (!data || data.consentimiento !== true) return { ok: false, error: 'Marca la casilla de autorización para enviar tu opinión.' };
+    const q1 = String(data.q1 || '');
+    const extra = {};
+    for (const campo of Object.keys(CUPONERA)) {
+        const v = String(data[campo] || '');
+        if (!CUPONERA[campo].includes(v)) return { ok: false, error: 'Responde todas las preguntas de selección.' };
+        extra[campo] = v;
+    }
+    if (!Q1.includes(q1)) return { ok: false, error: 'Responde todas las preguntas de selección.' };
+    const q4 = String(data.q4 || '').trim().slice(0, 500); // ¿qué te gustaría que incluyera?
+    const q5 = String(data.q5 || '').trim().slice(0, 500); // ¿qué te gustaría que no incluyera o cambiara?
+    return { ok: true, value: { q1, q2: '', q3: '', q4, q5, cumple: '', q1d: [], q2d: [], cuponera: extra, consentimiento: true } };
+}
+
 function validarRespuestasFeedback(tipo, data) {
+    if (tipo === 'cuponera') return validarCuponera(data);
     const cuest = CUESTIONARIOS[tipo];
     if (!cuest) return { ok: false, error: 'Esta encuesta no está disponible.' };
     // Consentimiento obligatorio: sin la casilla marcada no se recibe la opinión (queda como respaldo del negocio).
@@ -105,6 +137,10 @@ function validarRespuestasFeedback(tipo, data) {
 function motivosCalificacionBaja(tipo, v) {
     const motivos = [];
     if (v && (v.q1 === 'normalita' || v.q1 === 'no_convencio')) motivos.push(v.q1 === 'no_convencio' ? 'el sabor no lo convenció' : 'el sabor le pareció normalito');
+    if (tipo === 'cuponera' && v && v.cuponera) {
+        if (v.cuponera.sistema === 'malo') motivos.push('el sistema de la cuponera le pareció malo');
+        if (v.cuponera.recompra === 'no') motivos.push('no volvería a comprar la cuponera');
+    }
     if (tipo === 'general' && v) {
         if (v.q2 === 'mejorable' || v.q2 === 'mal') motivos.push(v.q2 === 'mal' ? 'el servicio fue malo' : 'el servicio se puede mejorar');
         if (v.q3 === 'no') motivos.push('cree que no volvería a pedir');
@@ -119,4 +155,4 @@ function motivosCalificacionBaja(tipo, v) {
 
 const CONSENTIMIENTO_VERSION = '2026-11-04';
 
-module.exports = { Q1D_FALLO, Q1D_GUSTO, Q2D_PROBLEMA, motivosCalificacionBaja, CONSENTIMIENTO_VERSION, CUESTIONARIOS, feedbackTipoDePedido, itemEs2x1, normalizarCumple, validarRespuestasFeedback };
+module.exports = { CUPONERA, itemEsCuponera, Q1D_FALLO, Q1D_GUSTO, Q2D_PROBLEMA, motivosCalificacionBaja, CONSENTIMIENTO_VERSION, CUESTIONARIOS, feedbackTipoDePedido, itemEs2x1, normalizarCumple, validarRespuestasFeedback };

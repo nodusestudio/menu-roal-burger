@@ -39,6 +39,22 @@ const PREGUNTAS_GENERAL = [
         opciones: [['excelente', '🌟', 'Excelente'], ['bien', '👍', 'Bien'], ['mejorable', '🤏', 'Se puede mejorar'], ['mal', '👎', 'Mal']]
     }
 ];
+// Cuponera física (bonos de papel): 6 preguntas de un clic + 2 de texto. Las claves deben coincidir con
+// CUPONERA en functions/feedbackTipo.js.
+const PREGUNTAS_CUPONERA = [
+    { key: 'q1', titulo: '¿Qué tal estuvo el sabor y la calidad de tu pedido?',
+      opciones: [['brutal', '🔥', 'Brutal 10/10'], ['muy_buena', '😋', 'Muy buena'], ['normalita', '😐', 'Normalita'], ['no_convencio', '😕', 'No me convenció']] },
+    { key: 'sistema', titulo: '¿Qué te pareció el sistema de la cuponera?',
+      opciones: [['muy_bueno', '🤩', 'Muy bueno'], ['bueno', '👍', 'Bueno'], ['regular', '🤏', 'Regular'], ['malo', '👎', 'Malo']] },
+    { key: 'origen', titulo: '¿Cómo conseguiste tu bono?',
+      opciones: [['compre', '🎟️', 'Compré la cuponera'], ['regalo', '🎁', 'Me regalaron un bono'], ['companero', '🤝', 'Me lo dio un compañero o familiar'], ['otro', '✨', 'Otra forma']] },
+    { key: 'sinCupon', titulo: '¿Habrías pedido en ROAL BURGER sin la cuponera?',
+      opciones: [['si', '✅', 'Sí'], ['no', '❌', 'No'], ['no_conocia', '🆕', 'No los conocía']] },
+    { key: 'recompra', titulo: '¿Volverías a comprar otra cuponera?',
+      opciones: [['seguro', '🙌', 'Seguro'], ['tal_vez', '🤔', 'Tal vez'], ['no', '🚫', 'No']] },
+    { key: 'precio', titulo: 'Para una cuponera como esta, ¿cuánto pagarías?',
+      opciones: [['menos', '⬇️', 'Menos de lo que costó'], ['igual', '👌', 'Igual'], ['mas', '⬆️', 'Más, vale la pena']] }
+];
 // Preguntas de seguimiento (solo fidelización): aparecen según lo que respondió antes. Varias opciones a la vez.
 // Las claves deben coincidir con functions/feedbackTipo.js (el servidor descarta lo que no esté allí).
 const SEG_Q1_FALLO = {
@@ -63,6 +79,7 @@ let PREGUNTAS = PREGUNTAS_QUINDIO;
 
 // Lista de pasos de un clic según las respuestas actuales (en fidelización cambia sobre la marcha).
 function pasosActuales() {
+    if (tipo === 'cuponera') return PREGUNTAS_CUPONERA;
     if (tipo !== 'general') return PREGUNTAS_QUINDIO;
     const lista = [PREGUNTAS_GENERAL[0]];
     if (respuestas.q1) lista.push(Q1_BAJO.includes(respuestas.q1) ? SEG_Q1_FALLO : SEG_Q1_GUSTO);
@@ -163,15 +180,18 @@ function pintarPaso() {
     }
 
     const general = tipo === 'general';
+    const cup = tipo === 'cuponera';
     const queja = general && huboQueja();
     const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
     const [cm, cd] = String(respuestas.cumple || '').split('-');
     pintar(`<div class="en-paso">
         ${progreso()}
         <p class="en-kicker">Pregunta ${totalPasos()} de ${totalPasos()} · opcional</p>
-        <h1 class="en-h">${queja ? '¿Qué podríamos hacer para mejorar?' : general ? '¿Qué te gustaría que agregáramos o mejoráramos?' : '¿Qué le mejorarías a la Trifásica?'}</h1>
-        <p class="en-sub">${queja ? 'Lamentamos que no haya sido perfecto. Cuéntanos y lo arreglamos.' : general ? 'Un producto, un sabor, el servicio… lo que quieras.' : 'Y si quieres, cuéntanos qué otro producto te gustaría ver en promo.'}</p>
+        <h1 class="en-h">${cup ? '¿Qué te gustaría que incluyera la cuponera?' : queja ? '¿Qué podríamos hacer para mejorar?' : general ? '¿Qué te gustaría que agregáramos o mejoráramos?' : '¿Qué le mejorarías a la Trifásica?'}</h1>
+        <p class="en-sub">${cup ? 'Un producto, un sabor, un beneficio… lo que quieras (puedes dejarlo vacío).' : queja ? 'Lamentamos que no haya sido perfecto. Cuéntanos y lo arreglamos.' : general ? 'Un producto, un sabor, el servicio… lo que quieras.' : 'Y si quieres, cuéntanos qué otro producto te gustaría ver en promo.'}</p>
         <textarea class="en-texto" id="enSugerencia" maxlength="500" placeholder="Escribe aquí (puedes dejarlo vacío)" aria-label="Sugerencias"></textarea>
+        ${cup ? `<p class="en-sub" style="margin-top:14px"><strong>¿Qué te gustaría que NO incluyera o que cambiáramos?</strong></p>
+        <textarea class="en-texto" id="enCambiar" maxlength="500" placeholder="Escribe aquí (puedes dejarlo vacío)" aria-label="Qué cambiarías"></textarea>` : ''}
         ${general ? `<p class="en-sub" style="margin-top:14px">📲 Muy pronto lanzamos nuestra App: <strong>descárgala</strong> y entra a premios y descuentos especiales.</p>
         <p class="en-sub" style="margin-top:6px">🎂 ¿Cuándo es tu cumpleaños? Déjanos tu fecha y te tendremos un detalle o descuento especial ese día (opcional).</p>
         <div style="display:flex;gap:8px;justify-content:center;margin-bottom:6px">
@@ -188,13 +208,15 @@ function pintarPaso() {
     </div>`);
     const area = document.getElementById('enSugerencia');
     area.value = respuestas.q4 || '';
+    const area2 = document.getElementById('enCambiar');
+    if (area2) area2.value = respuestas.q5 || '';
     // Cumpleaños: solo cuenta si eligió día Y mes.
     const leerCumple = () => {
         const d = document.getElementById('enCumpleDia')?.value || '';
         const m = document.getElementById('enCumpleMes')?.value || '';
         return d && m ? `${m}-${d}` : '';
     };
-    document.getElementById('enAtras').addEventListener('click', () => { respuestas.q4 = area.value; respuestas.cumple = leerCumple(); respuestas.consentimiento = document.getElementById('enConsent').checked; paso -= 1; pintarPaso(); });
+    document.getElementById('enAtras').addEventListener('click', () => { respuestas.q4 = area.value; if (area2) respuestas.q5 = area2.value; respuestas.cumple = leerCumple(); respuestas.consentimiento = document.getElementById('enConsent').checked; paso -= 1; pintarPaso(); });
     document.getElementById('enEnviar').addEventListener('click', () => {
         respuestas.cumple = leerCumple();
         respuestas.consentimiento = document.getElementById('enConsent').checked;
@@ -208,6 +230,8 @@ function pintarPaso() {
 
 async function enviar(sugerencia) {
     respuestas.q4 = sugerencia;
+    const c2 = document.getElementById('enCambiar');
+    if (c2) respuestas.q5 = c2.value;
     const btn = document.getElementById('enEnviar');
     const err = document.getElementById('enError');
     btn.disabled = true;
@@ -228,7 +252,7 @@ function celebrar() {
     pintar(`<div class="en-centro en-celebra">
         <div class="en-emoji pop" aria-hidden="true">🎉</div>
         <h1 class="en-h">¡Gracias!</h1>
-        <p class="en-sub">${tipo === 'general' ? 'Tu opinión nos ayuda a mejorar cada pedido. ¡Nos vemos pronto!' : 'Tu opinión nos ayuda a mejorar la Trifásica. ¡Nos vemos pronto!'}</p>
+        <p class="en-sub">${tipo === 'cuponera' ? 'Tu opinión nos ayuda a mejorar la cuponera. ¡Nos vemos pronto!' : tipo === 'general' ? 'Tu opinión nos ayuda a mejorar cada pedido. ¡Nos vemos pronto!' : 'Tu opinión nos ayuda a mejorar la Trifásica. ¡Nos vemos pronto!'}</p>
         <a class="en-btn" href="https://roalburger.com/">Volver al menú</a>
     </div>`);
     const colores = ['#FF6B00', '#F5EBDD', '#FF9A3C', '#34d399', '#ffffff'];
@@ -253,8 +277,8 @@ async function iniciar() {
         const st = await callFunction('getOrderFeedbackStatus', { orderId });
         if (st.state === 'answered') return estadoMensaje('🙌', '¡Ya nos contaste!', 'Esta encuesta ya fue respondida. ¡Gracias por tu opinión!');
         if (st.state !== 'ok') return estadoMensaje('🍔', 'Encuesta no disponible', 'Este link no está activo. Si crees que es un error, escríbenos por WhatsApp.');
-        tipo = st.tipo === 'general' ? 'general' : 'quindio';
-        PREGUNTAS = tipo === 'general' ? PREGUNTAS_GENERAL : PREGUNTAS_QUINDIO;
+        tipo = ['general', 'cuponera'].includes(st.tipo) ? st.tipo : 'quindio';
+        PREGUNTAS = tipo === 'cuponera' ? PREGUNTAS_CUPONERA : tipo === 'general' ? PREGUNTAS_GENERAL : PREGUNTAS_QUINDIO;
         pintarPaso();
     } catch (e) {
         pintar(`<div class="en-centro">

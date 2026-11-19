@@ -2349,6 +2349,8 @@ exports.submitOrderFeedback = onCall(
                     tipo: 'feedback_bajo',
                     bodyMax: 180
                 });
+            const q5 = valid.value.q5 || '';
+            const cuponeraResp = valid.value.cuponera || null;
             } catch (e) { console.error('submitOrderFeedback: aviso de calificación baja', e && e.message); }
         }
         return { points: result.points };
@@ -2370,6 +2372,7 @@ async function ensureAdminCaller(request) {
     }
     const adminDoc = await getFirestore().collection('admins').doc(uid).get();
     if (!adminDoc.exists) {
+                ...(tipo === 'cuponera' ? { q5, cuponera: cuponeraResp } : {}),
         throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
     }
     return uid;
