@@ -2289,6 +2289,8 @@ exports.submitOrderFeedback = onCall(
             const valid = feedbackTipo.validarRespuestasFeedback(tipo, request.data || {});
             if (!valid.ok) throw new HttpsError('invalid-argument', valid.error);
             const { q1, q2, q3, q4, cumple, q1d, q2d } = valid.value;
+            const q5 = valid.value.q5 || '';
+            const cuponeraResp = valid.value.cuponera || null;
             const motivosBaja = feedbackTipo.motivosCalificacionBaja(tipo, valid.value);
             const feedbackRef = db.collection('encuestas_pedido').doc(orderId);
             if (order.feedbackAnsweredAt || (await tx.get(feedbackRef)).exists) {
@@ -2310,6 +2312,7 @@ exports.submitOrderFeedback = onCall(
                 customerPhone: phoneDigits,
                 tipo,
                 q1, q2, q3, q4,
+                ...(tipo === 'cuponera' ? { q5, cuponera: cuponeraResp } : {}),
                 q1d, q2d, // seguimiento de la fidelización: qué falló / qué gustó (q1d) y qué pasó con el servicio (q2d)
                 cumple,
                 // Respaldo del consentimiento dado al contestar (obligatorio): quién, cuándo y con qué texto.
@@ -2349,8 +2352,6 @@ exports.submitOrderFeedback = onCall(
                     tipo: 'feedback_bajo',
                     bodyMax: 180
                 });
-            const q5 = valid.value.q5 || '';
-            const cuponeraResp = valid.value.cuponera || null;
             } catch (e) { console.error('submitOrderFeedback: aviso de calificación baja', e && e.message); }
         }
         return { points: result.points };
@@ -2372,7 +2373,6 @@ async function ensureAdminCaller(request) {
     }
     const adminDoc = await getFirestore().collection('admins').doc(uid).get();
     if (!adminDoc.exists) {
-                ...(tipo === 'cuponera' ? { q5, cuponera: cuponeraResp } : {}),
         throw new HttpsError('permission-denied', 'No tienes permisos de administrador.');
     }
     return uid;
