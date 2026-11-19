@@ -5182,7 +5182,7 @@ function _renderPosProductCards(grid, products) {
 // El cliente entrega el cupón de papel: NO hay código. El cajero toca el bono y entra al ticket
 // como un combo con el regalo incluido. productId "cuponera-<bono>" + orderOptions.cuponeraBono
 // es lo que cuenta Métricas > Cuponera. Cada cuponera trae 1 de Bienvenida y 4 de A, B y C.
-const POS_CUPONERA_BEBIDAS = ['Coca-Cola', 'Postobon', 'Jugos Hit', 'Agua'];
+const POS_CUPONERA_BEBIDAS = ['Postobón']; // la cuponera trae solo Postobón de 250 ml
 const POS_CUPONERA_BONOS = [
     { id: 'bienvenida', nombre: 'Bono de Bienvenida', precio: 7000,
       items: ['1 papas de 75 g (una sola)', '1 Burger Normal (REGALO, va sola)'] },
@@ -5208,7 +5208,7 @@ function _posRenderCuponera(grid) {
         label.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(b.nombre)}</span><span class="pos-product-btn-price">${formatMoney(b.precio)}</span>`;
         card.appendChild(btn);
         card.appendChild(label);
-        card.addEventListener('click', () => _posElegirBebidaCuponera(b));
+        card.addEventListener('click', () => _posAgregarCuponera(b, POS_CUPONERA_BEBIDAS[0]));
         grid.appendChild(card);
     });
 }
