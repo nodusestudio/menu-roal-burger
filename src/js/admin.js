@@ -36060,6 +36060,25 @@ async function _cpanaFetchCupones(campanaId, force = false) {
     return _cpanaCuponesCache[campanaId];
 }
 
+// Zona de entrega a partir de dirección + barrio escritos por el cliente (texto libre).
+const _CPANA_ZONAS = [
+    ['Alcaldía', /alcald/],
+    ['Gobernación', /gobernaci/],
+    ['Universidad', /universi|uniquind|uniq\b|gran colombia|\beam\b|\bucm\b|\buam\b|\bsena\b|unicafam|cesde|campus/],
+    ['Hospital / clínica', /hospital|clinica|clínica/]
+];
+function _cpanaZona(p) {
+    if (!p || p.modalidad !== 'domicilio') return p?.modalidad === 'recoger' ? 'Recoger en local' : 'En el local / sin dato';
+    const t = `${p.direccion || ''} ${p.barrio || ''} ${p.referencias || ''}`.toLowerCase();
+    const z = _CPANA_ZONAS.find(([, re]) => re.test(t));
+    return z ? z[0] : 'Casa / otro';
+}
+function _cpanaBarrasHTML(conteo, orden) {
+    const claves = orden || Object.keys(conteo).sort((a, b) => conteo[b] - conteo[a]);
+    const max = Math.max(1, ...claves.map((k) => conteo[k] || 0));
+    return claves.map((k) => `<div class="cpana-bar-row"><span>${escapeHtml(k)}</span><div class="cpana-bar"><span style="width:${Math.round(((conteo[k] || 0) / max) * 100)}%"></span></div><strong>${conteo[k] || 0}</strong></div>`).join('');
+}
+
 async function renderCuponPanaMetricas() {
     const body = document.getElementById('cpanaMetricasBody');
     const pend = document.getElementById('cpanaPendientesBody');
@@ -36109,6 +36128,22 @@ async function renderCuponPanaMetricas() {
         return `<div class="cpana-bar-row"><span>${CUPON_PANA_DIAS[dow]} ${k.slice(5)}</span><div class="cpana-bar"><span style="width:${Math.round((porDia[k] / maxDia) * 100)}%"></span></div><strong>${porDia[k]}</strong></div>`;
     }).join('');
 
+    const porHora = {};
+    canjeados.forEach((c) => {
+        const ms = c.canjeadoAt?.toMillis ? c.canjeadoAt.toMillis() : Number(c.canjeadoAt || 0);
+        if (!ms) return;
+        const h = new Date(ms - 5 * 3600000).getUTCHours();
+        const k = `${String(h).padStart(2, '0')}:00`;
+        porHora[k] = (porHora[k] || 0) + 1;
+    });
+    const horasHTML = _cpanaBarrasHTML(porHora, Object.keys(porHora).sort());
+    const porZona = {};
+    cupones.filter((c) => c.pedidoPreparado || c.estado === 'canjeado').forEach((c) => {
+        const z = _cpanaZona(c.pedidoPreparado);
+        porZona[z] = (porZona[z] || 0) + 1;
+    });
+    const zonasHTML = _cpanaBarrasHTML(porZona);
+
     body.innerHTML = `
         <div class="met-kpi-row" style="margin-bottom:16px;">
             <div class="met-kpi-card met-kpi-card--hi"><span class="met-kpi-val">${emitidos}</span><span class="met-kpi-lbl">Emitidos</span><span class="met-kpi-sub">de ${total} cupos</span></div>
@@ -36120,7 +36155,11 @@ async function renderCuponPanaMetricas() {
         <div class="met-section-title">Opciones elegidas</div>
         ${toppingsHTML || '<p class="admin-hint">Sin cupones emitidos.</p>'}
         <div class="met-section-title" style="margin-top:16px;">Canjes por día</div>
-        ${diasHTML || '<p class="admin-hint">Aún no hay canjes.</p>'}`;
+        ${diasHTML || '<p class="admin-hint">Aún no hay canjes.</p>'}
+        <div class="met-section-title" style="margin-top:16px;">Canjes por hora</div>
+        ${horasHTML || '<p class="admin-hint">Aún no hay canjes.</p>'}
+        <div class="met-section-title" style="margin-top:16px;">Dónde piden</div>
+        ${zonasHTML || '<p class="admin-hint">Aún no hay pedidos preparados.</p>'}`;
 
     _cpanaRenderPendientes(camp, cupones);
 }
