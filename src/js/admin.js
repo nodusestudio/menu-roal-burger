@@ -5281,24 +5281,20 @@ function _posElegirOpcionesCuponera(bono) {
     document.body.appendChild(ov);
 }
 
-// Elegir la marca y abrir el selector normal de bebidas (presentación + sabor + precio del catálogo).
+// Selector completo de bebidas: el mismo panel de la categoría Bebidas del POS (todas las marcas,
+// presentaciones, sabores y precios). Cada bebida se agrega al ticket como una línea normal.
 function _posCuponeraOtraBebida() {
-    const activas = (bebidasState || []).filter((b) => b.estado === 'active');
-    if (!activas.length) { showNotice('No hay bebidas disponibles.', 'error'); return; }
     document.getElementById('posCuponeraMarcas')?.remove();
     const ov = document.createElement('div');
     ov.id = 'posCuponeraMarcas';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:10800;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;';
-    ov.innerHTML = `<div style="background:#1b1b22;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:18px;max-width:360px;width:100%;color:#fff;">
-        <h4 style="margin:0 0 10px;">🥤 ¿Qué bebida?</h4>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${activas.map((b, i) => `<button type="button" class="pos-product-btn" data-i="${i}" style="padding:14px 6px;">${escapeHtml(b.marca)}</button>`).join('')}</div>
-        <button type="button" data-cancel="1" style="margin-top:10px;width:100%;padding:10px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">Cerrar</button></div>`;
-    ov.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-i]');
-        if (b) { const bev = activas[Number(b.dataset.i)]; ov.remove(); openPosBebidaPickerModal(bev); return; }
-        if (e.target === ov || e.target.closest('[data-cancel]')) ov.remove();
-    });
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10800;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML = `<div style="background:#1b1b22;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:18px;max-width:760px;width:100%;max-height:90vh;display:flex;flex-direction:column;color:#fff;">
+        <h4 style="margin:0 0 10px;">🥤 Bebidas</h4>
+        <div id="posCupBebGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;overflow:auto;"></div>
+        <button type="button" data-cancel="1" style="margin-top:12px;padding:12px;background:#22a05a;border:0;border-radius:8px;color:#fff;font-weight:800;">LISTO</button></div>`;
+    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-cancel]')) ov.remove(); });
     document.body.appendChild(ov);
+    renderPosBebidasPanel(ov.querySelector('#posCupBebGrid'));
 }
 
 function _posAgregarCuponera(bono, sabor1, sabor2) {
