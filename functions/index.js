@@ -1716,7 +1716,7 @@ function codigoDiaRechazado(resultado) {
 }
 
 exports.submitPublicOrder = onCall(
-    { region: 'us-central1', cors: ALLOWED_ORIGINS },
+    { region: 'us-central1', secrets: [COSTOS_SA_KEY], cors: ALLOWED_ORIGINS },
     async (request) => {
         // Código del día: a lo sumo UNA línea y UNA unidad con descuento (ver extraerLineaCodigoDia).
         const extraido = codigoDia.extraerLineaCodigoDia(Array.isArray(request.data?.items) ? request.data.items : []);
