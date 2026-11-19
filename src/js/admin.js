@@ -5182,17 +5182,25 @@ function _renderPosProductCards(grid, products) {
 // El cliente entrega el cupón de papel: NO hay código. El cajero toca el bono y entra al ticket
 // como un combo con el regalo incluido. productId "cuponera-<bono>" + orderOptions.cuponeraBono
 // es lo que cuenta Métricas > Cuponera. Cada cuponera trae 1 de Bienvenida y 4 de A, B y C.
-const POS_CUPONERA_BEBIDAS = ['Postobón']; // la cuponera trae solo Postobón de 250 ml
+const POS_CUPONERA_COMBO2 = 7000; // 2.ª hamburguesa en combo: papas 75 g + bebida 250 ml
+const POS_CUPONERA_SABORES_RESPALDO = ['Pepsi Zero', 'Colombiana', 'Manzana', 'Toronja', 'Tamarindo', 'Naranja'];
+// hamburguesa = lo que se paga y se regala (null = Bienvenida: papas y bebida pagadas + Burger Normal de regalo)
 const POS_CUPONERA_BONOS = [
-    { id: 'bienvenida', nombre: 'Bono de Bienvenida', precio: 7000,
-      items: ['1 papas de 75 g (una sola)', '1 Burger Normal (REGALO, va sola)'] },
-    { id: 'a', nombre: 'Bono A · Ranchera', precio: 37000,
-      items: ['2 Burger Ranchera (la 2.ª es REGALO, va sola)', '1 papas de 75 g (una sola)'] },
-    { id: 'b', nombre: 'Bono B · Trifásica', precio: 44000,
-      items: ['2 Burger Trifásica (la 2.ª es REGALO, va sola)', '1 papas de 75 g (una sola)'] },
-    { id: 'c', nombre: 'Bono C · Pepito Urbano', precio: 37000,
-      items: ['2 Pepito Urbano (el 2.º es REGALO, va solo)', '1 papas de 75 g (una sola)'] }
+    { id: 'bienvenida', nombre: 'Bono de Bienvenida', precio: 7000, pagado: null, regalo: '1 Burger Normal' },
+    { id: 'a', nombre: 'Bono A · Ranchera', precio: 37000, pagado: '1 Burger Ranchera', regalo: '1 Burger Ranchera' },
+    { id: 'b', nombre: 'Bono B · Trifásica', precio: 44000, pagado: '1 Burger Trifásica', regalo: '1 Burger Trifásica' },
+    { id: 'c', nombre: 'Bono C · Pepito Urbano', precio: 37000, pagado: '1 Pepito Urbano', regalo: '1 Pepito Urbano' }
 ];
+
+// Sabores de la Postobón de 250 ml tomados del catálogo (sin repetidos); si no está, lista de respaldo.
+function _posCuponeraSabores() {
+    const beb = (bebidasState || []).find((b) => /postob/i.test(String(b.marca || '')));
+    const pres = beb && (beb.presentaciones || []).find((p) => /250/.test(String(p.nombre || '')));
+    const lista = pres && Array.isArray(pres.sabores) ? pres.sabores : [];
+    const unicos = [...new Map(lista.map((s) => [String(s).trim().toLowerCase(), String(s).trim()])).values()].filter(Boolean);
+    const out = unicos.length ? unicos : POS_CUPONERA_SABORES_RESPALDO;
+    return out.map((s) => s.charAt(0).toUpperCase() + s.slice(1));
+}
 
 function _posRenderCuponera(grid) {
     grid.innerHTML = '';
@@ -5208,47 +5216,110 @@ function _posRenderCuponera(grid) {
         label.innerHTML = `<span class="pos-product-btn-name">${escapeHtml(b.nombre)}</span><span class="pos-product-btn-price">${formatMoney(b.precio)}</span>`;
         card.appendChild(btn);
         card.appendChild(label);
-        card.addEventListener('click', () => _posAgregarCuponera(b, POS_CUPONERA_BEBIDAS[0]));
+        card.addEventListener('click', () => _posElegirOpcionesCuponera(b));
         grid.appendChild(card);
     });
 }
 
-function _posElegirBebidaCuponera(bono) {
-    document.getElementById('posCuponeraBebidaOv')?.remove();
+// Ventana del bono: sabor de la bebida (obligatorio), combo opcional para la 2.ª hamburguesa
+// (+$7.000, con su propio sabor) y atajo para sumar otra bebida normal (litro, etc.).
+function _posElegirOpcionesCuponera(bono) {
+    document.getElementById('posCuponeraOv')?.remove();
+    const sabores = _posCuponeraSabores();
+    const puedeCombo2 = bono.pagado !== null;
+    let sabor1 = null; let sabor2 = null; let combo2 = false;
+
     const ov = document.createElement('div');
-    ov.id = 'posCuponeraBebidaOv';
+    ov.id = 'posCuponeraOv';
     ov.style.cssText = 'position:fixed;inset:0;z-index:10500;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;';
-    ov.innerHTML = `<div style="background:#1b1b22;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:20px;max-width:360px;width:100%;color:#fff;">
-        <h4 style="margin:0 0 4px;">${escapeHtml(bono.nombre)}</h4>
-        <p style="margin:0 0 12px;font-size:.85rem;opacity:.7;">Bebida de 250 ml (una sola)</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${POS_CUPONERA_BEBIDAS.map((x) => `<button type="button" class="pos-product-btn" data-beb="${escapeHtml(x)}" style="padding:14px 8px;">${escapeHtml(x)}</button>`).join('')}</div>
-        <button type="button" data-cancel="1" style="margin-top:12px;width:100%;padding:10px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">Cancelar</button>
-    </div>`;
+    const chips = (grupo) => sabores.map((s) => `<button type="button" class="pos-product-btn" data-grupo="${grupo}" data-sabor="${escapeHtml(s)}" style="padding:12px 6px;">${escapeHtml(s)}</button>`).join('');
+    ov.innerHTML = `<div style="background:#1b1b22;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:20px;max-width:420px;width:100%;max-height:92vh;overflow:auto;color:#fff;">
+        <h4 style="margin:0 0 12px;">${escapeHtml(bono.nombre)} · ${escapeHtml(formatMoney(bono.precio))}</h4>
+        <p style="margin:0 0 6px;font-size:.85rem;opacity:.8;">Sabor de la bebida (Postobón 250 ml)</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">${chips('1')}</div>
+        ${puedeCombo2 ? `<button type="button" id="posCupCombo2" style="width:100%;padding:12px;margin-bottom:8px;background:rgba(255,255,255,.06);border:1px dashed rgba(255,255,255,.35);border-radius:8px;color:#fff;font-weight:700;">➕ Combo para la 2.ª hamburguesa (+${escapeHtml(formatMoney(POS_CUPONERA_COMBO2))}): papa + bebida</button>
+        <div id="posCupSabor2" style="display:none;margin-bottom:14px;"><p style="margin:0 0 6px;font-size:.85rem;opacity:.8;">Sabor de la bebida del 2.º combo</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">${chips('2')}</div></div>` : ''}
+        <button type="button" id="posCupOtraBebida" style="width:100%;padding:10px;margin-bottom:12px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">🥤 Agregar otra bebida (litro, etc.)</button>
+        <div style="display:flex;gap:8px;">
+            <button type="button" data-cancel="1" style="flex:1;padding:12px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">Cancelar</button>
+            <button type="button" id="posCupOk" disabled style="flex:2;padding:12px;border:0;border-radius:8px;background:#22a05a;color:#fff;font-weight:800;opacity:.5;">AGREGAR AL TICKET</button>
+        </div></div>`;
+    const okBtn = ov.querySelector('#posCupOk');
+    const refrescar = () => {
+        ov.querySelectorAll('[data-sabor]').forEach((b) => {
+            const sel = (b.dataset.grupo === '1' ? sabor1 : sabor2) === b.dataset.sabor;
+            b.style.outline = sel ? '3px solid #ffaa1e' : 'none';
+        });
+        const listo = sabor1 && (!combo2 || sabor2);
+        okBtn.disabled = !listo; okBtn.style.opacity = listo ? '1' : '.5';
+    };
     ov.addEventListener('click', (e) => {
-        const beb = e.target.closest('[data-beb]');
-        if (beb) { _posAgregarCuponera(bono, beb.dataset.beb); ov.remove(); return; }
+        const s = e.target.closest('[data-sabor]');
+        if (s) { if (s.dataset.grupo === '1') sabor1 = s.dataset.sabor; else sabor2 = s.dataset.sabor; refrescar(); return; }
+        if (e.target.closest('#posCupCombo2')) {
+            combo2 = !combo2;
+            ov.querySelector('#posCupSabor2').style.display = combo2 ? 'block' : 'none';
+            if (!combo2) sabor2 = null;
+            e.target.closest('#posCupCombo2').style.background = combo2 ? 'rgba(34,160,90,.35)' : 'rgba(255,255,255,.06)';
+            refrescar(); return;
+        }
+        if (e.target.closest('#posCupOtraBebida')) { _posCuponeraOtraBebida(); return; }
+        if (e.target.closest('#posCupOk') && !okBtn.disabled) {
+            _posAgregarCuponera(bono, sabor1, combo2 ? sabor2 : null);
+            ov.remove(); return;
+        }
         if (e.target === ov || e.target.closest('[data-cancel]')) ov.remove();
     });
     document.body.appendChild(ov);
 }
 
-function _posAgregarCuponera(bono, bebida) {
-    const comboItems = [...bono.items, `1 bebida 250 ml: ${bebida} (una sola)`];
+// Elegir la marca y abrir el selector normal de bebidas (presentación + sabor + precio del catálogo).
+function _posCuponeraOtraBebida() {
+    const activas = (bebidasState || []).filter((b) => b.estado === 'active');
+    if (!activas.length) { showNotice('No hay bebidas disponibles.', 'error'); return; }
+    document.getElementById('posCuponeraMarcas')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'posCuponeraMarcas';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10800;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML = `<div style="background:#1b1b22;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:18px;max-width:360px;width:100%;color:#fff;">
+        <h4 style="margin:0 0 10px;">🥤 ¿Qué bebida?</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">${activas.map((b, i) => `<button type="button" class="pos-product-btn" data-i="${i}" style="padding:14px 6px;">${escapeHtml(b.marca)}</button>`).join('')}</div>
+        <button type="button" data-cancel="1" style="margin-top:10px;width:100%;padding:10px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">Cerrar</button></div>`;
+    ov.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-i]');
+        if (b) { const bev = activas[Number(b.dataset.i)]; ov.remove(); openPosBebidaPickerModal(bev); return; }
+        if (e.target === ov || e.target.closest('[data-cancel]')) ov.remove();
+    });
+    document.body.appendChild(ov);
+}
+
+function _posAgregarCuponera(bono, sabor1, sabor2) {
+    // Una línea por producto: lo pagado primero, luego lo regalado aparte.
+    const lineas = [];
+    if (bono.pagado) lineas.push(bono.pagado);
+    lineas.push('1 papas 75 g', `1 bebida 250 ml: ${sabor1}`, `REGALO: ${bono.regalo}`);
+    let precio = bono.precio;
+    if (sabor2) {
+        lineas.push(`COMBO 2.ª hamburguesa (+${formatMoney(POS_CUPONERA_COMBO2)}):`, '1 papas 75 g', `1 bebida 250 ml: ${sabor2}`);
+        precio += POS_CUPONERA_COMBO2;
+    }
     internalOrderItems.push({
         itemKey: `cuponera-${bono.id}-${Date.now()}`,
         productId: `cuponera-${bono.id}`,
         productName: bono.nombre,
         categoryName: 'CUPONERA',
         quantity: 1,
-        unitPrice: bono.precio,
+        unitPrice: precio,
         originalUnitPrice: null,
-        subtotal: bono.precio,
-        note: comboItems.join(' + '),
-        optionLabel: comboItems.join(' + '),
+        subtotal: precio,
+        note: lineas.join(' + '),
+        optionLabel: lineas.join(' + '),
         promoLabel: 'CUPONERA',
         isComboEspecial: true,
-        comboItems,
-        origOrderOptions: { cuponeraBono: bono.id },
+        comboItems: lineas,
+        comboLineas: true,
+        origOrderOptions: { cuponeraBono: bono.id, ...(sabor2 ? { cuponeraCombo2: true } : {}) },
         parentKey: null
     });
     renderPosOrderItems();
@@ -8703,11 +8774,11 @@ function renderPosOrderItems() {
         const priceHTML = `<div class="pos-item-price">${_posItemPriceInnerHTML(item)}</div>`;
         if (item.isComboEspecial) {
             const listHTML = Array.isArray(item.comboItems) && item.comboItems.length
-                ? `<span class="pos-item-combo-list">${escapeHtml(item.comboItems.join(' + '))}</span>`
+                ? `<span class="pos-item-combo-list">${item.comboLineas ? item.comboItems.map((l) => escapeHtml(l)).join('<br>') : escapeHtml(item.comboItems.join(' + '))}</span>`
                 : '';
             return `<div class="pos-item-row pos-item-row-combo" data-item-key="${escapeHtml(item.itemKey)}">
                 <div class="pos-item-name">
-                    <span class="pos-item-combo-badge">⭐ Cupón Exclusivo</span>
+                    <span class="pos-item-combo-badge">${item.comboLineas ? '🎟️ Cuponera' : '⭐ Cupón Exclusivo'}</span>
                     ${escapeHtml(item.productName)}
                     ${listHTML}
                 </div>
