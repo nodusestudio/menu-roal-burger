@@ -26316,6 +26316,7 @@ document.querySelectorAll('.metrics-tab-btn').forEach((btn) => {
         if (tab === 'productos') { _traficoDetach(); renderMetricasProductos(); }
         if (tab === 'sabe')      { _traficoDetach(); _sqAttach(); return; }
         if (tab === 'sqfin')     { _traficoDetach(); _sqAttach(); _sqFinCargar(); return; }
+        if (tab === 'cuponera')  { _traficoDetach(); renderMetricasCuponera(); return; }
         _ensureMetricsOrdersLoaded();
         if (tab === 'app' || tab === 'pos') _ensureMetricsClientsLoaded();
     });
@@ -36162,6 +36163,80 @@ async function renderCuponPanaMetricas() {
         ${zonasHTML || '<p class="admin-hint">Aún no hay pedidos preparados.</p>'}`;
 
     _cpanaRenderPendientes(camp, cupones);
+}
+
+// Métricas > Cuponera: todos los bonos (campañas con temporada "Cuponera" o id CUPONERA-*) juntos
+// y comparados. Lee las mismas colecciones que Fuera del Menú; no escribe nada.
+async function renderMetricasCuponera() {
+    const body = document.getElementById('cuponeraBody');
+    if (!body) return;
+    body.innerHTML = '<p class="met-empty-note">Cargando…</p>';
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    try {
+        const snap = await firebaseDb.collection(CUPONES_CAMPANAS_COLLECTION).get();
+        const camps = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+            .filter((c) => c.temporada === 'Cuponera' || /^CUPONERA-/i.test(c.id))
+            .sort((a, b) => a.id.localeCompare(b.id));
+        if (!camps.length) { body.innerHTML = '<p class="met-empty-note">Aún no hay campañas de cuponera.</p>'; return; }
+        const datos = [];
+        for (const c of camps) datos.push({ c, cupones: await _cpanaFetchCupones(c.id, true) });
+
+        const todos = [];
+        const filas = datos.map(({ c, cupones }) => {
+            const canj = cupones.filter((x) => x.estado === 'canjeado');
+            canj.forEach((x) => todos.push(x));
+            const tasa = cupones.length ? Math.round((canj.length / cupones.length) * 1000) / 10 : 0;
+            return { c, emitidos: cupones.length, canj: canj.length, tasa, ingreso: canj.length * Number(c.precio || 0) };
+        });
+        const totEmit = filas.reduce((s, f) => s + f.emitidos, 0);
+        const totCanj = filas.reduce((s, f) => s + f.canj, 0);
+        const totIng = filas.reduce((s, f) => s + f.ingreso, 0);
+        const mejor = filas.slice().sort((a, b) => b.canj - a.canj)[0];
+
+        const porDia = {}; const porHora = {}; const porZona = {};
+        todos.forEach((x) => {
+            const k = _cpanaDateKey(x.canjeadoAt);
+            if (k) {
+                const dow = new Date(`${k}T12:00:00Z`).getUTCDay();
+                const et = `${CUPON_PANA_DIAS[dow]} ${k.slice(5)}`;
+                porDia[k] = { et, n: ((porDia[k] || {}).n || 0) + 1 };
+            }
+            const ms = x.canjeadoAt?.toMillis ? x.canjeadoAt.toMillis() : Number(x.canjeadoAt || 0);
+            if (ms) {
+                const h = `${String(new Date(ms - 5 * 3600000).getUTCHours()).padStart(2, '0')}:00`;
+                porHora[h] = (porHora[h] || 0) + 1;
+            }
+            const z = _cpanaZona(x.pedidoPreparado);
+            porZona[z] = (porZona[z] || 0) + 1;
+        });
+        const diasConteo = {}; Object.keys(porDia).sort().forEach((k) => { diasConteo[porDia[k].et] = porDia[k].n; });
+        const porBono = {}; filas.forEach((f) => { porBono[f.c.titulo] = f.canj; });
+
+        body.innerHTML = `
+            <div class="met-kpi-row" style="margin-bottom:16px;">
+                <div class="met-kpi-card met-kpi-card--hi"><span class="met-kpi-val">${nf(totEmit)}</span><span class="met-kpi-lbl">Cupones emitidos</span></div>
+                <div class="met-kpi-card met-kpi-card--green"><span class="met-kpi-val">${nf(totCanj)}</span><span class="met-kpi-lbl">Canjeados</span></div>
+                <div class="met-kpi-card met-kpi-card--purple"><span class="met-kpi-val">$${nf(totIng)}</span><span class="met-kpi-lbl">Ventas por canjes</span><span class="met-kpi-sub">canjes × precio del bono</span></div>
+                <div class="met-kpi-card"><span class="met-kpi-val">${mejor && mejor.canj ? escapeHtml(mejor.c.titulo) : '—'}</span><span class="met-kpi-lbl">Bono que más se canjea</span></div>
+            </div>
+            <div class="met-section-title">Comparación por bono</div>
+            <div class="cpana-table-wrap"><table class="cpana-table">
+                <thead><tr><th>Bono</th><th>Precio</th><th>Cupos</th><th>Emitidos</th><th>Canjeados</th><th>Tasa</th><th>Ventas</th><th>Estado</th></tr></thead>
+                <tbody>${filas.map((f) => `<tr><td><strong>${escapeHtml(f.c.titulo)}</strong></td><td>$${nf(f.c.precio)}</td><td>${nf(f.c.cuposTotales)}</td><td>${f.emitidos}</td><td>${f.canj}</td><td>${f.tasa}%</td><td>$${nf(f.ingreso)}</td><td>${f.c.activa ? 'Activa' : 'Inactiva'}</td></tr>`).join('')}</tbody>
+            </table></div>
+            <div class="met-section-title" style="margin-top:16px;">Canjes por bono</div>
+            ${_cpanaBarrasHTML(porBono) }
+            <div class="met-section-title" style="margin-top:16px;">Canjes por día</div>
+            ${totCanj ? _cpanaBarrasHTML(diasConteo, Object.keys(diasConteo)) : '<p class="admin-hint">Aún no hay canjes.</p>'}
+            <div class="met-section-title" style="margin-top:16px;">Canjes por hora</div>
+            ${totCanj ? _cpanaBarrasHTML(porHora, Object.keys(porHora).sort()) : '<p class="admin-hint">Aún no hay canjes.</p>'}
+            <div class="met-section-title" style="margin-top:16px;">Dónde piden</div>
+            ${totCanj ? _cpanaBarrasHTML(porZona) : '<p class="admin-hint">Aún no hay canjes.</p>'}
+            <p class="admin-hint" style="margin-top:12px;">La zona sale de la dirección y el barrio que escribe el cliente, así que es aproximada.</p>`;
+    } catch (err) {
+        console.error('metricas cuponera:', err);
+        body.innerHTML = '<p class="met-empty-note">No se pudieron cargar las métricas de la cuponera.</p>';
+    }
 }
 
 function _cpanaRecordatorioLink(c, camp) {
