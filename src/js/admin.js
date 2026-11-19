@@ -43471,10 +43471,80 @@ function _almTextoMenuDia() {
 
 
 // ── Costos (nuevo): lee los costos que calcula la app Costos (solo lectura) vía obtenerCostosRoal ──
+// Enlaces Costos <-> menú: colección `costos_enlaces/{idCostos}` en roal-burger-menu (nada se escribe en fodexa-costos).
 let _cnDatos = null, _cnCargando = false, _cnCat = '';
+let _cnMenu = [], _cnEnl = {}, _cnMsgT = null;
+const _CN_SIN_PAR = 'Sin par en el menú';
+const _CN_TIPOS = { productos: 'Producto', combospacks: 'Combo', bebidas: 'Bebida', acompanantes: 'Acompañante' };
 function _cnColor(pct) {
     if (pct == null) return 'inherit';
     return pct <= 33 ? '#2e9e5b' : (pct <= 45 ? '#d9a406' : '#d64545');
+}
+const _cnFmt = n => n == null ? '—' : '$' + Math.round(n).toLocaleString('es-CO');
+const _cnTok = t => new Set(String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 1));
+function _cnPorId(col, id) { return _cnMenu.find(m => m.col === col && m.id === id) || null; }
+function _cnMsg(txt, ok) {
+    const el = document.getElementById('costosNuevoMsg');
+    if (!el) return;
+    el.textContent = txt || '';
+    el.style.color = ok ? '#2e9e5b' : '#d64545';
+    clearTimeout(_cnMsgT);
+    if (txt && ok) _cnMsgT = setTimeout(() => { el.textContent = ''; }, 3000);
+}
+// Producto del menú más parecido por nombre (palabras en común) y precio (±5 % / ±15 %). Solo propone; nunca enlaza solo.
+function _cnSug(p) {
+    const a = _cnTok(p.nombre);
+    if (!a.size) return null;
+    let best = null, bs = 0;
+    _cnMenu.forEach(m => {
+        const t = _cnTok(m.nombre);
+        let inter = 0; a.forEach(w => { if (t.has(w)) inter++; });
+        const union = a.size + t.size - inter;
+        let s = union ? inter / union : 0;
+        if (s === 0) return;
+        if (p.precioVenta && m.precio) {
+            const d = Math.abs(p.precioVenta - m.precio) / p.precioVenta;
+            if (d <= 0.05) s += 0.25; else if (d <= 0.15) s += 0.1;
+        }
+        if (s > bs) { bs = s; best = m; }
+    });
+    return bs >= 0.45 ? best : null;
+}
+function _cnResumen(base) {
+    const el = document.getElementById('costosNuevoResumen');
+    if (!el) return;
+    let enl = 0, sinPar = 0, roto = 0;
+    base.forEach(p => {
+        const e = _cnEnl[p.id];
+        if (!e) return;
+        if (e.estado === 'sin_par_en_menu') sinPar++;
+        else if (_cnPorId(e.coleccionMenu, e.menuId)) enl++;
+        else roto++;
+    });
+    el.innerHTML = `${enl} de ${base.length} enlazados` + (sinPar ? ` · ${sinPar} sin par en el menú` : '') +
+        (roto ? ` · <span style="color:#d64545">${roto} con enlace roto</span>` : '');
+}
+function _cnCelda(p) {
+    const e = _cnEnl[p.id];
+    let val = '', extra = '';
+    if (e && e.estado === 'sin_par_en_menu') val = _CN_SIN_PAR;
+    else if (e) {
+        const m = _cnPorId(e.coleccionMenu, e.menuId);
+        if (m) {
+            val = m.label;
+            if (m.precio != null && p.precioVenta != null && Math.round(m.precio) !== Math.round(p.precioVenta)) {
+                extra = `<div style="color:#d9a406;font-size:.72rem;margin-top:2px">Precio menú ${_cnFmt(m.precio)} ≠ Costos ${_cnFmt(p.precioVenta)}</div>`;
+            }
+        } else {
+            extra = `<div style="color:#d64545;font-size:.72rem;margin-top:2px">⚠ Ya no existe en el menú (${escapeHtml(e.menuId || '—')})</div>`;
+        }
+    } else {
+        const s = _cnSug(p);
+        if (s) {
+            extra = `<div style="margin-top:4px"><button type="button" class="category-filter-btn" style="padding:5px 10px;font-size:.66rem" data-cnconf="${escapeHtml(p.id)}|${s.col}|${escapeHtml(s.id)}">Sugerido: ${escapeHtml(s.label)}${s.precio != null ? ' · ' + _cnFmt(s.precio) : ''} — ✓ Confirmar</button></div>`;
+        }
+    }
+    return `<input type="search" class="metrics-search" list="cnMenuLista" data-cnenl="${escapeHtml(p.id)}" value="${escapeHtml(val)}" placeholder="Elegir…" autocomplete="off" style="min-width:210px;width:100%">${extra}`;
 }
 function _cnRender() {
     const body = document.getElementById('costosNuevoBody');
@@ -43482,6 +43552,7 @@ function _cnRender() {
     const q = (document.getElementById('costosNuevoBuscar')?.value || '').trim().toLowerCase();
     const soloActivos = (document.getElementById('costosNuevoFiltro')?.value || 'activos') === 'activos';
     const base = _cnDatos.filter(p => (!soloActivos || p.activo) && (!q || p.nombre.toLowerCase().includes(q)));
+    _cnResumen(_cnDatos.filter(p => !soloActivos || p.activo));
     const cuentas = {};
     _cnDatos.forEach(p => { cuentas[p.categoria] = cuentas[p.categoria] || 0; });
     base.forEach(p => { cuentas[p.categoria]++; });
@@ -43494,18 +43565,62 @@ function _cnRender() {
     }
     const lista = _cnCat ? base.filter(p => p.categoria === _cnCat) : base;
     if (!lista.length) { body.innerHTML = '<p style="color:var(--admin-muted)">Sin productos para mostrar.</p>'; return; }
-    const fmt = n => n == null ? '—' : '$' + Math.round(n).toLocaleString('es-CO');
     const fecha = iso => iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
     const grupos = {};
     lista.forEach(p => { (grupos[p.categoria] = grupos[p.categoria] || []).push(p); });
-    body.innerHTML = Object.keys(grupos).map(cat => `
+    const datalist = `<datalist id="cnMenuLista"><option value="${_CN_SIN_PAR}"></option>${_cnMenu.map(m => `<option value="${escapeHtml(m.label)}"></option>`).join('')}</datalist>`;
+    body.innerHTML = datalist + Object.keys(grupos).map(cat => `
         <h3 style="margin:14px 0 6px">${escapeHtml(cat)}</h3>
         <div style="overflow-x:auto"><table class="admin-table" style="width:100%">
-            <thead><tr><th>Producto</th><th>Costo</th><th>Precio</th><th>% costo</th><th>Actualizado</th></tr></thead>
+            <thead><tr><th>Producto</th><th>Costo</th><th>Precio</th><th>% costo</th><th>Actualizado</th><th>Producto del menú</th></tr></thead>
             <tbody>${grupos[cat].map(p => `<tr${p.activo ? '' : ' style="opacity:.55"'}>
-                <td>${escapeHtml(p.nombre)}</td><td>${fmt(p.costoCalculado)}</td><td>${fmt(p.precioVenta)}</td>
+                <td>${escapeHtml(p.nombre)}</td><td>${_cnFmt(p.costoCalculado)}</td><td>${_cnFmt(p.precioVenta)}</td>
                 <td style="font-weight:700;color:${_cnColor(p.costoPct)}">${p.costoPct == null ? '—' : p.costoPct.toFixed(1) + '%'}</td>
-                <td>${fecha(p.costoActualizadoEn)}</td></tr>`).join('')}</tbody></table></div>`).join('');
+                <td>${fecha(p.costoActualizadoEn)}</td><td>${_cnCelda(p)}</td></tr>`).join('')}</tbody></table></div>`).join('');
+}
+async function _cnCargarMenuYEnlaces() {
+    const get = c => firebaseDb.collection(c).get();
+    const [p, c, b, a, e] = await Promise.all(['productos', 'combospacks', 'bebidas', 'acompanantes', 'costos_enlaces'].map(get));
+    const m = [];
+    p.docs.forEach(d => { const x = d.data(); m.push({ id: d.id, col: 'productos', nombre: x.nombre || x.name || d.id, precio: Number(x.precio) || null }); });
+    c.docs.forEach(d => { const x = d.data(); m.push({ id: d.id, col: 'combospacks', nombre: x.nombre || d.id, precio: Number(x.valor) || null }); });
+    b.docs.forEach(d => { const x = d.data(); m.push({ id: d.id, col: 'bebidas', nombre: x.marca || x.nombre || d.id, precio: null }); });
+    a.docs.forEach(d => { const x = d.data(); m.push({ id: d.id, col: 'acompanantes', nombre: x.nombre || d.id, precio: Number(x.precio) || null }); });
+    const vistos = {};
+    m.forEach(x => { x.label = `${x.nombre} · ${_CN_TIPOS[x.col]}`; vistos[x.label] = (vistos[x.label] || 0) + 1; });
+    m.forEach(x => { if (vistos[x.label] > 1) x.label += ` #${x.id.slice(0, 4)}`; });
+    m.sort((x, y) => x.label.localeCompare(y.label, 'es'));
+    _cnMenu = m;
+    _cnEnl = {};
+    e.docs.forEach(d => { _cnEnl[d.id] = d.data(); });
+}
+async function _cnGuardar(id, m) {
+    const data = m
+        ? { menuId: m.id, coleccionMenu: m.col, estado: 'enlazado' }
+        : { menuId: '', coleccionMenu: '', estado: 'sin_par_en_menu' };
+    data.actualizadoEn = firestoreNow();
+    data.actualizadoPor = firebaseAuth?.currentUser?.uid || '';
+    await firebaseDb.collection('costos_enlaces').doc(id).set(data);
+    _cnEnl[id] = data;
+}
+async function _cnElegir(id, texto) {
+    const t = String(texto || '').trim();
+    try {
+        if (!t) {
+            await firebaseDb.collection('costos_enlaces').doc(id).delete();
+            delete _cnEnl[id];
+        } else if (t === _CN_SIN_PAR) {
+            await _cnGuardar(id, null);
+        } else {
+            const m = _cnMenu.find(x => x.label === t);
+            if (!m) { _cnMsg('Elige una opción de la lista (escribe y selecciona).', false); _cnRender(); return; }
+            await _cnGuardar(id, m);
+        }
+        _cnMsg('Enlace guardado.', true);
+    } catch (err) {
+        _cnMsg('No se pudo guardar el enlace: ' + String(err && err.message || err), false);
+    }
+    _cnRender();
 }
 async function _costosNuevoCargar(force) {
     const body = document.getElementById('costosNuevoBody');
@@ -43513,11 +43628,11 @@ async function _costosNuevoCargar(force) {
     _cnCargando = true;
     body.innerHTML = '<p>Cargando costos…</p>';
     try {
-        const r = await firebaseFunctions.httpsCallable('obtenerCostosRoal')({});
+        const [r] = await Promise.all([firebaseFunctions.httpsCallable('obtenerCostosRoal')({}), _cnCargarMenuYEnlaces()]);
         _cnDatos = (r.data && r.data.productos) || [];
         _cnRender();
     } catch (e) {
-        body.innerHTML = '<p style="color:#d64545">No se pudieron cargar los costos: ' + escapeHtml(String(e && e.message || e)) + '</p>';
+        body.innerHTML = '<p style="color:#d64545">No se pudieron cargar los costos o los enlaces: ' + escapeHtml(String(e && e.message || e)) + '</p>';
     } finally { _cnCargando = false; }
 }
 document.getElementById('costosNuevoRefreshBtn')?.addEventListener('click', () => _costosNuevoCargar(true));
@@ -43526,6 +43641,17 @@ document.getElementById('costosNuevoCats')?.addEventListener('click', (e) => {
     if (!b) return;
     _cnCat = b.getAttribute('data-cncat') || '';
     _cnRender();
+});
+document.getElementById('costosNuevoBody')?.addEventListener('change', (e) => {
+    const i = e.target.closest('[data-cnenl]');
+    if (i) _cnElegir(i.getAttribute('data-cnenl'), i.value);
+});
+document.getElementById('costosNuevoBody')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cnconf]');
+    if (!b) return;
+    const [id, col, mid] = b.getAttribute('data-cnconf').split('|');
+    const m = _cnPorId(col, mid);
+    if (m) _cnElegir(id, m.label);
 });
 document.getElementById('costosNuevoBuscar')?.addEventListener('input', _cnRender);
 document.getElementById('costosNuevoFiltro')?.addEventListener('change', _cnRender);

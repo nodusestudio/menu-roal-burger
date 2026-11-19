@@ -458,6 +458,10 @@ service cloud.firestore {
     match /costos_categorias/{doc} {
       allow read, write: if isAdmin();
     }
+    // Enlaces producto de Costos (fodexa-costos) <-> producto del menú. Solo admin.
+    match /costos_enlaces/{doc} {
+      allow read, write: if isAdmin();
+    }
     match /costos_ajustes/{doc} {
       allow read, write: if isAdmin();
     }
