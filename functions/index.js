@@ -3768,7 +3768,7 @@ CÓMO PIENSAS (gerencia y marketing para restaurantes):
 }
 
 exports.adminAsistenteIA = onCall(
-    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY, GITHUB_TOKEN], cors: ALLOWED_ORIGINS, timeoutSeconds: 300, memory: '512MiB' },
+    { region: 'us-central1', secrets: [ANTHROPIC_API_KEY, GITHUB_TOKEN, COSTOS_SA_KEY], cors: ALLOWED_ORIGINS, timeoutSeconds: 300, memory: '512MiB' },
     async (request) => {
         const db = getFirestore();
         await cuponPana.ensureAdmin(db, request);

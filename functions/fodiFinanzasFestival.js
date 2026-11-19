@@ -4,6 +4,7 @@
 // colchón), un 2×1 cuenta 2 hamburguesas, y el reparto se redondea POR DÍA (los totales son la suma de los días).
 
 const { costoPlato } = require('./costos');
+const { obtenerCostoPorMenuId } = require('./costosFuente');
 
 const BURGERS_POR_RECETA = 2; // la receta "Burger TRIFASICA" lleva 2 panes y 300 g de carne (150 g c/u): rinde 2 hamburguesas
 const INICIO_MS = Date.parse('2026-10-30T00:00:00-05:00');
@@ -16,7 +17,9 @@ const es2x1 = (it) => { const o = it.orderOptions || {}; return o.promo2x1 === t
 const diaBogota = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 const msDe = (c) => (c && typeof c.toMillis === 'function' ? c.toMillis() : (c && (c.seconds || c._seconds) ? (c.seconds || c._seconds) * 1000 : Number(c) || 0));
 
-async function finanzasFestival(db, ahora = Date.now()) {
+// opts.leerNuevo: () => Promise<productos de Costos>. Si no se da, se usa el secret COSTOS_SA_KEY (si está en el entorno);
+// sin ninguno de los dos el costo sale de la calculadora vieja (marcado "viejo").
+async function finanzasFestival(db, ahora = Date.now(), opts = {}) {
     const [productos, insumos, recetas, platos, ajustes, cfgFin, a, b] = await Promise.all([
         lista(db, 'productos'), lista(db, 'costos_insumos'), lista(db, 'costos_recetas'), lista(db, 'costos_platos'),
         db.collection('costos_ajustes').doc('config').get(), db.collection('configuracion').doc('finanzas_festival').get(),
@@ -48,18 +51,27 @@ async function finanzasFestival(db, ahora = Date.now()) {
     const unidades = dias.reduce((s, d) => s + d.unidades, 0), hamburguesas = dias.reduce((s, d) => s + d.hamburguesas, 0), ventas = dias.reduce((s, d) => s + d.ventas, 0);
 
     const prod = productos.find((p) => { const n = norm(p.nombre); return n.includes('trifasica') && !n.includes('mini'); });
-    const plato = prod ? platos.find((p) => p.productoMenuId === prod.id) : null;
     const colchonPct = Number(ajustes.exists ? ajustes.data().colchonPct : 30) || 30;
+    const leerNuevo = opts.leerNuevo || (process.env.COSTOS_SA_KEY ? () => require('./costosRoal').leerCostosRoal(process.env.COSTOS_SA_KEY) : undefined);
+    // Costo por la fuente única: con enlace en costos_enlaces sale de Costos ("nuevo"); sin enlace, de la calculadora vieja ("viejo").
+    const fuente = prod ? await obtenerCostoPorMenuId(prod.id, {
+        db, leerNuevo,
+        costoViejo: () => {
+            const plato = platos.find((p) => p.productoMenuId === prod.id);
+            if (!plato) return null;
+            const c = costoPlato(plato, { insumos: aMapa(insumos), recetas: aMapa(recetas) }, colchonPct);
+            return { costo: c.costo, costoReal: c.costo_real, faltantes: c.faltantes };
+        }
+    }) : null;
     const cfg = cfgFin.exists ? cfgFin.data() : {};
     const sueldosPct = Number.isFinite(Number(cfg.sueldosPct)) ? Number(cfg.sueldosPct) : 30;
     const reservaPct = Number.isFinite(Number(cfg.reservaPct)) ? Number(cfg.reservaPct) : 20;
     const guardados = cfg.guardados && typeof cfg.guardados === 'object' ? cfg.guardados : {};
 
     const base = { desde: '2026-10-30', trifasicas_vendidas: unidades, hamburguesas_entregadas: hamburguesas, hamburguesas_de_cortesia: regaladas, ventas_trifasica: ventas };
-    if (!plato) return { ...base, aviso: 'No hay costo: en Costos y recetas falta vincular el plato "Burger TRIFASICA" con su producto del menú, así que no se puede calcular costo ni utilidad.' };
+    if (!fuente) return { ...base, aviso: 'No hay costo: en Costos y recetas falta vincular el plato "Burger TRIFASICA" con su producto del menú, así que no se puede calcular costo ni utilidad.' };
 
-    const c = costoPlato(plato, { insumos: aMapa(insumos), recetas: aMapa(recetas) }, colchonPct);
-    const costoBurger = c.costo / BURGERS_POR_RECETA, costoBurgerReal = c.costo_real / BURGERS_POR_RECETA;
+    const costoBurger = fuente.costo / BURGERS_POR_RECETA, costoBurgerReal = fuente.costoReal / BURGERS_POR_RECETA;
     const libresPct = Math.max(0, 100 - sueldosPct - reservaPct);
     let acumulado = 0, costo = 0, utilidad = 0, vs = 0, vr = 0, vd = 0, yaGuardado = 0, pendiente = 0;
     const diasPendientes = [];
@@ -75,15 +87,15 @@ async function finanzasFestival(db, ahora = Date.now()) {
     const costoReal = Math.round(costoBurgerReal * hamburguesas);
     return {
         ...base,
-        costo_por_hamburguesa_con_colchon: Math.round(costoBurger), costo_por_hamburguesa_real: Math.round(costoBurgerReal), costo_receta_completa_con_colchon: c.costo, costo_receta_completa_real: c.costo_real, hamburguesas_por_receta: BURGERS_POR_RECETA,
+        costo_por_hamburguesa_con_colchon: Math.round(costoBurger), costo_por_hamburguesa_real: Math.round(costoBurgerReal), costo_fuente: fuente.fuente, costo_receta_completa_con_colchon: fuente.costo, costo_receta_completa_real: fuente.costoReal, hamburguesas_por_receta: BURGERS_POR_RECETA,
         costo_total_con_colchon: costo, costo_total_real: costoReal,
         utilidad, utilidad_con_costo_real: ventas - costoReal,
         margen_pct: ventas > 0 ? Math.round((utilidad / ventas) * 1000) / 10 : 0,
         reparto_utilidad: { sueldos_pct: sueldosPct, sueldos: vs, reserva_pct: reservaPct, reserva: vr, libre_pct: libresPct, libre: vd },
         a_guardar: { total_sueldos_mas_reserva: vs + vr, ya_guardado: yaGuardado, pendiente_por_guardar: pendiente, dias_pendientes: diasPendientes },
         por_dia,
-        faltantes_en_receta: c.faltantes,
-        nota: 'Solo la Trifásica (sin combos, bebidas ni empaque del 2×1). No resta costos fijos. Los % de reparto se editan en Métricas → Finanzas, donde también se marca qué días ya se guardaron. El reparto se redondea por día, así que los totales son la suma de los días. El día de hoy es parcial. Con pocos pedidos no es concluyente: dilo.'
+        faltantes_en_receta: fuente.faltantes || [],
+        nota: (fuente.fuente === 'nuevo' ? 'COSTO NUEVO (app Costos): ya viene calculado, no distingue colchón/real, así que ambos costos son el mismo. ' : 'COSTO VIEJO (calculadora vieja): este producto aún no está enlazado en Costos (nuevo). ') + 'Al citar el costo di de dónde viene: (nuevo) o (viejo). Solo la Trifásica (sin combos, bebidas ni empaque del 2×1). No resta costos fijos. Los % de reparto se editan en Métricas → Finanzas, donde también se marca qué días ya se guardaron. El reparto se redondea por día, así que los totales son la suma de los días. El día de hoy es parcial. Con pocos pedidos no es concluyente: dilo.'
     };
 }
 
