@@ -16176,15 +16176,13 @@
             </div>
 
             <div class="admin-tab-panel" data-tab-panel="costosnuevo">
-                <div class="section-toolbar">
-                    <button type="button" class="section-save-btn" id="costosNuevoRefreshBtn">Actualizar</button>
-                </div>
                 <article class="admin-card">
                     <div class="card-head"><h2>🧾 Costos (nuevo)</h2></div>
                     <div class="card-body">
-                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-                            <input type="search" id="costosNuevoBuscar" placeholder="Buscar producto…" style="flex:1;min-width:160px;">
-                            <select id="costosNuevoFiltro"><option value="activos">Solo activos</option><option value="todos">Todos</option></select>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+                            <input type="search" id="costosNuevoBuscar" class="metrics-search" placeholder="Buscar producto…" autocomplete="off" style="min-width:160px;">
+                            <select id="costosNuevoFiltro" class="clients-export-select" aria-label="Filtro de productos"><option value="activos">Solo activos</option><option value="todos">Todos</option></select>
+                            <button type="button" class="section-save-btn" id="costosNuevoRefreshBtn">Actualizar</button>
                         </div>
                         <div id="costosNuevoBody"><!-- render JS --></div>
                     </div>
