@@ -5194,9 +5194,9 @@ const POS_CUPONERA_SABORES_RESPALDO = ['Pepsi Zero', 'Colombiana', 'Manzana', 'T
 // hamburguesa = lo que se paga y se regala (null = Bienvenida: papas y bebida pagadas + Burger Normal de regalo)
 const POS_CUPONERA_BONOS = [
     { id: 'bienvenida', nombre: 'Bono de Bienvenida', precio: 7000, pagado: null, regalo: '1 Burger Normal' },
-    { id: 'a', nombre: 'Bono A · Ranchera', precio: 37000, pagado: '1 Burger Ranchera', regalo: '1 Burger Ranchera' },
-    { id: 'b', nombre: 'Bono B · Trifásica', precio: 44000, pagado: '1 Burger Trifásica', regalo: '1 Burger Trifásica' },
-    { id: 'c', nombre: 'Bono C · Pepito Urbano', precio: 37000, pagado: '1 Pepito Urbano', regalo: '1 Pepito Urbano' }
+    { id: 'a', nombre: 'Bono A · Ranchera', precio: 37000, precioPagado: 30000, pagado: '1 Burger Ranchera', regalo: '1 Burger Ranchera' },
+    { id: 'b', nombre: 'Bono B · Trifásica', precio: 44000, precioPagado: 37000, pagado: '1 Burger Trifásica', regalo: '1 Burger Trifásica' },
+    { id: 'c', nombre: 'Bono C · Pepito Urbano', precio: 37000, precioPagado: 30000, pagado: '1 Pepito Urbano', regalo: '1 Pepito Urbano' }
 ];
 
 // Sabores de la Postobón de 250 ml tomados del catálogo (sin repetidos); si no está, lista de respaldo.
@@ -5298,15 +5298,17 @@ function _posCuponeraOtraBebida() {
 }
 
 function _posAgregarCuponera(bono, sabor1, sabor2) {
-    // Una línea por producto: lo pagado primero, luego lo regalado aparte.
+    // Una línea por producto, con lo que vale cada parte; el regalo siempre va al final.
+    const m = (n) => formatMoney(n);
     const lineas = [];
-    if (bono.pagado) lineas.push(bono.pagado);
-    lineas.push('1 papas 75 g', `1 bebida 250 ml: ${sabor1}`, `REGALO: ${bono.regalo}`);
+    if (bono.pagado) lineas.push(`${bono.pagado} — ${m(bono.precioPagado)}`);
+    lineas.push(`Combo — ${m(POS_CUPONERA_COMBO2)}:`, '1 papas 75 g', `1 bebida 250 ml: ${sabor1}`);
     let precio = bono.precio;
     if (sabor2) {
-        lineas.push(`COMBO 2.ª hamburguesa (+${formatMoney(POS_CUPONERA_COMBO2)}):`, '1 papas 75 g', `1 bebida 250 ml: ${sabor2}`);
+        lineas.push(`2.º combo — ${m(POS_CUPONERA_COMBO2)}:`, '1 papas 75 g', `1 bebida 250 ml: ${sabor2}`);
         precio += POS_CUPONERA_COMBO2;
     }
+    lineas.push(`REGALO: ${bono.regalo} — ${m(0)}`);
     internalOrderItems.push({
         itemKey: `cuponera-${bono.id}-${Date.now()}`,
         productId: `cuponera-${bono.id}`,
