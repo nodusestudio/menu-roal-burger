@@ -5,7 +5,7 @@
 const DIA_MS = 86400000;
 const TIPOS = {
     pedido_nuevo: 'pedido nuevo', chat_nuevo: 'chat nuevo', mensaje_red: 'mensaje de Instagram/Facebook',
-    comentario_red: 'comentario en redes', cliente_nuevo: 'cliente nuevo', prueba: 'prueba de activación', otro: 'otros'
+    comentario_red: 'comentario en redes', cliente_nuevo: 'cliente nuevo', nuevo_cliente_oferta: 'escribió y no pidió', prueba: 'prueba de activación', otro: 'otros'
 };
 const diaBogota = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 

@@ -63,4 +63,29 @@ const TOOL = {
     input_schema: { type: 'object', properties: { dias: { type: 'number', description: 'Ventana para ofertas enviadas/resultados (1-90, por defecto 30).' } } }
 };
 
-module.exports = { nuevoCliente, TOOL };
+// Aviso push: cada vez que aparece alguien NUEVO en la lista «Para escribir ahora» (una sola vez por número).
+// Estado en configuracion/nuevo_cliente_aviso { avisados: { <10 dígitos>: ms } }; se limpia lo de más de 2 días.
+async function avisarNuevos(db, ahora = Date.now(), enviar = null) {
+    const r = await nuevoCliente(db, {}, ahora);
+    const ref = db.collection('configuracion').doc('nuevo_cliente_aviso');
+    const snap = await ref.get();
+    const prev = (snap.exists && snap.data().avisados) || {};
+    const vigentes = {};
+    Object.keys(prev).forEach((k) => { if (ahora - Number(prev[k]) < 2 * DIA_MS) vigentes[k] = prev[k]; });
+    const nuevos = r.lista.filter((x) => !vigentes[llave(x.telefono)]);
+    if (!nuevos.length) return { avisados: 0, lista: r.para_escribir_ahora };
+    const push = enviar || ((o) => require('./pushAdmin').enviarPush(db, o));
+    const primero = nuevos[0];
+    await push({
+        title: nuevos.length === 1 ? '🆕 Escribió y no pidió' : `🆕 ${nuevos.length} personas escribieron y no pidieron`,
+        body: nuevos.length === 1 ? `${primero.nombre || primero.telefono} · hace ${primero.hace_min} min${primero.ultimo_mensaje ? ` · «${primero.ultimo_mensaje}»` : ''}. Envíale la oferta exprés.` : 'Entra a Feedback › Campañas › Nuevo cliente para enviarles la oferta.',
+        tag: 'roal-nuevo-cliente',
+        url: '/admin.html',
+        tipo: 'nuevo_cliente_oferta'
+    });
+    nuevos.forEach((x) => { vigentes[llave(x.telefono)] = ahora; });
+    await ref.set({ avisados: vigentes, actualizadoAt: ahora });
+    return { avisados: nuevos.length, lista: r.para_escribir_ahora };
+}
+
+module.exports = { nuevoCliente, avisarNuevos, TOOL };
