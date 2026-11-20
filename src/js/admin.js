@@ -5582,6 +5582,7 @@ function _posFbPedidosHoy() {
     const hoy = _sqDayKey(Date.now());
     return ordersState.filter((o) => {
         if (!isOrderClosed(o) || o.anulado === true || o.voided === true) return false;
+        if (String(o.customerPhoneDigits || o.customerPhone || '').replace(/\D/g, '').length < 10) return false; // sin teléfono no se les puede enviar nada: no salen
         const t = _tsMs(o.enviadoAt) || _tsMs(o.entregadoAt) || _tsMs(o.deliveredAt) || _tsMs(o.createdAt);
         return t > 0 && _sqDayKey(t) === hoy;
     }).sort((a, b) => (_tsMs(b.enviadoAt || b.deliveredAt || b.createdAt) - _tsMs(a.enviadoAt || a.deliveredAt || a.createdAt)));
@@ -5615,7 +5616,7 @@ function _posFbRender() {
             ${accion}</div>`;
     }).join('');
     modal.querySelector('.posfb-body').innerHTML = `
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${chip('todos', `Todos (${items.length})`)}${chip('sin_enviar', `⏳ Faltan (${cnt('sin_enviar')})`)}${chip('enviado', `📨 Enviados (${cnt('enviado')})`)}${chip('respondio', `✅ Respondieron (${cnt('respondio')})`)}${chip('sin_telefono', `📵 Sin teléfono (${cnt('sin_telefono')})`)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${chip('todos', `Todos (${items.length})`)}${chip('sin_enviar', `⏳ Faltan (${cnt('sin_enviar')})`)}${chip('enviado', `📨 Enviados (${cnt('enviado')})`)}${chip('respondio', `✅ Respondieron (${cnt('respondio')})`)}</div>
         ${filas || '<p style="opacity:.7;padding:12px 0">No hay pedidos entregados hoy en esta vista.</p>'}`;
 }
 function openPosFeedbackModal() {
