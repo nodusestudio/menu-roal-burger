@@ -14501,7 +14501,7 @@ const _nuevoOcupado = new Set();
 
 function _nuevoIniciar() {
     if (_nuevoUnsub || !firebaseDb) return;
-    _nuevoUnsub = firebaseDb.collection('agent_conversations').orderBy('updatedAt', 'desc').limit(200).onSnapshot((snap) => {
+    _nuevoUnsub = firebaseDb.collection('agent_conversations').orderBy('updatedAt', 'desc').limit(500).onSnapshot((snap) => {
         _nuevoConvs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         if (_fbTipo === 'nuevo') renderMetricasFeedback();
     }, (err) => console.warn('[Nuevo cliente] conversaciones:', err.code || err.message));
@@ -14544,7 +14544,7 @@ function _fidNuevoHtml() {
     let compraron = 0; let ventas = 0;
     envios.forEach((e) => {
         const k = _sqPhoneKey(e.telefono); const t0 = _tsMs(e.creadoAt);
-        const ped = todosOrd.filter((o) => o && o.anulado !== true && o.voided !== true && _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) === k && _tsMs(o.createdAt) >= t0);
+        const ped = todosOrd.filter((o) => o && o.anulado !== true && o.voided !== true && _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) === k && _tsMs(o.createdAt) >= t0 && _tsMs(o.createdAt) <= t0 + 24 * 3600000).sort((a, b) => _tsMs(a.createdAt) - _tsMs(b.createdAt));
         if (ped.length) { compraron += 1; ventas += Number(ped[0].subtotal ?? ped[0].total ?? 0); }
     });
     const hace = (ms) => { const m = Math.max(0, Math.round((hoyMs - ms) / 60000)); return m < 60 ? `${m} min` : `${Math.round(m / 60)} h`; };
