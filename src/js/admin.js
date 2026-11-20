@@ -13568,6 +13568,7 @@ const FB_AYUDA = {
     cuponera: 'Encuesta para quienes compraron la cuponera física. El aviso sale en Recepción como «Feedback de cuponera pendiente».',
     atender: 'Clientes que calificaron mal (te llega también un aviso al celular) y clientes felices a quienes pedirles una reseña en Google.',
     reactivar: 'Clientes que llevan tiempo sin pedir y a quienes no se les ha escrito en los últimos 14 días. Copia el mensaje con su cupón personal y mándalo por WhatsApp.',
+    nuevo: 'Personas que escribieron por WhatsApp, no están registradas y no pidieron. Copia la oferta exprés con su cupón y mándala mientras siguen decidiendo.',
     cumple: 'Clientes que dejaron su cumpleaños. Copia el saludo y mándalo por WhatsApp.',
     referidos: 'Invita a tus mejores clientes a traer amigos: el amigo recibe un cupón y, al canjearlo en caja, tu cliente recibe su recompensa.',
     temporadas: 'Cada edición de un evento (Sabe a Quindío, Cuponera…) se mide sola y se compara con las otras. Las encuestas de cada evento están en Campañas.',
@@ -13580,7 +13581,7 @@ function _fbNavTipoHtml() {
     // Grupos arriba; los que tienen varias vistas muestran una segunda fila. Las encuestas (Fidelización, Sabe a Quindío, Cuponera) viven dentro de Campañas.
     const GRUPOS = [
         ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día'], ['atender', 'Atender']]],
-        ['campanas', '📣', 'Campañas', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['reactivar', 'Reactivar'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
+        ['campanas', '📣', 'Campañas', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['reactivar', 'Reactivar'], ['nuevo', 'Nuevo cliente'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
         ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones']]],
         ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas']]],
         ['ajustes', '⚙️', 'Ajustes', [['config', 'Configuración']]]
@@ -13749,10 +13750,11 @@ function _fbCumpleClick(e) {
 //  · cupones_fidelizacion/{codigo}: cupón personal (cliente, beneficio, vigencia, estado, canje).
 //  · configuracion/fidelizacion: textos, umbrales y metas semanales editables.
 // Atribución: un cliente "volvió" si hizo un pedido pagado dentro de los 14 días siguientes al último mensaje/cupón que recibió.
-const FB_TIPOS_FID = ['hoy', 'temporadas', 'cumple', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
+const FB_TIPOS_FID = ['hoy', 'temporadas', 'cumple', 'nuevo', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', reactivarOfertaPapas: 'unas papas gratis con tu pedido', reactivarProductoPapasId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
+    nuevoOferta: 'unas papas gratis con tu pedido', nuevoProductoId: '', nuevoHoras: 3, nuevoEsperaMin: 30,
     disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: 'https://g.page/r/CWR7IKp8khuOEAE/review',
     referidoAmigo: 'una bebida gratis en tu primer pedido', referidoRecompensa: 'unas papas gratis en tu próximo pedido', referidoAmigoProductoId: '', referidoRecompensaProductoId: '',
     metaMensajes: 30, metaReactivados: 8, metaCanjes: 6, metaVentas: 500000, margenPct: 35, costoRegalo: 3000
@@ -13779,6 +13781,8 @@ async function _fidCargarCfg() {
             reactivarOferta: String(x.reactivarOferta || FID_CFG_DEF.reactivarOferta),
             reactivarProductoId: String(x.reactivarProductoId || ''), cumpleProductoId: String(x.cumpleProductoId || ''),
             reactivarOfertaPapas: String(x.reactivarOfertaPapas || FID_CFG_DEF.reactivarOfertaPapas), reactivarProductoPapasId: String(x.reactivarProductoPapasId || ''),
+            nuevoOferta: String(x.nuevoOferta || FID_CFG_DEF.nuevoOferta), nuevoProductoId: String(x.nuevoProductoId || ''),
+            nuevoHoras: num(x.nuevoHoras, FID_CFG_DEF.nuevoHoras), nuevoEsperaMin: num(x.nuevoEsperaMin, FID_CFG_DEF.nuevoEsperaMin),
             disculpaOferta: String(x.disculpaOferta || FID_CFG_DEF.disculpaOferta), disculpaProductoId: String(x.disculpaProductoId || ''), googleResenaUrl: String(x.googleResenaUrl || FID_CFG_DEF.googleResenaUrl),
             referidoAmigo: String(x.referidoAmigo || FID_CFG_DEF.referidoAmigo), referidoRecompensa: String(x.referidoRecompensa || FID_CFG_DEF.referidoRecompensa),
             referidoAmigoProductoId: String(x.referidoAmigoProductoId || ''), referidoRecompensaProductoId: String(x.referidoRecompensaProductoId || ''),
@@ -14487,6 +14491,95 @@ function _fidLineaBaseHtml() {
     </article>`;
 }
 
+// ── Nuevo cliente: escribieron por WhatsApp, NO están registrados y no pidieron ─────────────────────────
+// Sale de agent_conversations (la misma fuente de Chat Roal). Oferta exprés con cupón personal, copiada a mano (registro en
+// fidelizacion_envios motivo 'nuevo' + cupones_fidelizacion). Solo para números que no existen en Clientes.
+const NUEVO_MAX_HORAS = 12;
+let _nuevoConvs = [];
+let _nuevoUnsub = null;
+const _nuevoOcupado = new Set();
+
+function _nuevoIniciar() {
+    if (_nuevoUnsub || !firebaseDb) return;
+    _nuevoUnsub = firebaseDb.collection('agent_conversations').orderBy('updatedAt', 'desc').limit(200).onSnapshot((snap) => {
+        _nuevoConvs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        if (_fbTipo === 'nuevo') renderMetricasFeedback();
+    }, (err) => console.warn('[Nuevo cliente] conversaciones:', err.code || err.message));
+}
+
+function _nuevoHoraTexto(ms) {
+    try { return new Intl.DateTimeFormat('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(ms)); } catch (_) { return ''; }
+}
+
+function _nuevoMensaje(nombre, horas) {
+    const n = String(nombre || '').trim().split(/\s+/)[0];
+    const hola = n && n !== 'Cliente' ? ` ${n}` : '';
+    return `Hola${hola} 👋 Soy Johan, de Roal Burger. Vi que nos escribiste y no alcanzamos a cerrar tu pedido 🍔\nSi lo haces ahora, te regalo ${_fidCfg.nuevoOferta}. Es solo para ti y vale hasta las *${_nuevoHoraTexto(Date.now() + horas * 3600000)}*. Respóndeme aquí y te lo dejo listo 🙌`;
+}
+
+// Conversaciones de WhatsApp que cumplen: esperaron ≥ N min, dentro de las últimas 12 h, sin pedido, sin atención humana,
+// número no registrado como cliente, y sin oferta «nuevo» en los últimos 30 días.
+function _nuevoCandidatos() {
+    const ahora = Date.now();
+    const espera = (Number(_fidCfg.nuevoEsperaMin) || 30) * 60000;
+    const registrados = new Set((clientsState || []).map((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone)).filter(Boolean));
+    const conPedido = new Set([...(ordersState || []), ...(_fbArchOrders || [])].map((o) => _sqPhoneKey(o.customerPhoneDigits || o.customerPhone)).filter(Boolean));
+    const yaOfrecido = new Set(_fidEnvios.filter((e) => e.motivo === 'nuevo' && e.descartado !== true && ahora - _tsMs(e.creadoAt) < 30 * 86400000).map((e) => _sqPhoneKey(e.telefono)));
+    return _nuevoConvs.map((cv) => {
+        const tel = String(cv.customerInfo?.phone || String(cv.id).replace(/^wa_/, '')).replace(/\D/g, '');
+        return { cv, tel, k: _sqPhoneKey(tel), ms: _tsMs(cv.updatedAt) };
+    }).filter((x) => x.k && String(x.cv.id).startsWith('wa_') && x.cv.channel !== 'web'
+        && !x.cv.humanControl && !x.cv.blocked && !x.cv.lastOrderId && x.cv.status !== 'archived'
+        && x.ms && ahora - x.ms >= espera && ahora - x.ms <= NUEVO_MAX_HORAS * 3600000
+        && !registrados.has(x.k) && !conPedido.has(x.k) && !yaOfrecido.has(x.k));
+}
+
+function _fidNuevoHtml() {
+    _nuevoIniciar();
+    const hoyMs = Date.now();
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const lista = _nuevoCandidatos();
+    const envios = _fidEnvios.filter((e) => e.motivo === 'nuevo' && e.descartado !== true);
+    const todosOrd = [...(ordersState || []), ...(_fbArchOrders || [])];
+    let compraron = 0; let ventas = 0;
+    envios.forEach((e) => {
+        const k = _sqPhoneKey(e.telefono); const t0 = _tsMs(e.creadoAt);
+        const ped = todosOrd.filter((o) => o && o.anulado !== true && o.voided !== true && _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) === k && _tsMs(o.createdAt) >= t0);
+        if (ped.length) { compraron += 1; ventas += Number(ped[0].subtotal ?? ped[0].total ?? 0); }
+    });
+    const hace = (ms) => { const m = Math.max(0, Math.round((hoyMs - ms) / 60000)); return m < 60 ? `${m} min` : `${Math.round(m / 60)} h`; };
+    const filas = lista.slice(0, 80).map(({ cv, tel, ms }) => `<div class="met-user-row-v2">
+        <div class="met-avatar">🆕</div>
+        <div class="met-user-info-v2">
+            <div class="met-user-name-v2">${escapeHtml(cv.customerInfo?.name || 'Sin nombre')}</div>
+            <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · escribió hace <strong>${hace(ms)}</strong>${cv.lastMessageText ? ` · «${escapeHtml(String(cv.lastMessageText).slice(0, 90))}»` : ''}</div>
+        </div>
+        <button type="button" class="feedback-pending-btn" data-fid-nuevo="${escapeHtml(cv.id)}">Copiar mensaje</button>
+    </div>`).join('');
+    const pend = envios.filter((e) => e.pendiente === true).sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt));
+    const filasPend = pend.map((e) => `<div class="met-user-row-v2">
+        <div class="met-avatar">⏳</div>
+        <div class="met-user-info-v2">
+            <div class="met-user-name-v2">${escapeHtml(e.nombre || 'Sin nombre')}</div>
+            <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(e.telefono || '')}" title="Tocar para copiar el número">📋 ${escapeHtml(e.telefono || '')}</button> · copiado hace ${hace(_tsMs(e.creadoAt))}</div>
+        </div>
+        <button type="button" class="ghost-button" data-fid-recopiar="${escapeHtml(e.id)}">Copiar de nuevo</button>
+        <button type="button" class="feedback-pending-btn" data-fid-enviado="${escapeHtml(e.id)}">✅ Ya lo envié</button>
+        <button type="button" class="ghost-button" data-fid-descartar="${escapeHtml(e.id)}" title="No lo envié: anula el cupón y la persona vuelve a la lista">Descartar</button>
+    </div>`).join('');
+    return `${pend.length ? `<article class="admin-card"><div class="met-section-title">⏳ Copiados, falta enviar (${pend.length})</div><div class="metrics-users-list">${filasPend}</div></article>` : ''}<article class="admin-card">
+        <div class="met-section-title">🆕 Escribieron y no pidieron <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· no registrados, hace ${Number(_fidCfg.nuevoEsperaMin) || 30} min a ${NUEVO_MAX_HORAS} h</small></div>
+        <div class="met-kpi-row">
+            ${_fidKpi('met-kpi-card--hi', nf(lista.length), 'Para escribir ahora')}
+            ${_fidKpi('', nf(envios.length), 'Ofertas enviadas')}
+            ${_fidKpi('', nf(compraron), 'Compraron después')}
+            ${_fidKpi('', escapeHtml(formatMoney(ventas)), 'Ventas recuperadas')}
+        </div>
+        <button type="button" class="ghost-button" data-fb-tipo="config" style="margin-top:12px">⚙️ Cambiar regalo, espera y vigencia en Ajustes →</button>
+        <div class="metrics-users-list" style="margin-top:12px">${filas || '<p class="admin-hint" style="padding:14px">Nadie por ahora: aquí aparecen quienes escribieron, no están registrados y no han pedido.</p>'}</div>
+    </article>`;
+}
+
 function _fidKpi(cls, val, lbl) { return `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`; }
 
 // Pestaña ⚙️ Configuración: todos los ajustes de configuracion/fidelizacion juntos (las demás pestañas guardan los mismos campos).
@@ -14503,6 +14596,14 @@ function _fidConfigHtml() {
             ${campo('fcgReactOfertaPapas', 'Regalo 2 — papas (se usa si lo que más pide es un combo, que ya trae bebida; y se alterna con la bebida)', c.reactivarOfertaPapas)}
             ${prod('fcgReactProductoPapas', 'Producto del regalo 2 (papas)', c.reactivarProductoPapasId)}
             <div style="display:flex;gap:10px;flex-wrap:wrap">${num('fcgReactDias', 'Días sin pedir', c.reactivarDias, 7, 120)}${num('fcgVigencia', 'Vigencia del cupón (días)', c.vigenciaDias, 1, 30)}</div>
+        </div>
+    </article>
+    <article class="admin-card">
+        <div class="met-section-title">🆕 Nuevo cliente (escribió y no pidió)</div>
+        <div style="display:grid;gap:8px">
+            ${campo('fcgNuevoOferta', 'Regalo exprés («te regalo <em>oferta</em>») — cámbialo cuando quieras probar otro', c.nuevoOferta)}
+            ${prod('fcgNuevoProducto', 'Producto del regalo (el POS lo agrega gratis al aplicar el cupón)', c.nuevoProductoId)}
+            <div style="display:flex;gap:10px;flex-wrap:wrap">${num('fcgNuevoEspera', 'Minutos de espera antes de escribirle', c.nuevoEsperaMin, 5, 240)}${num('fcgNuevoHoras', 'Vigencia de la oferta (horas)', c.nuevoHoras, 1, 24)}</div>
         </div>
     </article>
     <article class="admin-card">
@@ -14601,6 +14702,8 @@ function _fbRenderFid(body) {
         html = _fidAtenderHtml();
     } else if (_fbTipo === 'referidos') {
         html = _fidReferidosHtml();
+    } else if (_fbTipo === 'nuevo') {
+        html = _fidNuevoHtml();
     } else if (_fbTipo === 'reactivar') {
         const minDias = _fidReactMin || Number(_fidCfg.reactivarDias) || 21;
         const contactos = _fidContactos();
@@ -14829,6 +14932,7 @@ function _fidClick(e) {
         _cumpleRegalo = regalo;
         guardar({
             reactivarOferta: v('fcgReactOferta'), reactivarProductoId: v('fcgReactProducto'), reactivarOfertaPapas: v('fcgReactOfertaPapas') || FID_CFG_DEF.reactivarOfertaPapas, reactivarProductoPapasId: v('fcgReactProductoPapas'), reactivarDias: n('fcgReactDias', 21, 7, 120), vigenciaDias: n('fcgVigencia', 3, 1, 30),
+            nuevoOferta: v('fcgNuevoOferta') || FID_CFG_DEF.nuevoOferta, nuevoProductoId: v('fcgNuevoProducto'), nuevoEsperaMin: n('fcgNuevoEspera', 30, 5, 240), nuevoHoras: n('fcgNuevoHoras', 3, 1, 24),
             cumpleRegalo: regalo, cumpleProductoId: v('fcgCumpleProducto'),
             disculpaOferta: v('fcgDisculpaOferta'), disculpaProductoId: v('fcgDisculpaProducto'), googleResenaUrl: url,
             referidoAmigo: v('fcgRefAmigo'), referidoAmigoProductoId: v('fcgRefAmigoProducto'), referidoRecompensa: v('fcgRefRecompensa'), referidoRecompensaProductoId: v('fcgRefRecompensaProducto'),
@@ -14897,6 +15001,23 @@ function _fidClick(e) {
         Promise.all(escrituras).catch((err) => showNotice(`No se pudo descartar: ${err.message || 'error'}`, 'error'));
         showNotice('Mensaje descartado: la persona vuelve a la lista.', 'ok');
         renderMetricasFeedback();
+        return true;
+    }
+
+    const nuevoBtn = t.closest('[data-fid-nuevo]');
+    if (nuevoBtn) {
+        const x = _nuevoCandidatos().find((y) => y.cv.id === nuevoBtn.dataset.fidNuevo);
+        if (!x || _nuevoOcupado.has(x.cv.id)) return true;
+        _nuevoOcupado.add(x.cv.id);
+        const horas = Number(_fidCfg.nuevoHoras) || 3;
+        const nombre = String(x.cv.customerInfo?.name || '');
+        const codigo = _fidNuevoCodigo(nombre);
+        const mensaje = _nuevoMensaje(nombre, horas);
+        const copiado = copyTextToClipboard(mensaje);
+        _fidGuardarEnvio({ id: '', customerPhoneDigits: x.tel, customerName: nombre }, 'nuevo', { codigo, beneficio: _fidCfg.nuevoOferta, dias: horas / 24, productoId: _fidCfg.nuevoProductoId || '', envioExtra: { pendiente: true, mensaje }, cuponExtra: {} });
+        copiado.then((ok) => {
+            showNotice(ok ? 'Mensaje listo. Pégalo en el chat y luego márcalo «Ya lo envié».' : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');
+        }).finally(() => { _nuevoOcupado.delete(x.cv.id); renderMetricasFeedback(); });
         return true;
     }
 
