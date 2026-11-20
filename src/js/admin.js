@@ -14765,13 +14765,19 @@ function _fidConfigHtml() {
     <article class="admin-card" style="display:flex;justify-content:flex-end"><button type="button" class="section-action-btn primary" data-fid-guardar-todo>Guardar toda la configuración</button></article>`;
 }
 
+let _fidRepintoAt = 0;
 function _fbRenderFid(body) {
     if (_fbTipo === 'cumple') { _fbRenderCumple(body); return; }
     _fidCargarCfg();
     const repintarSiCambio = () => {
         if (!FB_TIPOS_FID.includes(_fbTipo)) return;
         const marca = document.getElementById('fidMarca');
-        if (!marca || marca.dataset.clientes !== String(clientsState.length) || marca.dataset.carga !== _clientsLoad.estado) renderMetricasFeedback();
+        if (!marca || marca.dataset.clientes !== String(clientsState.length) || marca.dataset.carga !== _clientsLoad.estado) {
+            // Freno: cada repintado vuelve a pedir los clientes y eso lo repintaba otra vez sin fin (panel pegado). Máx. 1 vez cada 5 s.
+            if (Date.now() - _fidRepintoAt < 5000) return;
+            _fidRepintoAt = Date.now();
+            renderMetricasFeedback();
+        }
     };
     fetchClients().then(repintarSiCambio).catch(repintarSiCambio);
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
