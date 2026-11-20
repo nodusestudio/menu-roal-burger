@@ -537,6 +537,25 @@ exports.avisarNuevoCliente = onSchedule(
     }
 );
 
+// Reactivar inteligente (functions/reactivarCola.js): a las 6 a. m. arma la cola del día (10 clientes, hora, favorito y regalo con tope)
+// y cada 15 min, de 10 a. m. a 10 p. m., avisa al celular a la hora de cada cliente. Semiautomático: el cajero envía el mensaje.
+exports.generarColaReactivar = onSchedule(
+    { cpu: 0.5, schedule: '0 6 * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
+    async () => {
+        const r = await require('./reactivarCola').generarCola(getFirestore());
+        console.log('generarColaReactivar', JSON.stringify(r));
+    }
+);
+exports.avisarColaReactivar = onSchedule(
+    { cpu: 0.5, schedule: 'every 15 minutes', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        const hora = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
+        if (hora < 10 || hora >= 22) return;
+        const r = await require('./reactivarCola').avisarCola(getFirestore());
+        console.log('avisarColaReactivar', JSON.stringify(r));
+    }
+);
+
 exports.notifyTokenActivado = onDocumentWritten(
     { cpu: 0.5, document: 'admin_fcm_tokens/{tokenDoc}', region: 'us-central1' },
     async (event) => {

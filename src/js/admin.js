@@ -12940,7 +12940,11 @@ function _fbAttach() {
         }, err('envios de fidelización')),
         firebaseDb.collection('cupones_fidelizacion').where('creadoAt', '>=', firebase.firestore.Timestamp.fromMillis(Date.now() - 120 * 86400000)).onSnapshot((snap) => {
             _fidCupones = snap.docs.map((d) => ({ id: d.id, ...d.data() })); renderMetricasFeedback();
-        }, err('cupones de fidelización'))
+        }, err('cupones de fidelización')),
+        // Cola diaria de Reactivar inteligente (la arma el servidor): documento del día en hora de Colombia.
+        firebaseDb.collection('fidelizacion_cola').doc(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })).onSnapshot((snap) => {
+            _fidCola = snap.exists ? snap.data() : null; renderMetricasFeedback();
+        }, err('cola de reactivar'))
     ];
     _fidCargarCfg();
     renderMetricasFeedback();
@@ -13820,6 +13824,7 @@ const FB_TIPOS_FID = ['temporadas', 'cumple', 'nuevo', 'reactivar', 'atender', '
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', reactivarOfertaPapas: 'unas papas gratis con tu pedido', reactivarProductoPapasId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
+    reactivarDiarios: 10, topeRegaloPct: 15, controlPct: 10, descansoDias: 45, // cola del día (los lee también el servidor: functions/reactivarCola.js)
     nuevoOferta: 'unas papas gratis con tu pedido', nuevoProductoId: '', nuevoHoras: 3, nuevoEsperaMin: 30,
     disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: 'https://g.page/r/CWR7IKp8khuOEAE/review',
     referidoAmigo: 'una bebida gratis en tu primer pedido', referidoRecompensa: 'unas papas gratis en tu próximo pedido', referidoAmigoProductoId: '', referidoRecompensaProductoId: '',
@@ -13830,6 +13835,8 @@ let _fidEnvios = [];
 let _fidCupones = [];
 let _fidQ = { reactivar: '', cupones: '' };
 let _fidReactMin = 0;        // 0 = usar el umbral configurado
+let _fidReactVista = 'cola'; // Reactivar: 'cola' (cola inteligente del día) | 'lista' (todos los inactivos)
+let _fidCola = null;         // fidelizacion_cola/{hoy}: la arma el servidor a las 6 a. m. (functions/reactivarCola.js)
 let _fidCupEstado = 'todos'; // todos | activo | canjeado | vencido
 let _metasSemana = 0;        // 0 = esta semana, -1 = la pasada, -2 = hace dos…
 let _fidCfgCargada = false;
@@ -13853,6 +13860,8 @@ async function _fidCargarCfg() {
             referidoAmigo: String(x.referidoAmigo || FID_CFG_DEF.referidoAmigo), referidoRecompensa: String(x.referidoRecompensa || FID_CFG_DEF.referidoRecompensa),
             referidoAmigoProductoId: String(x.referidoAmigoProductoId || ''), referidoRecompensaProductoId: String(x.referidoRecompensaProductoId || ''),
             reactivarDias: num(x.reactivarDias, FID_CFG_DEF.reactivarDias), vigenciaDias: num(x.vigenciaDias, FID_CFG_DEF.vigenciaDias),
+            reactivarDiarios: num(x.reactivarDiarios, FID_CFG_DEF.reactivarDiarios), topeRegaloPct: num(x.topeRegaloPct, FID_CFG_DEF.topeRegaloPct),
+            controlPct: num(x.controlPct, FID_CFG_DEF.controlPct), descansoDias: num(x.descansoDias, FID_CFG_DEF.descansoDias),
             metaMensajes: num(x.metaMensajes, FID_CFG_DEF.metaMensajes), metaReactivados: num(x.metaReactivados, FID_CFG_DEF.metaReactivados),
             metaCanjes: num(x.metaCanjes, FID_CFG_DEF.metaCanjes), metaVentas: num(x.metaVentas, FID_CFG_DEF.metaVentas),
             margenPct: num(x.margenPct, FID_CFG_DEF.margenPct), costoRegalo: num(x.costoRegalo, FID_CFG_DEF.costoRegalo)
@@ -14642,6 +14651,60 @@ function _fidNuevoHtml() {
 
 function _fidKpi(cls, val, lbl) { return `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`; }
 
+// Cola del día de Reactivar: marca una entrada (pendiente | copiado | enviado | omitido). Transacción: el servidor también escribe el avisadoAt.
+function _fidColaMarcar(dia, k, estado) {
+    if (!firebaseDb || !dia || !k) return;
+    const ref = firebaseDb.collection('fidelizacion_cola').doc(dia);
+    firebaseDb.runTransaction(async (tx) => {
+        const s = await tx.get(ref);
+        if (!s.exists) return;
+        const entradas = (s.data().entradas || []).map((x) => (x.k === k ? { ...x, estado, ...(estado === 'pendiente' ? {} : { [`${estado}At`]: Date.now() }) } : x));
+        tx.update(ref, { entradas });
+    }).catch((err) => console.warn('[Reactivar] cola:', err.code || err.message));
+}
+
+function _fidHoraTexto(h) { return `${h % 12 || 12}:00 ${h >= 12 ? 'pm' : 'am'}`; }
+
+// Vista «Cola del día»: los clientes que el servidor eligió hoy (ritmo propio, hora ideal, favorito y regalo con tope de costo).
+function _fidColaHtml() {
+    const c = _fidCola;
+    if (!c) return `<article class="admin-card"><div class="met-section-title">🎯 Cola del día</div><p class="met-empty-note">La cola de hoy se arma sola a las 6 a. m. Si ya pasó esa hora y no aparece, hoy no había clientes por reactivar.</p></article>`;
+    const ent = c.entradas || [];
+    const n = (s) => ent.filter((e) => e.estado === s).length;
+    const ahoraH = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
+    const ICONO = { pendiente: '🔁', copiado: '⏳', enviado: '✅', omitido: '⏭️' };
+    const filas = ent.map((e) => {
+        const tel = String(e.telefono || '').replace(/\D/g, '');
+        const hecha = e.estado === 'enviado' || e.estado === 'omitido';
+        const hora = `${_fidHoraTexto(e.hora)}${e.horaOrigen === 'cliente' ? ' (su hora)' : ' (hora pico)'}`;
+        const aviso = e.estado === 'pendiente' ? (e.hora <= ahoraH ? ' · <strong style="color:#fbbf24">es su hora</strong>' : '') : '';
+        const acciones = e.estado === 'pendiente'
+            ? `<button type="button" class="feedback-pending-btn" data-fid-cola-copiar="${escapeHtml(e.k)}">Copiar mensaje</button><button type="button" class="ghost-button" data-fid-cola-omitir="${escapeHtml(e.k)}" title="Hoy no le escribo">Omitir</button>`
+            : (e.estado === 'copiado' ? '<small style="opacity:.7">Copiado: confírmalo arriba en «Copiados, falta enviar»</small>' : '');
+        return `<div class="met-user-row-v2"${hecha ? ' style="opacity:.55"' : ''}>
+            <div class="met-avatar">${ICONO[e.estado] || '🔁'}</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(e.nombre)}" title="Tocar para copiar el nombre">${escapeHtml(e.nombre)}</button> · 🕒 ${escapeHtml(hora)}${aviso}</div>
+                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(e.regaloTexto)} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}</div>
+            </div>
+            ${acciones}
+        </div>`;
+    }).join('');
+    return `<article class="admin-card">
+        <div class="met-section-title">🎯 Cola del día <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· ${nf(ent.length)} clientes, ordenados por su hora</small></div>
+        <div class="met-kpi-row">
+            ${_fidKpi('met-kpi-card--hi', nf(n('pendiente')), 'Por escribir')}
+            ${_fidKpi('', nf(n('enviado')), 'Enviados')}
+            ${_fidKpi('', nf((c.control || []).length), 'Control (sin mensaje)')}
+            ${_fidKpi('', escapeHtml(formatMoney((ent.reduce((s, e) => s + (Number(e.costoRegalo) || 0), 0)))), 'Costo si todos canjean')}
+        </div>
+        <details style="margin-top:10px"><summary style="cursor:pointer">💡 ¿Cómo funciona?</summary>
+            <p class="admin-hint" style="margin-top:6px">Cada día a las 6 a. m. el sistema elige a los clientes que llevan más de lo normal sin pedir (según su propio ritmo), los que más valen primero. Les escribes a la hora en que ese cliente más pide, con su producto favorito y un regalo cuyo costo no pasa del tope. Te llega un aviso al celular a cada hora. Un grupo pequeño no recibe mensaje a propósito: sirve para medir si el mensaje de verdad hace volver. El sistema aprende qué regalo canjea más. Se ajusta en «Ajustes».</p>
+        </details>
+    </article>
+    <article class="admin-card"><div class="metrics-users-list">${filas || '<p class="met-empty-note">Hoy no hay clientes por reactivar.</p>'}</div></article>`;
+}
+
 // Pestaña ⚙️ Configuración: todos los ajustes de configuracion/fidelizacion juntos (las demás pestañas guardan los mismos campos).
 function _fidConfigHtml() {
     const c = _fidCfg;
@@ -14656,6 +14719,8 @@ function _fidConfigHtml() {
             ${campo('fcgReactOfertaPapas', 'Regalo 2 — papas (se usa si lo que más pide es un combo, que ya trae bebida; y se alterna con la bebida)', c.reactivarOfertaPapas)}
             ${prod('fcgReactProductoPapas', 'Producto del regalo 2 (papas)', c.reactivarProductoPapasId)}
             <div style="display:flex;gap:10px;flex-wrap:wrap">${num('fcgReactDias', 'Días sin pedir', c.reactivarDias, 7, 120)}${num('fcgVigencia', 'Vigencia del cupón (días)', c.vigenciaDias, 1, 30)}</div>
+            <div class="met-section-title" style="margin-top:6px">🎯 Cola del día (inteligente)</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">${num('fcgColaN', 'Clientes por día', c.reactivarDiarios, 1, 30)}${num('fcgColaTope', 'Tope del costo del regalo (% del ticket)', c.topeRegaloPct, 3, 30)}${num('fcgColaControl', 'Grupo de control (% sin mensaje)', c.controlPct, 0, 50)}${num('fcgColaDescanso', 'Descanso entre mensajes (días)', c.descansoDias, 7, 180)}</div>
         </div>
     </article>
     <article class="admin-card">
@@ -14788,6 +14853,9 @@ function _fbRenderFid(body) {
             <div class="metrics-users-list" id="fidLista">${filas || '<p class="met-empty-note">Nadie por reactivar con estos filtros.</p>'}</div>
             ${lista.length > 120 ? `<p class="met-empty-note" style="margin-top:8px">Mostrando los 120 que más han gastado de ${nf(lista.length)}. Usa el buscador o los filtros de días para ver al resto.</p>` : ''}
         </article>`;
+        const vistas = [['cola', '🎯 Cola del día'], ['lista', '📋 Todos los inactivos']]
+            .map(([v, l]) => `<button type="button" class="rango-btn${_fidReactVista === v ? ' active' : ''}" data-fid-vista="${v}">${l}</button>`).join('');
+        html = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${vistas}</div>${_fidReactVista === 'cola' ? `${tarjetaPend}${_fidColaHtml()}` : html}`;
     } else if (_fbTipo === 'cupones') {
         const lista = _fidCupones.filter((k) => rangoEnRango('fid', _tsMs(k.creadoAt))
             && (_fidCupEstado === 'todos' || _fidEstadoCupon(k) === _fidCupEstado)
@@ -14877,6 +14945,33 @@ function _fidClick(e) {
     if (imgBtn) { _fidCopiarImagen(imgBtn.dataset.fidImgNombre, imgBtn.dataset.fidImg); return true; }
     const minBtn = t.closest('[data-fid-react-min]');
     if (minBtn) { _fidReactMin = Number(minBtn.dataset.fidReactMin); renderMetricasFeedback(); return true; }
+    const vistaReact = t.closest('[data-fid-vista]');
+    if (vistaReact) { _fidReactVista = vistaReact.dataset.fidVista === 'lista' ? 'lista' : 'cola'; renderMetricasFeedback(); return true; }
+    const omitirCola = t.closest('[data-fid-cola-omitir]');
+    if (omitirCola) { _fidColaMarcar(_fidCola && _fidCola.dia, omitirCola.dataset.fidColaOmitir, 'omitido'); return true; }
+    const copiarCola = t.closest('[data-fid-cola-copiar]');
+    if (copiarCola) {
+        const entrada = _fidCola && (_fidCola.entradas || []).find((x) => x.k === copiarCola.dataset.fidColaCopiar);
+        if (!entrada || _fidReactOcupado.has(entrada.k)) return true;
+        _fidReactOcupado.add(entrada.k);
+        (async () => {
+            try {
+                const dias = Number(_fidCfg.vigenciaDias) || 3;
+                const codigo = _fidNuevoCodigo(entrada.nombre);
+                const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === entrada.k)
+                    || { id: '', customerName: entrada.nombre, customerPhoneDigits: entrada.telefono, customerPhone: entrada.telefono };
+                const mensaje = String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(dias));
+                const copiado = copyTextToClipboard(mensaje);
+                // El cupón lleva el tipo de regalo (queso, papas, carne…): de ahí aprende el sistema cuál canjea más.
+                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: entrada.regaloTexto, dias, productoId: '', envioExtra: { pendiente: true, mensaje, regalo: entrada.regalo, cola: _fidCola.dia, colaK: entrada.k, costoRegalo: entrada.costoRegalo, modoRegalo: entrada.modo || '' }, cuponExtra: { regalo: entrada.regalo, cola: _fidCola.dia } });
+                _fidColaMarcar(_fidCola.dia, entrada.k, 'copiado');
+                const ok = await copiado;
+                showNotice(ok ? `Mensaje listo para ${entrada.nombre}. Pégalo en WhatsApp y luego márcalo «Ya lo envié».` : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');
+                renderMetricasFeedback();
+            } finally { _fidReactOcupado.delete(entrada.k); }
+        })();
+        return true;
+    }
     const estBtn = t.closest('[data-fid-cup-estado]');
     if (estBtn) { _fidCupEstado = estBtn.dataset.fidCupEstado; renderMetricasFeedback(); return true; }
     const semBtn = t.closest('[data-metas-semana]');
@@ -14938,6 +15033,7 @@ function _fidClick(e) {
         _cumpleRegalo = regalo;
         guardar({
             reactivarOferta: v('fcgReactOferta'), reactivarProductoId: v('fcgReactProducto'), reactivarOfertaPapas: v('fcgReactOfertaPapas') || FID_CFG_DEF.reactivarOfertaPapas, reactivarProductoPapasId: v('fcgReactProductoPapas'), reactivarDias: n('fcgReactDias', 21, 7, 120), vigenciaDias: n('fcgVigencia', 3, 1, 30),
+            reactivarDiarios: n('fcgColaN', 10, 1, 30), topeRegaloPct: n('fcgColaTope', 15, 3, 30), controlPct: n('fcgColaControl', 10, 0, 50), descansoDias: n('fcgColaDescanso', 45, 7, 180),
             nuevoOferta: v('fcgNuevoOferta') || FID_CFG_DEF.nuevoOferta, nuevoProductoId: v('fcgNuevoProducto'), nuevoEsperaMin: n('fcgNuevoEspera', 30, 5, 240), nuevoHoras: n('fcgNuevoHoras', 3, 1, 24),
             cumpleRegalo: regalo, cumpleProductoId: v('fcgCumpleProducto'),
             disculpaOferta: v('fcgDisculpaOferta'), disculpaProductoId: v('fcgDisculpaProducto'), googleResenaUrl: url,
@@ -14993,6 +15089,7 @@ function _fidClick(e) {
         e.pendiente = false;
         firebaseDb.collection('fidelizacion_envios').doc(e.id).update({ pendiente: false, enviadoAt: firebase.firestore.Timestamp.now() })
             .catch((err) => { e.pendiente = true; showNotice(`No se pudo confirmar: ${err.message || 'error'}`, 'error'); renderMetricasFeedback(); });
+        if (e.cola) _fidColaMarcar(e.cola, e.colaK, 'enviado');
         showNotice(`Listo: mensaje a ${e.nombre || 'cliente'} confirmado como enviado.`, 'ok');
         renderMetricasFeedback();
         return true;
@@ -15007,6 +15104,7 @@ function _fidClick(e) {
         const k = e.cuponCodigo ? _fidCupones.find((x) => x.codigo === e.cuponCodigo) : null;
         if (k && _fidEstadoCupon(k) === 'activo') { k.estado = 'anulado'; escrituras.push(firebaseDb.collection('cupones_fidelizacion').doc(k.codigo).update({ estado: 'anulado' })); }
         Promise.all(escrituras).catch((err) => showNotice(`No se pudo descartar: ${err.message || 'error'}`, 'error'));
+        if (e.cola) _fidColaMarcar(e.cola, e.colaK, 'pendiente');
         showNotice('Mensaje descartado: la persona vuelve a la lista.', 'ok');
         renderMetricasFeedback();
         return true;

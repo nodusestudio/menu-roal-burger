@@ -199,6 +199,10 @@ service cloud.firestore {
     match /fidelizacion_envios/{id} {
       allow read, write: if isAdmin();
     }
+    // Cola diaria de Reactivar inteligente: la escribe el servidor (functions/reactivarCola.js) y el panel solo marca «enviado».
+    match /fidelizacion_cola/{dia} {
+      allow read, write: if isAdmin();
+    }
     match /encuestas_pedido/{orderId} {
       allow read: if isAdmin();
       allow write: if false;
