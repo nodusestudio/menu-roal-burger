@@ -44133,7 +44133,10 @@ document.getElementById('costosNuevoFiltro')?.addEventListener('change', _cnRend
         b.setAttribute('aria-label', 'Ver información');
         b.textContent = '💡';
         store.set(b, el.innerHTML);
-        el.replaceWith(b);
+        /* Esquina derecha de la primera línea del contenedor: no ocupa renglón propio */
+        const par = el.parentElement;
+        if (par) par.insertBefore(b, par.firstChild); else el.replaceWith(b);
+        el.remove();
     }
     function barrer() {
         document.querySelectorAll('.admin-hint, .asist-hint').forEach(convertir);
