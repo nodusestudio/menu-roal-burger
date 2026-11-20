@@ -13065,7 +13065,7 @@ function _fbRenderCuponera(body) {
         const html = l.slice(0, 40).map((r) => `<div class="met-user-row-v2"><div class="met-avatar">${ico}</div><div class="met-user-info-v2"><div class="met-user-name-v2" style="white-space:normal">${escapeHtml(r[campo])}</div><div class="met-user-meta-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${escapeHtml(fmt(r.ts))}</div></div></div>`).join('');
         return `<article class="admin-card"><div class="met-section-title">${ico} ${titulo} <small style="font-size:0.72rem;opacity:0.55;font-weight:400">· ${nf(l.length)}</small></div><div class="metrics-users-list">${html || '<p class="met-empty-note">Aún no hay respuestas.</p>'}</div></article>`;
     };
-    const nav = _fbNavTipoHtml('<p class="admin-hint" style="margin:6px 0 10px">Encuesta para quienes compraron la cuponera física (bonos del POS). El aviso sale en Recepción de Pedidos como «Feedback de cuponera pendiente».</p>');
+    const nav = _fbNavTipoHtml();
     body.innerHTML = nav + rangoSelectorHtml('fb') + `
         <article class="admin-card">
             <div class="met-section-title">🎟️ Feedback de la cuponera <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en vivo</small></div>
@@ -13150,7 +13150,7 @@ function renderMetricasFeedback() {
     // Una sola sección visible a la vez (mismo modelo de pestañas internas que Configuración).
     const tab = ['seguimiento', 'metricas', 'respuestas', 'descargas'].includes(_fbTab) ? _fbTab : 'seguimiento';
     const TABS = [['seguimiento', '📅', 'Seguimiento'], ['metricas', '📊', 'Métricas'], ['respuestas', '💬', 'Respuestas'], ['descargas', '⬇️', 'Descargas']];
-    const navTipo = _fbNavTipoHtml(`<p class="admin-hint" style="margin:6px 0 10px">${_fbTipo === 'general' ? 'Encuesta para quienes NO pidieron el 2×1: sabor (qué falló o qué gustó), servicio (qué pasó), qué mejorar y su cumpleaños. El aviso sale en Recepción de Pedidos como «Fidelización pendiente».' : 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).'}</p>`);
+    const navTipo = _fbNavTipoHtml();
     const nav = navTipo + `<article class="admin-card menu-section-card" style="padding-bottom:0">
         <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Feedback">
             ${TABS.map(([id, ico, lbl]) => `<button type="button" class="menu-inner-tab${tab === id ? ' active' : ''}" data-fb-tab="${id}" role="tab" aria-selected="${tab === id}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}</span></button>`).join('')}
@@ -13480,27 +13480,49 @@ function _tempClick(e) {
     return false;
 }
 
-function _fbNavTipoHtml(extra = '') {
-    // 5 grupos arriba; los grupos con varias vistas muestran una segunda fila de subpestañas.
+// Qué es cada vista (una frase, la misma en todas): se muestra en el encabezado único de Feedback.
+const FB_AYUDA = {
+    hoy: 'Lo que toca hacer hoy: saludar cumpleaños y escribirle a clientes que llevan días sin pedir.',
+    general: 'Encuesta para quienes NO pidieron el 2×1: sabor, servicio, qué mejorar y su cumpleaños. El aviso sale en Recepción como «Fidelización pendiente».',
+    quindio: 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).',
+    cuponera: 'Encuesta para quienes compraron la cuponera física. El aviso sale en Recepción como «Feedback de cuponera pendiente».',
+    atender: 'Clientes que calificaron mal (te llega también un aviso al celular) y clientes felices a quienes pedirles una reseña en Google.',
+    reactivar: 'Clientes que llevan tiempo sin pedir y a quienes no se les ha escrito en los últimos 14 días. Copia el mensaje con su cupón personal y mándalo por WhatsApp.',
+    cumple: 'Clientes que dejaron su cumpleaños. Copia el saludo y mándalo por WhatsApp.',
+    referidos: 'Invita a tus mejores clientes a traer amigos: el amigo recibe un cupón y, al canjearlo en caja, tu cliente recibe su recompensa.',
+    temporadas: 'Cada edición de un evento (Sabe a Quindío, Cuponera…) se mide sola y se compara con las otras. Las encuestas de cada evento están en Opiniones.',
+    cupones: 'Cada cupón es único por cliente, con vigencia. Canjéalo aquí cuando el cliente dé su código.',
+    metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Sale de los mensajes y cupones registrados y de los pedidos.',
+    config: 'Todos los ajustes de fidelización en un solo lugar: ofertas, productos regalo, vigencias, reseña de Google y metas. Lo que guardes aquí lo usan las demás pestañas.'
+};
+
+function _fbNavTipoHtml() {
+    // Grupos arriba; los que tienen varias vistas muestran una segunda fila. Las encuestas (Fidelización, Sabe a Quindío, Cuponera) viven juntas en Opiniones.
     const GRUPOS = [
         ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día']]],
-        ['opiniones', '💛', 'Opiniones', [['general', 'Fidelización'], ['atender', 'Atender']]],
+        ['opiniones', '💛', 'Opiniones', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['atender', 'Atender']]],
         ['campanas', '📣', 'Campañas', [['reactivar', 'Reactivar'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
-        ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones'], ['quindio', 'Encuesta Sabe a Quindío'], ['cuponera', 'Encuesta Cuponera']]],
-        ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas'], ['config', 'Configuración']]]
+        ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones']]],
+        ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas']]],
+        ['ajustes', '⚙️', 'Ajustes', [['config', 'Configuración']]]
     ];
     const grupoActivo = GRUPOS.find((g) => g[3].some((s) => s[0] === _fbTipo)) || GRUPOS[0];
+    const vistaActiva = grupoActivo[3].find((s) => s[0] === _fbTipo) || grupoActivo[3][0];
     const pend = _fidAtenderPendientes();
     const badge = (n) => (n ? ` <b style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:.72rem">${n}</b>` : '');
     const subHtml = grupoActivo[3].length > 1
         ? `<nav class="menu-inner-tabs-nav" role="tablist" aria-label="Vistas de ${escapeHtml(grupoActivo[2])}" style="margin-top:6px">${grupoActivo[3].map(([id, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span>${lbl}${id === 'atender' ? badge(pend) : ''}</span></button>`).join('')}</nav>`
         : '';
-    return `<article class="admin-card menu-section-card" style="padding-bottom:0">
-        <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Tipo de feedback">
+    const titulo = grupoActivo[3].length > 1 ? `${grupoActivo[2]} <span style="opacity:.45;font-weight:400">›</span> ${vistaActiva[1]}` : grupoActivo[2];
+    return `<article class="admin-card menu-section-card" style="padding-bottom:12px">
+        <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Feedback">
             ${GRUPOS.map(([gid, ico, lbl, subs]) => `<button type="button" class="menu-inner-tab${grupoActivo[0] === gid ? ' active' : ''}" data-fb-tipo="${grupoActivo[0] === gid ? _fbTipo : subs[0][0]}" role="tab" aria-selected="${grupoActivo[0] === gid}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}${gid === 'opiniones' ? badge(pend) : ''}</span></button>`).join('')}
         </nav>
         ${subHtml}
-        ${extra}
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
+            <div style="font-size:1.15rem;font-weight:800">${grupoActivo[1]} ${titulo}</div>
+            <p class="admin-hint" style="margin:4px 0 0">${escapeHtml(FB_AYUDA[_fbTipo] || '')}</p>
+        </div>
     </article>`;
 }
 
@@ -13579,7 +13601,7 @@ function _fbRenderCumple(body) {
                 : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">Copiar saludo</button>`) : ''}
         </div>`;
     }).join('');
-    body.innerHTML = _fbNavTipoHtml('<p class="admin-hint" style="margin:6px 0 10px">Clientes que dejaron su cumpleaños (en su perfil o en la encuesta de fidelización). Copia el saludo y mándalo por WhatsApp.</p>') + `
+    body.innerHTML = _fbNavTipoHtml() + `
         <article class="admin-card">
             <div class="met-section-title">🎂 Cumpleaños</div>
             <div class="met-kpi-row">
@@ -14555,18 +14577,7 @@ function _fbRenderFid(body) {
                 ${_fidKpi('', nf(yaContactados), 'Ya contactados (últimos 14 días)')}
                 ${_fidKpi('', nf(todos.length), 'Clientes con pedidos')}
             </div>
-            <div style="margin-top:12px;display:grid;gap:8px">
-                <label class="admin-hint">Regalo 1 — bebida («te regalo <em>oferta</em>»)<input type="text" id="fidOferta" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.reactivarOferta)}"></label>
-                <label class="admin-hint">Producto del regalo 1 (el POS lo agrega gratis al aplicar el cupón)<select id="fidProductoReactivar" class="admin-input">${_fidOpcionesProducto(_fidCfg.reactivarProductoId)}</select></label>
-                <label class="admin-hint">Regalo 2 — papas (si lo que más pide es un combo, que ya trae bebida, siempre se regalan papas; con los demás se alterna con la bebida)<input type="text" id="fidOfertaPapas" class="admin-input" maxlength="120" value="${escapeHtml(_fidCfg.reactivarOfertaPapas)}"></label>
-                <label class="admin-hint">Producto del regalo 2 (papas)<select id="fidProductoPapas" class="admin-input">${_fidOpcionesProducto(_fidCfg.reactivarProductoPapasId)}</select></label>
-                <label class="admin-hint">Producto regalo de cumpleaños<select id="fidProductoCumple" class="admin-input">${_fidOpcionesProducto(_fidCfg.cumpleProductoId)}</select></label>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-                    <label class="admin-hint">Días sin pedir<input type="number" id="fidDias" class="admin-input" min="7" max="120" style="width:100px" value="${Number(_fidCfg.reactivarDias) || 21}"></label>
-                    <label class="admin-hint">Vigencia del cupón (días)<input type="number" id="fidVigencia" class="admin-input" min="1" max="30" style="width:100px" value="${Number(_fidCfg.vigenciaDias) || 3}"></label>
-                    <button type="button" class="section-action-btn" data-fid-guardar-cfg>Guardar</button>
-                </div>
-            </div>
+            <button type="button" class="ghost-button" data-fb-tipo="config" style="margin-top:12px">⚙️ Cambiar regalos, días sin pedir y vigencia en Ajustes →</button>
         </article>
         <article class="admin-card">
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${chips}</div>
@@ -14662,27 +14673,9 @@ function _fbRenderFid(body) {
             <p class="met-empty-note" style="margin-top:8px;font-size:0.76rem;opacity:.75">«Volvieron» = clientes que pidieron esta semana dentro de los 14 días siguientes a un mensaje, cupón, saludo de cumpleaños o solicitud de feedback. Es atribución aproximada: parte de esos clientes habría vuelto igual.</p>
         </article>
         ${_fidLineaBaseHtml()}
-        <article class="admin-card">
-            <div class="met-section-title">⚙️ Metas y supuestos de la semana</div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-                <label class="admin-hint">Mensajes<input type="number" id="fidMetaMensajes" class="admin-input" min="0" style="width:110px" value="${Number(_fidCfg.metaMensajes)}"></label>
-                <label class="admin-hint">Clientes que vuelven<input type="number" id="fidMetaReactivados" class="admin-input" min="0" style="width:110px" value="${Number(_fidCfg.metaReactivados)}"></label>
-                <label class="admin-hint">Cupones canjeados<input type="number" id="fidMetaCanjes" class="admin-input" min="0" style="width:110px" value="${Number(_fidCfg.metaCanjes)}"></label>
-                <label class="admin-hint">Ventas ($)<input type="number" id="fidMetaVentas" class="admin-input" min="0" step="1000" style="width:130px" value="${Number(_fidCfg.metaVentas)}"></label>
-                <label class="admin-hint">Margen estimado %<input type="number" id="fidMargen" class="admin-input" min="0" max="100" style="width:100px" value="${Number(_fidCfg.margenPct)}"></label>
-                <label class="admin-hint">Costo de un regalo ($)<input type="number" id="fidCostoRegalo" class="admin-input" min="0" step="500" style="width:120px" value="${Number(_fidCfg.costoRegalo)}"></label>
-                <button type="button" class="section-action-btn primary" data-fid-guardar-metas>Guardar</button>
-            </div>
-        </article>`;
+        <article class="admin-card"><button type="button" class="ghost-button" data-fb-tipo="config">⚙️ Cambiar metas y supuestos en Ajustes →</button></article>`;
     }
-    body.innerHTML = _fbNavTipoHtml(`<p class="admin-hint" style="margin:6px 0 10px">${{
-        atender: 'Clientes que calificaron mal (te llega también un aviso al celular) y clientes felices a quienes pedirles una reseña en Google.',
-        referidos: 'Invita a tus mejores clientes a traer amigos: el amigo recibe un cupón y, cuando lo canjea en la caja, tu cliente recibe su recompensa.',
-        reactivar: 'Clientes que llevan tiempo sin pedir y a quienes no se les ha escrito en los últimos 14 días. Copia el mensaje con su cupón personal y mándalo por WhatsApp.',
-        cupones: 'Cada cupón es único por cliente, con vigencia. Canjéalo aquí cuando el cliente dé su código.',
-        metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Todo sale de los mensajes y cupones registrados y de los pedidos.',
-        config: 'Todos los ajustes de fidelización en un solo lugar: ofertas, productos regalo, vigencias, reseña de Google y metas. Lo que guardes aquí lo usan las demás pestañas.'
-    }[_fbTipo] || ''}</p>`) + `<span id="fidMarca" hidden data-clientes="${clientsState.length}" data-carga="${_clientsLoad.estado}"></span>` + html;
+    body.innerHTML = _fbNavTipoHtml() + `<span id="fidMarca" hidden data-clientes="${clientsState.length}" data-carga="${_clientsLoad.estado}"></span>` + html;
 }
 
 // Clics de Reactivar, Cupones y Metas (listener delegado de #fbBody).
