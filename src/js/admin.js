@@ -44135,7 +44135,12 @@ document.getElementById('costosNuevoFiltro')?.addEventListener('change', _cnRend
         store.set(b, el.innerHTML);
         /* Esquina derecha de la primera línea del contenedor: no ocupa renglón propio */
         const par = el.parentElement;
-        if (par) par.insertBefore(b, par.firstChild); else el.replaceWith(b);
+        if (par) {
+            if (getComputedStyle(par).position === "static") par.style.position = "relative";
+            const n = par.querySelectorAll(":scope > .info-bulb").length;
+            b.style.right = (2 + n * 34) + "px";
+            par.appendChild(b);
+        } else el.replaceWith(b);
         el.remove();
     }
     function barrer() {
