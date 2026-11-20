@@ -26,7 +26,7 @@ test('diferencia del conteo: negativa = faltó, positiva = sobró, 0 = cuadra', 
 });
 test('el conteo es solo informativo: guarda campos propios y no toca methodTotals ni grandTotal', () => {
     const i = js.indexOf('// Conteo del efectivo (opcional)');
-    const tramo = js.slice(i, i + 700);
+    const tramo = js.slice(i, i + 1300);
     assert.match(tramo, /closureDoc\.efectivoEsperado = /);
     assert.match(tramo, /closureDoc\.diferenciaEfectivo = /);
     assert.ok(!/closureDoc\.(methodTotals|grandTotal|ingresos\w*|gastos\w*) *=[^=]/.test(tramo));
