@@ -65,14 +65,16 @@ test('aprendizaje: con 10+ envíos usa el regalo que más canjea; con rnd bajo e
     assert.equal(rc.elegirRegalo(30, 28000, cfg, stats, () => 0).modo, 'explora');
 });
 
-test('control: el 10 % de los elegibles queda sin mensaje y los mensajes son 10 como máximo', () => {
+test('control: sale de la misma franja de mejores clientes y los mensajes son 10', () => {
     const pedidos = [];
     for (let i = 0; i < 80; i += 1) { const tel = `31000000${String(i).padStart(2, '0')}`; pedidos.push(ped(`p${i}a`, tel, 60), ped(`p${i}b`, tel, 45)); }
     const r = rc.construirCola({ pedidos, ahora: AHORA, cfg: { controlPct: 10 }, rnd: sinAzar });
     assert.equal(r.entradas.length, 10);
-    assert.ok(r.control.length > 0 && r.control.length < 20);
+    assert.equal(r.control.length, 1); // 10 mensajes al 10 % de control → 1 persona sin mensaje por día
     const ctl = new Set(r.control.map((x) => x.k));
     assert.ok(r.entradas.every((e) => !ctl.has(e.k)));
+    // el control es tan valioso como los demás: está dentro de los 11 mejores por puntaje, no de los 80
+    assert.equal(r.entradas.length + r.control.length, 11);
 });
 
 test('el mensaje nombra el favorito y el regalo, y deja {VENCE} para el panel', () => {

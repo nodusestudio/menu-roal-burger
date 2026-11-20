@@ -164,9 +164,14 @@ function construirCola({ pedidos, envios = [], cupones = [], cfg: cfgRaw = {}, a
     });
     elegibles.sort((a, b) => b.score - a.score);
 
-    const esControl = (k) => cfg.controlPct > 0 && hash(`${dia}|${k}`) % 100 < cfg.controlPct;
-    const control = elegibles.filter((x) => esControl(x.k));
-    const candidatos = elegibles.filter((x) => !esControl(x.k)).slice(0, cfg.reactivarDiarios);
+    // El control sale de la MISMA franja de mejores clientes que los que reciben mensaje (si no, la comparación favorecería al mensaje):
+    // se toman los N + nControl primeros por puntaje y, entre ellos, se aparta al azar (determinista por día) a los nControl sin mensaje.
+    const nControl = cfg.controlPct > 0 ? Math.max(1, Math.round(cfg.reactivarDiarios * cfg.controlPct / (100 - cfg.controlPct))) : 0;
+    const banda = elegibles.slice(0, cfg.reactivarDiarios + nControl);
+    const sorteo = [...banda].sort((a, b) => hash(`${dia}|${a.k}`) - hash(`${dia}|${b.k}`));
+    const ctlKs = new Set(sorteo.slice(0, nControl).map((x) => x.k));
+    const control = banda.filter((x) => ctlKs.has(x.k));
+    const candidatos = banda.filter((x) => !ctlKs.has(x.k));
 
     const entradas = candidatos.map((x) => {
         const fav = favoritoDe(x.c);
