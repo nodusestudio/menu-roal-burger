@@ -13270,7 +13270,13 @@ async function _tempCargar() {
     try {
         const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').get();
         const lista = snap.exists && Array.isArray((snap.data() || {}).temporadas) ? snap.data().temporadas : [];
+        const sembrada = snap.exists && (snap.data() || {}).cuponeraSembrada === true;
         _tempEdiciones = lista.length ? lista.map((e) => ({ id: String(e.id), nombre: String(e.nombre || ''), inicio: Number(e.inicio) || 0, fin: Number(e.fin) || 0, palabra: String(e.palabra || '') })) : TEMP_DEF.map((e) => ({ ...e }));
+        // Una sola vez: la edición de la cuponera aparece sola junto a Sabe a Quindío (si luego se quita, no vuelve).
+        if (!sembrada && !_tempEdiciones.some((e) => normalizeCategoryKey(e.palabra).includes('cuponera'))) {
+            _tempEdiciones.push({ id: 'cup-2026-1', nombre: 'Cuponera · Edición 1 (2026)', inicio: SQ_INICIO_MS, fin: 0, palabra: 'cuponera' });
+            firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').set({ temporadas: _tempEdiciones, cuponeraSembrada: true, actualizadoAt: firestoreNow() }, { merge: true }).catch(() => {});
+        }
     } catch (err) {
         console.warn('[Temporadas] config:', err.code || err.message);
         _tempEdiciones = TEMP_DEF.map((e) => ({ ...e }));
@@ -13293,6 +13299,7 @@ function _tempStats(ed) {
     const ahora = Date.now();
     const fin = ed.fin || Infinity;
     const clave = normalizeCategoryKey(ed.palabra || '');
+    const esCup = clave.includes('cuponera'); // los bonos se guardan como «Bono A · …» con productId cuponera-…
     const byId = new Map();
     [..._metricsOrdersState, ..._fbArchOrders, ...ordersState, ..._sqArchived, ..._sqActive].forEach((o) => { if (o && o.id) byId.set(o.id, o); }); // el historial (400 días) también cuenta: si la escucha en vivo falla, no queda en cero
     const prev = new Set();
@@ -13312,7 +13319,8 @@ function _tempStats(ed) {
         if (o.voided || o.anulado || ts < ed.inicio || ts >= fin) return;
         let u = 0, v = 0;
         for (const it of (o.items || [])) {
-            if (!clave || !normalizeCategoryKey(it?.productName).includes(clave)) continue;
+            if (!clave) continue;
+            if (!(esCup ? (String(it?.productId || '').startsWith('cuponera-') || it?.orderOptions?.cuponeraBono) : normalizeCategoryKey(it?.productName).includes(clave))) continue;
             const q = Number(it.quantity || 0); if (q <= 0) continue;
             u += q; v += Number(it.subtotal || 0);
         }
@@ -13325,7 +13333,7 @@ function _tempStats(ed) {
     const nClientes = clientes.size;
     const nuevos = [...clientes.keys()].filter((k) => !prev.has(k)).length;
     const repiten = [...clientes.values()].filter((n) => n >= 2).length;
-    const encuestas = _fbResponses.filter((r) => r.tipo === 'quindio' && r.ts && r.ts >= ed.inicio && r.ts < fin);
+    const encuestas = _fbResponses.filter((r) => r.tipo === (esCup ? 'cuponera' : 'quindio') && r.ts && r.ts >= ed.inicio && r.ts < fin);
     const positivas = encuestas.filter(_fbPositiva).length;
     return {
         dias, pedidos, unidades, ventas, nClientes, nuevos, repiten,
@@ -13394,7 +13402,7 @@ function _tempHtml() {
     ].map(([lbl, fmt, cmp]) => {
         const celdas = stats.map(({ s }, i) => {
             let flecha = '';
-            if (cmp && i < stats.length - 1) { const a = cmp(stats[i + 1].s), b = cmp(s); if (a > 0 && b !== a) flecha = ` <small style="color:${b > a ? '#34d399' : '#f87171'}">${b > a ? '▲' : '▼'} ${Math.abs(Math.round((b - a) / a * 100))}%</small>`; }
+            if (cmp && i < stats.length - 1 && stats[i + 1].e.palabra === stats[i].e.palabra) { const a = cmp(stats[i + 1].s), b = cmp(s); if (a > 0 && b !== a) flecha = ` <small style="color:${b > a ? '#34d399' : '#f87171'}">${b > a ? '▲' : '▼'} ${Math.abs(Math.round((b - a) / a * 100))}%</small>`; }
             return `<td style="padding:7px 10px;text-align:right;white-space:nowrap">${fmt(s)}${flecha}</td>`;
         }).join('');
         return `<tr><td style="padding:7px 10px;opacity:.8">${lbl}</td>${celdas}</tr>`;
