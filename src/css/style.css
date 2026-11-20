@@ -9620,3 +9620,11 @@ button[data-order-ticket-action="edit-field"] { -webkit-touch-callout: none; -we
 .alm-menu .alm-pub-b.listo{animation:almListo .55s ease-out}
 .pcm-add-btn:active{transform:scale(.88);transition:transform .08s}
 @media (prefers-reduced-motion:reduce){.alm-menu-op.pop,.alm-menu-sec.flash,.alm-menu .alm-pub-b.listo{animation:none}}
+
+/* Info en bombillo (regla admin): botón que abre el texto largo de ayuda */
+.info-bulb{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border-radius:50%;border:1px solid rgba(255,196,0,.45);background:rgba(255,196,0,.12);color:inherit;font-size:16px;line-height:1;cursor:pointer;vertical-align:middle;margin:2px 0}
+.info-bulb:hover,.info-bulb:focus-visible{background:rgba(255,196,0,.28);outline:none}
+.info-bulb-pop{position:fixed;inset:0;z-index:20000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.info-bulb-card{max-width:440px;width:100%;max-height:80vh;overflow:auto;background:#1b1b1f;color:#f2f2f2;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:18px 18px 14px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.info-bulb-body{font-size:14px;line-height:1.55;overflow-wrap:anywhere}
+.info-bulb-close{margin-top:14px;width:100%;padding:10px;border-radius:10px;border:0;background:#ffc400;color:#1b1b1f;font-weight:700;cursor:pointer}

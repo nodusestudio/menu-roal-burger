@@ -13979,12 +13979,6 @@ function _fidVenceTexto(dias) {
 
 // Mensaje manual para reactivar. Cambia el tono según cuánto lleva sin pedir (cálido → te guardamos → último aviso),
 // usa el nombre, su historial real y el vencimiento real del cupón (nunca urgencia inventada).
-// Prueba A/B: la variante se reparte por el último carácter del id del cliente (mitad y mitad, estable: al mismo cliente
-// siempre le toca la misma) y se guarda en el cupón para medir cuál canjea más (Resultados → Cupones).
-function _fidVariante(clienteId) {
-    const s = String(clienteId || '');
-    return s && s.charCodeAt(s.length - 1) % 2 ? 'B' : 'A';
-}
 
 // Producto que más ha pedido el cliente (suma de cantidades en sus pedidos disponibles). Ignora extras, cortesías, ajustes,
 // bebidas y salsas: la idea es nombrar su plato, no «tu Coca-Cola». Devuelve { nombre, veces } o null si no hay dato claro.
@@ -14761,11 +14755,13 @@ function _fbRenderFid(body) {
         const filasPend = pendEnv.map((e) => {
             const min = Math.max(0, Math.round((hoyMs - _tsMs(e.creadoAt)) / 60000));
             const hace = min < 60 ? `${min} min` : (min < 1440 ? `${Math.round(min / 60)} h` : `${Math.round(min / 1440)} d`);
+            const kp = e.cuponCodigo ? _fidCupones.find((x) => x.codigo === e.cuponCodigo) : null;
+            const vencido = !!kp && _fidEstadoCupon(kp) !== 'activo';
             return `<div class="met-user-row-v2">
                 <div class="met-avatar">⏳</div>
                 <div class="met-user-info-v2">
                     <div class="met-user-name-v2">${escapeHtml(e.nombre || 'Cliente')}</div>
-                    <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(e.telefono || '')}" title="Tocar para copiar el número">📋 ${escapeHtml(e.telefono || '')}</button> · copiado hace ${hace}</div>
+                    <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(e.telefono || '')}" title="Tocar para copiar el número">📋 ${escapeHtml(e.telefono || '')}</button> · copiado hace ${hace}${vencido ? ' · <span style="color:#f87171;font-weight:700">⚠️ cupón vencido: descártalo</span>' : ''}</div>
                 </div>
                 <button type="button" class="ghost-button" data-fid-recopiar="${escapeHtml(e.id)}">Copiar de nuevo</button>
                 <button type="button" class="feedback-pending-btn" data-fid-enviado="${escapeHtml(e.id)}">✅ Ya lo envié</button>
@@ -14790,6 +14786,7 @@ function _fbRenderFid(body) {
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${chips}</div>
             ${searchBoxHtml('fidQreactivar', 'Buscar cliente o teléfono', _fidQ.reactivar)}
             <div class="metrics-users-list" id="fidLista">${filas || '<p class="met-empty-note">Nadie por reactivar con estos filtros.</p>'}</div>
+            ${lista.length > 120 ? `<p class="met-empty-note" style="margin-top:8px">Mostrando los 120 que más han gastado de ${nf(lista.length)}. Usa el buscador o los filtros de días para ver al resto.</p>` : ''}
         </article>`;
     } else if (_fbTipo === 'cupones') {
         const lista = _fidCupones.filter((k) => rangoEnRango('fid', _tsMs(k.creadoAt))
@@ -14831,22 +14828,6 @@ function _fbRenderFid(body) {
                 ${_fidKpi('met-kpi-card--purple', formatMoney(ventas), 'Ventas del pedido de quienes canjearon')}
             </div>
         </article>
-        ${(() => {
-            const ab = ['A', 'B'].map((v) => {
-                const g = enRango.filter((k) => k.motivo === 'reactivar' && k.variante === v);
-                const c = g.filter((k) => k.estado === 'canjeado').length;
-                return { v, n: g.length, c, pct: g.length ? Math.round((c / g.length) * 100) : 0 };
-            });
-            const tot = ab[0].n + ab[1].n;
-            if (!tot) return '';
-            const lider = ab[0].pct === ab[1].pct ? '' : (ab[0].pct > ab[1].pct ? 'A' : 'B');
-            const poco = Math.min(ab[0].n, ab[1].n) < 30;
-            return `<article class="admin-card">
-                <div class="met-section-title">🧪 Prueba de mensajes (Reactivar)</div>
-                <div class="met-kpi-row">${ab.map((x) => _fidKpi(lider === x.v ? 'met-kpi-card--green' : '', `${x.pct}%`, `Mensaje ${x.v}: ${nf(x.c)} canjes de ${nf(x.n)}`)).join('')}</div>
-                <p class="admin-hint" style="margin-top:8px">A = mensaje cálido y directo. B = mensaje con pregunta y «te guardamos tu lugar». ${poco ? 'Aún hay pocos envíos por variante (menos de 30): no concluyas todavía.' : (lider ? `Va ganando el mensaje ${lider}.` : 'Van empatados.')}</p>
-            </article>`;
-        })()}
         ${rangoSelectorHtml('fid')}
         <article class="admin-card">
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${chips}</div>
@@ -15000,6 +14981,8 @@ function _fidClick(e) {
     if (recop) {
         const e = _fidEnvios.find((x) => x.id === recop.dataset.fidRecopiar);
         if (!e || !e.mensaje) { showNotice('Este mensaje no se guardó. Cópialo de nuevo desde la lista.', 'error'); return true; }
+        const kp = e.cuponCodigo ? _fidCupones.find((x) => x.codigo === e.cuponCodigo) : null;
+        if (kp && _fidEstadoCupon(kp) !== 'activo') { showNotice('El cupón de este mensaje ya venció (la fecha del texto es vieja). Descártalo y genera uno nuevo desde la lista.', 'error'); return true; }
         copyTextToClipboard(e.mensaje).then((ok) => showNotice(ok ? `Mensaje de ${e.nombre || 'cliente'} copiado de nuevo.` : 'No se pudo copiar. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
         return true;
     }
@@ -15056,7 +15039,6 @@ function _fidClick(e) {
             try {
                 const dias = Number(_fidCfg.vigenciaDias) || 3;
                 const codigo = _fidNuevoCodigo(cliente.customerName);
-                const variante = _fidVariante(cliente.id);
                 // Trae su historial completo para nombrar lo que más ha pedido (si falla, el mensaje sale igual, sin esa línea).
                 let extra = [];
                 try { extra = await _fidPedidosCliente(cliente); } catch (_) { extra = []; }
@@ -15064,7 +15046,7 @@ function _fidClick(e) {
                 const copiado = copyTextToClipboard(mensaje);
                 // Queda «pendiente de envío» con el texto guardado: si no alcanzas a enviarlo, lo recuperas en Reactivar → «Copiados, falta enviar».
                 const regalo = _fidRegaloReactivar(cliente, extra);
-                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: regalo.oferta, dias, productoId: regalo.productoId, envioExtra: { variante, pendiente: true, mensaje, regalo: regalo.tipo }, cuponExtra: { variante, regalo: regalo.tipo } });
+                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: regalo.oferta, dias, productoId: regalo.productoId, envioExtra: { pendiente: true, mensaje, regalo: regalo.tipo }, cuponExtra: { regalo: regalo.tipo } });
                 const ok = await copiado;
                 showNotice(ok ? `Mensaje listo para ${cliente.customerName}. Cuando lo envíes, márcalo «Ya lo envié» en Reactivar.` : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');
                 renderMetricasFeedback();
@@ -44016,3 +43998,50 @@ document.getElementById('costosNuevoBody')?.addEventListener('click', (e) => {
 });
 document.getElementById('costosNuevoBuscar')?.addEventListener('input', _cnRender);
 document.getElementById('costosNuevoFiltro')?.addEventListener('change', _cnRender);
+
+/* ===== Regla "info en bombillo" 💡 =====
+   Los textos largos de ayuda (.admin-hint / .asist-hint) no se muestran: se cambian por
+   un botón con bombillo que abre la info completa. Excluir un texto: data-no-bulb. */
+(function infoBombillo() {
+    const MIN = 70;
+    const store = new WeakMap();
+    let pop = null;
+    function cerrar() { if (pop) { pop.remove(); pop = null; } }
+    function abrir(html) {
+        cerrar();
+        pop = document.createElement('div');
+        pop.className = 'info-bulb-pop';
+        pop.innerHTML = '<div class="info-bulb-card" role="dialog" aria-label="Información"><div class="info-bulb-body"></div><button type="button" class="info-bulb-close">Entendido</button></div>';
+        pop.querySelector('.info-bulb-body').innerHTML = html;
+        pop.addEventListener('click', (e) => { if (e.target === pop || e.target.closest('.info-bulb-close')) cerrar(); });
+        document.body.appendChild(pop);
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrar(); });
+    document.addEventListener('click', (e) => {
+        const b = e.target.closest('.info-bulb');
+        if (!b) return;
+        e.preventDefault();
+        abrir(store.get(b) || '');
+    });
+    function convertir(el) {
+        if (el.id || el.hasAttribute('data-no-bulb') || el.closest('.info-bulb-pop')) return;
+        if (el.querySelector('input,button,select,textarea,a')) return;
+        const txt = (el.textContent || '').trim();
+        if (txt.length < MIN) return;
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'info-bulb';
+        b.title = 'Ver información';
+        b.setAttribute('aria-label', 'Ver información');
+        b.textContent = '💡';
+        store.set(b, el.innerHTML);
+        el.replaceWith(b);
+    }
+    function barrer() {
+        document.querySelectorAll('.admin-hint, .asist-hint').forEach(convertir);
+    }
+    let t = null;
+    const obs = new MutationObserver(() => { if (t) return; t = setTimeout(() => { t = null; barrer(); }, 60); });
+    function iniciar() { barrer(); obs.observe(document.body, { childList: true, subtree: true }); }
+    if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
+})();
