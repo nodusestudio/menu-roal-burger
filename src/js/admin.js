@@ -5592,7 +5592,7 @@ function _posFbActualizarInsignia() {
     if (!btn) return;
     const faltan = _posFbPedidosHoy().filter((o) => _posFbEstado(o).estado === 'sin_enviar').length;
     let b = btn.querySelector('.pos-fb-badge');
-    if (!b) { b = document.createElement('span'); b.className = 'pos-fb-badge'; b.style.cssText = 'margin-left:4px;background:#f87171;color:#111;border-radius:10px;padding:0 6px;font-size:11px;font-weight:800'; btn.appendChild(b); }
+    if (!b) { b = document.createElement('span'); b.className = 'pos-fb-badge'; b.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#f87171;color:#111;border-radius:10px;padding:0 5px;font-size:11px;font-weight:800;line-height:16px'; btn.style.position = 'relative'; btn.appendChild(b); }
     b.textContent = faltan; b.hidden = faltan === 0;
 }
 function _posFbRender() {

@@ -14602,10 +14602,6 @@
                             <button type="button" class="quick-order-btn" data-new-order="retiro" title="Nuevo pedido para llevar"><span class="qo-ico">🥡</span><span>Para llevar</span></button>
                             <button type="button" class="quick-order-btn" data-new-order="domicilio" title="Nuevo pedido a domicilio"><span class="qo-ico">🛵</span><span>Domicilio</span></button>
                         </div>
-                        <!-- Feedback de hoy: quién ya recibió el mensaje y quién falta (lo llena openPosFeedbackModal) -->
-                        <div style="display:flex;justify-content:flex-end;margin:8px 0 0">
-                            <button type="button" class="ghost-button" id="posFeedbackBtn" title="Ver a quién ya se le envió el feedback y a quién falta (pedidos de hoy)" aria-label="Feedback">📣 Feedback</button>
-                        </div>
                         <div class="orders-workspace">
                             <div class="orders-mobile-tabs" id="ordersMobileTabs" aria-label="Cambiar vista de pedidos en movil">
                                 <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="unread" hidden style="display:none!important">Por Confirmar</button>
@@ -18114,6 +18110,7 @@
                 <button type="button" id="rrVozStop" class="rr-nuevo" style="width:auto;padding:8px 16px">⏹</button>
             </div>
         </div>
+        <button type="button" id="posFeedbackBtn" class="rr-bar-btn" data-tip="Feedback de hoy: a quién ya se le envió y a quién falta" aria-label="Feedback de hoy">📣</button>
         <button type="button" id="rrFodi" class="rr-bar-btn" data-tip="FODI (mostrar / ocultar)" aria-label="Mostrar u ocultar a FODI" aria-pressed="false">💛</button>
         <button type="button" id="rrVoz" class="rr-bar-btn rr-voz" data-tip="Escribir y reproducir en voz" aria-label="Escribir texto y reproducirlo en voz alta">🔊</button>
         <button type="button" id="rrBtn" data-tip="Respuestas rápidas" aria-label="Respuestas rápidas (tocar para copiar)">📋</button>
