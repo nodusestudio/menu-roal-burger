@@ -4043,7 +4043,9 @@ function orderHasCuponeraForFeedback(order) {
     return Array.isArray(order?.items) && order.items.some((i) => String(i.productId || '').startsWith('cuponera-') || i.orderOptions?.cuponeraBono);
 }
 function feedbackTipoOrden(order) { return orderHasCuponeraForFeedback(order) ? 'cuponera' : (orderHas2x1ForFeedback(order) ? 'quindio' : 'general'); }
-const FEEDBACK_MAX_AGE_TIPO = { quindio: 24 * 60 * 60 * 1000, general: 7 * 24 * 60 * 60 * 1000, cuponera: 7 * 24 * 60 * 60 * 1000 }; // fidelización: hasta 7 días
+const FEEDBACK_MAX_AGE_TIPO = { quindio: 24 * 60 * 60 * 1000, general: 24 * 60 * 60 * 1000, cuponera: 7 * 24 * 60 * 60 * 1000 }; // fidelización: además solo el mismo día (ver feedbackFueraDeDia)
+// Fidelización es «solo del día»: pasada la medianoche (hora Colombia) el pedido ya no se pide.
+function feedbackFueraDeDia(order, sentMs, now) { return feedbackTipoOrden(order) === 'general' && _sqDayKey(sentMs) !== _sqDayKey(now); }
 
 function getPendingFeedbackOrders() {
     const now = Date.now();
@@ -4052,7 +4054,7 @@ function getPendingFeedbackOrders() {
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
-        return sentMs > 0 && now - sentMs >= FEEDBACK_DELAY_MS && now - sentMs <= FEEDBACK_MAX_AGE_TIPO[feedbackTipoOrden(order)];
+        return sentMs > 0 && now - sentMs >= FEEDBACK_DELAY_MS && now - sentMs <= FEEDBACK_MAX_AGE_TIPO[feedbackTipoOrden(order)] && !feedbackFueraDeDia(order, sentMs, now);
     }).sort((a, b) => (_tsMs(a.enviadoAt || a.deliveredAt) - _tsMs(b.enviadoAt || b.deliveredAt)));
 }
 
@@ -13046,6 +13048,7 @@ function _fbSeguimiento() {
         if (o.feedbackAnsweredAt || respondidos.has(o.id)) estado = 'respondio';
         else if (o.feedbackRequestedAt || solicitados.has(o.id) || _feedbackMarcadosLocal.has(o.id)) estado = 'enviado';
         else if (phone.length < 10) return; // sin teléfono no se puede contactar: se descarta del seguimiento
+        if (estado === 'sin_enviar' && _fbTipo === 'general' && _sqDayKey(t) !== _sqDayKey(Date.now())) estado = 'vencido'; // fidelización es solo del día
         const key = _sqDayKey(t);
         if (!dias.has(key)) dias.set(key, []);
         dias.get(key).push({ order: o, phone, estado, t });
@@ -13071,7 +13074,8 @@ function _fbSeguimientoHtml() {
     const BADGE = {
         respondio: ['✅ Respondió', '#34d399'],
         enviado: ['📨 Enviado, sin respuesta', '#fbbf24'],
-        sin_enviar: ['⏳ Sin enviar', '#f87171']
+        sin_enviar: ['⏳ Sin enviar', '#f87171'],
+        vencido: ['⌛ No se envió a tiempo', '#9ca3af']
     };
     const fila = ({ order, phone, estado, t }, conFecha) => {
         const [txt, color] = BADGE[estado];
@@ -13099,7 +13103,7 @@ function _fbSeguimientoHtml() {
     if (!vista.length) return chips + '<p class="met-empty-note">No hay pedidos en estas fechas (o ninguno coincide con la búsqueda).</p>';
     return chips + vista.map((d) => {
         const etiqueta = new Date(`${d.key}T12:00:00-05:00`).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
-        const partes = [['respondio', '✅'], ['enviado', '📨'], ['sin_enviar', '⏳']].map(([e, ico]) => (cnt(d.items, e) ? `${ico} ${cnt(d.items, e)}` : '')).filter(Boolean).join(' · ');
+        const partes = [['respondio', '✅'], ['enviado', '📨'], ['sin_enviar', '⏳'], ['vencido', '⌛']].map(([e, ico]) => (cnt(d.items, e) ? `${ico} ${cnt(d.items, e)}` : '')).filter(Boolean).join(' · ');
         return `<details class="fb-dia" style="margin-top:6px">
             <summary style="cursor:pointer;font-weight:700;padding:6px 0;text-transform:capitalize">${escapeHtml(etiqueta)} <small style="font-weight:400;opacity:.7;text-transform:none">· ${d.items.length} ${d.items.length === 1 ? 'pedido' : 'pedidos'} · ${partes}</small></summary>
             <div class="metrics-users-list">${d.items.map((x) => fila(x, false)).join('')}</div>
@@ -13613,7 +13617,7 @@ function _tempClick(e) {
 
 // Qué es cada vista (una frase, la misma en todas): se muestra en el encabezado único de Feedback.
 const FB_AYUDA = {
-    general: 'Encuesta para quienes NO pidieron el 2×1: sabor, servicio, qué mejorar y su cumpleaños. El aviso sale en Recepción como «Fidelización pendiente».',
+    general: 'Encuesta de calidad del servicio y del pedido, solo del mismo día, para quienes NO pidieron el 2×1. El aviso sale en Recepción como «Fidelización pendiente» y vence a medianoche.',
     quindio: 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).',
     cuponera: 'Encuesta para quienes compraron la cuponera física. El aviso sale en Recepción como «Feedback de cuponera pendiente».',
     atender: 'Clientes que calificaron mal (te llega también un aviso al celular) y clientes felices a quienes pedirles una reseña en Google.',
