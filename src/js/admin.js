@@ -15611,7 +15611,10 @@ function _renderMetricsPosRows(clients) {
         return             ['VIP',          'vip'];
     };
 
-    list.innerHTML = clients.map(u => {
+    // Tope de filas: pintar miles de clientes congela el panel. El buscador filtra sobre todos.
+    const _TOPE_POS = 150;
+    const _masPos = clients.length > _TOPE_POS ? clients.length - _TOPE_POS : 0;
+    list.innerHTML = clients.slice(0, _TOPE_POS).map(u => {
         const [bl, bc] = getBadge(u);
         const initials = (u.customerName || '?').split(' ').map(w => w[0] || '').slice(0, 2).join('').toUpperCase() || '?';
         const lastTs = u.lastOrderAt ? (u.lastOrderAt.seconds ? u.lastOrderAt.seconds * 1000 : u.lastOrderAt) : null;
@@ -15629,7 +15632,7 @@ function _renderMetricsPosRows(clients) {
                 <div class="met-user-stat-sub">${u.totalOrders || 0} pedidos</div>
             </div>
         </div>`;
-    }).join('');
+    }).join('') + (_masPos ? `<p class="met-empty-note">Se muestran ${_TOPE_POS} de ${clients.length}. Usa el buscador para encontrar a los otros ${_masPos}.</p>` : '');
 }
 
 async function _toggleMetricsUserDetail(row) {
