@@ -1,6 +1,7 @@
 const { onDocumentCreated, onDocumentWritten, onDocumentDeleted } = require('firebase-functions/v2/firestore');
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onMessagePublished } = require('firebase-functions/v2/pubsub');
 const { defineSecret } = require('firebase-functions/params');
 const { initializeApp }     = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
@@ -367,36 +368,95 @@ exports.bancoAviso = onRequest(
         const esperado = Buffer.from(BANCO_WEBHOOK_TOKEN.value());
         if (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) { res.status(401).json({ ok: false, error: 'clave' }); return; }
 
-        const { mensajeId, remitente, texto, prueba, correoMs } = req.body || {};
-        if (!mensajeId || typeof mensajeId !== 'string') { res.status(400).json({ ok: false, error: 'sin-id' }); return; }
-        if (!banco.REMITENTE_OK.test(String(remitente || ''))) { res.json({ ok: true, ignorado: 'remitente' }); return; }
-        const pago = prueba ? { nombre: 'Prueba Roal Burger', monto: 10000 } : banco.leerPagoRecibido(texto);
-        if (!pago) { res.json({ ok: true, ignorado: 'no-es-pago-recibido' }); return; }
+        const r = await procesarCorreoBanco(getFirestore(), req.body || {});
+        res.status(r.http || 200).json(r.body);
+    }
+);
 
-        const db = getFirestore();
-        const id = crypto.createHash('sha256').update(mensajeId).digest('hex').slice(0, 24);
-        // Si el cajero ya confirmó este pago con "Ya pagó" (y se dijo en voz alta), el correo se guarda en SILENCIO y se enlaza a ese cobro.
-        const cobrosQr = require('./cobrosQr');
-        const manual = prueba ? null : await cobrosQr.buscarManualPendiente(db, pago.monto);
+// Núcleo compartido: lo usan el Apps Script (bancoAviso) y el aviso inmediato de Gmail (gmailBancoPush).
+async function procesarCorreoBanco(db, { mensajeId, remitente, texto, prueba, correoMs }) {
+    const banco = require('./bancoAviso');
+    if (!mensajeId || typeof mensajeId !== 'string') return { http: 400, body: { ok: false, error: 'sin-id' } };
+    if (!banco.REMITENTE_OK.test(String(remitente || ''))) return { body: { ok: true, ignorado: 'remitente' } };
+    const pago = prueba ? { nombre: 'Prueba Roal Burger', monto: 10000 } : banco.leerPagoRecibido(texto);
+    if (!pago) return { body: { ok: true, ignorado: 'no-es-pago-recibido' } };
+    const id = crypto.createHash('sha256').update(mensajeId).digest('hex').slice(0, 24);
+    // Si el cajero ya confirmó este pago con "Ya pagó" (y se dijo en voz alta), el correo se guarda en SILENCIO y se enlaza a ese cobro.
+    const cobrosQr = require('./cobrosQr');
+    const manual = prueba ? null : await cobrosQr.buscarManualPendiente(db, pago.monto);
+    try {
+        await db.collection('avisos_banco').doc(id).create({
+            nombre: pago.nombre, monto: pago.monto, prueba: !!prueba,
+            frase: banco.frasePago(pago.nombre, pago.monto), creadoEn: FieldValue.serverTimestamp(),
+            ...(manual ? { silencioso: true, cobroId: manual.id } : {}),
+            ...(Number(correoMs) > 0 ? { correoMs: Number(correoMs) } : {})
+        });
+    } catch (err) {
+        if (err?.code === 6 || /already exists/i.test(err?.message || '')) return { body: { ok: true, ignorado: 'repetido' } };
+        console.error('bancoAviso:', err?.message || err);
+        return { http: 500, body: { ok: false, error: 'guardar' } };
+    }
+    // Si hay UN cobro con QR abierto por ese valor exacto (botón "Cobrar con QR" del POS), se enlaza y la TV agradece.
+    const enlace = prueba ? { enlazado: false, motivo: 'prueba' }
+        : manual ? await cobrosQr.enlazarManual(db, manual, { id, nombre: pago.nombre })
+        : await cobrosQr.enlazarPago(db, { id, nombre: pago.nombre, monto: pago.monto });
+    console.log('bancoAviso', JSON.stringify({ monto: pago.monto, prueba: !!prueba, cobro: enlace.enlazado ? enlace.cobroId : enlace.motivo }));
+    return { body: { ok: true, aviso: true, cobro: enlace.enlazado ? enlace.cobroId : null } };
+}
+
+// ── Aviso INMEDIATO: Gmail publica en Pub/Sub apenas llega el correo (sin esperar el minuto del Apps Script) ──
+const GMAIL_CLIENT_ID = defineSecret('GMAIL_OAUTH_CLIENT_ID');
+const GMAIL_CLIENT_SECRET = defineSecret('GMAIL_OAUTH_CLIENT_SECRET');
+const URL_CALLBACK = 'https://us-central1-roal-burger-menu.cloudfunctions.net/gmailBancoCallback';
+const estadoOAuth = () => crypto.createHash('sha256').update('gmail-banco:' + BANCO_WEBHOOK_TOKEN.value()).digest('hex').slice(0, 32);
+
+// Paso único: abrir .../gmailBancoAutorizar?clave=<BANCO_WEBHOOK_TOKEN> e iniciar sesión con el Gmail que recibe los correos del banco.
+exports.gmailBancoAutorizar = onRequest(
+    { region: 'us-central1', secrets: [GMAIL_CLIENT_ID, BANCO_WEBHOOK_TOKEN], cors: false, maxInstances: 2, cpu: 0.5 },
+    (req, res) => {
+        const a = Buffer.from(String(req.query.clave || '')), b = Buffer.from(BANCO_WEBHOOK_TOKEN.value());
+        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) { res.status(401).send('Clave incorrecta'); return; }
+        const q = new URLSearchParams({ client_id: GMAIL_CLIENT_ID.value(), redirect_uri: URL_CALLBACK, response_type: 'code',
+            scope: require('./gmailPush').ALCANCE, access_type: 'offline', prompt: 'consent', state: estadoOAuth() });
+        res.redirect('https://accounts.google.com/o/oauth2/v2/auth?' + q);
+    }
+);
+
+exports.gmailBancoCallback = onRequest(
+    { region: 'us-central1', secrets: [GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, BANCO_WEBHOOK_TOKEN], cors: false, maxInstances: 2, cpu: 0.5 },
+    async (req, res) => {
+        const gp = require('./gmailPush');
+        if (req.query.state !== estadoOAuth() || !req.query.code) { res.status(400).send('Solicitud no válida'); return; }
         try {
-            await db.collection('avisos_banco').doc(id).create({
-                nombre: pago.nombre, monto: pago.monto, prueba: !!prueba,
-                frase: banco.frasePago(pago.nombre, pago.monto), creadoEn: FieldValue.serverTimestamp(),
-                ...(manual ? { silencioso: true, cobroId: manual.id } : {}),
-                ...(Number(correoMs) > 0 ? { correoMs: Number(correoMs) } : {})
-            });
-        } catch (err) {
-            if (err?.code === 6 || /already exists/i.test(err?.message || '')) { res.json({ ok: true, ignorado: 'repetido' }); return; }
-            console.error('bancoAviso:', err?.message || err);
-            res.status(500).json({ ok: false, error: 'guardar' });
-            return;
-        }
-        // Si hay UN cobro con QR abierto por ese valor exacto (botón "Cobrar con QR" del POS), se enlaza y la TV agradece.
-        const enlace = prueba ? { enlazado: false, motivo: 'prueba' }
-            : manual ? await cobrosQr.enlazarManual(db, manual, { id, nombre: pago.nombre })
-            : await cobrosQr.enlazarPago(db, { id, nombre: pago.nombre, monto: pago.monto });
-        console.log('bancoAviso', JSON.stringify({ monto: pago.monto, prueba: !!prueba, cobro: enlace.enlazado ? enlace.cobroId : enlace.motivo }));
-        res.json({ ok: true, aviso: true, cobro: enlace.enlazado ? enlace.cobroId : null });
+            const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ code: String(req.query.code), client_id: GMAIL_CLIENT_ID.value(), client_secret: GMAIL_CLIENT_SECRET.value(), redirect_uri: URL_CALLBACK, grant_type: 'authorization_code' }) });
+            const j = await r.json();
+            if (!j.refresh_token) { res.status(400).send('Google no entregó el permiso permanente (' + (j.error || 'sin refresh_token') + '). Vuelve a intentar.'); return; }
+            const db = getFirestore();
+            await gp.refDoc(db).set({ refreshToken: j.refresh_token, autorizadoEn: Date.now() }, { merge: true });
+            const w = await gp.activarWatch(db, j.access_token);
+            res.send('Listo: los pagos de Bancolombia se avisarán al instante. Ya puedes cerrar esta ventana. (vigila hasta ' + new Date(Number(w.expiration)).toISOString() + ')');
+        } catch (e) { console.error('gmailBancoCallback:', e?.message || e); res.status(500).send('Error: ' + (e?.message || e)); }
+    }
+);
+
+exports.gmailBancoPush = onMessagePublished(
+    { topic: 'gmail-banco', region: 'us-central1', secrets: [GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET], cpu: 0.5, maxInstances: 3 },
+    async () => {
+        const gp = require('./gmailPush'), banco = require('./bancoAviso'), db = getFirestore();
+        const token = await gp.tokenAcceso(db, GMAIL_CLIENT_ID.value(), GMAIL_CLIENT_SECRET.value());
+        const n = await gp.procesarNuevos(db, token, (c) => procesarCorreoBanco(db, c), banco.REMITENTE_OK);
+        console.log('gmailBancoPush', JSON.stringify({ correosBanco: n }));
+    }
+);
+
+// El watch de Gmail caduca a los 7 días: se renueva todos los días.
+exports.gmailBancoRenovar = onSchedule(
+    { schedule: 'every day 04:00', timeZone: 'America/Bogota', region: 'us-central1', secrets: [GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET], cpu: 0.5 },
+    async () => {
+        const gp = require('./gmailPush'), db = getFirestore();
+        const token = await gp.tokenAcceso(db, GMAIL_CLIENT_ID.value(), GMAIL_CLIENT_SECRET.value());
+        await gp.activarWatch(db, token);
     }
 );
 
@@ -465,6 +525,18 @@ exports.vigilarAvisosBanco = onSchedule(
 // Un dispositivo se activó (admin_fcm_tokens nuevo) o pidió una prueba (probarAt cambió) → aviso de bienvenida
 // SOLO a ese dispositivo. Así el dueño sabe al instante que los avisos le van a llegar.
 // ─────────────────────────────────────────────────────────────
+// Aviso al celular cuando aparece alguien en Feedback › Campañas › Nuevo cliente (escribió por WhatsApp, no está registrado y no pidió).
+// Cada 15 min, de 10 a. m. a 10 p. m. (Bogotá). Ver functions/fodiNuevoCliente.js → avisarNuevos.
+exports.avisarNuevoCliente = onSchedule(
+    { cpu: 0.5, schedule: 'every 15 minutes', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        const hora = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
+        if (hora < 10 || hora >= 22) return;
+        const r = await require('./fodiNuevoCliente').avisarNuevos(getFirestore());
+        console.log('avisarNuevoCliente', JSON.stringify(r));
+    }
+);
+
 exports.notifyTokenActivado = onDocumentWritten(
     { cpu: 0.5, document: 'admin_fcm_tokens/{tokenDoc}', region: 'us-central1' },
     async (event) => {

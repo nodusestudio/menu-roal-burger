@@ -5,6 +5,7 @@
 
 const DIA_MS = 86400000;
 const MAX_HORAS = 12;
+const VENTANA_COMPRA_MS = 24 * 3600000; // «compraron después» = pedido dentro de las 24 h siguientes a la oferta
 const ms = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : Number(t) || 0);
 const llave = (v) => String(v || '').replace(/\D/g, '').slice(-10);
 
@@ -15,11 +16,13 @@ async function nuevoCliente(db, args = {}, ahora = Date.now()) {
     const espera = (Number(cfg.nuevoEsperaMin) || 30) * 60000;
     const desdeEnvios = ahora - dias * DIA_MS;
 
-    const [convSnap, cliSnap, envSnap, pedSnap] = await Promise.all([
-        db.collection('agent_conversations').orderBy('updatedAt', 'desc').limit(200).get(),
+    const [convSnap, cliSnap, envSnap, pedSnap, arcSnap] = await Promise.all([
+        db.collection('agent_conversations').orderBy('updatedAt', 'desc').limit(500).get(),
         db.collection('clientes').get(),
         db.collection('fidelizacion_envios').where('motivo', '==', 'nuevo').get(),
-        db.collection('pedidos').get()
+        db.collection('pedidos').get(),
+        // Pedidos cerrados (archivados) del periodo: solo para contar «compraron después».
+        db.collection('pedidos_archivados').where('createdAt', '>=', new Date(desdeEnvios)).get()
     ]);
     const registrados = new Set(cliSnap.docs.map((d) => { const x = d.data() || {}; return llave(x.customerPhoneDigits || x.customerPhone || x.telefono || d.id); }).filter(Boolean));
     const pedidos = pedSnap.docs.map((d) => d.data() || {}).filter((o) => !o.anulado && !o.voided);
@@ -36,10 +39,12 @@ async function nuevoCliente(db, args = {}, ahora = Date.now()) {
         && !registrados.has(x.k) && !conPedido.has(x.k) && !yaOfrecido.has(x.k));
 
     const recientes = envios.filter((e) => ms(e.creadoAt) >= desdeEnvios);
+    const compradores = pedidos.concat(arcSnap.docs.map((d) => d.data() || {}).filter((o) => !o.anulado && !o.voided));
     let compraron = 0; let ventas = 0;
     recientes.forEach((e) => {
         const k = llave(e.telefono); const t0 = ms(e.creadoAt);
-        const ped = pedidos.filter((o) => llave(o.customerPhoneDigits || o.customerPhone) === k && ms(o.createdAt) >= t0);
+        const ped = compradores.filter((o) => llave(o.customerPhoneDigits || o.customerPhone) === k && ms(o.createdAt) >= t0 && ms(o.createdAt) <= t0 + VENTANA_COMPRA_MS)
+            .sort((a, b) => ms(a.createdAt) - ms(b.createdAt));
         if (ped.length) { compraron++; ventas += Number(ped[0].subtotal != null ? ped[0].subtotal : ped[0].total) || 0; }
     });
     return {
@@ -53,7 +58,7 @@ async function nuevoCliente(db, args = {}, ahora = Date.now()) {
         oferta_actual: cfg.nuevoOferta || 'unas papas gratis con tu pedido',
         vigencia_horas: Number(cfg.nuevoHoras) || 3,
         espera_min: espera / 60000,
-        nota: 'Los pedidos de «compraron_despues» se miran solo en los pedidos activos (no en archivados). El mensaje se copia a mano en el panel: Feedback › Campañas › Nuevo cliente. Para cambiar regalo/espera/vigencia: Feedback › Ajustes.'
+        nota: 'Los pedidos de «compraron_despues» cuentan pedidos activos y archivados hechos dentro de las 24 h siguientes a la oferta. El mensaje se copia a mano en el panel: Feedback › Campañas › Nuevo cliente. Para cambiar regalo/espera/vigencia: Feedback › Ajustes.'
     };
 }
 
@@ -63,4 +68,29 @@ const TOOL = {
     input_schema: { type: 'object', properties: { dias: { type: 'number', description: 'Ventana para ofertas enviadas/resultados (1-90, por defecto 30).' } } }
 };
 
-module.exports = { nuevoCliente, TOOL };
+// Aviso push: cada vez que aparece alguien NUEVO en la lista «Para escribir ahora» (una sola vez por número).
+// Estado en configuracion/nuevo_cliente_aviso { avisados: { <10 dígitos>: ms } }; se limpia lo de más de 2 días.
+async function avisarNuevos(db, ahora = Date.now(), enviar = null) {
+    const r = await nuevoCliente(db, {}, ahora);
+    const ref = db.collection('configuracion').doc('nuevo_cliente_aviso');
+    const snap = await ref.get();
+    const prev = (snap.exists && snap.data().avisados) || {};
+    const vigentes = {};
+    Object.keys(prev).forEach((k) => { if (ahora - Number(prev[k]) < 2 * DIA_MS) vigentes[k] = prev[k]; });
+    const nuevos = r.lista.filter((x) => !vigentes[llave(x.telefono)]);
+    if (!nuevos.length) return { avisados: 0, lista: r.para_escribir_ahora };
+    const push = enviar || ((o) => require('./pushAdmin').enviarPush(db, o));
+    const primero = nuevos[0];
+    await push({
+        title: nuevos.length === 1 ? '🆕 Escribió y no pidió' : `🆕 ${nuevos.length} personas escribieron y no pidieron`,
+        body: nuevos.length === 1 ? `${primero.nombre || primero.telefono} · hace ${primero.hace_min} min${primero.ultimo_mensaje ? ` · «${primero.ultimo_mensaje}»` : ''}. Envíale la oferta exprés.` : 'Entra a Feedback › Campañas › Nuevo cliente para enviarles la oferta.',
+        tag: 'roal-nuevo-cliente',
+        url: '/admin.html',
+        tipo: 'nuevo_cliente_oferta'
+    });
+    nuevos.forEach((x) => { vigentes[llave(x.telefono)] = ahora; });
+    await ref.set({ avisados: vigentes, actualizadoAt: ahora });
+    return { avisados: nuevos.length, lista: r.para_escribir_ahora };
+}
+
+module.exports = { nuevoCliente, avisarNuevos, TOOL };

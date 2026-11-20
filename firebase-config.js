@@ -44,7 +44,7 @@ function initFirebaseServices() {
     // veces si esta funcion se invoca mas de una vez en la misma pagina.
     if (!window._firestoreSettingsApplied) {
         window._firestoreSettingsApplied = true;
-        try { db.settings({ experimentalForceLongPolling: true }); } catch (_e) {}
+        try { db.settings({ experimentalForceLongPolling: true, merge: true }); } catch (_e) {}
     }
 
     // Emuladores locales — DESPUES de db.settings(): en este SDK compat, llamar settings()

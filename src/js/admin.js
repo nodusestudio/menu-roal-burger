@@ -14509,7 +14509,7 @@ const _nuevoOcupado = new Set();
 
 function _nuevoIniciar() {
     if (_nuevoUnsub || !firebaseDb) return;
-    _nuevoUnsub = firebaseDb.collection('agent_conversations').orderBy('updatedAt', 'desc').limit(200).onSnapshot((snap) => {
+    _nuevoUnsub = firebaseDb.collection('agent_conversations').orderBy('updatedAt', 'desc').limit(500).onSnapshot((snap) => {
         _nuevoConvs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         if (_fbTipo === 'nuevo') renderMetricasFeedback();
     }, (err) => console.warn('[Nuevo cliente] conversaciones:', err.code || err.message));
@@ -14552,7 +14552,7 @@ function _fidNuevoHtml() {
     let compraron = 0; let ventas = 0;
     envios.forEach((e) => {
         const k = _sqPhoneKey(e.telefono); const t0 = _tsMs(e.creadoAt);
-        const ped = todosOrd.filter((o) => o && o.anulado !== true && o.voided !== true && _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) === k && _tsMs(o.createdAt) >= t0);
+        const ped = todosOrd.filter((o) => o && o.anulado !== true && o.voided !== true && _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) === k && _tsMs(o.createdAt) >= t0 && _tsMs(o.createdAt) <= t0 + 24 * 3600000).sort((a, b) => _tsMs(a.createdAt) - _tsMs(b.createdAt));
         if (ped.length) { compraron += 1; ventas += Number(ped[0].subtotal ?? ped[0].total ?? 0); }
     });
     const hace = (ms) => { const m = Math.max(0, Math.round((hoyMs - ms) / 60000)); return m < 60 ? `${m} min` : `${Math.round(m / 60)} h`; };
@@ -32150,7 +32150,9 @@ function _conteoCierreHtml(c, modo) {
     const col = r.estado === 'cuadra' ? '#6ee7b7' : (r.estado === 'falta' ? '#fca5a5' : '#fbbf24');
     const txt = r.estado === 'cuadra' ? '✅ Cuadra exacto' : (r.estado === 'falta' ? `⚠️ Faltaron ${formatMoney(-r.dif)}` : `ℹ️ Sobraron ${formatMoney(r.dif)}`);
     const pad = modo === 'ticket' ? 'margin-top:10px;padding-top:8px;border-top:1px dashed #3a2e26;font-size:12px;' : 'padding:10px 20px;border-top:1px solid rgba(255,255,255,0.08);font-size:0.82rem;';
-    return `<div class="cierre-conteo" style="${pad}"><div style="display:flex;justify-content:space-between;"><span>Efectivo esperado</span><span>${formatMoney(r.esperado)}</span></div>
+    const par = (n, e, k) => (Number.isFinite(Number(c[k])) && c[k] !== null && c[k] !== undefined) ? `<div style="display:flex;justify-content:space-between;"><span>${n}</span><span>${formatMoney(Number(c[k]))} / ${formatMoney(Number(c[e]) || 0)}</span></div>` : '';
+    const desglose = par('Fondo contado / debía', 'fondoEsperado', 'fondoContado') + par('Entró contado / debía', 'ventasEfectivoEsperado', 'ventasEfectivoContado');
+    return `<div class="cierre-conteo" style="${pad}">${desglose}<div style="display:flex;justify-content:space-between;"><span>Efectivo esperado</span><span>${formatMoney(r.esperado)}</span></div>
         <div style="display:flex;justify-content:space-between;"><span>Efectivo contado</span><span>${formatMoney(r.contado)}</span></div>
         <div style="display:flex;justify-content:space-between;font-weight:700;color:${col};"><span>${txt}</span></div></div>`;
 }
@@ -32262,6 +32264,8 @@ function buildCierreESCPOSData(c, dateStr, timeStr) {
     sep2();
     const _cr = conteoResumen(c);
     if (_cr) {
+        if (c.fondoContado !== undefined && c.fondoContado !== null) wc('Fondo contado', formatMoney(Number(c.fondoContado)));
+        if (c.ventasEfectivoContado !== undefined && c.ventasEfectivoContado !== null) wc('Entro contado', formatMoney(Number(c.ventasEfectivoContado)));
         wc('Efectivo esperado', formatMoney(_cr.esperado));
         wc('Efectivo contado', formatMoney(_cr.contado));
         wc(_cr.estado === 'cuadra' ? 'Cuadra exacto' : (_cr.estado === 'falta' ? 'FALTAN' : 'SOBRAN'), _cr.estado === 'cuadra' ? formatMoney(0) : formatMoney(Math.abs(_cr.dif)));
@@ -32346,50 +32350,77 @@ function conteoResumen(c) {
 }
 // SYNC:conteo-cierre:fin
 
-// Pide contar el efectivo del cajón antes de cerrar. Devuelve el monto contado, o null si se omite.
-function _pedirConteoEfectivo(esperado) {
+// Última ventana antes de cerrar: cuenta el FONDO (lo que había al abrir) y el EFECTIVO DE VENTAS por separado, y pregunta si imprime.
+// Devuelve { fondo, ventas, imprimir } (fondo/ventas = null si no se cuenta) o null si se cancela (no se cierra nada).
+function _pedirConteoEfectivo(esperadoFondo, esperadoVentas) {
     return new Promise((resolve) => {
         document.getElementById('_conteoEfectivoOverlay')?.remove();
         const ov = document.createElement('div');
         ov.id = '_conteoEfectivoOverlay';
         ov.className = 'vd-overlay';
-        ov.innerHTML = `<div class="vd-card"><button type="button" class="vd-x" data-ce-skip aria-label="Cerrar">×</button>
-            <h3 class="vd-title">💵 Cuenta el efectivo del cajón</h3>
-            <p class="vd-text">Debe haber <strong>${escapeHtml(formatMoney(esperado))}</strong> (fondo + efectivo de la jornada). Cuenta los billetes y monedas y escribe el total.</p>
-            <div class="vd-body"><input id="_ceMonto" class="vd-input" inputmode="numeric" placeholder="Efectivo contado" autocomplete="off">
-            <div id="_ceDif" class="vd-hint"></div>
-            <button type="button" class="informes-action-btn informes-action-btn--primary vd-btn" data-ce-ok>Registrar conteo</button>
-            <button type="button" class="informes-action-btn vd-btn" data-ce-skip>Cerrar sin contar</button></div></div>`;
+        const hayFondo = esperadoFondo > 0;
+        const campo = (id, titulo, esperado, nota) => `<label style="display:block;text-align:left;margin-top:8px;font-weight:700;font-size:0.85rem;">${titulo}</label>
+            <div style="text-align:left;font-size:0.76rem;opacity:0.7;margin-bottom:3px;">${nota} Debe haber <strong>${escapeHtml(formatMoney(esperado))}</strong></div>
+            <input id="${id}" class="vd-input" inputmode="numeric" placeholder="Contado" autocomplete="off"><div id="${id}Dif" class="vd-hint"></div>`;
+        ov.innerHTML = `<div class="vd-card"><button type="button" class="vd-x" data-ce-cancel aria-label="Cancelar">×</button>
+            <h3 class="vd-title">💵 Cuenta el cajón</h3>
+            <div class="vd-body">
+            ${hayFondo ? campo('_ceFondo', '1) Fondo del cajón', esperadoFondo, 'Lo que había al abrir (no son ventas).') : ''}
+            ${campo('_ceVentas', hayFondo ? '2) Efectivo que entró' : 'Efectivo que entró', esperadoVentas, 'Ventas − gastos en efectivo de la jornada.')}
+            <label style="display:flex;gap:8px;align-items:center;margin:12px 0 4px;font-size:0.85rem;"><input type="checkbox" id="_ceImprimir" checked> 🖨️ Imprimir ticket de cierre</label>
+            <button type="button" class="informes-action-btn informes-action-btn--danger-solid vd-btn" data-ce-ok>🔒 Cerrar caja</button>
+            <button type="button" class="informes-action-btn vd-btn" data-ce-skip>Cerrar sin contar</button>
+            <button type="button" class="informes-action-btn vd-btn" data-ce-cancel>Volver</button></div></div>`;
         document.body.appendChild(ov);
-        const inp = ov.querySelector('#_ceMonto');
-        const val = () => { const d = String(inp.value).replace(/\D/g, ''); return d === '' ? null : Number(d); };
+        const inpF = ov.querySelector('#_ceFondo'), inpV = ov.querySelector('#_ceVentas');
+        const num = (inp) => { if (!inp) return null; const d = String(inp.value).replace(/\D/g, ''); return d === '' ? null : Number(d); };
         const fin = (v) => { ov.remove(); resolve(v); };
-        inp.addEventListener('input', () => {
-            const v = val();
-            inp.value = v === null ? '' : v.toLocaleString('es-CO');
-            const dif = v === null ? null : conteoDiferencia(esperado, v);
-            ov.querySelector('#_ceDif').textContent = dif === null ? '' : (dif === 0 ? '✅ Cuadra exacto' : (dif < 0 ? `⚠️ Faltan ${formatMoney(-dif)}` : `ℹ️ Sobran ${formatMoney(dif)}`));
-        });
+        const bind = (inp, esperado) => {
+            if (!inp) return;
+            inp.addEventListener('input', () => {
+                const v = num(inp);
+                inp.value = v === null ? '' : v.toLocaleString('es-CO');
+                const dif = v === null ? null : conteoDiferencia(esperado, v);
+                ov.querySelector('#' + inp.id + 'Dif').textContent = dif === null ? '' : (dif === 0 ? '✅ Cuadra exacto' : (dif < 0 ? `⚠️ Faltan ${formatMoney(-dif)}` : `ℹ️ Sobran ${formatMoney(dif)}`));
+            });
+        };
+        bind(inpF, esperadoFondo); bind(inpV, esperadoVentas);
         ov.addEventListener('click', (e) => {
-            if (e.target.closest('[data-ce-ok]')) { const v = val(); if (v === null) { inp.focus(); return; } fin(v); }
-            else if (e.target.closest('[data-ce-skip]')) fin(null);
+            const imprimir = !!ov.querySelector('#_ceImprimir')?.checked;
+            if (e.target.closest('[data-ce-ok]')) {
+                const f = num(inpF), v = num(inpV);
+                if (hayFondo && f === null) { inpF.focus(); return; }
+                if (v === null) { inpV.focus(); return; }
+                fin({ fondo: hayFondo ? f : null, ventas: v, imprimir });
+            }
+            else if (e.target.closest('[data-ce-skip]')) fin({ fondo: null, ventas: null, imprimir });
+            else if (e.target.closest('[data-ce-cancel]')) fin(null);
         });
-        inp.focus();
+        (inpF || inpV).focus();
     });
 }
 
+let _cierreEnCurso = false;
 document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async () => {
     if (!_pendingCierreDoc) return;
     let { closureDoc, closureId, ticketHtml, dateStr, timeStr } = _pendingCierreDoc;
 
+    if (_cierreEnCurso) return; // evita que varios clics abran varias ventanas / cierren dos veces
+    _cierreEnCurso = true;
+    let imprimir = true;
     // Conteo del efectivo (opcional): queda guardado en el cierre con su diferencia; no cambia ningún total.
     if (!closureDoc.efectivoContado && closureDoc.efectivoContado !== 0) {
-        const _esperado = efectivoEsperado(closureDoc.fondoInicial, closureDoc.methodTotals, 'efectivo').esperado;
-        const _contado = await _pedirConteoEfectivo(_esperado);
-        if (_contado !== null) {
-            closureDoc.efectivoEsperado = _esperado;
+        const _ed = efectivoEsperado(closureDoc.fondoInicial, closureDoc.methodTotals, 'efectivo');
+        const _r = await _pedirConteoEfectivo(_ed.fondo, _ed.efectivoNeto);
+        if (_r === null) { _cierreEnCurso = false; return; } // "Volver": no se cierra nada
+        imprimir = _r.imprimir;
+        if (_r.ventas !== null) {
+            const _contado = (_r.fondo || 0) + _r.ventas;
+            closureDoc.efectivoEsperado = _ed.esperado;
             closureDoc.efectivoContado = _contado;
-            closureDoc.diferenciaEfectivo = conteoDiferencia(_esperado, _contado);
+            closureDoc.diferenciaEfectivo = conteoDiferencia(_ed.esperado, _contado);
+            closureDoc.ventasEfectivoEsperado = _ed.efectivoNeto; closureDoc.ventasEfectivoContado = _r.ventas;
+            if (_r.fondo !== null) { closureDoc.fondoEsperado = _ed.fondo; closureDoc.fondoContado = _r.fondo; }
             ticketHtml = _buildCierreTicketHtml(closureDoc, dateStr, timeStr); // el ticket ya incluye el conteo
         }
     }
@@ -32398,7 +32429,6 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
     const confirmBtn = document.getElementById('cierreCajaConfirmBtn');
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Imprimiendo...'; }
 
-    const imprimir = await showConfirmModal({ icon: '🖨️', title: '¿Imprimir el ticket de cierre?', confirmText: 'Imprimir', cancelText: 'No, gracias', danger: false });
     if (imprimir) {
         _cierrePrintData = { c: closureDoc, dateStr, timeStr };
         await _printCierreTicket(ticketHtml);
@@ -32491,6 +32521,7 @@ document.getElementById('cierreCajaConfirmBtn')?.addEventListener('click', async
     } catch (err) {
         showNotice(`Error al guardar cierre: ${err.message || 'error inesperado.'}`, 'error');
     } finally {
+        _cierreEnCurso = false;
         if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '🔒 Cerrar caja'; }
     }
 });
@@ -32904,10 +32935,11 @@ function _showFeedbackCierreGate(orders, onDone) {
 document.getElementById('cerrarCajaBtn')?.addEventListener('click', () => {
     const pendientes = _getFeedbackPendingForClose();
     if (pendientes.length) {
-        _showFeedbackCierreGate(pendientes, () => _showCerrarCajaConfirm(() => cerrarCaja()));
+        _showFeedbackCierreGate(pendientes, () => cerrarCaja());
         return;
     }
-    _showCerrarCajaConfirm(() => cerrarCaja());
+    // La vista previa del cierre ya es la confirmación: se quitó la ventana extra "¿Cerrar la caja?".
+    cerrarCaja();
 });
 
 // ── Apertura de Caja ──────────────────────────────────────────────────────────
