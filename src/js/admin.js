@@ -12819,7 +12819,7 @@ function _fbAttach() {
                 const x = d.data();
                 return {
                     id: d.id, orderCode: String(x.orderCode || ''), name: String(x.customerName || ''), phone: String(x.customerPhone || ''),
-                    tipo: ['general', 'cuponera'].includes(x.tipo) ? x.tipo : 'quindio', cumple: String(x.cumple || ''), clientId: String(x.clientId || ''), requiere: x.requiereAtencion === true, motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [], q1: x.q1, q2: x.q2, q3: x.q3, q1d: Array.isArray(x.q1d) ? x.q1d : [], q2d: Array.isArray(x.q2d) ? x.q2d : [], q4: String(x.q4 || '').trim(), points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
+                    tipo: ['general', 'cuponera'].includes(x.tipo) ? x.tipo : 'quindio', cumple: String(x.cumple || ''), clientId: String(x.clientId || ''), requiere: x.requiereAtencion === true, motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [], q1: x.q1, q2: x.q2, q3: x.q3, q1d: Array.isArray(x.q1d) ? x.q1d : [], q2d: Array.isArray(x.q2d) ? x.q2d : [], q4: String(x.q4 || '').trim(), q5: String(x.q5 || '').trim(), cup: (x.cuponera && typeof x.cuponera === 'object') ? x.cuponera : {}, points: Number(x.pointsAwarded || 0), ts: _tsMs(x.createdAt)
                 };
             });
             renderMetricasFeedback();
@@ -13040,10 +13040,62 @@ function _fbRecompra() {
     return { ...grupos, enCurso };
 }
 
+// Etiquetas del cuestionario de la cuponera (los valores los fija functions/feedbackTipo.js).
+const FB_CUP = {
+    sistema: ['¿Qué les pareció el sistema de cupones?', { muy_bueno: ['🤩', 'Muy bueno'], bueno: ['👍', 'Bueno'], regular: ['😐', 'Regular'], malo: ['👎', 'Malo'] }, '#ff7a1a'],
+    sinCupon: ['¿Habrían pedido sin la cuponera?', { si: ['✅', 'Sí, igual pedían'], no: ['🎟️', 'No, fue por la cuponera'], no_conocia: ['🆕', 'No nos conocían'] }, '#a78bfa'],
+    recompra: ['¿Comprarían otra cuponera?', { seguro: ['💯', 'Seguro'], tal_vez: ['🤔', 'Tal vez'], no: ['🚫', 'No'] }, '#4ade80'],
+    precio: ['¿Cuánto pagarían por una así?', { menos: ['⬇️', 'Menos'], igual: ['🟰', 'Igual'], mas: ['⬆️', 'Más'] }, '#60a5fa']
+};
+
+function _fbRenderCuponera(body) {
+    const rows = _fbRows();
+    const total = rows.length;
+    const solicitudes = _fbSeguimiento().reduce((n, d) => n + d.items.filter((x) => x.estado === 'enviado' || x.estado === 'respondio').length, 0);
+    const positivas = rows.filter(_fbPositiva).length;
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const fmt = (ts) => new Date(ts).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const kpi = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
+    const cuenta = (get, labels) => Object.keys(labels).map((k) => { const n = rows.filter((r) => get(r) === k).length; return { label: `${labels[k][0]} ${labels[k][1]} · ${_fbPct(n, total)}%`, val: n }; });
+    const dayMap = new Map();
+    rows.forEach((r) => { if (r.ts) { const k = _sqDayKey(r.ts); dayMap.set(k, (dayMap.get(k) || 0) + 1); } });
+    const dayData = [...dayMap.entries()].sort().map(([k, v]) => ({ label: k.slice(5), val: v }));
+    const sugLista = (campo, titulo, ico) => {
+        const l = rows.filter((r) => r[campo]);
+        const html = l.slice(0, 40).map((r) => `<div class="met-user-row-v2"><div class="met-avatar">${ico}</div><div class="met-user-info-v2"><div class="met-user-name-v2" style="white-space:normal">${escapeHtml(r[campo])}</div><div class="met-user-meta-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${escapeHtml(fmt(r.ts))}</div></div></div>`).join('');
+        return `<article class="admin-card"><div class="met-section-title">${ico} ${titulo} <small style="font-size:0.72rem;opacity:0.55;font-weight:400">· ${nf(l.length)}</small></div><div class="metrics-users-list">${html || '<p class="met-empty-note">Aún no hay respuestas.</p>'}</div></article>`;
+    };
+    const nav = _fbNavTipoHtml('<p class="admin-hint" style="margin:6px 0 10px">Encuesta para quienes compraron la cuponera física (bonos del POS). El aviso sale en Recepción de Pedidos como «Feedback de cuponera pendiente».</p>');
+    body.innerHTML = nav + rangoSelectorHtml('fb') + `
+        <article class="admin-card">
+            <div class="met-section-title">🎟️ Feedback de la cuponera <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en vivo</small></div>
+            <div class="met-kpi-row">
+                ${kpi('met-kpi-card--hi', nf(total), 'Respuestas')}
+                ${kpi('', nf(solicitudes), 'Solicitudes enviadas')}
+                ${kpi('met-kpi-card--purple', `${_fbPct(total, solicitudes)}%`, 'Tasa de respuesta')}
+                ${kpi('met-kpi-card--green', `${_fbPct(positivas, total)}%`, 'Satisfacción (Brutal + Muy buena)')}
+            </div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">Análisis de respuestas</div>
+            <div class="met-analytics-grid">
+                <div class="met-analytics-card"><div class="met-analytics-title">¿Qué tal el sabor y la calidad?</div><div id="fbQ1Chart"></div></div>
+                ${Object.keys(FB_CUP).map((k) => `<div class="met-analytics-card"><div class="met-analytics-title">${FB_CUP[k][0]}</div><div id="fbCup_${k}"></div></div>`).join('')}
+                <div class="met-analytics-card"><div class="met-analytics-title">Respuestas por día</div><div id="fbDayChart"></div></div>
+            </div>
+        </article>
+        ${sugLista('q4', 'Qué les gustaría que incluyera', '💡')}
+        ${sugLista('q5', 'Qué cambiarían o quitarían', '🔧')}`;
+    _renderBarChart('fbQ1Chart', _fbCount(rows, 'q1', FB_Q1).map((c) => ({ label: `${FB_Q1[c.val][0]} ${FB_Q1[c.val][1]} · ${_fbPct(c.n, total)}%`, val: c.n })), '#ff7a1a');
+    Object.keys(FB_CUP).forEach((k) => _renderBarChart(`fbCup_${k}`, cuenta((r) => r.cup && r.cup[k], FB_CUP[k][1]), FB_CUP[k][2]));
+    _renderBarChart('fbDayChart', dayData, '#34d399');
+}
+
 function renderMetricasFeedback() {
     const body = document.getElementById('fbBody');
     if (!body) return;
     if (FB_TIPOS_FID.includes(_fbTipo)) { _fbRenderFid(body); _fbBind(body); return; }
+    if (_fbTipo === 'cuponera') { _fbRenderCuponera(body); _fbBind(body); return; }
     const M = _fbMaps();
     const rows = _fbRows();
     const total = rows.length;
@@ -13208,6 +13260,8 @@ let _cumpleQ = '';
 const TEMP_DEF = [{ id: 'sq-2026-1', nombre: 'Sabe a Quindío · Edición 1 (2026)', inicio: SQ_INICIO_MS, fin: 0, palabra: 'trifasica' }];
 let _tempEdiciones = null;
 let _tempCargando = false;
+let _tempNueva = false; // «Nueva edición» plegada por defecto
+let _tempDiag = false; // detalle técnico plegado por defecto
 let _tempVerCerradas = false; // las ediciones cerradas se ocultan hasta que se pide verlas
 
 async function _tempCargar() {
@@ -13290,27 +13344,39 @@ function _tempHtml() {
     const errores = cols.filter((c) => _sqEstado[c] && _sqEstado[c] !== 'ok');
     const listos = cols.every((c) => _sqEstado[c] === 'ok') && _metricsOrdersLoadedAt > 0;
     const aviso = errores.length
-        ? `<article class="admin-card"><p class="met-empty-note" style="color:#f87171">⚠️ No se pudieron leer los pedidos (${errores.map((c) => `${c}: ${escapeHtml(_sqEstado[c])}`).join(' · ')}). Las cifras de abajo están incompletas. <button type="button" class="ghost-button" data-temp-reintentar>Reintentar</button></p></article>`
-        : (listos ? '' : '<article class="admin-card"><p class="met-empty-note">⏳ Cargando pedidos y clientes… las cifras se actualizan solas en unos segundos.</p></article>');
+        ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:12px;border-radius:12px;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.35);font-size:.85rem">⚠️ <span>No se pudieron leer los pedidos (${errores.map((c) => `${c}: ${escapeHtml(_sqEstado[c])}`).join(' · ')}). Las cifras están incompletas.</span> <button type="button" class="ghost-button" data-temp-reintentar>Reintentar</button></div>`
+        : (listos ? '' : '<div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;margin-bottom:12px;border-radius:999px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);font-size:.8rem">⏳ Cargando cifras… se actualizan solas</div>');
     const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const fecha = (ms) => new Date(ms).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric' });
     // La más nueva arriba. Las cerradas se ocultan (con su columna en la tabla) hasta pulsar «Ver ediciones cerradas».
     const lista = _tempEdiciones.slice().sort((a, b) => b.inicio - a.inicio);
     const nCerradas = lista.filter((e) => e.fin).length;
-    const visibles = _tempVerCerradas ? lista : lista.filter((e) => !e.fin);
+    const hayEnCurso = lista.some((e) => !e.fin);
+    // Sin ediciones en curso se muestran las cerradas (si no, la pestaña queda vacía y parece que no hay métricas).
+    const visibles = (_tempVerCerradas || !hayEnCurso) ? lista : lista.filter((e) => !e.fin);
     const stats = visibles.map((e) => ({ e, s: _tempStats(e) }));
+    const kp = (cls, val, lbl) => `<div class="met-kpi-card ${cls}"><span class="met-kpi-val">${val}</span><span class="met-kpi-lbl">${lbl}</span></div>`;
     const cartas = stats.map(({ e, s }) => {
         const enCurso = !e.fin; // con fecha de cierre ya está cerrada (si el cierre es hoy, se dice «termina hoy»)
         const cierraHoy = !!e.fin && e.fin > Date.now();
-        return `<div class="met-user-row-v2">
-            <div class="met-avatar">${enCurso ? '🟢' : '🏁'}</div>
-            <div class="met-user-info-v2">
-                <div class="met-user-name-v2">${escapeHtml(e.nombre)}</div>
-                <div class="met-user-meta-v2">${fecha(e.inicio)} → ${e.fin ? fecha(e.fin - 86400000) : 'sin cierre'} · ${enCurso ? '<strong style="color:#34d399">En curso</strong>' : (cierraHoy ? '<strong style="color:#fbbf24">Cerrada · termina hoy</strong>' : 'Cerrada')} · ${s.dias} día${s.dias === 1 ? '' : 's'} · producto «${escapeHtml(e.palabra || '—')}»</div>
+        return `<div style="border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px;margin-bottom:12px;background:rgba(255,255,255,.03)">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <div style="font-size:1.4rem">${enCurso ? '🟢' : '🏁'}</div>
+                <div style="flex:1;min-width:180px">
+                    <div style="font-weight:700;font-size:1rem">${escapeHtml(e.nombre)}</div>
+                    <div class="admin-hint" style="margin:2px 0 0">${fecha(e.inicio)} → ${e.fin ? fecha(e.fin - 86400000) : 'sin cierre'} · ${s.dias} día${s.dias === 1 ? '' : 's'} · producto «${escapeHtml(e.palabra || '—')}»</div>
+                </div>
+                <span style="padding:3px 12px;border-radius:999px;font-size:.75rem;font-weight:700;background:${enCurso ? 'rgba(52,211,153,.15);color:#34d399' : (cierraHoy ? 'rgba(251,191,36,.15);color:#fbbf24' : 'rgba(255,255,255,.08);color:rgba(255,255,255,.7)')}">${enCurso ? 'En curso' : (cierraHoy ? 'Termina hoy' : 'Cerrada')}</span>
+                ${enCurso ? `<button type="button" class="ghost-button" data-temp-cerrar="${escapeHtml(e.id)}">Cerrar hoy</button>` : `<button type="button" class="ghost-button" data-temp-reabrir="${escapeHtml(e.id)}" title="Quitar la fecha de cierre">Reabrir</button>`}
+                ${lista.length > 1 ? `<button type="button" class="ghost-button" data-temp-borrar="${escapeHtml(e.id)}" title="Quitar esta edición de la lista (no borra pedidos)">🗑️</button>` : ''}
             </div>
-            ${enCurso ? `<button type="button" class="ghost-button" data-temp-cerrar="${escapeHtml(e.id)}">Cerrar hoy</button>` : ''}
-            ${!enCurso ? `<button type="button" class="ghost-button" data-temp-reabrir="${escapeHtml(e.id)}" title="Quitar la fecha de cierre">Reabrir</button>` : ''}
-            ${lista.length > 1 ? `<button type="button" class="ghost-button" data-temp-borrar="${escapeHtml(e.id)}" title="Quitar esta edición de la lista (no borra pedidos)">🗑️</button>` : ''}
+            <div class="met-kpi-row" style="margin-top:12px">
+                ${kp('met-kpi-card--hi', nf(s.pedidos), 'Pedidos')}
+                ${kp('', formatMoney(s.ventas), 'Ventas')}
+                ${kp('met-kpi-card--purple', `${s.pctNuevos}%`, 'Clientes nuevos')}
+                ${kp('', `${s.pctRepiten}%`, 'Repitieron')}
+                ${kp('met-kpi-card--green', s.pctPositivo === null ? '—' : `${s.pctPositivo}%`, `Positivas (${nf(s.encuestas)} encuestas)`)}
+            </div>
         </div>`;
     }).join('');
     const filasMetricas = [
@@ -13343,31 +13409,34 @@ function _tempHtml() {
         <thead><tr><th style="padding:7px 10px;text-align:left;opacity:.6;font-weight:600">Métrica</th>${stats.map(({ e }) => `<th style="padding:7px 10px;text-align:right">${escapeHtml(e.nombre.replace(/^Sabe a Quindío · /, ''))}</th>`).join('')}</tr></thead>
         <tbody>${filasMetricas}</tbody></table></div>
         <p class="admin-hint" style="margin-top:8px">Las flechas comparan cada edición con la anterior usando promedios por día, para que una edición más corta no salga perdiendo. Clientes «nuevos» = su primer pedido fue durante esa edición.${stats.length < 2 && nCerradas ? ' Para comparar con una edición anterior, abre «Ver ediciones cerradas».' : ''}</p>` : '';
-    return `${aviso}<article class="admin-card">
-            <div class="met-section-title">🏆 Temporadas <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· cada edición se mide sola</small></div>
-            <div class="metrics-users-list">${cartas || '<p class="met-empty-note">No hay ediciones en curso. Crea una abajo o abre las cerradas.</p>'}</div>
-            ${nCerradas ? `<button type="button" class="ghost-button" data-temp-toggle style="margin-top:8px">${_tempVerCerradas ? '▲ Ocultar ediciones cerradas' : `▼ Ver ediciones cerradas (${nCerradas})`}</button>` : ''}
-        </article>
-        <article class="admin-card">
-            <div class="met-section-title">📈 Comparar ediciones</div>
-            ${tabla}
-            ${diag}
-        </article>
-        <article class="admin-card">
-            <div class="met-section-title">➕ Nueva edición</div>
-            <p class="admin-hint" style="margin:4px 0 10px">Úsala cuando vuelva el evento (ej. la 2.ª temporada de las cuponeras). Si hay una edición en curso, se cierra sola el día anterior al inicio de la nueva.</p>
+    const plegable = (flag, id, titulo, contenido) => `<article class="admin-card">
+            <button type="button" class="ghost-button" data-temp-plegar="${id}" style="width:100%;display:flex;justify-content:space-between;align-items:center;font-weight:700">${titulo}<span>${flag ? '▲' : '▼'}</span></button>
+            ${flag ? `<div style="margin-top:12px">${contenido}</div>` : ''}
+        </article>`;
+    const formNueva = `<p class="admin-hint" style="margin:0 0 10px">Úsala cuando vuelva el evento (ej. la 2.ª temporada de las cuponeras). Si hay una edición en curso, se cierra sola el día anterior al inicio de la nueva.</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
                 <label class="admin-hint">Nombre<input type="text" id="tempNombre" class="admin-input" maxlength="80" placeholder="Sabe a Quindío · Edición 2 (2027)"></label>
                 <label class="admin-hint">Inicio<input type="date" id="tempInicio" class="admin-input"></label>
                 <label class="admin-hint">Producto estrella (palabra)<input type="text" id="tempPalabra" class="admin-input" maxlength="40" placeholder="trifásica"></label>
                 <button type="button" class="section-action-btn" data-temp-nueva>Crear edición</button>
+            </div>`;
+    return `${aviso}<article class="admin-card">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+                <div class="met-section-title" style="margin:0;flex:1">🏆 Ediciones <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· cada una se mide sola</small></div>
+                ${nCerradas && hayEnCurso ? `<button type="button" class="ghost-button" data-temp-toggle>${_tempVerCerradas ? '▲ Ocultar cerradas' : `▼ Ver cerradas (${nCerradas})`}</button>` : ''}
             </div>
-        </article>`;
+            ${cartas || '<p class="met-empty-note">No hay ediciones. Crea una abajo.</p>'}
+        </article>
+        ${stats.length > 1 ? `<article class="admin-card"><div class="met-section-title">📈 Comparar ediciones</div>${tabla}</article>` : ''}
+        ${plegable(_tempNueva, 'nueva', '➕ Nueva edición', formNueva)}
+        ${plegable(_tempDiag, 'diag', '🔎 Detalle técnico de la lectura de datos', diag)}`;
 }
 
 function _tempClick(e) {
     const t = e.target;
     if (t.closest('[data-temp-reintentar]')) { _sqAttach(); return true; }
+    const plegar = t.closest('[data-temp-plegar]');
+    if (plegar) { if (plegar.dataset.tempPlegar === 'nueva') _tempNueva = !_tempNueva; else _tempDiag = !_tempDiag; renderMetricasFeedback(); return true; }
     if (t.closest('[data-temp-toggle]')) { _tempVerCerradas = !_tempVerCerradas; renderMetricasFeedback(); return true; }
     if (t.closest('[data-temp-nueva]')) {
         const nombre = String(document.getElementById('tempNombre')?.value || '').trim();
@@ -13379,6 +13448,7 @@ function _tempClick(e) {
         if (inicio < SQ_INICIO_MS) { showNotice('Los datos de pedidos se cargan desde el 30 de octubre de 2026: elige una fecha posterior.', 'error'); return true; }
         const lista = _tempEdiciones.map((x) => (!x.fin || x.fin > inicio) && x.inicio < inicio ? { ...x, fin: inicio } : x);
         lista.push({ id: `t-${Date.now().toString(36)}`, nombre, inicio, fin: 0, palabra });
+        _tempNueva = false;
         _tempGuardar(lista, 'Edición creada.');
         return true;
     }
@@ -13408,7 +13478,7 @@ function _fbNavTipoHtml(extra = '') {
         ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día']]],
         ['opiniones', '💛', 'Opiniones', [['general', 'Fidelización'], ['atender', 'Atender']]],
         ['campanas', '📣', 'Campañas', [['reactivar', 'Reactivar'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
-        ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones'], ['quindio', 'Encuesta Sabe a Quindío']]],
+        ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones'], ['quindio', 'Encuesta Sabe a Quindío'], ['cuponera', 'Encuesta Cuponera']]],
         ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas'], ['config', 'Configuración']]]
     ];
     const grupoActivo = GRUPOS.find((g) => g[3].some((s) => s[0] === _fbTipo)) || GRUPOS[0];
@@ -14825,7 +14895,7 @@ function _fbBind(body) {
             const tabBtn = e.target.closest('[data-fb-tab]');
             if (tabBtn) { _fbTab = tabBtn.dataset.fbTab; renderMetricasFeedback(); return; }
             const tipoBtn = e.target.closest('[data-fb-tipo]');
-            if (tipoBtn) { _fbTipo = ['general', ...FB_TIPOS_FID].includes(tipoBtn.dataset.fbTipo) ? tipoBtn.dataset.fbTipo : 'quindio'; _fbQ = { seg: '', resp: '' }; renderMetricasFeedback(); return; }
+            if (tipoBtn) { _fbTipo = ['general', 'cuponera', ...FB_TIPOS_FID].includes(tipoBtn.dataset.fbTipo) ? tipoBtn.dataset.fbTipo : 'quindio'; _fbQ = { seg: '', resp: '' }; renderMetricasFeedback(); return; }
             if (_fbCumpleClick(e) || _fidClick(e)) return;
             const phoneBtn = e.target.closest('[data-fb-phone]');
             if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.fbPhone).then((ok) => showNotice(ok ? `Teléfono copiado: ${phoneBtn.dataset.fbPhone}` : 'No se pudo copiar el teléfono.', ok ? 'ok' : 'error')); return; }
