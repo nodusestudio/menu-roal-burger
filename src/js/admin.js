@@ -4045,6 +4045,16 @@ function orderHasCuponeraForFeedback(order) {
 function feedbackTipoOrden(order) { return orderHasCuponeraForFeedback(order) ? 'cuponera' : (orderHas2x1ForFeedback(order) ? 'quindio' : 'general'); }
 const FEEDBACK_MAX_AGE_TIPO = { quindio: 24 * 60 * 60 * 1000, general: 24 * 60 * 60 * 1000, cuponera: 7 * 24 * 60 * 60 * 1000 }; // fidelización: además solo el mismo día (ver feedbackFueraDeDia)
 // Fidelización es «solo del día»: pasada la medianoche (hora Colombia) el pedido ya no se pide.
+// Espera normal: 2 h. En Fidelización, si el pedido sale tarde la espera se acorta sola para que el aviso esté listo
+// a las 9:30 pm (todo debe enviarse antes de las 10 pm); mínimo 15 min después del despacho.
+const FEEDBACK_TOPE_HORA = '21:30';
+const FEEDBACK_ESPERA_MIN_MS = 15 * 60 * 1000;
+function feedbackDisponibleDesde(order, sentMs) {
+    const normal = sentMs + FEEDBACK_DELAY_MS;
+    if (feedbackTipoOrden(order) !== 'general') return normal;
+    const tope = new Date(`${_sqDayKey(sentMs)}T${FEEDBACK_TOPE_HORA}:00-05:00`).getTime();
+    return Math.min(normal, Math.max(sentMs + FEEDBACK_ESPERA_MIN_MS, tope));
+}
 function feedbackFueraDeDia(order, sentMs, now) { return feedbackTipoOrden(order) === 'general' && _sqDayKey(sentMs) !== _sqDayKey(now); }
 
 function getPendingFeedbackOrders() {
@@ -4054,7 +4064,7 @@ function getPendingFeedbackOrders() {
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
-        return sentMs > 0 && now - sentMs >= FEEDBACK_DELAY_MS && now - sentMs <= FEEDBACK_MAX_AGE_TIPO[feedbackTipoOrden(order)] && !feedbackFueraDeDia(order, sentMs, now);
+        return sentMs > 0 && now >= feedbackDisponibleDesde(order, sentMs) && now - sentMs <= FEEDBACK_MAX_AGE_TIPO[feedbackTipoOrden(order)] && !feedbackFueraDeDia(order, sentMs, now);
     }).sort((a, b) => (_tsMs(a.enviadoAt || a.deliveredAt) - _tsMs(b.enviadoAt || b.deliveredAt)));
 }
 
@@ -13617,7 +13627,7 @@ function _tempClick(e) {
 
 // Qué es cada vista (una frase, la misma en todas): se muestra en el encabezado único de Feedback.
 const FB_AYUDA = {
-    general: 'Encuesta de calidad del servicio y del pedido, solo del mismo día, para quienes NO pidieron el 2×1. El aviso sale en Recepción como «Fidelización pendiente» y vence a medianoche.',
+    general: 'Encuesta de calidad del servicio y del pedido, solo del mismo día, para quienes NO pidieron el 2×1. El aviso sale en Recepción como «Fidelización pendiente» y vence a medianoche. Si el pedido sale tarde, el aviso se adelanta para poder enviarlo antes de las 10 pm.',
     quindio: 'Encuesta para quienes pidieron el 2×1 de Sabe a Quindío (aunque lleven otros productos).',
     cuponera: 'Encuesta para quienes compraron la cuponera física. El aviso sale en Recepción como «Feedback de cuponera pendiente».',
     atender: 'Clientes que calificaron mal (te llega también un aviso al celular) y clientes felices a quienes pedirles una reseña en Google.',
