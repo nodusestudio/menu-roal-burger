@@ -13631,8 +13631,8 @@ const FB_AYUDA = {
 function _fbNavTipoHtml() {
     // Grupos arriba; los que tienen varias vistas muestran una segunda fila. Las encuestas (Fidelización, Sabe a Quindío, Cuponera) viven dentro de Campañas.
     const GRUPOS = [
-        ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día'], ['atender', 'Atender']]],
-        ['campanas', '📣', 'Campañas', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['reactivar', 'Reactivar'], ['nuevo', 'Nuevo cliente'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
+        ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día'], ['cumple', 'Cumpleaños'], ['atender', 'Atender']]],
+        ['campanas', '📣', 'Campañas', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['reactivar', 'Reactivar'], ['nuevo', 'Nuevo cliente'], ['referidos', 'Referidos']]],
         ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones']]],
         ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas']]],
         ['ajustes', '⚙️', 'Ajustes', [['config', 'Configuración']]]
@@ -13640,9 +13640,11 @@ function _fbNavTipoHtml() {
     const grupoActivo = GRUPOS.find((g) => g[3].some((s) => s[0] === _fbTipo)) || GRUPOS[0];
     const vistaActiva = grupoActivo[3].find((s) => s[0] === _fbTipo) || grupoActivo[3][0];
     const pend = _fidAtenderPendientes();
+    const anioNav = Number(_sqDayKey(Date.now()).slice(0, 4));
+    const cumplesHoy = (clientsState || []).filter((c) => /^\d{2}-\d{2}$/.test(c.fechaCumple) && String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '').length >= 10 && _cumpleDiasFaltan(c.fechaCumple) === 0 && Number(c.cumpleSaludoAnio) !== anioNav).length;
     const badge = (n) => (n ? ` <b style="background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:.72rem">${n}</b>` : '');
     const subHtml = grupoActivo[3].length > 1
-        ? `<nav class="menu-inner-tabs-nav" role="tablist" aria-label="Vistas de ${escapeHtml(grupoActivo[2])}" style="margin-top:6px">${grupoActivo[3].map(([id, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span>${lbl}${id === 'atender' ? badge(pend) : ''}</span></button>`).join('')}</nav>`
+        ? `<nav class="menu-inner-tabs-nav" role="tablist" aria-label="Vistas de ${escapeHtml(grupoActivo[2])}" style="margin-top:6px">${grupoActivo[3].map(([id, lbl]) => `<button type="button" class="menu-inner-tab${_fbTipo === id ? ' active' : ''}" data-fb-tipo="${id}" role="tab" aria-selected="${_fbTipo === id}"><span>${lbl}${id === 'atender' ? badge(pend) : ''}${id === 'cumple' ? badge(cumplesHoy) : ''}</span></button>`).join('')}</nav>`
         : '';
     const titulo = grupoActivo[3].length > 1 ? `${grupoActivo[2]} <span style="opacity:.45;font-weight:400">›</span> ${vistaActiva[1]}` : grupoActivo[2];
     return `<article class="admin-card menu-section-card" style="padding-bottom:12px">
@@ -13650,10 +13652,10 @@ function _fbNavTipoHtml() {
             ${GRUPOS.map(([gid, ico, lbl, subs]) => `<button type="button" class="menu-inner-tab${grupoActivo[0] === gid ? ' active' : ''}" data-fb-tipo="${grupoActivo[0] === gid ? _fbTipo : subs[0][0]}" role="tab" aria-selected="${grupoActivo[0] === gid}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}${gid === 'hoy' ? badge(pend) : ''}</span></button>`).join('')}
         </nav>
         ${subHtml}
-        <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
+        ${grupoActivo[0] === 'hoy' ? '' : `<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
             <div style="font-size:1.15rem;font-weight:800">${grupoActivo[1]} ${titulo}</div>
             <p class="admin-hint" style="margin:4px 0 0">${escapeHtml(FB_AYUDA[_fbTipo] || '')}</p>
-        </div>
+        </div>`}
     </article>`;
 }
 
@@ -14715,7 +14717,6 @@ function _fbRenderFid(body) {
             <button type="button" class="ghost-button" data-fid-prev="${tipoImg}" data-fid-id="${escapeHtml(idCli)}" title="Ver la imagen y el mensaje antes de copiarlos">👁 Vista previa</button>
             ${btn}
         </div>`;
-        const cumples = (clientsState || []).filter((c) => /^\d{2}-\d{2}$/.test(c.fechaCumple) && conTel(c).length >= 10 && _cumpleDiasFaltan(c.fechaCumple) === 0 && Number(c.cumpleSaludoAnio) !== anio);
         const reactivar = (clientsState || []).map((c) => {
             if (!(c.totalOrders > 0) || !(_tsMs(c.lastOrderAt) > 0)) return null;
             const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
@@ -14725,21 +14726,14 @@ function _fbRenderFid(body) {
             return k && libre && dias >= (Number(_fidCfg.reactivarDias) || 21) && dias <= 150 ? { c, dias } : null;
         }).filter(Boolean).sort((a, b) => b.c.totalSpent - a.c.totalSpent).slice(0, 15);
         const pend = _fidAtenderPendientes();
-        const filasCumple = cumples.map((c) => fila('🎂', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · cumple hoy`, 'cumple', `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(c.id)}">Copiar saludo</button>`, c.id)).join('');
         const filasReact = reactivar.map(({ c, dias }) => fila('🔁', c.customerName, `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(conTel(c))}" title="Tocar para copiar el número">📋 ${escapeHtml(conTel(c))}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedidos · ${escapeHtml(formatMoney(c.totalSpent))}`, 'reactivar', `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">Copiar mensaje</button>`, c.id)).join('');
         const avisoClientes = _clientsLoad.estado === 'error'
             ? `<p class="met-empty-note" style="color:#f87171">⚠️ No se pudieron cargar los clientes (${escapeHtml(_clientsLoad.error)}). <button type="button" class="ghost-button" data-fid-hoy-reintentar>Reintentar</button></p>`
             : (!clientsState.length ? '<p class="met-empty-note">⏳ Cargando clientes… la cola se llena sola en unos segundos.</p>' : '');
         html = `<article class="admin-card">
             ${avisoClientes}
-            <div class="met-section-title">☀️ Tu cola de hoy <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· en orden de importancia</small></div>
-            <p class="admin-hint" style="margin:4px 0 10px">Toca «👁 Vista previa» para ver la imagen y el mensaje tal como los recibirá la persona; desde ahí copias cada uno y los pegas en el chat. Al copiar el mensaje, la persona sale de la cola.</p>
             ${_fidEnvios.some((e) => e.motivo === 'reactivar' && e.pendiente === true && e.descartado !== true) ? `<button type="button" class="section-action-btn" data-fb-tipo="reactivar" style="margin-bottom:10px">⏳ Tienes mensajes copiados sin confirmar como enviados →</button>` : ''}
             ${pend ? `<button type="button" class="section-action-btn" data-fb-tipo="atender" style="margin-bottom:10px">⚠️ ${pend} cliente${pend === 1 ? '' : 's'} por atender (lo más urgente) →</button>` : ''}
-        </article>
-        <article class="admin-card">
-            <div class="met-section-title">🎂 Cumpleaños de hoy (${cumples.length})</div>
-            <div class="metrics-users-list">${filasCumple || '<p class="met-empty-note">Hoy nadie cumple años sin saludar.</p>'}</div>
         </article>
         <article class="admin-card">
             <div class="met-section-title">🔁 Mejores clientes para reactivar (top ${reactivar.length})</div>
