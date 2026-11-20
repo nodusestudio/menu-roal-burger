@@ -13045,7 +13045,7 @@ function _fbSeguimiento() {
         let estado = 'sin_enviar';
         if (o.feedbackAnsweredAt || respondidos.has(o.id)) estado = 'respondio';
         else if (o.feedbackRequestedAt || solicitados.has(o.id) || _feedbackMarcadosLocal.has(o.id)) estado = 'enviado';
-        else if (phone.length < 10) estado = 'sin_telefono';
+        else if (phone.length < 10) return; // sin teléfono no se puede contactar: se descarta del seguimiento
         const key = _sqDayKey(t);
         if (!dias.has(key)) dias.set(key, []);
         dias.get(key).push({ order: o, phone, estado, t });
@@ -13054,38 +13054,55 @@ function _fbSeguimiento() {
         .map(([key, items]) => ({ key, items: items.sort((a, b) => a.t - b.t) }));
 }
 
+// Filtro del Seguimiento: por defecto solo lo accionable ("por enviar"); el resto del historial queda plegado.
+let _fbSegFiltro = 'sin_enviar';
+
 function _fbSeguimientoHtml() {
     const dias = _fbSeguimiento()
         .map((d) => ({ ...d, items: d.items.filter((x) => smartMatch(_fbQ.seg, getOrderDisplayCustomerName(x.order), x.order.code, x.phone)) }))
         .filter((d) => d.items.length);
-    if (!dias.length) return '<p class="met-empty-note">No hay pedidos en estas fechas (o ninguno coincide con la búsqueda).</p>';
+    const todos = dias.flatMap((d) => d.items);
+    const cnt = (items, e) => items.filter((x) => x.estado === e).length;
+    const FILTROS = [['sin_enviar', '⏳ Por enviar'], ['enviado', '📨 Enviados'], ['respondio', '✅ Respondieron'], ['todos', 'Todos']];
+    const chips = `<div class="fb-seg-chips" style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0">${FILTROS.map(([id, lbl]) => {
+        const n = id === 'todos' ? todos.length : cnt(todos, id);
+        return `<button type="button" class="menu-inner-tab${_fbSegFiltro === id ? ' active' : ''}" data-fb-segf="${id}"><span>${lbl} · ${n}</span></button>`;
+    }).join('')}</div>`;
     const BADGE = {
         respondio: ['✅ Respondió', '#34d399'],
         enviado: ['📨 Enviado, sin respuesta', '#fbbf24'],
-        sin_enviar: ['⏳ Sin enviar', '#f87171'],
-        sin_telefono: ['📵 Sin teléfono', '#9ca3af']
+        sin_enviar: ['⏳ Sin enviar', '#f87171']
     };
-    const cnt = (items, e) => items.filter((x) => x.estado === e).length;
-    return dias.map((d, i) => {
+    const fila = ({ order, phone, estado, t }, conFecha) => {
+        const [txt, color] = BADGE[estado];
+        const boton = estado === 'sin_enviar'
+            ? `<button type="button" class="feedback-pending-btn" data-fb-copy="${escapeHtml(order.id)}">Copiar mensaje</button>`
+            : (estado === 'enviado' ? `<button type="button" class="ghost-button" data-fb-recopy="${escapeHtml(order.id)}">Volver a copiar</button>` : '');
+        const fecha = conFecha ? new Date(t).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'short', day: 'numeric', month: 'short' }) + ' · ' : '';
+        return `<div class="met-user-row-v2">
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)}</div>
+                <div class="met-user-meta-v2">${escapeHtml(fecha)}<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · <span style="color:${color};font-weight:700">${txt}</span></div>
+            </div>
+            ${boton}
+        </div>`;
+    };
+    // Cola de trabajo: lista plana, sin plegables, la más reciente primero.
+    if (_fbSegFiltro === 'sin_enviar') {
+        const cola = todos.filter((x) => x.estado === 'sin_enviar').sort((x, y) => y.t - x.t);
+        return chips + (cola.length ? `<div class="metrics-users-list">${cola.map((x) => fila(x, true)).join('')}</div>` : '<p class="met-empty-note">🎉 No hay mensajes por enviar.</p>');
+    }
+    // Historial: un renglón por día, todo plegado; se abre solo el día que se toca.
+    const vista = dias
+        .map((d) => ({ ...d, items: _fbSegFiltro === 'todos' ? d.items : d.items.filter((x) => x.estado === _fbSegFiltro) }))
+        .filter((d) => d.items.length);
+    if (!vista.length) return chips + '<p class="met-empty-note">No hay pedidos en estas fechas (o ninguno coincide con la búsqueda).</p>';
+    return chips + vista.map((d) => {
         const etiqueta = new Date(`${d.key}T12:00:00-05:00`).toLocaleDateString('es-CO', { timeZone: 'America/Bogota', weekday: 'long', day: 'numeric', month: 'long' });
-        const sinEnviar = cnt(d.items, 'sin_enviar');
-        const resumen = `${d.items.length} con 2×1 · ✅ ${cnt(d.items, 'respondio')} · 📨 ${cnt(d.items, 'enviado')} · ⏳ ${sinEnviar}${cnt(d.items, 'sin_telefono') ? ` · 📵 ${cnt(d.items, 'sin_telefono')}` : ''}`;
-        const filas = d.items.map(({ order, phone, estado }) => {
-            const [txt, color] = BADGE[estado];
-            const boton = estado === 'sin_enviar'
-                ? `<button type="button" class="feedback-pending-btn" data-fb-copy="${escapeHtml(order.id)}">Copiar mensaje</button>`
-                : (estado === 'enviado' ? `<button type="button" class="ghost-button" data-fb-recopy="${escapeHtml(order.id)}">Volver a copiar</button>` : '');
-            return `<div class="met-user-row-v2">
-                <div class="met-user-info-v2">
-                    <div class="met-user-name-v2">${escapeHtml(getOrderDisplayCustomerName(order))} · ${escapeHtml(order.code)}</div>
-                    <div class="met-user-meta-v2">${phone ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <span style="color:${color};font-weight:700">${txt}</span></div>
-                </div>
-                ${boton}
-            </div>`;
-        }).join('');
-        return `<details class="fb-dia"${i < 3 || sinEnviar ? ' open' : ''} style="margin-top:8px">
-            <summary style="cursor:pointer;font-weight:700;padding:6px 0;text-transform:capitalize">${escapeHtml(etiqueta)} <small style="font-weight:400;opacity:.7;text-transform:none">· ${resumen}</small></summary>
-            <div class="metrics-users-list">${filas}</div>
+        const partes = [['respondio', '✅'], ['enviado', '📨'], ['sin_enviar', '⏳']].map(([e, ico]) => (cnt(d.items, e) ? `${ico} ${cnt(d.items, e)}` : '')).filter(Boolean).join(' · ');
+        return `<details class="fb-dia" style="margin-top:6px">
+            <summary style="cursor:pointer;font-weight:700;padding:6px 0;text-transform:capitalize">${escapeHtml(etiqueta)} <small style="font-weight:400;opacity:.7;text-transform:none">· ${d.items.length} ${d.items.length === 1 ? 'pedido' : 'pedidos'} · ${partes}</small></summary>
+            <div class="metrics-users-list">${d.items.map((x) => fila(x, false)).join('')}</div>
         </details>`;
     }).join('');
 }
@@ -13246,7 +13263,7 @@ function renderMetricasFeedback() {
     </article>`;
     const secSeguimiento = `
         <article class="admin-card">
-            <div class="met-section-title">📅 Día por día — a quién se le pidió feedback <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· solo pedidos con 2×1 · incluye los ya archivados</small></div>
+            <div class="met-section-title">📅 Día por día — a quién se le pidió feedback <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· ${_fbTipo === 'quindio' ? 'solo pedidos con 2×1' : 'solo pedidos sin 2×1'} · solo con teléfono · incluye los ya archivados</small></div>
             ${searchBoxHtml('fbSegQ', 'Buscar cliente, teléfono o pedido', _fbQ.seg)}
             <div id="fbSeguimiento">${_fbSeguimientoHtml()}</div>
         </article>`;
@@ -15103,6 +15120,8 @@ function _fbBind(body) {
         body.addEventListener('click', async (e) => {
             const tabBtn = e.target.closest('[data-fb-tab]');
             if (tabBtn) { _fbTab = tabBtn.dataset.fbTab; renderMetricasFeedback(); return; }
+            const segF = e.target.closest('[data-fb-segf]');
+            if (segF) { _fbSegFiltro = segF.dataset.fbSegf; const c = document.getElementById('fbSeguimiento'); if (c) c.innerHTML = _fbSeguimientoHtml(); return; }
             const tipoBtn = e.target.closest('[data-fb-tipo]');
             if (tipoBtn) { _fbTipo = ['general', 'cuponera', ...FB_TIPOS_FID].includes(tipoBtn.dataset.fbTipo) ? tipoBtn.dataset.fbTipo : 'quindio'; _fbQ = { seg: '', resp: '' }; renderMetricasFeedback(); return; }
             if (_fbCumpleClick(e) || _fidClick(e)) return;
