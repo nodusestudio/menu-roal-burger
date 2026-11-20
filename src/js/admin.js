@@ -17217,20 +17217,6 @@ function createOrderCard(order) {
     const typeClass = order.orderType === 'domicilio' ? 'koc-type--domicilio'
         : order.orderType === 'mesa' ? 'koc-type--mesa' : 'koc-type--retiro';
 
-    let statusRow = '';
-    if (order.status === 'esperando_domiciliario') {
-        statusRow = `
-            <div class="koc-status">
-                <span class="koc-status-badge">Esperando domiciliario</span>
-                <span class="order-wait-timer" data-order-id="${order.id}">${escapeHtml(formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt))}</span>
-            </div>`;
-    } else if (order.status === 'listo_recoger') {
-        statusRow = `
-            <div class="koc-status koc-status--ready">
-                <span class="koc-status-badge">Listo para recoger</span>
-            </div>`;
-    }
-
     const isUnreadOrder = order.status === 'pendiente';
     const isDeliveryOrder = order.orderType === 'domicilio';
     const isPickupOrder = order.orderType === 'retiro';
@@ -17291,16 +17277,10 @@ function createOrderCard(order) {
     }
 
     const promoTags = _getOrderPromoTags(order);
-    const promoHeaderBadge = promoTags.length
-        ? `<span class="koc-promo-2x1-badge">🏷 2×1</span>`
-        : '';
     // Nota general / salsas / "sin ..." en algún producto: un solo 📝 en la tarjeta para que no pasen desapercibidos.
     const _tieneNotas = !!order.orderNote || (order.salsasLlevar || []).length > 0
         || (order.items || []).some((it) => /(^|\|)\s*(sin\s|poca salsa|con la )/i.test(it.note || ''));
     const notaBadge = _tieneNotas ? `<span class="koc-promo-2x1-badge" title="Este pedido trae notas, salsas o ingredientes por quitar">📝</span>` : '';
-    const promoItemsRow = promoTags.length
-        ? `<div class="koc-promo-row">${promoTags.map(t => `<span class="koc-promo-item-label">${escapeHtml(t)}</span>`).join('')}</div>`
-        : '';
 
     const isAnuladoActive = order.anulado === true || order.voided === true;
     const anuladoStamp = isAnuladoActive ? '<div class="koc-anulado-stamp">ANULADO</div>' : '';
@@ -17361,27 +17341,25 @@ function createOrderCard(order) {
 
     // ☰ de acciones del pedido en la propia tarjeta (acceso inmediato). Un mesero no ve el de pedidos ajenos.
     const _kocMenuBtn = (_meseroSession && order.meseroId !== _meseroSession.id) ? '' : `<button type="button" class="koc-menu-btn" data-card-menu data-order-id="${escapeHtml(order.id)}" title="Acciones del pedido" aria-label="Acciones del pedido" aria-haspopup="true">☰</button>`;
+    // Estructura compacta: cliente+total arriba; debajo UNA fila de "pastillas" (domiciliario, pago, promo, notas,
+    // mesero…) que se acomoda en el ancho disponible; luego dirección y acciones. El encabezado (código/tipo/hora)
+    // solo se ve en pantallas chicas.
+    const promoPills = promoTags.map((t) => `<span class="koc-promo-item-label">🏷 ${escapeHtml(t)}</span>`).join('');
+    const readyPill = order.status === 'listo_recoger' ? '<span class="koc-ready-pill">✅ Listo para recoger</span>' : '';
+    const metaPills = `${courierChip}${paymentChip}${promoPills}${notaBadge}${readyPill}${getPickupModeTag(order)}${getMeseroTag(order)}${sinMesaBadge}`;
     card.innerHTML = `
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
             <span class="koc-type-badge ${typeClass}">${escapeHtml(getOrderTypeLabel(order))}</span>
-            ${getPickupModeTag(order)}
-            ${getMeseroTag(order)}
-            ${sinMesaBadge}
-            ${promoHeaderBadge}
-            ${notaBadge}
             <span class="koc-time">${escapeHtml(formatElapsedTime(order.createdAt))}</span>
         </div>
-        ${courierChip}
-        ${paymentChip}
         <div class="koc-body">
             <span class="koc-name">${escapeHtml(getOrderDisplayCustomerName(order))}</span>
             <span class="koc-total">${escapeHtml(formatMoney(getOrderDisplayTotal(order)))}</span>
             ${_kocMenuBtn}
         </div>
+        ${metaPills ? `<div class="koc-meta">${metaPills}</div>` : ''}
         ${deliveryRow}
-        ${promoItemsRow}
-        ${statusRow}
         ${actionsMarkup}
         ${anuladoStamp}
     `;

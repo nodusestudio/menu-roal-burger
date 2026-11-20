@@ -1571,6 +1571,28 @@
             overflow: hidden;
         }
 
+        /* ── Tarjeta compacta: una fila de "pastillas" que se acomoda al ancho (domiciliario, pago, promo, notas…) ── */
+        .koc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+        .koc-meta .koc-courier-chip,
+        .koc-meta .koc-payment-chip {
+            margin: 0 !important; padding: 2px 8px !important; border-radius: 20px;
+            font-size: 0.62rem; line-height: 1.35;
+            border: 1px solid color-mix(in srgb, currentColor 35%, transparent) !important;
+        }
+        .koc-meta .koc-promo-item-label { font-size: 0.62rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; max-width: 100%; }
+        .koc-meta .koc-promo-2x1-badge,
+        .koc-meta .koc-pickup-mode-tag,
+        .koc-meta .koc-mesero-tag,
+        .koc-meta .koc-sin-mesa-badge { margin: 0; }
+        .koc-ready-pill {
+            padding: 2px 8px; border-radius: 20px; font-size: 0.62rem; font-weight: 700; white-space: nowrap;
+            background: rgba(67,192,156,0.14); color: #7fffd4; border: 1px solid rgba(67,192,156,0.3);
+        }
+        @media (min-width: 1024px) {
+            /* En escritorio el encabezado (código/tipo/hora) va oculto: lo que importa queda en cliente + pastillas */
+            #ordersBoard .koc-header { display: none; }
+        }
+
         .kanban-order-card-compact .koc-name {
             font-size: 0.84rem;
             font-weight: 700;
