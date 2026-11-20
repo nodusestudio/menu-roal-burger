@@ -13170,6 +13170,27 @@ function _fbRenderCuponera(body) {
         const html = l.slice(0, 40).map((r) => `<div class="met-user-row-v2"><div class="met-avatar">${ico}</div><div class="met-user-info-v2"><div class="met-user-name-v2" style="white-space:normal">${escapeHtml(r[campo])}</div><div class="met-user-meta-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${escapeHtml(fmt(r.ts))}</div></div></div>`).join('');
         return `<article class="admin-card"><div class="met-section-title">${ico} ${titulo} <small style="font-size:0.72rem;opacity:0.55;font-weight:400">· ${nf(l.length)}</small></div><div class="metrics-users-list">${html || '<p class="met-empty-note">Aún no hay respuestas.</p>'}</div></article>`;
     };
+    // Una fila por respuesta: quién es, qué contestó, cuándo pidió, cuándo respondió y qué pidió.
+    const ordMap = new Map();
+    [..._fbArchOrders, ...ordersState].forEach((o) => { if (o.id) ordMap.set(o.id, o); });
+    const itemsDe = (o) => (o ? (o.items || []).filter((i) => !i.parentItemKey).map((i) => `${i.quantity} x ${i.productName}`).join(', ') : '');
+    const lista = () => {
+        const fil = rows.filter((r) => smartMatch(_fbQ.resp, r.name, r.phone, r.orderCode, itemsDe(ordMap.get(r.id)), r.q4, r.q5));
+        const html = fil.slice(0, 80).map((r) => {
+            const o = ordMap.get(r.id);
+            const pidioTs = o ? _orderTs(o) : 0;
+            const resp = (k) => (r.cup && FB_CUP[k][1][r.cup[k]] ? `${FB_CUP[k][1][r.cup[k]][0]} ${FB_CUP[k][1][r.cup[k]][1]}` : '—');
+            return `<div class="met-user-row-v2"><div class="met-avatar">${FB_Q1[r.q1]?.[0] || '❔'}</div><div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(FB_Q1[r.q1]?.[1] || r.q1 || '')}</div>
+                <div class="met-user-meta-v2" style="white-space:normal;line-height:1.5">📞 ${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)}<br>
+                🛒 Pidió: ${escapeHtml(itemsDe(o) || 'no disponible')}${pidioTs ? ` · ${escapeHtml(fmt(pidioTs))}` : ''}<br>
+                🕒 Respondió: ${escapeHtml(fmt(r.ts))}<br>
+                🎟️ Sistema: ${escapeHtml(resp('sistema'))} · Sin cuponera: ${escapeHtml(resp('sinCupon'))} · Otra cuponera: ${escapeHtml(resp('recompra'))} · Precio: ${escapeHtml(resp('precio'))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}${r.q5 ? `<br>🔧 ${escapeHtml(r.q5)}` : ''}</div>
+            </div></div>`;
+        }).join('');
+        return `<p class="met-empty-note" style="text-align:left;margin:0 0 6px">${nf(fil.length)} respuesta${fil.length === 1 ? '' : 's'}</p>${html || '<p class="met-empty-note">Aún no hay respuestas.</p>'}`;
+    };
+    _fbRespListRef = lista;
     const nav = _fbNavTipoHtml();
     body.innerHTML = nav + rangoSelectorHtml('fb') + `
         <article class="admin-card">
@@ -13188,6 +13209,11 @@ function _fbRenderCuponera(body) {
                 ${Object.keys(FB_CUP).map((k) => `<div class="met-analytics-card"><div class="met-analytics-title">${FB_CUP[k][0]}</div><div id="fbCup_${k}"></div></div>`).join('')}
                 <div class="met-analytics-card"><div class="met-analytics-title">Respuestas por día</div><div id="fbDayChart"></div></div>
             </div>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">💬 Quién respondió qué <small style="font-size:0.72rem;opacity:0.55;font-weight:400;margin-left:6px">· con lo que pidió</small></div>
+            ${searchBoxHtml('fbRespQ', 'Buscar cliente, teléfono, pedido o producto — desde 3 letras', _fbQ.resp)}
+            <div id="fbRespLista" class="metrics-users-list">${lista()}</div>
         </article>
         ${sugLista('q4', 'Qué les gustaría que incluyera', '💡')}
         ${sugLista('q5', 'Qué cambiarían o quitarían', '🔧')}`;
