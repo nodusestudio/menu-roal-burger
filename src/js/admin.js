@@ -17305,7 +17305,7 @@ function createOrderCard(order) {
         else { icono = '📞'; claseBorde = 'koc-delivery-waiting'; ref = 'requested'; tiempo = formatLiveDuration(order.courierRequestedAt); }
         card.classList.add(claseBorde);
         const info = `<span class="koc-btn-time">${icono} <span class="koc-courier-time" data-order-id="${oid}" data-courier-ref="${ref}">${escapeHtml(tiempo)}</span></span>`;
-        actionsMarkup = actionsMarkup.replace(/(koa-mesa-main"[^>]*>)([^<]*)(<\/button>)/, `$1$2${info}$3`);
+        actionsMarkup = actionsMarkup.replace(/(koa-mesa-main"[^>]*>)([^<]*)(<\/button>)/, `$1<span class="koc-btn-label">$2</span>${info}$3`);
     }
 
     // Chip de liquidación: cuánto cobrar o pagar al domiciliario
@@ -20587,7 +20587,21 @@ function _ticketDetalleLineas(item, { categoria = true } = {}) {
             // "Sin tomate, sin cebolla" / "Con La Jeva (BBQ)" / "Poca salsa" es lo que cocina NO debe pasar por alto: va como nota resaltada
             if (/^(sin|poca|con)\b/i.test(p)) { out.push({ t: 'nota', x: p }); return; }
             // un combo llega como "1 persona + Postobon 250ml (colombiana) ×2": cada parte en su línea
-            const partesCombo = p.split(/\s+\+\s+/).map((q) => q.trim()).filter(Boolean);
+            const nCup = esCuponeraTicket ? Math.max(1, Number(item.quantity) || 1) : 1;
+            // Cuponera con 2+ unidades (2 bonos iguales): las líneas están escritas para UNA; se multiplican cantidades y precios
+            // para que cocina y cliente lean lo real (2 burgers, 2 combos = 2 papas + 2 bebidas, 2 regalos).
+            const escalar = (q) => {
+                if (nCup <= 1) return q;
+                const pm = q.match(/\s*—\s*\$\s*([\d.,]+)(:?)\s*$/);
+                const sinP = pm ? q.slice(0, pm.index) : q;
+                const precioN = pm ? ` — ${formatMoney(Number(pm[1].replace(/[.,]/g, '')) * nCup)}${pm[2]}` : '';
+                if (/^REGALO:/i.test(sinP)) return `REGALO: ${nCup} ${sinP.replace(/^REGALO:\s*/i, '').replace(/^\d+\s+/, '')}${pm ? ' — ' + formatMoney(0) : ''}`;
+                if (/^combo$/i.test(sinP.trim())) return `${nCup} Combos${precioN}`;
+                const num = sinP.match(/^(\d+)\s+(.*)$/);
+                if (num) return `${Number(num[1]) * nCup} ${Number(num[1]) * nCup > 1 ? num[2].replace(/^bebida\b/i, 'bebidas') : num[2]}${precioN}`;
+                return q;
+            };
+            const partesCombo = p.split(/\s+\+\s+/).map((q) => escalar(q.trim())).filter(Boolean);
             // Cuponera: los renglones con precio ("1 Burger Ranchera — $30.000", "Combo — $7.000:", "REGALO: … — $0") son
             // encabezados y lo que va debajo (papas, bebida con sabor) queda sangrado: se lee qué es cada cosa y cuánto vale.
             const hayEncabezados = esCuponeraTicket && partesCombo.some((q) => /—\s*\$|^REGALO:/i.test(q));
@@ -20838,7 +20852,12 @@ function buildESCPOSData(order) {
         else if (item._combo) {
             const sab = _ticketSaboresTexto(item._conteo);
             wh(String(item.quantity).padStart(2) + 'x ', `${item.productName} en combo${sab ? ` (${sab})` : ''}`, precio);
-        } else wh(String(item.quantity).padStart(2) + 'x ', item.productName, precio);
+        } else {
+            // Cuponera con desglose (burger + combo con precio): cada renglón lleva su precio y el total va al final, no en el encabezado.
+            const _cupDesglose = (/^cuponera/.test(String(item.productId || '')) || item.categoryName === 'CUPONERA')
+                && _ticketDetalleLineas(item, { categoria: false }).filter((d) => d.t === 'hdr' && /—\s*\$\s*[1-9]/.test(d.x)).length >= 2;
+            wh(String(item.quantity).padStart(2) + 'x ', item.productName, _cupDesglose ? '' : precio);
+        }
         // En un combo la variante y la bebida ya van en el título: solo queda el resto (nota, "sin ...").
         const _itemDet = item._combo
             ? { ...item, optionLabel: item._combo.resto.join(' | '), note: item._combo.resto.join(' | ') }
@@ -20848,7 +20867,9 @@ function buildESCPOSData(order) {
             const txt = d.t === 'cortesia' ? '*** CORTESIA ***' : d.t === 'beb' ? 'Beb: ' + d.x : d.x;
             const resalta = d.t === 'cortesia' || d.t === 'hdr' || /^(sin|poca|con)\b/i.test(d.x);
             if (resalta) pb(ESC, 0x45, 0x01);
-            wh(pfx, txt);
+            // Renglón con precio ("2 Pepito Urbano — $60.000"): el precio va a la derecha, en la MISMA línea.
+            const _pm = d.t === 'hdr' ? txt.match(/^(.*?)\s*—\s*(\$\s*[\d.,]+):?\s*$/) : null;
+            if (_pm) wh(pfx, _pm[1], _pm[2].replace(/\s+/g, '')); else wh(pfx, txt);
             if (resalta) pb(ESC, 0x45, 0x00);
         });
         const siguiente = _grupos[idx + 1];
