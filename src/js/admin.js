@@ -17294,20 +17294,18 @@ function createOrderCard(order) {
         ? `<span class="koc-sin-mesa-badge">⚠️ Sin mesa</span>`
         : '';
 
-    let courierChip = '';
+    // El estado/tiempo del domiciliario va DENTRO del botón principal (ahorra una fila); el color del borde lo sigue marcando.
     if (isDeliveryOrder && !isOrderClosed(order) && !isAnuladoActive) {
         const courierCalled = !!order.courierRequestedAt;
         const isTransit = order.status === 'en_camino';
-        if (!courierCalled) {
-            card.classList.add('koc-delivery-pending');
-            courierChip = `<div class="koc-courier-chip koc-courier-pending">⚠️ Sin dom. · <span class="koc-courier-time" data-order-id="${escapeHtml(order.id)}" data-courier-ref="created">${escapeHtml(formatElapsedTime(order.createdAt))}</span></div>`;
-        } else if (isTransit) {
-            card.classList.add('koc-delivery-transit');
-            courierChip = `<div class="koc-courier-chip koc-courier-transit">🛵 En camino · <span class="koc-courier-time" data-order-id="${escapeHtml(order.id)}" data-courier-ref="requested">${escapeHtml(formatLiveDuration(order.courierRequestedAt))}</span></div>`;
-        } else {
-            card.classList.add('koc-delivery-waiting');
-            courierChip = `<div class="koc-courier-chip koc-courier-waiting">📞 Llamado · <span class="koc-courier-time" data-order-id="${escapeHtml(order.id)}" data-courier-ref="requested">${escapeHtml(formatLiveDuration(order.courierRequestedAt))}</span></div>`;
-        }
+        const oid = escapeHtml(order.id);
+        let icono, claseBorde, ref, tiempo;
+        if (!courierCalled) { icono = '⚠️'; claseBorde = 'koc-delivery-pending'; ref = 'created'; tiempo = formatElapsedTime(order.createdAt); }
+        else if (isTransit) { icono = '🛵'; claseBorde = 'koc-delivery-transit'; ref = 'requested'; tiempo = formatLiveDuration(order.courierRequestedAt); }
+        else { icono = '📞'; claseBorde = 'koc-delivery-waiting'; ref = 'requested'; tiempo = formatLiveDuration(order.courierRequestedAt); }
+        card.classList.add(claseBorde);
+        const info = `<span class="koc-btn-time">${icono} <span class="koc-courier-time" data-order-id="${oid}" data-courier-ref="${ref}">${escapeHtml(tiempo)}</span></span>`;
+        actionsMarkup = actionsMarkup.replace(/(koa-mesa-main"[^>]*>)([^<]*)(<\/button>)/, `$1$2${info}$3`);
     }
 
     // Chip de liquidación: cuánto cobrar o pagar al domiciliario
@@ -17346,7 +17344,7 @@ function createOrderCard(order) {
     // solo se ve en pantallas chicas.
     const promoPills = promoTags.map((t) => `<span class="koc-promo-item-label">🏷 ${escapeHtml(t)}</span>`).join('');
     const readyPill = order.status === 'listo_recoger' ? '<span class="koc-ready-pill">✅ Listo para recoger</span>' : '';
-    const metaPills = `${courierChip}${paymentChip}${promoPills}${notaBadge}${readyPill}${getPickupModeTag(order)}${getMeseroTag(order)}${sinMesaBadge}`;
+    const metaPills = `${paymentChip}${promoPills}${notaBadge}${readyPill}${getPickupModeTag(order)}${getMeseroTag(order)}${sinMesaBadge}`;
     card.innerHTML = `
         <div class="koc-header">
             <strong class="koc-code">#${escapeHtml(order.code)}</strong>
