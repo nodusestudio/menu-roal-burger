@@ -29123,6 +29123,42 @@ if (adminSignOutBtn) {
     });
 }
 
+// Aviso en el computador de la Cola del día de Reactivar: el servidor marca `avisadoAt` en cada entrada a la hora del cliente
+// (y manda el push al celular); aquí se escucha esa marca y sale el cuadrito del sistema, igual que un pedido nuevo.
+// La primera lectura solo memoriza lo ya avisado (no repite al recargar); el día cambia solo a medianoche (hora Bogotá).
+function _colaReactivarAvisoPc() {
+    let dia = '';
+    let baja = null;
+    let vistos = null;
+    const escuchar = () => {
+        const hoy = _diaBogota();
+        if (hoy === dia) return;
+        dia = hoy; vistos = null;
+        try { if (baja) baja(); } catch (_) { /* ya cerrado */ }
+        baja = firebaseDb.collection('fidelizacion_cola').doc(hoy).onSnapshot((snap) => {
+            const entradas = snap.exists ? (snap.data().entradas || []) : [];
+            const avisadas = entradas.filter((e) => e.avisadoAt && e.estado === 'pendiente');
+            const llaves = new Set(avisadas.map((e) => `${e.k}|${e.avisadoAt}`));
+            if (vistos) {
+                const nuevas = avisadas.filter((e) => !vistos.has(`${e.k}|${e.avisadoAt}`));
+                if (nuevas.length && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                    try {
+                        const p = nuevas[0];
+                        const n = new Notification(nuevas.length === 1 ? '🔁 Es hora de reactivar a un cliente' : `🔁 Es hora de reactivar a ${nuevas.length} clientes`, {
+                            body: nuevas.length === 1 ? `${p.nombre} · ${p.dias} días sin pedir${p.favorito ? ` · le gusta ${p.favorito}` : ''}. Su mensaje ya está listo.` : `${nuevas.slice(0, 3).map((e) => String(e.nombre || '').split(' ')[0]).join(', ')}${nuevas.length > 3 ? '…' : ''}. Mira Feedback › Reactivar › Cola del día.`,
+                            icon: 'isotipo.png', badge: 'isotipo.png', tag: 'roal-reactivar-cola', renotify: true, requireInteraction: true
+                        });
+                        n.onclick = () => { window.focus(); n.close(); };
+                    } catch (_) { /* sin aviso del sistema */ }
+                }
+            }
+            vistos = llaves;
+        }, (e) => console.warn('[ADMIN] aviso cola de reactivar:', e.code || e.message));
+    };
+    escuchar();
+    setInterval(escuchar, 10 * 60 * 1000);
+}
+
 async function initAdmin() {
     try {
         if (!getSharedFirebaseConfig()) {
@@ -29156,6 +29192,7 @@ async function initAdmin() {
         setupLiveFirebaseSync();
         _bancoIniciar();
         _cqRestaurar();
+        _colaReactivarAvisoPc();
 
         fetchClients().then(() => {
             renderClients();
