@@ -5568,6 +5568,85 @@ document.addEventListener('click', (e) => {
     new ResizeObserver(() => sb.classList.toggle('is-compact', sb.clientWidth > 0 && sb.clientWidth < 720)).observe(sb);
 })();
 
+// ── Botón "Feedback" del POS: revisar de un vistazo a quién ya se le envió el mensaje y a quién falta (pedidos de hoy).
+// Estados: respondió / enviado (sin respuesta) / sin enviar / sin teléfono. Reusa sendFeedbackRequest (copia el mensaje y marca el pedido).
+function _posFbEstado(order) {
+    const phone = String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '');
+    let estado = 'sin_enviar';
+    if (order.feedbackAnsweredAt) estado = 'respondio';
+    else if (order.feedbackRequestedAt || _feedbackMarcadosLocal.has(order.id)) estado = 'enviado';
+    else if (phone.length < 10) estado = 'sin_telefono';
+    return { phone, estado };
+}
+function _posFbPedidosHoy() {
+    const hoy = _sqDayKey(Date.now());
+    return ordersState.filter((o) => {
+        if (!isOrderClosed(o) || o.anulado === true || o.voided === true) return false;
+        const t = _tsMs(o.enviadoAt) || _tsMs(o.entregadoAt) || _tsMs(o.deliveredAt) || _tsMs(o.createdAt);
+        return t > 0 && _sqDayKey(t) === hoy;
+    }).sort((a, b) => (_tsMs(b.enviadoAt || b.deliveredAt || b.createdAt) - _tsMs(a.enviadoAt || a.deliveredAt || a.createdAt)));
+}
+function _posFbActualizarInsignia() {
+    const btn = document.getElementById('posFeedbackBtn');
+    if (!btn) return;
+    const faltan = _posFbPedidosHoy().filter((o) => _posFbEstado(o).estado === 'sin_enviar').length;
+    let b = btn.querySelector('.pos-fb-badge');
+    if (!b) { b = document.createElement('span'); b.className = 'pos-fb-badge'; b.style.cssText = 'margin-left:4px;background:#f87171;color:#111;border-radius:10px;padding:0 6px;font-size:11px;font-weight:800'; btn.appendChild(b); }
+    b.textContent = faltan; b.hidden = faltan === 0;
+}
+function _posFbRender() {
+    const modal = document.getElementById('posFbModal');
+    if (!modal) return;
+    const lista = _posFbPedidosHoy();
+    const BADGE = { respondio: ['✅ Respondió', '#34d399'], enviado: ['📨 Enviado, sin respuesta', '#fbbf24'], sin_enviar: ['⏳ Sin enviar', '#f87171'], sin_telefono: ['📵 Sin teléfono', '#9ca3af'] };
+    const items = lista.map((o) => ({ o, ..._posFbEstado(o) }));
+    const cnt = (e) => items.filter((x) => x.estado === e).length;
+    const filtro = modal.dataset.filtro || 'todos';
+    const visibles = items.filter((x) => filtro === 'todos' || x.estado === filtro);
+    const chip = (k, txt) => `<button type="button" data-posfb-filtro="${k}" style="border:1px solid rgba(255,255,255,.25);background:${filtro === k ? 'rgba(255,255,255,.22)' : 'transparent'};color:inherit;border-radius:16px;padding:4px 10px;font-size:12px;cursor:pointer">${txt}</button>`;
+    const filas = visibles.map(({ o, phone, estado }) => {
+        const [txt, color] = BADGE[estado];
+        const accion = estado === 'sin_enviar' ? `<button type="button" class="feedback-pending-btn" data-posfb-copy="${escapeHtml(o.id)}">Copiar mensaje</button>`
+            : (estado === 'enviado' ? `<button type="button" class="ghost-button" data-posfb-copy="${escapeHtml(o.id)}">Volver a copiar</button>` : '');
+        const tipo = { general: '💛 Fidelización', cuponera: '🎟️ Cuponera', quindio: '⭐ Sabe a Quindío' }[feedbackTipoOrden(o)] || '';
+        return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.12)">
+            <div style="min-width:0"><div style="font-weight:700">${escapeHtml(getOrderDisplayCustomerName(o))} · ${escapeHtml(o.code)} <small style="opacity:.65;font-weight:400">${tipo}</small></div>
+            <div style="font-size:12px;opacity:.9">${phone ? `<button type="button" class="feedback-pending-phone" data-posfb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <span style="color:${color};font-weight:700">${txt}</span></div></div>
+            ${accion}</div>`;
+    }).join('');
+    modal.querySelector('.posfb-body').innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${chip('todos', `Todos (${items.length})`)}${chip('sin_enviar', `⏳ Faltan (${cnt('sin_enviar')})`)}${chip('enviado', `📨 Enviados (${cnt('enviado')})`)}${chip('respondio', `✅ Respondieron (${cnt('respondio')})`)}${chip('sin_telefono', `📵 Sin teléfono (${cnt('sin_telefono')})`)}</div>
+        ${filas || '<p style="opacity:.7;padding:12px 0">No hay pedidos entregados hoy en esta vista.</p>'}`;
+}
+function openPosFeedbackModal() {
+    let modal = document.getElementById('posFbModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'posFbModal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:10400;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
+        modal.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:14px;max-width:560px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.15)"><strong>📣 Feedback de hoy</strong><button type="button" data-posfb-close style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
+            <div class="posfb-body" style="padding:12px 16px;overflow:auto"></div>
+            <div style="padding:8px 16px 12px;font-size:11px;opacity:.6">Solo pedidos entregados hoy. Al copiar el mensaje el pedido queda marcado como enviado.</div></div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', async (e) => {
+            if (e.target === modal || e.target.closest('[data-posfb-close]')) { modal.hidden = true; return; }
+            const f = e.target.closest('[data-posfb-filtro]');
+            if (f) { modal.dataset.filtro = f.dataset.posfbFiltro; _posFbRender(); return; }
+            const ph = e.target.closest('[data-posfb-phone]');
+            if (ph) { copyTextToClipboard(ph.dataset.posfbPhone); return; }
+            const cp = e.target.closest('[data-posfb-copy]');
+            if (cp) { await sendFeedbackRequest(cp.dataset.posfbCopy, cp); _posFbRender(); _posFbActualizarInsignia(); }
+        });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) modal.hidden = true; });
+    }
+    modal.hidden = false;
+    modal.dataset.filtro = modal.dataset.filtro || 'todos';
+    _posFbRender();
+}
+document.getElementById('posFeedbackBtn')?.addEventListener('click', (e) => { e.stopPropagation(); openPosFeedbackModal(); });
+setInterval(() => { try { _posFbActualizarInsignia(); } catch (_) { /* aún sin datos */ } }, 15000);
+
 const _waImgReducir = (file) => new Promise((ok, mal) => {
     const url = URL.createObjectURL(file), im = new Image();
     im.onload = () => {

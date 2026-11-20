@@ -14602,6 +14602,10 @@
                             <button type="button" class="quick-order-btn" data-new-order="retiro" title="Nuevo pedido para llevar"><span class="qo-ico">🥡</span><span>Para llevar</span></button>
                             <button type="button" class="quick-order-btn" data-new-order="domicilio" title="Nuevo pedido a domicilio"><span class="qo-ico">🛵</span><span>Domicilio</span></button>
                         </div>
+                        <!-- Feedback de hoy: quién ya recibió el mensaje y quién falta (lo llena openPosFeedbackModal) -->
+                        <div style="display:flex;justify-content:flex-end;margin:8px 0 0">
+                            <button type="button" class="ghost-button" id="posFeedbackBtn" title="Ver a quién ya se le envió el feedback y a quién falta (pedidos de hoy)" aria-label="Feedback">📣 Feedback</button>
+                        </div>
                         <div class="orders-workspace">
                             <div class="orders-mobile-tabs" id="ordersMobileTabs" aria-label="Cambiar vista de pedidos en movil">
                                 <button type="button" class="orders-mobile-tab" data-mobile-orders-tab="unread" hidden style="display:none!important">Por Confirmar</button>
