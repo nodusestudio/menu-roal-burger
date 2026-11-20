@@ -5631,7 +5631,7 @@ function openPosFeedbackModal() {
             <div style="padding:8px 16px 12px;font-size:11px;opacity:.6">Solo pedidos entregados hoy. Al copiar el mensaje el pedido queda marcado como enviado.</div></div>`;
         document.body.appendChild(modal);
         modal.addEventListener('click', async (e) => {
-            if (e.target === modal || e.target.closest('[data-posfb-close]')) { modal.hidden = true; return; }
+            if (e.target === modal || e.target.closest('[data-posfb-close]')) { modal.style.display = 'none'; return; }
             const f = e.target.closest('[data-posfb-filtro]');
             if (f) { modal.dataset.filtro = f.dataset.posfbFiltro; _posFbRender(); return; }
             const ph = e.target.closest('[data-posfb-phone]');
@@ -5639,9 +5639,9 @@ function openPosFeedbackModal() {
             const cp = e.target.closest('[data-posfb-copy]');
             if (cp) { await sendFeedbackRequest(cp.dataset.posfbCopy, cp); _posFbRender(); _posFbActualizarInsignia(); }
         });
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) modal.hidden = true; });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.style.display !== 'none') modal.style.display = 'none'; });
     }
-    modal.hidden = false;
+    modal.style.display = 'flex';
     modal.dataset.filtro = modal.dataset.filtro || 'todos';
     _posFbRender();
 }
