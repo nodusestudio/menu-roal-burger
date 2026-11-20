@@ -14667,6 +14667,7 @@ function _fidHoraTexto(h) { return `${h % 12 || 12}:00 ${h >= 12 ? 'pm' : 'am'}`
 
 // Vista «Cola del día»: los clientes que el servidor eligió hoy (ritmo propio, hora ideal, favorito y regalo con tope de costo).
 function _fidColaHtml() {
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
     const c = _fidCola;
     if (!c) return `<article class="admin-card"><div class="met-section-title">🎯 Cola del día</div><p class="met-empty-note">La cola de hoy se arma sola a las 6 a. m. Si ya pasó esa hora y no aparece, hoy no había clientes por reactivar.</p></article>`;
     const ent = c.entradas || [];
