@@ -13570,18 +13570,17 @@ const FB_AYUDA = {
     reactivar: 'Clientes que llevan tiempo sin pedir y a quienes no se les ha escrito en los últimos 14 días. Copia el mensaje con su cupón personal y mándalo por WhatsApp.',
     cumple: 'Clientes que dejaron su cumpleaños. Copia el saludo y mándalo por WhatsApp.',
     referidos: 'Invita a tus mejores clientes a traer amigos: el amigo recibe un cupón y, al canjearlo en caja, tu cliente recibe su recompensa.',
-    temporadas: 'Cada edición de un evento (Sabe a Quindío, Cuponera…) se mide sola y se compara con las otras. Las encuestas de cada evento están en Opiniones.',
+    temporadas: 'Cada edición de un evento (Sabe a Quindío, Cuponera…) se mide sola y se compara con las otras. Las encuestas de cada evento están en Campañas.',
     cupones: 'Cada cupón es único por cliente, con vigencia. Canjéalo aquí cuando el cliente dé su código.',
     metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Sale de los mensajes y cupones registrados y de los pedidos.',
     config: 'Todos los ajustes de fidelización en un solo lugar: ofertas, productos regalo, vigencias, reseña de Google y metas. Lo que guardes aquí lo usan las demás pestañas.'
 };
 
 function _fbNavTipoHtml() {
-    // Grupos arriba; los que tienen varias vistas muestran una segunda fila. Las encuestas (Fidelización, Sabe a Quindío, Cuponera) viven juntas en Opiniones.
+    // Grupos arriba; los que tienen varias vistas muestran una segunda fila. Las encuestas (Fidelización, Sabe a Quindío, Cuponera) viven dentro de Campañas.
     const GRUPOS = [
-        ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día']]],
-        ['opiniones', '💛', 'Opiniones', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['atender', 'Atender']]],
-        ['campanas', '📣', 'Campañas', [['reactivar', 'Reactivar'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
+        ['hoy', '☀️', 'Hoy', [['hoy', 'Cola del día'], ['atender', 'Atender']]],
+        ['campanas', '📣', 'Campañas', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['reactivar', 'Reactivar'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
         ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones']]],
         ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas']]],
         ['ajustes', '⚙️', 'Ajustes', [['config', 'Configuración']]]
@@ -13596,7 +13595,7 @@ function _fbNavTipoHtml() {
     const titulo = grupoActivo[3].length > 1 ? `${grupoActivo[2]} <span style="opacity:.45;font-weight:400">›</span> ${vistaActiva[1]}` : grupoActivo[2];
     return `<article class="admin-card menu-section-card" style="padding-bottom:12px">
         <nav class="menu-inner-tabs-nav" role="tablist" aria-label="Secciones de Feedback">
-            ${GRUPOS.map(([gid, ico, lbl, subs]) => `<button type="button" class="menu-inner-tab${grupoActivo[0] === gid ? ' active' : ''}" data-fb-tipo="${grupoActivo[0] === gid ? _fbTipo : subs[0][0]}" role="tab" aria-selected="${grupoActivo[0] === gid}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}${gid === 'opiniones' ? badge(pend) : ''}</span></button>`).join('')}
+            ${GRUPOS.map(([gid, ico, lbl, subs]) => `<button type="button" class="menu-inner-tab${grupoActivo[0] === gid ? ' active' : ''}" data-fb-tipo="${grupoActivo[0] === gid ? _fbTipo : subs[0][0]}" role="tab" aria-selected="${grupoActivo[0] === gid}"><span class="menu-inner-tab-icon">${ico}</span><span>${lbl}${gid === 'hoy' ? badge(pend) : ''}</span></button>`).join('')}
         </nav>
         ${subHtml}
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
