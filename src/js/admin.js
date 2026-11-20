@@ -5587,6 +5587,14 @@ function _posFbPedidosHoy() {
         return t > 0 && _sqDayKey(t) === hoy;
     }).sort((a, b) => (_tsMs(b.enviadoAt || b.deliveredAt || b.createdAt) - _tsMs(a.enviadoAt || a.deliveredAt || a.createdAt)));
 }
+// "hace 25 min" desde que salió el pedido (enviado/entregado).
+function _posFbHace(o) {
+    const t = _tsMs(o.enviadoAt) || _tsMs(o.entregadoAt) || _tsMs(o.deliveredAt) || _tsMs(o.createdAt);
+    if (!t) return '';
+    const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+    const txt = min < 1 ? 'hace menos de 1 min' : (min < 60 ? `hace ${min} min` : `hace ${Math.floor(min / 60)} h ${min % 60} min`);
+    return ` · <span style="opacity:.8">🕒 ${txt}</span>`;
+}
 function _posFbActualizarInsignia() {
     const btn = document.getElementById('posFeedbackBtn');
     if (!btn) return;
@@ -5612,7 +5620,7 @@ function _posFbRender() {
         const tipo = { general: '💛 Fidelización', cuponera: '🎟️ Cuponera', quindio: '⭐ Sabe a Quindío' }[feedbackTipoOrden(o)] || '';
         return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.12)">
             <div style="min-width:0"><div style="font-weight:700">${escapeHtml(getOrderDisplayCustomerName(o))} · ${escapeHtml(o.code)} <small style="opacity:.65;font-weight:400">${tipo}</small></div>
-            <div style="font-size:12px;opacity:.9">${phone ? `<button type="button" class="feedback-pending-phone" data-posfb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <span style="color:${color};font-weight:700">${txt}</span></div></div>
+            <div style="font-size:12px;opacity:.9">${phone ? `<button type="button" class="feedback-pending-phone" data-posfb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <span style="color:${color};font-weight:700">${txt}</span>${_posFbHace(o)}</div></div>
             ${accion}</div>`;
     }).join('');
     modal.querySelector('.posfb-body').innerHTML = `
