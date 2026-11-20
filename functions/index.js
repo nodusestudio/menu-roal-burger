@@ -525,6 +525,18 @@ exports.vigilarAvisosBanco = onSchedule(
 // Un dispositivo se activó (admin_fcm_tokens nuevo) o pidió una prueba (probarAt cambió) → aviso de bienvenida
 // SOLO a ese dispositivo. Así el dueño sabe al instante que los avisos le van a llegar.
 // ─────────────────────────────────────────────────────────────
+// Aviso al celular cuando aparece alguien en Feedback › Campañas › Nuevo cliente (escribió por WhatsApp, no está registrado y no pidió).
+// Cada 15 min, de 10 a. m. a 10 p. m. (Bogotá). Ver functions/fodiNuevoCliente.js → avisarNuevos.
+exports.avisarNuevoCliente = onSchedule(
+    { cpu: 0.5, schedule: 'every 15 minutes', timeZone: 'America/Bogota', region: 'us-central1' },
+    async () => {
+        const hora = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
+        if (hora < 10 || hora >= 22) return;
+        const r = await require('./fodiNuevoCliente').avisarNuevos(getFirestore());
+        console.log('avisarNuevoCliente', JSON.stringify(r));
+    }
+);
+
 exports.notifyTokenActivado = onDocumentWritten(
     { cpu: 0.5, document: 'admin_fcm_tokens/{tokenDoc}', region: 'us-central1' },
     async (event) => {
