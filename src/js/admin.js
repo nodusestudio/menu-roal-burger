@@ -13824,7 +13824,7 @@ const FB_TIPOS_FID = ['temporadas', 'cumple', 'nuevo', 'reactivar', 'atender', '
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', reactivarOfertaPapas: 'unas papas gratis con tu pedido', reactivarProductoPapasId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
-    reactivarDiarios: 10, topeRegaloPct: 15, controlPct: 10, descansoDias: 45, // cola del día (los lee también el servidor: functions/reactivarCola.js)
+    reactivarDiarios: 10, topeRegaloPct: 15, controlPct: 20, descansoDias: 45, // cola del día (los lee también el servidor: functions/reactivarCola.js)
     nuevoOferta: 'unas papas gratis con tu pedido', nuevoProductoId: '', nuevoHoras: 3, nuevoEsperaMin: 30,
     disculpaOferta: 'un producto de cortesía en tu próximo pedido', disculpaProductoId: '', googleResenaUrl: 'https://g.page/r/CWR7IKp8khuOEAE/review',
     referidoAmigo: 'una bebida gratis en tu primer pedido', referidoRecompensa: 'unas papas gratis en tu próximo pedido', referidoAmigoProductoId: '', referidoRecompensaProductoId: '',
@@ -15033,7 +15033,7 @@ function _fidClick(e) {
         _cumpleRegalo = regalo;
         guardar({
             reactivarOferta: v('fcgReactOferta'), reactivarProductoId: v('fcgReactProducto'), reactivarOfertaPapas: v('fcgReactOfertaPapas') || FID_CFG_DEF.reactivarOfertaPapas, reactivarProductoPapasId: v('fcgReactProductoPapas'), reactivarDias: n('fcgReactDias', 21, 7, 120), vigenciaDias: n('fcgVigencia', 3, 1, 30),
-            reactivarDiarios: n('fcgColaN', 10, 1, 30), topeRegaloPct: n('fcgColaTope', 15, 3, 30), controlPct: n('fcgColaControl', 10, 0, 50), descansoDias: n('fcgColaDescanso', 45, 7, 180),
+            reactivarDiarios: n('fcgColaN', 10, 1, 30), topeRegaloPct: n('fcgColaTope', 15, 3, 30), controlPct: n('fcgColaControl', 20, 0, 50), descansoDias: n('fcgColaDescanso', 45, 7, 180),
             nuevoOferta: v('fcgNuevoOferta') || FID_CFG_DEF.nuevoOferta, nuevoProductoId: v('fcgNuevoProducto'), nuevoEsperaMin: n('fcgNuevoEspera', 30, 5, 240), nuevoHoras: n('fcgNuevoHoras', 3, 1, 24),
             cumpleRegalo: regalo, cumpleProductoId: v('fcgCumpleProducto'),
             disculpaOferta: v('fcgDisculpaOferta'), disculpaProductoId: v('fcgDisculpaProducto'), googleResenaUrl: url,

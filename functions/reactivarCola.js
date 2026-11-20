@@ -37,7 +37,7 @@ const ESCALERA = [
     { hasta: Infinity, opciones: ['carne_queso', 'papas_medianas', 'carne'] }
 ];
 
-const CFG_DEF = { reactivarDiarios: 10, topeRegaloPct: 15, controlPct: 10, descansoDias: 45, reactivarDias: 21, exploracionPct: 20, minMuestras: 10, horaMin: 11, horaMax: 21, horaDefecto: 18, maxDias: 150 };
+const CFG_DEF = { reactivarDiarios: 10, topeRegaloPct: 15, controlPct: 20, descansoDias: 45, reactivarDias: 21, exploracionPct: 20, minMuestras: 10, horaMin: 11, horaMax: 21, horaDefecto: 18, maxDias: 150 };
 const cfgDe = (raw = {}) => {
     const n = (v, d) => (Number.isFinite(Number(v)) && String(v) !== '' && v != null ? Number(v) : d);
     return {
