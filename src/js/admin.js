@@ -14082,6 +14082,16 @@ function _fidRegaloEnProducto(texto, favorito) {
         .replace(/(doble carne|una carne extra) y doble queso gratis en tu hamburguesa(, para que te quede triple 🍔)?/, `${carne} y doble queso gratis en ${prod}${triple}`)
         .replace('un queso extra en tu hamburguesa', `un queso extra en ${prod}`);
 }
+// Foto del catálogo servida desde este mismo sitio (el catálogo la guarda como https://roalburger.com/productos-img/x.webp?v=…): devuelve la ruta local para poder dibujarla sin bloqueo de CORS.
+function _fidRutaFotoPropia(raw) {
+    const u0 = String(raw || '').trim();
+    if (!u0 || /^logo\./.test(u0)) return '';
+    try {
+        const u = new URL(u0, location.origin);
+        if (u.origin !== location.origin && !/(^|\.)roalburger\.com$/.test(u.hostname)) return '';
+        return /^\/productos-img\//.test(u.pathname) ? `${u.pathname}${u.search}` : '';
+    } catch (_) { return ''; }
+}
 // Producto del catálogo que corresponde al favorito del cliente («Pepito Urbano» → producto «Urbano» de PEPITOS VENEZOLANOS) con foto propia en este sitio.
 function _fidProductoDeFavorito(fav) {
     const nz = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
@@ -14089,14 +14099,15 @@ function _fidProductoDeFavorito(fav) {
     if (!f) return null;
     let mejor = null; let pts = 0;
     (productsState || []).forEach((p) => {
-        const url = String((p && p.image_url) || '');
-        if (!p || !p.nombre || !/^\/[^/]/.test(url) || /^\/logo\./.test(url)) return;
+        if (!p || !p.nombre) return;
+        const url = _fidRutaFotoPropia(p.image_url);
+        if (!url) return;
         const n = nz(p.nombre);
         const stem = nz(p.categoria).split(' ')[0].replace(/s$/, '');
         let sc = 0;
         if (f === n) sc = 1000;
         else if (n.length >= 3 && f.includes(n) && stem && f.includes(stem)) sc = 100 + n.length;
-        if (sc > pts) { pts = sc; mejor = p; }
+        if (sc > pts) { pts = sc; mejor = { ...p, fotoRuta: url }; }
     });
     return mejor;
 }
@@ -14139,7 +14150,7 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     const esR = tipo === 'reactivar';
     // La foto es la del producto favorito del cliente (si la tiene en el mismo sitio); si no, rota entre las de hamburguesas.
     const favProd = esR && favorito ? _fidProductoDeFavorito(favorito) : null;
-    let fotoFav = favProd ? await _fidCargarImg(favProd.image_url) : null;
+    let fotoFav = favProd ? await _fidCargarImg(favProd.fotoRuta) : null;
     const [fotoRot, logo] = await Promise.all([fotoFav ? null : _fidCargarImg(`/productos-img/${_fidFotoSiguiente()}.webp`), _fidCargarImg(esR ? '/isotipo.png' : '/logo-blanco.png')]);
     const foto = fotoFav || fotoRot;
     // Foto con bordes que se funden con el fondo
