@@ -17074,6 +17074,34 @@
         #orderTicketPanel { grid-template-rows: 1fr; }
         #orderTicketBody { align-self: stretch; }
     }
+    /* ── CARRITO COMPACTO: nombre a la izquierda, precio a la derecha, × diminuta en la esquina, adicionales todos del mismo tamaño ── */
+    html body .pos-item-row { position: relative; padding: 6px 24px 6px 10px; gap: 2px 6px; }
+    html body .pos-item-row .pos-item-remove, html body .pos-extra-chip .pos-extra-chip-del {
+        position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0;
+        background: none !important; border: none !important; box-shadow: none; color: rgba(255,110,110,.75);
+        font-size: .95rem; line-height: 1; display: flex; align-items: center; justify-content: center;
+    }
+    html body .pos-item-row .pos-item-remove:hover, html body .pos-extra-chip .pos-extra-chip-del:hover { color: #ff8080; background: rgba(255,70,70,.18) !important; }
+    /* 🎁 y ✎ más pequeños y pegados; cantidad compacta */
+    html body .pos-item-cortesia-btn, html body .pos-item-comment-btn { width: 18px; height: 18px; font-size: .78rem; }
+    html body .pos-item-qty button { width: 22px; height: 24px; font-size: .9rem; }
+    html body .pos-item-qty input { width: 22px; font-size: .8rem; padding: 0; }
+    html body .pos-item-qty-price { gap: 3px; flex-wrap: nowrap; }
+    html body .pos-item-price { font-size: .85rem; }
+    /* Adicionales: una fila por adicional, todas iguales; nombre a la izquierda y precio a la derecha */
+    html body .pos-extras-chips { flex-direction: column; flex-wrap: nowrap; gap: 4px; padding: 0 8px 8px; }
+    html body .pos-extra-chip {
+        position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        width: 100%; box-sizing: border-box; min-height: 28px; padding: 4px 24px 4px 9px;
+        border-radius: var(--ui-radius); font-size: .76rem;
+    }
+    html body .pos-extra-chip .pos-extra-chip-name { flex: 1; min-width: 0; text-align: left; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+    html body .pos-extra-chip .pos-extra-chip-price, html body .pos-extra-chip .pos-extra-chip-incl { margin-left: auto; text-align: right; white-space: nowrap; }
+    /* Botones del pie del carrito: más bajos, letra que se ajusta al botón */
+    html body .pos-order-extra-btns { container-type: inline-size; gap: 6px; margin-bottom: 6px; }
+    html body .pos-extra-btn { min-height: 28px; padding: 3px 6px; font-size: clamp(.6rem, 3.6cqw, .78rem); text-overflow: clip; }
+    html body .pos-drawer-actions { gap: 6px; }
+    html body .pos-drawer-actions .pos-save-order-btn, html body .pos-drawer-actions .pos-cobrar-full-btn { padding: 8px 6px; min-height: 36px; font-size: .88rem; letter-spacing: .3px; white-space: nowrap; overflow: hidden; }
     /* La tarjeta de Mesas es fija: sin scroll propio ni altura máxima (crece con sus mesas) */
     html body .orders-workspace .orders-lane[data-mobile-lane="mesa"] { max-height: none; overflow: visible; }
     /* La barra naranja de "feedback pendiente" ya no se muestra aquí: todo está en el botón 📣 de la barra inferior */
