@@ -11633,7 +11633,7 @@ function _cpefRender2x1Config() {
             </label>
         </div>
         <label style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:#eef4ff;cursor:pointer;">
-            <input type="checkbox" id="cpef2x1Incremento" ${_cpef2x1.incremento ? 'checked' : ''}> Cobrar +$2.000 para llevar/domicilio
+            <input type="checkbox" id="cpef2x1Incremento" ${_cpef2x1.incremento ? 'checked' : ''}> Cobrar +$2.000 recoger/domicilio
         </label>
     </div>`;
 
@@ -12919,7 +12919,7 @@ function renderMetricasSabe() {
     };
     const countBy = (f) => { const m = new Map(); rows.forEach((r) => { const k = f(r.o); m.set(k, (m.get(k) || 0) + r.units); }); return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([label, val]) => ({ label, val })); };
     const canalData = countBy(canalDe);
-    const tipoData = countBy((o) => ({ mesa: 'En el local (mesa)', retiro: 'Para llevar', domicilio: 'Domicilio' }[o.orderType] || o.orderType));
+    const tipoData = countBy((o) => ({ mesa: 'En el local (mesa)', retiro: 'Recoger', domicilio: 'Domicilio' }[o.orderType] || o.orderType));
     const promoData = [{ label: 'Con 2×1', val: promoUnits }, { label: 'Precio normal', val: units - promoUnits }].filter((d) => d.val > 0);
 
     const fmtHora = (ts) => new Date(ts).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -13004,11 +13004,11 @@ function renderMetricasSabe() {
                 ${kpi('', nf(nuevos.length), `Clientes NUEVOS (${pctNuevos}%)`)}
                 ${kpi('met-kpi-card--green', nf(habituales.length), 'Clientes HABITUALES')}
                 ${kpi('met-kpi-card--purple', nf(repitieron.length), 'Repitieron (2 o más pedidos)')}
-                ${kpi('', `${pctReg}%`, `Domicilios y para llevar con cliente registrado (${nf(registrados)} de ${nf(exigenCliente)})`)}
+                ${kpi('', `${pctReg}%`, `Domicilios y recoger con cliente registrado (${nf(registrados)} de ${nf(exigenCliente)})`)}
                 ${kpi('', `${pctShare}%`, `De todos los pedidos ${ambito}`)}
                 ${kpi('', nf(rows.filter((r) => r.o.orderType === 'mesa').length), 'Pedidos en mesa (sin cliente)')}
             </div>
-            ${sinRegistro.orders ? `<p class="met-empty-note" style="margin-top:10px">⚠️ ${nf(sinRegistro.orders)} pedido(s) con Trifásica de domicilio o para llevar sin teléfono (${nf(sinRegistro.units)} unidades): no se pueden clasificar como nuevos o habituales. En caja el sistema ya pide el registro; estos vienen de antes o de un pedido editado.</p>` : ''}
+            ${sinRegistro.orders ? `<p class="met-empty-note" style="margin-top:10px">⚠️ ${nf(sinRegistro.orders)} pedido(s) con Trifásica de domicilio o recoger sin teléfono (${nf(sinRegistro.units)} unidades): no se pueden clasificar como nuevos o habituales. En caja el sistema ya pide el registro; estos vienen de antes o de un pedido editado.</p>` : ''}
         </article>
         <article class="admin-card">
             <div class="met-section-title">Análisis</div>
@@ -13017,7 +13017,7 @@ function renderMetricasSabe() {
                 <div class="met-analytics-card"><div class="met-analytics-title">Hora pico (todos)</div><div id="sqHourChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">Hora pico · MESA</div><div id="sqHourMesaChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">Hora pico · DOMICILIO</div><div id="sqHourDomChart"></div></div>
-                <div class="met-analytics-card"><div class="met-analytics-title">Hora pico · PARA LLEVAR</div><div id="sqHourLlevarChart"></div></div>
+                <div class="met-analytics-card"><div class="met-analytics-title">Hora pico · RECOGER</div><div id="sqHourLlevarChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">Día de la semana que más se vende${mejorSem.val ? ` · ${escapeHtml(mejorSem.label)} (${mejorSem.val})` : ''}</div><div id="sqSemChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">Canal de venta</div><div id="sqCanalChart"></div></div>
                 <div class="met-analytics-card"><div class="met-analytics-title">Tipo de pedido</div><div id="sqTipoChart"></div></div>
@@ -16040,7 +16040,7 @@ function renderMetricsUsers() {
     const payMap  = new Map();
     const typeMap = new Map();
     const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-    const typeLabels = { delivery:'Domicilio', takeaway:'Para llevar', dineIn:'En local' };
+    const typeLabels = { delivery:'Domicilio', takeaway:'Recoger', dineIn:'En local' };
 
     appOrders.forEach(o => {
         const ts = _orderTs(o);
@@ -16241,7 +16241,7 @@ function renderMetricsPos() {
     const hourMap = new Map(); const dayMap = new Array(7).fill(0);
     const payMap = new Map(); const typeMap = new Map();
     const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-    const typeLabels = { delivery:'Domicilio', takeaway:'Para llevar', dineIn:'En local' };
+    const typeLabels = { delivery:'Domicilio', takeaway:'Recoger', dineIn:'En local' };
 
     posOrders.forEach(o => {
         const ts = _orderTs(o);
@@ -16727,7 +16727,7 @@ function getOrderColumnKey(order) {
 function getOrderTypeLabel(order) {
     if (order.orderType === 'domicilio') return 'Domicilio';
     if (order.orderType === 'mesa') return order.mesaNumber ? `Mesa ${order.mesaNumber}` : 'Mesa';
-    return 'Para llevar';
+    return 'Recoger';
 }
 
 function getPickupModeTag(order) {
@@ -17864,7 +17864,7 @@ function createOrderCard(order) {
         card.classList.add('kanban-order-card--espera', 'is-attention');
         const tipoTxt = order.orderType === 'domicilio' ? '🛵 Domicilio'
             : order.orderType === 'mesa' ? (order.mesaNumber ? `🍽️ Mesa ${order.mesaNumber}` : '🍽️ Mesa')
-            : order.orderType === 'retiro' ? '🥡 Para llevar' : 'Sin tipo';
+            : order.orderType === 'retiro' ? '🥡 Recoger' : 'Sin tipo';
         const dirTxt = order.orderType === 'domicilio' && order.deliveryAddress
             ? `<div class="koc-espera-hint">📍 ${escapeHtml(order.deliveryAddress)}</div>` : '';
         card.innerHTML = `
@@ -26496,7 +26496,7 @@ function renderPosTypeBar() {
     const totalMesas = document.querySelectorAll('#ptsMesaGrid .pts-mesa-btn').length || 8;
     const btn = (type, icon, label) => `<button type="button" class="pos-typebar-btn${tipo === type ? ' is-active' : ''}" data-pos-type="${type}">${icon} ${label}</button>`;
     let html = btn('mesa', '🍽️', tipo === 'mesa' && cfg.mesaNumber ? `Mesa ${cfg.mesaNumber}` : 'Mesa')
-        + btn('retiro', '🥡', 'Llevar')
+        + btn('retiro', '🥡', 'Recoger')
         + btn('domicilio', '🛵', tipo === 'domicilio' && cfg.deliveryAddress ? 'Domicilio ✓' : 'Domicilio');
     if (_posTypeBarMesasAbiertas) {
         let mesas = '';
@@ -26746,7 +26746,7 @@ function _posAplicarTicketConfig(cfg) {
         customerPhone: cfg.customerPhone, deliveryAddress: cfg.deliveryAddress, deliveryFee: cfg.deliveryFee
     };
     _posEditPrefill = null;
-    const typeLabels = { mesa: 'Mesa', retiro: 'Para llevar', domicilio: 'Domicilio' };
+    const typeLabels = { mesa: 'Mesa', retiro: 'Recoger', domicilio: 'Domicilio' };
     const label = orderType === 'mesa' && mesaNumber
         ? (customerName ? `Mesa ${mesaNumber} · ${customerName}` : `Mesa ${mesaNumber}`)
         : (customerName ? `${customerName} (${typeLabels[orderType] || orderType})` : (typeLabels[orderType] || orderType));
@@ -37737,7 +37737,7 @@ async function renderMetricasCuponera() {
                     porHora[h] = (porHora[h] || 0) + q;
                 }
                 porZona[zona] = (porZona[zona] || 0) + q;
-                const tipo = o.orderType === 'domicilio' ? 'Domicilio' : (o.orderType === 'mesa' ? 'Mesa' : 'Para llevar');
+                const tipo = o.orderType === 'domicilio' ? 'Domicilio' : (o.orderType === 'mesa' ? 'Mesa' : 'Recoger');
                 porTipo[tipo] = (porTipo[tipo] || 0) + q;
             });
         });
