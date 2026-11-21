@@ -1585,7 +1585,10 @@
         .koc-meta .koc-pickup-mode-tag,
         .koc-meta .koc-mesero-tag,
         .koc-meta .koc-sin-mesa-badge { margin: 0; }
-        .koc-btn-time { margin-left: 8px; font-size: 0.7rem; font-weight: 600; opacity: 0.9; white-space: nowrap; }
+        .koc-btn-time { margin-left: 6px; flex-shrink: 0; font-size: 0.7rem; font-weight: 600; opacity: 0.9; white-space: nowrap; }
+        .koa-mesa-main:has(.koc-btn-time) { display: flex; align-items: center; justify-content: center; text-overflow: clip; padding-left: 8px; padding-right: 8px; gap: 2px; }
+        .koa-mesa-main .koc-btn-time .koc-courier-time { text-overflow: clip; overflow: visible; }
+        .koa-mesa-main .koc-btn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .koc-ready-pill {
             padding: 2px 8px; border-radius: 20px; font-size: 0.62rem; font-weight: 700; white-space: nowrap;
             background: rgba(67,192,156,0.14); color: #7fffd4; border: 1px solid rgba(67,192,156,0.3);

@@ -4197,9 +4197,9 @@ function ensureOrdersRealtimeTicker() {
             const order = orderMap.get(el.dataset.orderId);
             if (!order) return;
             if (el.classList.contains('koc-courier-time')) {
-                el.textContent = el.dataset.courierRef === 'created'
+                el.textContent = String(el.dataset.courierRef === 'created'
                     ? formatElapsedTime(order.createdAt)
-                    : formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
+                    : formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt)).replace(/^hace\s+/, '');
             } else {
                 el.textContent = formatLiveDuration(order.courierRequestedAt || order.updatedAt || order.createdAt);
             }
@@ -17311,7 +17311,7 @@ function createOrderCard(order) {
         else if (isTransit) { icono = '🛵'; claseBorde = 'koc-delivery-transit'; ref = 'requested'; tiempo = formatLiveDuration(order.courierRequestedAt); }
         else { icono = '📞'; claseBorde = 'koc-delivery-waiting'; ref = 'requested'; tiempo = formatLiveDuration(order.courierRequestedAt); }
         card.classList.add(claseBorde);
-        const info = `<span class="koc-btn-time">${icono} <span class="koc-courier-time" data-order-id="${oid}" data-courier-ref="${ref}">${escapeHtml(tiempo)}</span></span>`;
+        const info = `<span class="koc-btn-time">${icono} <span class="koc-courier-time" data-order-id="${oid}" data-courier-ref="${ref}">${escapeHtml(String(tiempo).replace(/^hace\s+/, ''))}</span></span>`;
         actionsMarkup = actionsMarkup.replace(/(koa-mesa-main"[^>]*>)([^<]*)(<\/button>)/, `$1<span class="koc-btn-label">$2</span>${info}$3`);
     }
 
