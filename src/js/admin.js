@@ -14649,98 +14649,88 @@ function _fidCargarImg(src) {
         .catch(() => directa(src));
 }
 
-// Genera una tarjeta PNG 1080x1350 (logo, nombre, frase, foto de hamburguesa que rota y botón) y la deja en el portapapeles
-// para pegarla en WhatsApp junto al texto. Si el navegador no deja copiar imágenes, la descarga.
+// ── POSTAL (2026-11-21): todos los mensajes (reactivar, cumpleaños, encuesta…) van con una imagen en forma de postal: foto de paisaje de
+// Venezuela, sello y matasellos, frase manuscrita, «Para: nombre» y el logo pequeño de marca de agua. El regalo va como una línea
+// discreta, no como protagonista. Las fotos viven en /postales-img (Unsplash, sin crédito obligatorio).
+const FID_POSTALES = ['p01', 'p04', 'p05', 'p06', 'p07', 'p08', 'p09', 'p10', 'p11', 'p12'];
+function _fidPostalSiguiente() {
+    let ult = '';
+    try { ult = localStorage.getItem('fidPostalUlt') || ''; } catch (_) { /* sin almacenamiento */ }
+    const opciones = FID_POSTALES.filter((f) => f !== ult);
+    const f = opciones[Math.floor(Math.random() * opciones.length)];
+    try { localStorage.setItem('fidPostalUlt', f); } catch (_) { /* sin almacenamiento */ }
+    return f;
+}
+// Genera la postal PNG 1080x1350 y la deja en el portapapeles (o la devuelve si soloBlob). `favorito` ya no se usa (se mantiene por compatibilidad).
 async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = '', favorito = '', clienteKey = '') {
     const W = 1080, H = 1350;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
-    const ORG = '#ff7a18', CRE = '#fff4e2';
-    // Fondo marrón con brillo naranja detrás de la hamburguesa
-    const bg = g.createRadialGradient(W / 2, H * 0.58, 40, W / 2, H * 0.58, W * 0.95);
-    bg.addColorStop(0, '#70340e'); bg.addColorStop(1, '#0e0703');
-    g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    // Reactivar: tarjeta «para compartir» (sin regalo ni botón): el nombre manda y solo va el isotipo como marca de agua.
-    const esR = tipo === 'reactivar';
-    // La foto es la del producto favorito del cliente (si la tiene en el mismo sitio); si no, rota entre las de hamburguesas.
-    const favProd = esR && favorito ? _fidProductoDeFavorito(favorito) : null;
-    let fotoFav = favProd ? await _fidCargarImg(favProd.fotoRuta) : null;
-    const [fotoRot, logo] = await Promise.all([fotoFav ? null : _fidCargarImg(`/productos-img/${_fidFotoSiguiente()}.webp`), _fidCargarImg(esR ? '/isotipo.png' : '/logo-blanco.png')]);
-    const foto = fotoFav || fotoRot;
-    // Foto con bordes que se funden con el fondo
-    if (foto) {
-        const ph = document.createElement('canvas'); ph.width = 1080; ph.height = 850;
-        const p = ph.getContext('2d');
-        if (fotoFav) { // recorte centrado con la proporción del cuadro (las fotos de producto no son todas iguales)
-            const r = 1080 / 850; let sw = foto.width; let sh = sw / r;
-            if (sh > foto.height) { sh = foto.height; sw = sh * r; }
-            p.drawImage(foto, (foto.width - sw) / 2, (foto.height - sh) / 2, sw, sh, 0, 0, 1080, 850);
-        } else {
-            const k = foto.width / 900;
-            p.drawImage(foto, 24 * k, 118 * k, 853 * k, 671 * k, 0, 0, 1080, 850);
-        }
-        p.globalCompositeOperation = 'destination-in';
-        const vy = p.createLinearGradient(0, 0, 0, 850);
-        vy.addColorStop(0, 'rgba(0,0,0,0)'); vy.addColorStop(0.28, '#000'); vy.addColorStop(0.84, '#000'); vy.addColorStop(1, 'rgba(0,0,0,0)');
-        p.fillStyle = vy; p.fillRect(0, 0, 1080, 850);
-        const hx = p.createLinearGradient(0, 0, 1080, 0);
-        hx.addColorStop(0, 'rgba(0,0,0,0)'); hx.addColorStop(0.1, '#000'); hx.addColorStop(0.9, '#000'); hx.addColorStop(1, 'rgba(0,0,0,0)');
-        p.fillStyle = hx; p.fillRect(0, 0, 1080, 850);
-        g.drawImage(ph, 0, 470);
-    }
-    // Oscurece abajo para que se lea el botón y el pie
-    const sombra = g.createLinearGradient(0, 1060, 0, H);
-    sombra.addColorStop(0, 'rgba(12,6,2,0)'); sombra.addColorStop(1, 'rgba(12,6,2,0.85)');
-    g.fillStyle = sombra; g.fillRect(0, 1060, W, H - 1060);
-    // Logo
-    g.textAlign = 'center';
-    if (esR) { /* sin logo arriba: el protagonista es el nombre */ }
-    else if (logo) { const lw = 440, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 46, lw, lh); }
-    else { g.fillStyle = CRE; g.font = '900 64px Impact, sans-serif'; g.fillText('ROAL BURGER', W / 2, 120); }
-    // Titular: frase en mayúsculas, última línea en naranja; el tamaño baja si la frase es larga
-    const frase = (await _fidFrase(tipo, clienteKey)).replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim().toUpperCase();
+    const MANO = '"Caveat","Segoe Script","Brush Script MT",cursive';
+    try { await Promise.all([document.fonts.load(`700 80px ${MANO}`), document.fonts.load(`600 40px ${MANO}`)]); } catch (_) { /* usa la letra de respaldo */ }
+    const [foto, logo, sello] = await Promise.all([_fidCargarImg(`/postales-img/${_fidPostalSiguiente()}.webp`), _fidCargarImg('/logo-blanco.png'), _fidCargarImg('/isotipo.png')]);
+    // Papel crema y foto con borde blanco (como una postal impresa)
+    g.fillStyle = '#f3e9d8'; g.fillRect(0, 0, W, H);
+    const FX = 40, FY = 40, FW = 1000, FH = 1130;
+    g.shadowColor = 'rgba(0,0,0,0.25)'; g.shadowBlur = 18; g.shadowOffsetY = 6;
+    g.fillStyle = '#fffdf8'; g.fillRect(FX - 8, FY - 8, FW + 16, FH + 16);
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    if (foto) g.drawImage(foto, FX, FY, FW, FH); else { g.fillStyle = '#70340e'; g.fillRect(FX, FY, FW, FH); }
+    // Sombra suave abajo para que se lea el texto
+    const sombra = g.createLinearGradient(0, FY + 560, 0, FY + FH);
+    sombra.addColorStop(0, 'rgba(10,6,3,0)'); sombra.addColorStop(1, 'rgba(10,6,3,0.78)');
+    g.fillStyle = sombra; g.fillRect(FX, FY + 560, FW, FH - 560);
+    // Sello postal (esquina superior derecha): borde dentado + isotipo
+    const sx = FX + FW - 190, sy = FY + 34, sw = 150, sh = 180;
+    g.save(); g.translate(sx + sw / 2, sy + sh / 2); g.rotate(0.07); g.translate(-sw / 2, -sh / 2);
+    g.fillStyle = '#fffdf8'; g.fillRect(0, 0, sw, sh);
+    g.globalCompositeOperation = 'destination-out';
+    for (let x = 6; x < sw; x += 14) { g.beginPath(); g.arc(x, 0, 5, 0, 7); g.arc(x, sh, 5, 0, 7); g.fill(); }
+    for (let y = 6; y < sh; y += 14) { g.beginPath(); g.arc(0, y, 5, 0, 7); g.arc(sw, y, 5, 0, 7); g.fill(); }
+    g.globalCompositeOperation = 'source-over';
+    g.fillStyle = '#2b1a0e'; g.fillRect(14, 14, sw - 28, sh - 28);
+    if (sello) { const iw = sw - 60; g.drawImage(sello, 30, 30, iw, iw * (sello.height / sello.width)); }
+    g.fillStyle = '#ffd6aa'; g.font = `700 22px ${MANO}`; g.textAlign = 'center'; g.fillText('ROAL BURGER', sw / 2, sh - 24);
+    g.restore();
+    // Matasellos: círculo y rayas sobre la foto, con la fecha
+    const fecha = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase().replace(/\./g, '');
+    g.save(); g.translate(sx - 70, sy + 110); g.rotate(-0.2); g.strokeStyle = 'rgba(255,255,255,0.75)'; g.fillStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 4;
+    g.beginPath(); g.arc(0, 0, 76, 0, 7); g.stroke(); g.beginPath(); g.arc(0, 0, 62, 0, 7); g.lineWidth = 2; g.stroke();
+    g.textAlign = 'center'; g.font = '700 17px "Segoe UI", system-ui, sans-serif'; g.fillText('ARMENIA · QUINDÍO', 0, -12); g.fillText(fecha, 0, 20);
+    g.lineWidth = 4; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(-170, -24 + i * 16); g.lineTo(-90, -24 + i * 16); g.stroke(); }
+    g.restore();
+    // Texto manuscrito: «Para: nombre» y la frase (la frase no se repite por cliente: memoria en Firebase)
+    const frase = (await _fidFrase(tipo, clienteKey)).replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim();
+    const n = String(nombre || '').trim().split(/\s+/)[0];
+    const maxW = FW - 120;
     const envolver = (size) => {
-        g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
+        g.font = `700 ${size}px ${MANO}`;
         const lineas = []; let cur = '';
-        frase.split(' ').forEach((w) => { const t = cur ? `${cur} ${w}` : w; if (g.measureText(t).width > W - 110 && cur) { lineas.push(cur); cur = w; } else cur = t; });
+        frase.split(' ').forEach((w) => { const t = cur ? `${cur} ${w}` : w; if (g.measureText(t).width > maxW && cur) { lineas.push(cur); cur = w; } else cur = t; });
         if (cur) lineas.push(cur);
         return lineas;
     };
-    let size = 112; let lineas = envolver(size);
-    while (lineas.length > 3 && size > 64) { size -= 8; lineas = envolver(size); }
-    if (lineas.length === 1) { const m = Math.ceil(frase.split(' ').length / 2); const a = frase.split(' '); lineas = [a.slice(0, m).join(' '), a.slice(m).join(' ')].filter(Boolean); }
-    g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
-    const lh = Math.round(size * 1.03);
-    const fin = 548; const ini = Math.max(fin - lineas.length * lh, esR ? 250 : 262); // el nombre nunca pisa el logo
-    const n = String(nombre || '').trim().split(/\s+/)[0];
-    g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 8; g.shadowOffsetY = 4;
-    g.fillStyle = ORG;
-    if (esR) {
-        // Nombre grande y protagonista (se encoge solo si es muy largo)
-        const txt = n && n !== 'Cliente' ? `${n},` : 'Para ti,';
-        let ns = 168; g.font = `${ns}px Impact, "Anton", "Arial Narrow", sans-serif`;
-        while (g.measureText(txt).width > W - 120 && ns > 80) { ns -= 8; g.font = `${ns}px Impact, "Anton", "Arial Narrow", sans-serif`; }
-        g.fillText(txt, W / 2, 190);
-    } else {
-        g.font = '700 46px "Segoe UI", system-ui, sans-serif';
-        g.fillText(n && n !== 'Cliente' ? `${n},` : 'Para ti,', W / 2, ini - 14);
-    }
-    g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
-    lineas.forEach((l, i) => { g.fillStyle = i === lineas.length - 1 ? ORG : CRE; g.fillText(l, W / 2, ini + (i + 1) * lh - 10); });
+    let size = 104; let lineas = envolver(size);
+    while (lineas.length > 4 && size > 64) { size -= 6; lineas = envolver(size); }
+    const lh = Math.round(size * 1.08);
+    const regalo = String(regaloTexto || '').replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim();
+    const baseY = FY + FH - (regalo ? 150 : 110); // la última línea de la frase termina aquí
+    g.textAlign = 'center';
+    g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 10; g.shadowOffsetY = 3;
+    g.fillStyle = '#fff4e2';
+    g.font = `700 ${size}px ${MANO}`;
+    lineas.forEach((l, i) => g.fillText(l, FX + FW / 2, baseY - (lineas.length - 1 - i) * lh));
+    g.font = `700 ${Math.round(size * 0.7)}px ${MANO}`; g.fillStyle = '#ffb067';
+    g.fillText(n && n !== 'Cliente' ? `Para ${n},` : 'Para ti,', FX + FW / 2, baseY - lineas.length * lh + 6);
     g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
-    if (esR) {
-        // Solo el isotipo como marca de agua en una esquina: nada de regalo, botón ni dirección (el regalo va en el texto).
-        if (logo) { const iw = 150; g.globalAlpha = 0.6; g.drawImage(logo, W - iw - 44, H - iw - 40, iw, iw * (logo.height / logo.width)); g.globalAlpha = 1; }
-    } else {
-        // Botón y pie
-        g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 24; g.shadowOffsetY = 8;
-        g.fillStyle = ORG; g.beginPath(); g.roundRect(250, 1148, 580, 96, 48); g.fill();
-        g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
-        g.fillStyle = '#140802'; g.font = '700 44px "Segoe UI", system-ui, sans-serif'; g.fillText('PIDE AHORA  ›', W / 2, 1210);
-        g.fillStyle = '#ffd6aa'; g.font = '700 32px "Segoe UI", system-ui, sans-serif'; g.fillText('roalburger.com  ·  Armenia, Quindío', W / 2, 1306);
-    }
+    if (regalo) { g.font = `600 44px ${MANO}`; g.fillStyle = '#ffd6aa'; g.fillText(`Un detalle de nuestra parte: ${regalo}`, FX + FW / 2, baseY + 56, FW - 80); }
+    // Marca de agua: logo pequeño abajo, centrado
+    if (logo) { const lw = 210, lh2 = lw * (logo.height / logo.width); g.globalAlpha = 0.85; g.drawImage(logo, FX + (FW - lw) / 2, FY + FH - lh2 - 22, lw, lh2); g.globalAlpha = 1; }
+    // Pie de la postal (sobre el papel)
+    g.fillStyle = '#6b4a2b'; g.font = `600 40px ${MANO}`; g.textAlign = 'center';
+    g.fillText('Con cariño, tu gente de ROAL BURGER  ·  roalburger.com', W / 2, FY + FH + 78);
     let blob = null;
-    try { blob = await new Promise((ok) => cv.toBlob(ok, 'image/png')); } catch (err) { console.warn('[Reactivar] imagen:', err && err.message); }
+    try { blob = await new Promise((ok) => cv.toBlob(ok, 'image/png')); } catch (err) { console.warn('[Postal] imagen:', err && err.message); }
     if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return null; }
     if (soloBlob) return blob; // la vista previa la muestra y la copia despues sin volver a generarla
     return _fidCopiarBlob(blob);
