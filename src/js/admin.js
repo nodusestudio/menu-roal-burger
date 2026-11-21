@@ -14953,6 +14953,35 @@ function _btnHecho(btn, texto) {
     btn.classList.add('btn-hecho');
     setTimeout(() => { btn.classList.remove('btn-hecho'); btn.innerHTML = html; btn.style.minWidth = ''; delete btn.dataset.hechoActivo; }, 1800);
 }
+// Último pedido de un cliente (Reactivar): línea «hace N días» + botón 🧾 que abre el ticket de ese pedido, solo lectura.
+function _fidUltimoPedidoHtml(telefono, dias) {
+    const tel = String(telefono || '').replace(/\D/g, '');
+    if (!tel) return '';
+    return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:.85rem"><span>🕒 Último pedido${Number.isFinite(Number(dias)) && dias !== '' && dias != null ? `: hace <b>${Number(dias)} días</b>` : ''}</span><button type="button" class="ghost-button" data-fid-ult-ticket="${tel}" title="Ver el ticket de su último pedido" style="padding:4px 10px;font-size:.78rem">🧾 Ver ticket</button></div>`;
+}
+async function _fidVerTicketUltimo(telefono) {
+    const tel = String(telefono || '').replace(/\D/g, '');
+    const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === _sqPhoneKey(tel)) || { customerPhoneDigits: tel, customerPhone: tel };
+    showNotice('Buscando su último pedido…', 'info');
+    let pedidos = [];
+    try { pedidos = await _fidPedidosCliente(cliente); } catch (_) { pedidos = []; }
+    const ult = pedidos.filter((o) => o && o.anulado !== true && o.voided !== true).sort((a, b) => _orderTs(b) - _orderTs(a))[0];
+    if (!ult) { showNotice('No encuentro pedidos de este cliente.', 'error'); return; }
+    document.getElementById('fidTicketUltOverlay')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'fidTicketUltOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    const cuando = new Date(_orderTs(ult)).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:16px;width:min(100%,460px);max-height:94vh;overflow:auto;color:#fff;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>🧾 Último pedido · ${escapeHtml(cuando)}</strong><button type="button" class="ghost-button" data-ult-cerrar>✕ Cerrar</button></div>
+        <div style="background:#fffdf8;color:#111;border-radius:9px;padding:10px;overflow:auto">${buildThermalTicketMarkup(ult, { printMode: true })}</div></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-ult-cerrar]')) ov.remove(); });
+}
+document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-fid-ult-ticket]');
+    if (b) _fidVerTicketUltimo(b.dataset.fidUltTicket);
+});
 // Botón «Copiar número» de las vistas previas (un solo oyente para todas).
 document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-fid-prev-tel]');
@@ -15014,7 +15043,7 @@ async function _fidAbrirPrevia(tipo, clienteId) {
             ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Saludo ya enviado</span>'
             : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(cliente.id)}">✅ Ya lo envié</button>`}`
         : `<button type="button" class="section-action-btn" data-fid-reactivar="${escapeHtml(cliente.id)}">Copiar mensaje</button>`;
-    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: cliente.customerName, telefono: cliente.customerPhoneDigits || cliente.customerPhone, texto, botones: btnCopiar, hint: 'Pega primero la imagen en el chat y luego el mensaje como texto. Al copiar el mensaje, la persona sale de la cola.' });
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: cliente.customerName, telefono: cliente.customerPhoneDigits || cliente.customerPhone, extraDer: esCumple ? '' : _fidUltimoPedidoHtml(cliente.customerPhoneDigits || cliente.customerPhone, _tsMs(cliente.lastOrderAt) ? Math.floor((Date.now() - _tsMs(cliente.lastOrderAt)) / 86400000) : null), texto, botones: btnCopiar, hint: 'Pega primero la imagen en el chat y luego el mensaje como texto. Al copiar el mensaje, la persona sale de la cola.' });
     if (fijo) ov.querySelector('[data-fid-prev-otra]')?.remove(); // ya enviada: no se cambia la imagen
     ov.addEventListener('click', (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
@@ -15545,7 +15574,7 @@ function _fidColaHtml() {
             <div class="met-avatar">${ICONO[e.estado] || '🔁'}</div>
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(e.nombre)}" title="Tocar para copiar el nombre">${escapeHtml(e.nombre)}</button> · 🕒 ${escapeHtml(hora)}${aviso}</div>
-                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.vigenciaDias ? ` · vale ${e.vigenciaDias} días` : ''}${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}</div>
+                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong> <button type="button" class="ghost-button" data-fid-ult-ticket="${escapeHtml(tel)}" title="Ver el ticket de su último pedido" style="padding:1px 7px;font-size:.72rem">🧾 ticket</button>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.vigenciaDias ? ` · vale ${e.vigenciaDias} días` : ''}${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}</div>
             </div>
             ${acciones}
         </div>`;
@@ -15682,7 +15711,7 @@ function _fbRenderFid(body) {
                 <div class="met-avatar">🔁</div>
                 <div class="met-user-info-v2">
                     <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(c.customerName)}" title="Tocar para copiar el nombre">${escapeHtml(c.customerName)}</button></div>
-                    <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · hace <strong>${dias} días</strong> · ${nf(c.totalOrders)} pedido${c.totalOrders === 1 ? '' : 's'} · ${escapeHtml(formatMoney(c.totalSpent))}</div>
+                    <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button> · hace <strong>${dias} días</strong> <button type="button" class="ghost-button" data-fid-ult-ticket="${escapeHtml(phone)}" title="Ver el ticket de su último pedido" style="padding:1px 7px;font-size:.72rem">🧾 ticket</button> · ${nf(c.totalOrders)} pedido${c.totalOrders === 1 ? '' : 's'} · ${escapeHtml(formatMoney(c.totalSpent))}</div>
                 </div>
                 <button type="button" class="ghost-button" data-fid-prev="reactivar" data-fid-id="${escapeHtml(c.id)}" title="Ver la imagen y el mensaje antes de copiarlos">👁 Vista previa</button>
                 <button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(c.id)}">Copiar mensaje</button>
@@ -15862,7 +15891,10 @@ async function _fidPreviaReactivar({ k = '', envioId = '', postalInicial = null 
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
-    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: (entrada && entrada.telefono) || (envio && envio.telefono), texto: textoActual(), idTexto: 'fidPreviaTexto', botones: `<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button>${enviado ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Ya marcado como enviado</span>' : '<button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>'}`, hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
+    const telU = (entrada && entrada.telefono) || (envio && envio.telefono);
+    const clienteU = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === _sqPhoneKey(telU));
+    const diasU = entrada && Number.isFinite(Number(entrada.dias)) ? Number(entrada.dias) : (clienteU && _tsMs(clienteU.lastOrderAt) ? Math.floor((Date.now() - _tsMs(clienteU.lastOrderAt)) / 86400000) : null);
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: telU, extraDer: _fidUltimoPedidoHtml(telU, diasU), texto: textoActual(), idTexto: 'fidPreviaTexto', botones: `<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button>${enviado ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Ya marcado como enviado</span>' : '<button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>'}`, hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
     ov.addEventListener('click', (ev) => {
         const t = ev.target;
         if (t.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
