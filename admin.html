@@ -17079,7 +17079,9 @@
     html body .pos-item-row { position: relative; flex-wrap: nowrap; align-items: center; padding: 6px 30px 6px 10px; gap: 6px; }
     html body .pos-item-row .pos-item-name { flex: 1 1 0; min-width: 0; margin-right: 0; }
     html body .pos-item-row .pos-item-qty-price { display: contents; }
-    html body .pos-item-row .pos-item-price { min-width: 58px; flex-shrink: 0; text-align: right; align-items: flex-end; }
+    /* el precio va siempre en la PRIMERA línea del nombre, aunque el nombre ocupe 2 o más líneas */
+    html body .pos-item-row .pos-item-price { min-width: 58px; flex-shrink: 0; text-align: right; align-items: flex-end; align-self: flex-start; margin-top: 1px; }
+    html body .pos-extra-chip { align-items: flex-start; }
     html body .pos-item-mini { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
     html body .pos-item-row .pos-item-remove, html body .pos-extra-chip .pos-extra-chip-del {
         position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0;
