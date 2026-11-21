@@ -13901,6 +13901,7 @@ function _fidGuardarEnvio(cliente, motivo, { codigo = '', beneficio = '', dias =
         escrituras.push(firebaseDb.collection('cupones_fidelizacion').doc(codigo).set(cupon));
     }
     Promise.all(escrituras).catch((err) => showNotice(`No se pudo guardar el registro de ${cliente.customerName || 'este cliente'}: ${err.message || 'error'}. El mensaje sí se copió.`, 'error'));
+    return envioRef.id;
 }
 
 function _fidEstadoCupon(k) {
@@ -14061,11 +14062,26 @@ function _fidMensajeReactivar(c, codigo, dias, extra = []) {
 
 // Frases motivacionales para la imagen que acompaña los mensajes de fidelización (se rotan para no repetir).
 const FID_FRASES = {
-    reactivar: ['Los mejores antojos siempre vuelven 🍔', 'Un buen día se arregla con una buena burger', 'Hoy es un gran día para consentirte', 'Tu antojo te está esperando'],
+    reactivar: ['Hoy es un buen día para darte un gusto', 'Lo bueno de la vida también se come con calma', 'Te mereces un respiro y algo rico', 'Los días largos se sienten mejor con algo que te gusta', 'Tú sigues dándolo todo: hoy te toca consentirte', 'Un buen momento no necesita razón, solo ganas', 'Las cosas buenas siempre se saborean mejor en compañía'],
     cumple: ['Que este nuevo año te sepa a victoria', 'Hoy se celebra a lo grande, ¡te lo mereces!', 'Cumplir años es sumar historias; la de hoy va con burger', 'Que tus sueños se cumplan igual que tus antojos'],
     referido: ['Compartir una buena burger hace mejor el día de dos', 'Gracias por traer a los tuyos a la mesa', 'Las mejores recomendaciones vienen de amigos como tú'],
     gracias: ['Gracias por contarnos, así crecemos juntos', 'Tu opinión nos hace mejores cada día', 'Con clientes como tú, cada burger sale mejor']
 };
+// Reescribe el regalo de colas ya armadas para que nombre el producto favorito (misma regla que functions/reactivarCola.js).
+function _fidRegaloEnProducto(texto, favorito) {
+    const fav = String(favorito || '').trim();
+    const t = String(texto || '');
+    if (!fav) return t;
+    const prod = `tu ${fav}`;
+    const doble = /\b(2|dos)\s*carnes?\b|doble/i.test(fav);
+    const perro = /perro|hot\s?dog|salchicha/i.test(fav);
+    const carne = perro ? 'una salchicha extra' : (doble ? 'una carne extra' : 'una adición de carne');
+    const triple = !perro && doble ? ', para que te quede triple 🍔' : '';
+    return t
+        .replace(/(una doble carne|una carne extra) gratis en tu hamburguesa(, para que te quede triple 🍔)?/, `${carne} gratis en ${prod}${triple}`)
+        .replace(/(doble carne|una carne extra) y doble queso gratis en tu hamburguesa(, para que te quede triple 🍔)?/, `${carne} y doble queso gratis en ${prod}${triple}`)
+        .replace('un queso extra en tu hamburguesa', `un queso extra en ${prod}`);
+}
 function _fidFrase(tipo) {
     const lista = FID_FRASES[tipo] || FID_FRASES.reactivar;
     return lista[Math.floor(Math.random() * lista.length)];
@@ -14096,7 +14112,9 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     const bg = g.createRadialGradient(W / 2, H * 0.58, 40, W / 2, H * 0.58, W * 0.95);
     bg.addColorStop(0, '#70340e'); bg.addColorStop(1, '#0e0703');
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    const [foto, logo] = await Promise.all([_fidCargarImg(`/productos-img/${_fidFotoSiguiente()}.webp`), _fidCargarImg('/logo-blanco.png')]);
+    // Reactivar: tarjeta «para compartir» (sin regalo ni botón): el nombre manda y solo va el isotipo como marca de agua.
+    const esR = tipo === 'reactivar';
+    const [foto, logo] = await Promise.all([_fidCargarImg(`/productos-img/${_fidFotoSiguiente()}.webp`), _fidCargarImg(esR ? '/isotipo.png' : '/logo-blanco.png')]);
     // Foto con bordes que se funden con el fondo
     if (foto) {
         const ph = document.createElement('canvas'); ph.width = 1080; ph.height = 850;
@@ -14118,7 +14136,8 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     g.fillStyle = sombra; g.fillRect(0, 1060, W, H - 1060);
     // Logo
     g.textAlign = 'center';
-    if (logo) { const lw = 440, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 46, lw, lh); }
+    if (esR) { /* sin logo arriba: el protagonista es el nombre */ }
+    else if (logo) { const lw = 440, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 46, lw, lh); }
     else { g.fillStyle = CRE; g.font = '900 64px Impact, sans-serif'; g.fillText('ROAL BURGER', W / 2, 120); }
     // Titular: frase en mayúsculas, última línea en naranja; el tamaño baja si la frase es larga
     const frase = _fidFrase(tipo).replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim().toUpperCase();
@@ -14134,30 +14153,34 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     if (lineas.length === 1) { const m = Math.ceil(frase.split(' ').length / 2); const a = frase.split(' '); lineas = [a.slice(0, m).join(' '), a.slice(m).join(' ')].filter(Boolean); }
     g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
     const lh = Math.round(size * 1.03);
-    const fin = 548; const ini = Math.max(fin - lineas.length * lh, 262); // el nombre nunca pisa el logo
+    const fin = 548; const ini = Math.max(fin - lineas.length * lh, esR ? 250 : 262); // el nombre nunca pisa el logo
     const n = String(nombre || '').trim().split(/\s+/)[0];
     g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 8; g.shadowOffsetY = 4;
-    g.fillStyle = ORG; g.font = '700 46px "Segoe UI", system-ui, sans-serif';
-    g.fillText(n && n !== 'Cliente' ? `${n},` : 'Para ti,', W / 2, ini - 14);
+    g.fillStyle = ORG;
+    if (esR) {
+        // Nombre grande y protagonista (se encoge solo si es muy largo)
+        const txt = n && n !== 'Cliente' ? `${n},` : 'Para ti,';
+        let ns = 168; g.font = `${ns}px Impact, "Anton", "Arial Narrow", sans-serif`;
+        while (g.measureText(txt).width > W - 120 && ns > 80) { ns -= 8; g.font = `${ns}px Impact, "Anton", "Arial Narrow", sans-serif`; }
+        g.fillText(txt, W / 2, 190);
+    } else {
+        g.font = '700 46px "Segoe UI", system-ui, sans-serif';
+        g.fillText(n && n !== 'Cliente' ? `${n},` : 'Para ti,', W / 2, ini - 14);
+    }
     g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
     lineas.forEach((l, i) => { g.fillStyle = i === lineas.length - 1 ? ORG : CRE; g.fillText(l, W / 2, ini + (i + 1) * lh - 10); });
     g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
-    // Botón y pie
-    g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 24; g.shadowOffsetY = 8;
-    g.fillStyle = ORG; g.beginPath(); g.roundRect(250, 1148, 580, 96, 48); g.fill();
-    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
-    g.fillStyle = '#140802'; g.font = '700 44px "Segoe UI", system-ui, sans-serif'; g.fillText('PIDE AHORA  ›', W / 2, 1210);
-    // En reactivar, la imagen nombra el mismo regalo que promete el texto (así imagen y mensaje dicen lo mismo).
-    const ofertaImg = regaloTexto || _fidCfg.reactivarOferta;
-    if (tipo === 'reactivar' && ofertaImg) {
-        const regalo = `🎁 Tu regalo: ${ofertaImg}`;
-        g.font = '700 34px "Segoe UI", system-ui, sans-serif';
-        const rw = Math.min(W - 80, g.measureText(regalo).width + 70);
-        g.fillStyle = 'rgba(12,6,2,0.82)'; g.beginPath(); g.roundRect((W - rw) / 2, 1062, rw, 62, 31); g.fill();
-        g.strokeStyle = ORG; g.lineWidth = 2; g.stroke();
-        g.fillStyle = CRE; g.fillText(regalo, W / 2, 1104);
+    if (esR) {
+        // Solo el isotipo como marca de agua en una esquina: nada de regalo, botón ni dirección (el regalo va en el texto).
+        if (logo) { const iw = 150; g.globalAlpha = 0.6; g.drawImage(logo, W - iw - 44, H - iw - 40, iw, iw * (logo.height / logo.width)); g.globalAlpha = 1; }
+    } else {
+        // Botón y pie
+        g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 24; g.shadowOffsetY = 8;
+        g.fillStyle = ORG; g.beginPath(); g.roundRect(250, 1148, 580, 96, 48); g.fill();
+        g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+        g.fillStyle = '#140802'; g.font = '700 44px "Segoe UI", system-ui, sans-serif'; g.fillText('PIDE AHORA  ›', W / 2, 1210);
+        g.fillStyle = '#ffd6aa'; g.font = '700 32px "Segoe UI", system-ui, sans-serif'; g.fillText('roalburger.com  ·  Armenia, Quindío', W / 2, 1306);
     }
-    g.fillStyle = '#ffd6aa'; g.font = '700 32px "Segoe UI", system-ui, sans-serif'; g.fillText('roalburger.com  ·  Armenia, Quindío', W / 2, 1306);
     const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
     if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return null; }
     if (soloBlob) return blob; // la vista previa la muestra y la copia despues sin volver a generarla
@@ -14674,19 +14697,23 @@ function _fidColaHtml() {
     const n = (s) => ent.filter((e) => e.estado === s).length;
     const ahoraH = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
     const ICONO = { pendiente: '🔁', copiado: '⏳', enviado: '✅', omitido: '⏭️' };
-    const filas = ent.filter((e) => e.estado !== 'omitido').map((e) => {
+    const enviadosHoy = ent.filter((e) => e.estado === 'enviado');
+    const horaEnv = (ms) => (ms ? new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' }) : '');
+    const filasEnv = enviadosHoy.map((e) => `<div class="met-user-row-v2" style="opacity:.8"><div class="met-avatar">✅</div><div class="met-user-info-v2"><div class="met-user-name-v2">${escapeHtml(e.nombre)}${e.enviadoAt ? ` · enviado ${escapeHtml(horaEnv(e.enviadoAt))}` : ''}</div><div class="met-user-meta-v2">🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))}</div></div></div>`).join('');
+    const bloqueEnv = enviadosHoy.length ? `<div style="margin-top:10px"><button type="button" class="ghost-button" data-fid-envhoy>✅ Enviados hoy (${enviadosHoy.length}) ${_fidEnvHoyAbierto ? '▴' : '▾'}</button>${_fidEnvHoyAbierto ? `<div class="metrics-users-list" style="margin-top:8px">${filasEnv}</div>` : ''}</div>` : '';
+    const filas = ent.filter((e) => e.estado !== 'omitido' && e.estado !== 'enviado').map((e) => {
         const tel = String(e.telefono || '').replace(/\D/g, '');
         const hecha = e.estado === 'enviado' || e.estado === 'omitido';
         const hora = `${_fidHoraTexto(e.hora)}${e.horaOrigen === 'cliente' ? ' (su hora)' : ' (hora pico)'}`;
         const aviso = e.estado === 'pendiente' ? (e.hora <= ahoraH ? ' · <strong style="color:#fbbf24">es su hora</strong>' : '') : '';
         const acciones = e.estado === 'pendiente'
-            ? `<button type="button" class="section-action-btn" data-fid-img="reactivar" data-fid-img-nombre="${escapeHtml(e.nombre)}" data-fid-img-regalo="${escapeHtml(e.regaloTexto)}" title="Copia la imagen con la frase; pégala primero en WhatsApp">Copiar imagen</button><button type="button" class="feedback-pending-btn" data-fid-cola-copiar="${escapeHtml(e.k)}">Copiar mensaje</button><button type="button" class="ghost-button" data-fid-cola-omitir="${escapeHtml(e.k)}" title="Hoy no le escribo">Omitir</button>`
-            : (e.estado === 'copiado' ? '<small style="opacity:.7">Copiado: confírmalo arriba en «Copiados, falta enviar»</small>' : '');
+            ? `<button type="button" class="feedback-pending-btn" data-fid-prev-cola="${escapeHtml(e.k)}" title="Ver la imagen y el texto; copiarlos y confirmar el envío">👁 Vista previa</button><button type="button" class="ghost-button" data-fid-cola-omitir="${escapeHtml(e.k)}" title="Hoy no le escribo">Omitir</button>`
+            : (e.estado === 'copiado' ? `<button type="button" class="ghost-button" data-fid-prev-cola="${escapeHtml(e.k)}">👁 Vista previa</button>` : '');
         return `<div class="met-user-row-v2"${hecha ? ' style="opacity:.55"' : ''}>
             <div class="met-avatar">${ICONO[e.estado] || '🔁'}</div>
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(e.nombre)}" title="Tocar para copiar el nombre">${escapeHtml(e.nombre)}</button> · 🕒 ${escapeHtml(hora)}${aviso}</div>
-                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(e.regaloTexto)} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.vigenciaDias ? ` · vale ${e.vigenciaDias} días` : ''}${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}</div>
+                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.vigenciaDias ? ` · vale ${e.vigenciaDias} días` : ''}${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}</div>
             </div>
             ${acciones}
         </div>`;
@@ -14703,7 +14730,7 @@ function _fidColaHtml() {
             <p class="admin-hint" style="margin-top:6px">Cada día a las 6 a. m. el sistema elige a los clientes que llevan más de lo normal sin pedir (según su propio ritmo), los que más valen primero. Les escribes a la hora en que ese cliente más pide, con su producto favorito y un regalo cuyo costo no pasa del tope. Te llega un aviso al celular a cada hora. Un grupo pequeño no recibe mensaje a propósito: sirve para medir si el mensaje de verdad hace volver. El sistema aprende qué regalo canjea más. Se ajusta en «Ajustes».</p>
         </details>
     </article>
-    <article class="admin-card"><div class="metrics-users-list">${filas || '<p class="met-empty-note">Hoy no hay clientes por reactivar.</p>'}</div></article>`;
+    <article class="admin-card"><div class="metrics-users-list">${filas || '<p class="met-empty-note">Hoy no hay clientes por reactivar.</p>'}</div>${bloqueEnv}</article>`;
 }
 
 // Pestaña ⚙️ Configuración: todos los ajustes de configuracion/fidelizacion juntos (las demás pestañas guardan los mismos campos).
@@ -14835,14 +14862,14 @@ function _fbRenderFid(body) {
                     <div class="met-user-name-v2">${escapeHtml(e.nombre || 'Cliente')}</div>
                     <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(e.telefono || '')}" title="Tocar para copiar el número">📋 ${escapeHtml(e.telefono || '')}</button> · copiado hace ${hace}${vencido ? ' · <span style="color:#f87171;font-weight:700">⚠️ cupón vencido: descártalo</span>' : ''}</div>
                 </div>
-                <button type="button" class="ghost-button" data-fid-recopiar="${escapeHtml(e.id)}">Copiar de nuevo</button>
+                <button type="button" class="ghost-button" data-fid-prev-env="${escapeHtml(e.id)}" title="Ver la imagen y el texto; copiarlos de nuevo o confirmar el envío">👁 Vista previa</button>
                 <button type="button" class="feedback-pending-btn" data-fid-enviado="${escapeHtml(e.id)}">✅ Ya lo envié</button>
                 <button type="button" class="ghost-button" data-fid-descartar="${escapeHtml(e.id)}" title="No lo envié: anula el cupón y la persona vuelve a la lista">Descartar</button>
             </div>`;
         }).join('');
         const tarjetaPend = pendEnv.length ? `<article class="admin-card">
             <div class="met-section-title">⏳ Copiados, falta enviar (${pendEnv.length})</div>
-            <p class="admin-hint" style="margin:4px 0 10px">Copiaste el mensaje pero aún no lo confirmas. Recupéralo con «Copiar de nuevo» y, cuando lo envíes, toca «Ya lo envié».</p>
+            <p class="admin-hint" style="margin:4px 0 10px">Abre la «Vista previa» para copiar de nuevo la imagen o el texto y, cuando lo envíes, toca «Ya lo envié».</p>
             <div class="metrics-users-list">${filasPend}</div>
         </article>` : '';
         html = `${tarjetaPend}<article class="admin-card">
@@ -14941,6 +14968,95 @@ function _fbRenderFid(body) {
     body.innerHTML = _fbNavTipoHtml() + `<span id="fidMarca" hidden data-clientes="${clientsState.length}" data-carga="${_clientsLoad.estado}"></span>` + html;
 }
 
+let _fidEnvHoyAbierto = false;
+
+// Confirma que el mensaje ya se envió: sale de «Copiados, falta enviar» y queda en «Enviados hoy».
+function _fidMarcarEnviado(e) {
+    e.pendiente = false;
+    firebaseDb.collection('fidelizacion_envios').doc(e.id).update({ pendiente: false, enviadoAt: firebase.firestore.Timestamp.now() })
+        .catch((err) => { e.pendiente = true; showNotice(`No se pudo confirmar: ${err.message || 'error'}`, 'error'); renderMetricasFeedback(); });
+    if (e.cola) _fidColaMarcar(e.cola, e.colaK, 'enviado');
+    showNotice(`Listo: mensaje a ${e.nombre || 'cliente'} confirmado como enviado.`, 'ok');
+    renderMetricasFeedback();
+}
+
+// Crea el cupón y el registro «copiado, falta enviar» de una entrada de la cola del día; devuelve el registro.
+function _fidColaCrearEnvio(entrada) {
+    // La vigencia la prueba el sistema (2, 3 o 5 dias) y aprende cual canjea mas; la cola vieja usa la de Ajustes.
+    const dias = Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3;
+    const codigo = _fidNuevoCodigo(entrada.nombre);
+    const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === entrada.k)
+        || { id: '', customerName: entrada.nombre, customerPhoneDigits: entrada.telefono, customerPhone: entrada.telefono };
+    // El regalo nombra su producto favorito (colas ya armadas con el texto viejo incluidas).
+    const mensaje = _fidRegaloEnProducto(String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(dias)), entrada.favorito);
+    const beneficio = _fidRegaloEnProducto(entrada.regaloTexto, entrada.favorito);
+    // El cupón lleva el tipo de regalo (queso, papas, carne…): de ahí aprende el sistema cuál canjea más.
+    const id = _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio, dias, productoId: '', envioExtra: { pendiente: true, mensaje, regalo: entrada.regalo, cola: _fidCola.dia, colaK: entrada.k, costoRegalo: entrada.costoRegalo, modoRegalo: entrada.modo || '' }, cuponExtra: { regalo: entrada.regalo, cola: _fidCola.dia, vigenciaDias: dias } });
+    _fidColaMarcar(_fidCola.dia, entrada.k, 'copiado');
+    entrada.estado = 'copiado';
+    return _fidEnvios.find((x) => x.id === id);
+}
+
+// Vista previa de Reactivar (cola del día o «Copiados, falta enviar»): imagen + texto, con Copiar imagen, Copiar texto y Ya lo envié.
+async function _fidPreviaReactivar({ k = '', envioId = '' }) {
+    let envio = envioId ? _fidEnvios.find((x) => x.id === envioId) : null;
+    const entrada = k && _fidCola ? (_fidCola.entradas || []).find((x) => x.k === k) : null;
+    if (!envio && entrada && entrada.estado !== 'pendiente') envio = _fidEnvios.find((x) => x.motivo === 'reactivar' && x.colaK === k && x.cola === _fidCola.dia && x.descartado !== true) || null;
+    if (!envio && !entrada) { showNotice('No encuentro ese mensaje: recarga la lista.', 'error'); return; }
+    const nombre = (entrada && entrada.nombre) || envio.nombre || 'Cliente';
+    _fidCerrarPrevia();
+    const ov = document.createElement('div');
+    ov.id = 'fidPreviaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    document.body.appendChild(ov);
+    _bindOverlayClose(ov, _fidCerrarPrevia);
+    const textoActual = () => (envio && envio.mensaje) || _fidRegaloEnProducto(String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3)), entrada.favorito);
+    const pintarImagen = async () => {
+        const blob = await _fidCopiarImagen(nombre, 'reactivar', true);
+        if (!document.getElementById('fidPreviaOverlay')) return;
+        if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
+        _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
+        const img = document.getElementById('fidPreviaImg');
+        if (img && _fidPrevio) img.src = _fidPrevio.url;
+    };
+    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:920px;width:100%;max-height:92vh;overflow:auto;color:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(nombre)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+            <div style="flex:0 0 300px;max-width:100%">
+                <img id="fidPreviaImg" alt="Imagen del mensaje" style="width:100%;border-radius:12px;background:#000;min-height:200px">
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
+            </div>
+            <div style="flex:1;min-width:260px">
+                <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
+                <div id="fidPreviaTexto" style="white-space:pre-wrap;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(textoActual())}</div>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button><button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button></div>
+                <p class="admin-hint" style="margin-top:10px">Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».</p>
+            </div>
+        </div></div>`;
+    ov.addEventListener('click', (ev) => {
+        const t = ev.target;
+        if (t.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
+        if (t.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
+        if (t.closest('[data-fid-prev-otra]')) { pintarImagen(); return; }
+        if (t.closest('[data-fid-prev-txtcopiar]')) {
+            let primera = false;
+            if (!envio) { if (_fidReactOcupado.has(k)) return; envio = _fidColaCrearEnvio(entrada); primera = true; renderMetricasFeedback(); }
+            const kp = envio.cuponCodigo ? _fidCupones.find((x) => x.codigo === envio.cuponCodigo) : null;
+            if (!primera && kp && _fidEstadoCupon(kp) !== 'activo') { showNotice('El cupón de este mensaje ya venció (la fecha del texto es vieja). Descártalo y genera uno nuevo desde la lista.', 'error'); return; }
+            const txt = envio.mensaje;
+            const caja = document.getElementById('fidPreviaTexto'); if (caja) caja.textContent = txt;
+            copyTextToClipboard(txt).then((ok) => showNotice(ok ? `Texto de ${nombre} copiado.` : 'No se pudo copiar. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
+            return;
+        }
+        if (t.closest('[data-fid-prev-enviado]')) {
+            if (!envio) envio = _fidColaCrearEnvio(entrada);
+            _fidMarcarEnviado(envio);
+            _fidCerrarPrevia();
+        }
+    });
+    pintarImagen();
+}
+
 // Clics de Reactivar, Cupones y Metas (listener delegado de #fbBody).
 function _fidClick(e) {
     const t = e.target;
@@ -14956,36 +15072,11 @@ function _fidClick(e) {
     if (vistaReact) { _fidReactVista = vistaReact.dataset.fidVista === 'lista' ? 'lista' : 'cola'; renderMetricasFeedback(); return true; }
     const omitirCola = t.closest('[data-fid-cola-omitir]');
     if (omitirCola) { _fidColaMarcar(_fidCola && _fidCola.dia, omitirCola.dataset.fidColaOmitir, 'omitido'); return true; }
-    const copiarCola = t.closest('[data-fid-cola-copiar]');
-    if (copiarCola) {
-        const entrada = _fidCola && (_fidCola.entradas || []).find((x) => x.k === copiarCola.dataset.fidColaCopiar);
-        if (!entrada || _fidReactOcupado.has(entrada.k)) return true;
-        _fidReactOcupado.add(entrada.k);
-        (async () => {
-            try {
-                // La vigencia la prueba el sistema (2, 3 o 5 dias) y aprende cual canjea mas; la cola vieja usa la de Ajustes.
-                const dias = Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3;
-                const codigo = _fidNuevoCodigo(entrada.nombre);
-                const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === entrada.k)
-                    || { id: '', customerName: entrada.nombre, customerPhoneDigits: entrada.telefono, customerPhone: entrada.telefono };
-                let mensaje = String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(dias));
-                let beneficio = entrada.regaloTexto;
-                // Favorito ya doble carne: el regalo es UNA carne extra (queda triple), no «doble carne» (colas viejas ya armadas).
-                if (/\b(2|dos)\s*carnes?\b|doble/i.test(String(entrada.favorito || ''))) {
-                    const f = (t) => String(t || '').replace('una doble carne gratis en tu hamburguesa', 'una carne extra gratis en tu hamburguesa, para que te quede triple 🍔').replace('doble carne y doble queso gratis en tu hamburguesa', 'una carne extra y doble queso gratis en tu hamburguesa, para que te quede triple 🍔');
-                    mensaje = f(mensaje); beneficio = f(beneficio);
-                }
-                const copiado = copyTextToClipboard(mensaje);
-                // El cupón lleva el tipo de regalo (queso, papas, carne…): de ahí aprende el sistema cuál canjea más.
-                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio, dias, productoId: '', envioExtra: { pendiente: true, mensaje, regalo: entrada.regalo, cola: _fidCola.dia, colaK: entrada.k, costoRegalo: entrada.costoRegalo, modoRegalo: entrada.modo || '' }, cuponExtra: { regalo: entrada.regalo, cola: _fidCola.dia, vigenciaDias: dias } });
-                _fidColaMarcar(_fidCola.dia, entrada.k, 'copiado');
-                const ok = await copiado;
-                showNotice(ok ? `Mensaje listo para ${entrada.nombre}. Pégalo en WhatsApp y luego márcalo «Ya lo envié».` : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');
-                renderMetricasFeedback();
-            } finally { _fidReactOcupado.delete(entrada.k); }
-        })();
-        return true;
-    }
+    const prevCola = t.closest('[data-fid-prev-cola]');
+    if (prevCola) { _fidPreviaReactivar({ k: prevCola.dataset.fidPrevCola }); return true; }
+    const prevEnv = t.closest('[data-fid-prev-env]');
+    if (prevEnv) { _fidPreviaReactivar({ envioId: prevEnv.dataset.fidPrevEnv }); return true; }
+    if (t.closest('[data-fid-envhoy]')) { _fidEnvHoyAbierto = !_fidEnvHoyAbierto; renderMetricasFeedback(); return true; }
     const estBtn = t.closest('[data-fid-cup-estado]');
     if (estBtn) { _fidCupEstado = estBtn.dataset.fidCupEstado; renderMetricasFeedback(); return true; }
     const semBtn = t.closest('[data-metas-semana]');
@@ -15099,13 +15190,7 @@ function _fidClick(e) {
     const enviado = t.closest('[data-fid-enviado]');
     if (enviado) {
         const e = _fidEnvios.find((x) => x.id === enviado.dataset.fidEnviado);
-        if (!e) return true;
-        e.pendiente = false;
-        firebaseDb.collection('fidelizacion_envios').doc(e.id).update({ pendiente: false, enviadoAt: firebase.firestore.Timestamp.now() })
-            .catch((err) => { e.pendiente = true; showNotice(`No se pudo confirmar: ${err.message || 'error'}`, 'error'); renderMetricasFeedback(); });
-        if (e.cola) _fidColaMarcar(e.cola, e.colaK, 'enviado');
-        showNotice(`Listo: mensaje a ${e.nombre || 'cliente'} confirmado como enviado.`, 'ok');
-        renderMetricasFeedback();
+        if (e) _fidMarcarEnviado(e);
         return true;
     }
     const descartar = t.closest('[data-fid-descartar]');

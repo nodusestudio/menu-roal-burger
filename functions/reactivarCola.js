@@ -149,10 +149,23 @@ function elegirRegalo(dias, ticket, cfg, stats, rnd) {
 
 // Si su favorito ya trae 2 carnes, «doble carne gratis» no tiene sentido: el regalo es UNA carne extra (queda triple).
 const esDobleCarne = (nombre) => /\b(2|dos)\s*carnes?\b|doble/i.test(String(nombre || ''));
+// El regalo se nombra sobre SU producto (Pepito, salchipapa, perro…): «una adición de carne gratis en tu Pepito Urbano»,
+// para que no parezca que se regala otra hamburguesa. Hamburguesa/pepito ya doble: una carne extra (queda triple); perro: una salchicha extra.
+const esPerro = (nombre) => /perro|hot\s?dog|salchicha/i.test(String(nombre || ''));
 function adaptarRegalo(regalo, fav) {
-    if (!fav || !esDobleCarne(fav.nombre)) return regalo;
-    if (regalo.tipo === 'carne') return { ...regalo, texto: 'una carne extra gratis en tu hamburguesa, para que te quede triple 🍔' };
-    if (regalo.tipo === 'carne_queso') return { ...regalo, texto: 'una carne extra y doble queso gratis en tu hamburguesa, para que te quede triple 🍔' };
+    if (!fav || !fav.nombre) return regalo;
+    const prod = `tu ${String(fav.nombre).trim()}`;
+    const doble = esDobleCarne(fav.nombre);
+    const perro = esPerro(fav.nombre);
+    if (regalo.tipo === 'carne') {
+        if (perro) return { ...regalo, texto: `una salchicha extra gratis en ${prod}` };
+        return { ...regalo, texto: doble ? `una carne extra gratis en ${prod}, para que te quede triple 🍔` : `una adición de carne gratis en ${prod}` };
+    }
+    if (regalo.tipo === 'carne_queso') {
+        if (perro) return { ...regalo, texto: `una salchicha extra y doble queso gratis en ${prod}` };
+        return { ...regalo, texto: doble ? `una carne extra y doble queso gratis en ${prod}, para que te quede triple 🍔` : `una adición de carne y doble queso gratis en ${prod}` };
+    }
+    if (regalo.tipo === 'queso') return { ...regalo, texto: `un queso extra en ${prod}` };
     return regalo;
 }
 
