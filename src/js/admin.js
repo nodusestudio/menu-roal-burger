@@ -31851,6 +31851,7 @@ async function openAjusteSaldosModal() {
 }
 document.getElementById('ajusteSaldosBtn')?.addEventListener('click', openAjusteSaldosModal);
 document.getElementById('gastoCancelBtn')?.addEventListener('click', closeGastoModal);
+document.getElementById('gastoCloseBtn')?.addEventListener('click', closeGastoModal);
 document.getElementById('gastoModal')?.addEventListener('click', (e) => {
     if (e.target === document.getElementById('gastoModal')) closeGastoModal();
 });
