@@ -14674,13 +14674,13 @@ function _fidColaHtml() {
     const n = (s) => ent.filter((e) => e.estado === s).length;
     const ahoraH = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
     const ICONO = { pendiente: '🔁', copiado: '⏳', enviado: '✅', omitido: '⏭️' };
-    const filas = ent.map((e) => {
+    const filas = ent.filter((e) => e.estado !== 'omitido').map((e) => {
         const tel = String(e.telefono || '').replace(/\D/g, '');
         const hecha = e.estado === 'enviado' || e.estado === 'omitido';
         const hora = `${_fidHoraTexto(e.hora)}${e.horaOrigen === 'cliente' ? ' (su hora)' : ' (hora pico)'}`;
         const aviso = e.estado === 'pendiente' ? (e.hora <= ahoraH ? ' · <strong style="color:#fbbf24">es su hora</strong>' : '') : '';
         const acciones = e.estado === 'pendiente'
-            ? `<button type="button" class="feedback-pending-btn" data-fid-cola-copiar="${escapeHtml(e.k)}">Copiar mensaje</button><button type="button" class="ghost-button" data-fid-cola-omitir="${escapeHtml(e.k)}" title="Hoy no le escribo">Omitir</button>`
+            ? `<button type="button" class="section-action-btn" data-fid-img="reactivar" data-fid-img-nombre="${escapeHtml(e.nombre)}" data-fid-img-regalo="${escapeHtml(e.regaloTexto)}" title="Copia la imagen con la frase; pégala primero en WhatsApp">Copiar imagen</button><button type="button" class="feedback-pending-btn" data-fid-cola-copiar="${escapeHtml(e.k)}">Copiar mensaje</button><button type="button" class="ghost-button" data-fid-cola-omitir="${escapeHtml(e.k)}" title="Hoy no le escribo">Omitir</button>`
             : (e.estado === 'copiado' ? '<small style="opacity:.7">Copiado: confírmalo arriba en «Copiados, falta enviar»</small>' : '');
         return `<div class="met-user-row-v2"${hecha ? ' style="opacity:.55"' : ''}>
             <div class="met-avatar">${ICONO[e.estado] || '🔁'}</div>
@@ -14949,7 +14949,7 @@ function _fidClick(e) {
     const prevBtn = t.closest('[data-fid-prev]');
     if (prevBtn) { _fidAbrirPrevia(prevBtn.dataset.fidPrev, prevBtn.dataset.fidId); return true; }
     const imgBtn = t.closest('[data-fid-img]');
-    if (imgBtn) { _fidCopiarImagen(imgBtn.dataset.fidImgNombre, imgBtn.dataset.fidImg); return true; }
+    if (imgBtn) { _fidCopiarImagen(imgBtn.dataset.fidImgNombre, imgBtn.dataset.fidImg, false, imgBtn.dataset.fidImgRegalo || ''); return true; }
     const minBtn = t.closest('[data-fid-react-min]');
     if (minBtn) { _fidReactMin = Number(minBtn.dataset.fidReactMin); renderMetricasFeedback(); return true; }
     const vistaReact = t.closest('[data-fid-vista]');
@@ -14967,10 +14967,16 @@ function _fidClick(e) {
                 const codigo = _fidNuevoCodigo(entrada.nombre);
                 const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === entrada.k)
                     || { id: '', customerName: entrada.nombre, customerPhoneDigits: entrada.telefono, customerPhone: entrada.telefono };
-                const mensaje = String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(dias));
+                let mensaje = String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(dias));
+                let beneficio = entrada.regaloTexto;
+                // Favorito ya doble carne: el regalo es UNA carne extra (queda triple), no «doble carne» (colas viejas ya armadas).
+                if (/\b(2|dos)\s*carnes?\b|doble/i.test(String(entrada.favorito || ''))) {
+                    const f = (t) => String(t || '').replace('una doble carne gratis en tu hamburguesa', 'una carne extra gratis en tu hamburguesa, para que te quede triple 🍔').replace('doble carne y doble queso gratis en tu hamburguesa', 'una carne extra y doble queso gratis en tu hamburguesa, para que te quede triple 🍔');
+                    mensaje = f(mensaje); beneficio = f(beneficio);
+                }
                 const copiado = copyTextToClipboard(mensaje);
                 // El cupón lleva el tipo de regalo (queso, papas, carne…): de ahí aprende el sistema cuál canjea más.
-                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: entrada.regaloTexto, dias, productoId: '', envioExtra: { pendiente: true, mensaje, regalo: entrada.regalo, cola: _fidCola.dia, colaK: entrada.k, costoRegalo: entrada.costoRegalo, modoRegalo: entrada.modo || '' }, cuponExtra: { regalo: entrada.regalo, cola: _fidCola.dia } });
+                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio, dias, productoId: '', envioExtra: { pendiente: true, mensaje, regalo: entrada.regalo, cola: _fidCola.dia, colaK: entrada.k, costoRegalo: entrada.costoRegalo, modoRegalo: entrada.modo || '' }, cuponExtra: { regalo: entrada.regalo, cola: _fidCola.dia } });
                 _fidColaMarcar(_fidCola.dia, entrada.k, 'copiado');
                 const ok = await copiado;
                 showNotice(ok ? `Mensaje listo para ${entrada.nombre}. Pégalo en WhatsApp y luego márcalo «Ya lo envié».` : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');

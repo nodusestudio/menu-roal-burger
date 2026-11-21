@@ -128,6 +128,15 @@ function elegirRegalo(dias, ticket, cfg, stats, rnd) {
     return { regalo: caben[0], modo: 'base', cap };
 }
 
+// Si su favorito ya trae 2 carnes, «doble carne gratis» no tiene sentido: el regalo es UNA carne extra (queda triple).
+const esDobleCarne = (nombre) => /\b(2|dos)\s*carnes?\b|doble/i.test(String(nombre || ''));
+function adaptarRegalo(regalo, fav) {
+    if (!fav || !esDobleCarne(fav.nombre)) return regalo;
+    if (regalo.tipo === 'carne') return { ...regalo, texto: 'una carne extra gratis en tu hamburguesa, para que te quede triple 🍔' };
+    if (regalo.tipo === 'carne_queso') return { ...regalo, texto: 'una carne extra y doble queso gratis en tu hamburguesa, para que te quede triple 🍔' };
+    return regalo;
+}
+
 function mensajeReactivar(nombre, fav, regaloTexto) {
     const pila = String(nombre || '').trim().split(/\s+/)[0];
     const hola = pila && pila !== 'Cliente' ? ` ${pila}` : '';
@@ -175,7 +184,9 @@ function construirCola({ pedidos, envios = [], cupones = [], cfg: cfgRaw = {}, a
 
     const entradas = candidatos.map((x) => {
         const fav = favoritoDe(x.c);
-        const { regalo, modo, cap } = elegirRegalo(x.dias, x.ticket, cfg, stats, rnd);
+        const elegido = elegirRegalo(x.dias, x.ticket, cfg, stats, rnd);
+        const { modo, cap } = elegido;
+        const regalo = adaptarRegalo(elegido.regalo, fav);
         const propias = x.c.n >= 3 ? x.c.horas : [];
         const horaPropia = moda(propias.filter((h) => h >= cfg.horaMin && h <= cfg.horaMax));
         return {
@@ -303,4 +314,4 @@ async function reactivarCola(db, args = {}, ahora = Date.now()) {
     return args.parte === 'resultados' ? resultadosCola(db, args.dias, ahora) : colaDeHoy(db, ahora);
 }
 
-module.exports = { construirCola, agruparClientes, elegirRegalo, excluidosPorEnvios, estadisticasRegalos, generarCola, avisarCola, resultadosCola, reactivarCola, TOOL, REGALOS, ESCALERA, cfgDe };
+module.exports = { adaptarRegalo, construirCola, agruparClientes, elegirRegalo, excluidosPorEnvios, estadisticasRegalos, generarCola, avisarCola, resultadosCola, reactivarCola, TOOL, REGALOS, ESCALERA, cfgDe };
