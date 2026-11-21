@@ -17920,12 +17920,8 @@
     </div>
 
     <!-- ══ Mobile: barra de acciones rápidas (visible solo en móvil) ══ -->
-    <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS">
-        <button type="button" class="mob-pos-bb-nuevo" onclick="document.getElementById('openCreateInternalOrderBtn')?.click()" aria-label="Nuevo Pedido">
-            <span class="bb-icon">＋</span>
-            <span>Nuevo Pedido</span>
-        </button>
-    </div>
+    <!-- (Quitado: el botón «Nuevo Pedido» del celular. Todo pedido empieza desde Mesa / Recoger / Domicilio, y dentro de cada uno se puede cambiar el tipo.) -->
+    <div id="mobPosBottomBar" class="mob-pos-bottombar" role="toolbar" aria-label="Acciones POS" hidden style="display:none!important"></div>
 
     <!-- ══ Modo mesero: enlace inválido o revocado ══ -->
     <div id="meseroInvalidScreen" class="mesero-invalid-screen" hidden>
