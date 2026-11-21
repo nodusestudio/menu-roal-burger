@@ -2852,6 +2852,39 @@ function sonarRedes() {
     try { playMessageAlertTone(); } catch (_) {}
 }
 
+// Letrero corredizo de la barra de abajo (PC): mensajes de redes sin leer + pendientes (feedback, reactivar, cumpleaños, atender).
+// Entra por la derecha y sale por la izquierda, siempre por debajo de los botones (el contenedor recorta lo que se sale).
+let _tickerChats = [];
+let _tickerFirma = '';
+function _tickerItems() {
+    const out = [];
+    _tickerChats.forEach((c) => {
+        const quien = c.nombre || (c.username ? `@${c.username}` : 'un cliente');
+        out.push(`${c.canal === 'facebook' ? '💬 Mensaje de Facebook' : '📩 Mensaje de Instagram'} de ${quien}`);
+    });
+    try {
+        _posFbPedidosHoy().filter((o) => _posFbEstado(o).estado === 'sin_enviar').forEach((o) => out.push(`⏳ Feedback pendiente de ${getOrderDisplayCustomerName(o)}`));
+        (_posPend.cola || []).forEach((e) => out.push(`🔁 Reactivación pendiente de ${e.nombre || 'un cliente'}`));
+        _posPendCumplesLista().forEach((c) => out.push(`🎂 Cumpleaños de ${c.customerName || 'un cliente'}`));
+        (_posPend.atender || []).forEach((r) => out.push(`⚠️ Atender a ${r.name || 'un cliente'}${r.code ? ` (${r.code})` : ''}`));
+    } catch (_) { /* aún sin datos cargados */ }
+    return out;
+}
+function _tickerActualizar() {
+    const el = document.getElementById('rrTicker');
+    if (!el) return;
+    const items = _tickerItems();
+    const firma = items.join('|');
+    if (firma === _tickerFirma) return; // sin cambios: no reiniciar la animación
+    _tickerFirma = firma;
+    if (!items.length) { el.hidden = true; el.innerHTML = ''; return; }
+    el.hidden = false;
+    const html = items.map((t) => `<span class="rr-tk-item">${escapeHtml(t)}</span>`).join('');
+    // Se repite el contenido 2 veces para que el recorrido sea continuo; velocidad constante según el largo.
+    const seg = Math.max(18, Math.round(firma.length / 6));
+    el.innerHTML = `<div class="rr-tk-track" style="animation-duration:${seg}s">${html}${html}</div>`;
+}
+
 function startRedesAlerts() {
     if (!firebaseDb) return [];
     const nombreCanal = (canal) => (canal === 'facebook' ? 'Facebook' : 'Instagram');
@@ -2870,6 +2903,8 @@ function startRedesAlerts() {
             sonarRedes();
         });
         _redesAviso.chatsListo = true;
+        _tickerChats = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((c) => (c.noLeidos || 0) > 0 && c.ultimoDe === 'cliente');
+        _tickerActualizar();
     }, (err) => console.warn('[ADMIN] avisos de chats de redes:', err?.code || err?.message));
 
     const unsubCom = firebaseDb.collection('instagram_comentarios').orderBy('atMs', 'desc').limit(20).onSnapshot((snap) => {
@@ -5799,6 +5834,7 @@ function _posFbIr(tipo) {
     if (sec === 'feedback') { _fbTipo = tipo; _fbQ = { seg: '', resp: '' }; try { renderMetricasFeedback(); } catch (_) { /* se pinta al abrir */ } }
 }
 function _posFbActualizarInsignia() {
+    try { _tickerActualizar(); } catch (_) { /* el letrero nunca debe romper la insignia */ }
     const btn = document.getElementById('posFeedbackBtn');
     if (!btn) return;
     const faltan = _posFbPedidosHoy().filter((o) => _posFbEstado(o).estado === 'sin_enviar').length + _posPend.cola.length + _posPendCumples() + _posPend.atender.length;
@@ -5849,6 +5885,7 @@ function _posFbRender() {
         ${col('⚠️', 'Atender', _posPend.atender.length, 'atender', cardsAtender)}</div>`;
 }
 function openPosFeedbackModal() {
+    try { document.fonts.load('700 80px "Caveat"'); document.fonts.load('600 40px "Caveat"'); } catch (_) { /* sin soporte */ }
     let modal = document.getElementById('posFbModal');
     if (!modal) {
         modal = document.createElement('div');
@@ -14662,7 +14699,7 @@ async function _fidFrase(tipo, clienteKey = '') {
     const id = `${k}_${tipo}`;
     let usadas = _fidFrasesCache.get(id);
     if (!usadas) {
-        try { const d = await firebaseDb.collection('fidelizacion_frases').doc(id).get(); usadas = d.exists && Array.isArray(d.data().usadas) ? d.data().usadas : []; } catch (_) { usadas = []; }
+        try { const d = await Promise.race([firebaseDb.collection('fidelizacion_frases').doc(id).get(), new Promise((_, no) => setTimeout(() => no(new Error('lento')), 800))]); usadas = d.exists && Array.isArray(d.data().usadas) ? d.data().usadas : []; } catch (_) { usadas = []; }
     }
     let libres = lista.filter((f) => !usadas.includes(f));
     if (!libres.length) { usadas = []; libres = lista.slice(); }
@@ -14853,7 +14890,7 @@ function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '', telef
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">${encabezado ? escapeHtml(encabezado) : `👁 Vista previa para ${escapeHtml(titulo)}`}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
         <div style="display:grid;grid-template-columns:${sinImagen ? 'minmax(0,1fr)' : 'minmax(0,360px) minmax(0,1fr)'};gap:22px;align-items:start">
             <div${sinImagen ? ' hidden' : ''}>
-                <img id="fidPreviaImg" alt="Postal del mensaje" style="display:block;width:auto;max-width:100%;max-height:calc(94vh - 210px);margin:0 auto;border-radius:12px;background:#000;min-height:200px">
+                <div style="position:relative;width:100%;aspect-ratio:1080/1350;max-height:calc(94vh - 210px);margin:0 auto;border-radius:12px;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center"><span style="position:absolute;font-size:.85rem;opacity:.6">Preparando la postal…</span><img id="fidPreviaImg" alt="Postal del mensaje" style="position:relative;display:block;width:100%;height:100%;object-fit:contain"></div>
                 <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
             </div>
             <div style="min-width:0">
@@ -14862,7 +14899,7 @@ function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '', telef
                 ${contenido || `<div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
                 <div${idTexto ? ` id="${idTexto}"` : ''} style="white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>`}
                 <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${botones}</div>
-                <p class="admin-hint" style="margin-top:10px">${hint}</p>
+                <p class="admin-hint"${String(hint).length >= 70 ? ' hidden' : ''} style="margin-top:10px">${hint}</p>
             </div>
         </div></div>`;
 }
