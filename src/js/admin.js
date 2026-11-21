@@ -5704,17 +5704,37 @@ function _posFbPreviaFeedback(orderId) {
     ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
     document.body.appendChild(ov);
     _bindOverlayClose(ov, _fidCerrarPrevia);
-    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:620px;width:100%;max-height:92vh;overflow:auto;color:#fff">
+    // Misma postal que Reactivar y Cumpleaños (frases de agradecimiento): se manda junto al mensaje con el link de la encuesta.
+    const pintarImagen = async () => {
+        const blob = await _fidCopiarImagen(nombre, 'gracias', true, '', '', order.id);
+        if (!document.getElementById('fidPreviaOverlay')) return;
+        if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
+        _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
+        const img = document.getElementById('fidPreviaImg');
+        if (img && _fidPrevio) img.src = _fidPrevio.url;
+    };
+    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:920px;width:100%;max-height:92vh;overflow:auto;color:#fff">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(nombre)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
-        <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
-        <div style="white-space:pre-wrap;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(buildFeedbackMessage(order))}</div>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="${yaEnviado ? 'ghost-button' : 'feedback-pending-btn'}" data-fb-prev-copiar>${yaEnviado ? 'Volver a copiar el mensaje' : 'Copiar mensaje'}</button></div>
-        <p class="admin-hint" style="margin-top:10px">Al copiar el mensaje, el pedido queda marcado como enviado.</p></div>`;
+        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+            <div style="flex:0 0 300px;max-width:100%">
+                <img id="fidPreviaImg" alt="Postal del mensaje" style="width:100%;border-radius:12px;background:#000;min-height:200px">
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
+            </div>
+            <div style="flex:1;min-width:260px">
+                <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
+                <div style="white-space:pre-wrap;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(buildFeedbackMessage(order))}</div>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="${yaEnviado ? 'ghost-button' : 'feedback-pending-btn'}" data-fb-prev-copiar>${yaEnviado ? 'Volver a copiar el mensaje' : 'Copiar mensaje'}</button></div>
+                <p class="admin-hint" style="margin-top:10px">Pega primero la imagen en el chat y luego el mensaje. Al copiar el mensaje, el pedido queda marcado como enviado.</p>
+            </div>
+        </div></div>`;
     ov.addEventListener('click', async (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
+        if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
+        if (e.target.closest('[data-fid-prev-otra]')) { pintarImagen(); return; }
         const b = e.target.closest('[data-fb-prev-copiar]');
         if (b) { await sendFeedbackRequest(orderId, b); _fidCerrarPrevia(); _posFbRender(); _posFbActualizarInsignia(); }
     });
+    pintarImagen();
 }
 function _posFbIr(tipo) {
     const sec = tipo === 'asistente' ? 'asistente' : 'feedback';
