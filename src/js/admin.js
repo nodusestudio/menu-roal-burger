@@ -5800,8 +5800,10 @@ const _MODAL_SALTAR = '#adminAuthOverlay,.admin-auth-overlay,#posFbModal,#_gener
 const _MODAL_ROLES = [
     [/^(eliminar|borrar|anular|quitar)/i, 'peligro', 2],
     [/^(atrás|atras|volver)/i, 'atras', 0],
-    [/^(cancelar|cerrar|omitir|descartar)/i, 'secundario', 1],
-    [/^(guardar|registrar|crear|confirmar|aceptar|aplicar|actualizar|agregar|añadir|siguiente|continuar|cobrar|enviar|listo|finalizar|imprimir|importar)/i, 'primario', 3]
+    [/^(cancelar|cerrar|omitir|descartar|salir|ahora no|luego)/i, 'secundario', 1],
+    [/^no$/i, 'secundario', 1],
+    [/^(guardar|registrar|crear|confirmar|aceptar|aplicar|actualizar|agregar|añadir|siguiente|continuar|cobrar|enviar|listo|finalizar|imprimir|importar|pagar|abrir|iniciar|generar|descargar|exportar|procesar|reintentar|entendido)/i, 'primario', 3],
+    [/^(ok|sí|si)$/i, 'primario', 3]
 ];
 function _modalRol(b) {
     const t = (b.textContent || '').trim().replace(/^[^\p{L}]+/u, '');
@@ -5829,6 +5831,12 @@ function _modalUnificarTarjeta(fondo, tarjeta) {
     sp(tarjeta, 'border', '1px solid rgba(255,255,255,0.07)');
     if (csT.overflowY === 'visible') sp(tarjeta, 'overflow-y', 'auto');
     if (!/flex|grid/.test(getComputedStyle(fondo).display)) { sp(tarjeta, 'margin-left', 'auto'); sp(tarjeta, 'margin-right', 'auto'); }
+    // Cabecera: el × SIEMPRE arriba a la derecha (mismo tamaño) y el título con el mismo tamaño
+    if (getComputedStyle(tarjeta).position === 'static') sp(tarjeta, 'position', 'relative');
+    const titulo = tarjeta.querySelector('h1,h2,h3,h4,[class*="modal-title"],[class*="-title"],[class*="head"] > strong');
+    if (titulo && titulo.getClientRects().length && !titulo.closest('[data-modal="libre"]')) { sp(titulo, 'font-size', '1.1rem'); sp(titulo, 'font-weight', '700'); sp(titulo, 'line-height', '1.3'); sp(titulo, 'padding-right', '44px'); sp(titulo, 'box-sizing', 'border-box'); }
+    const cerrar = [...tarjeta.querySelectorAll('button,[role="button"]')].find((b) => b.getClientRects().length && (/^(×|✕|✖)$/.test((b.textContent || '').trim()) || /cerrar|close/i.test(`${b.getAttribute('aria-label') || ''} ${b.title || ''}`)) && !/cancelar/i.test(b.textContent || ''));
+    if (cerrar) { cerrar.setAttribute('data-modal-rol', 'cerrar'); sp(cerrar, 'position', 'absolute'); sp(cerrar, 'top', '10px'); sp(cerrar, 'right', '10px'); sp(cerrar, 'left', 'auto'); sp(cerrar, 'z-index', '3'); sp(cerrar, 'order', '0'); sp(cerrar, 'width', '32px'); sp(cerrar, 'min-width', '32px'); sp(cerrar, 'height', '32px'); sp(cerrar, 'min-height', '32px'); sp(cerrar, 'margin', '0'); }
     // Botones del pie: mismo orden y estilo
     const grupos = new Map();
     tarjeta.querySelectorAll('button,input[type="submit"]').forEach((b) => {
@@ -5849,6 +5857,8 @@ function _modalUnificarTarjeta(fondo, tarjeta) {
     });
 }
 function _modalesUnificar() {
+    const sb = document.querySelector('.admin-sidebar'), sr = sb ? sb.getBoundingClientRect() : null;
+    const lateral = sr && sr.height > 200 && sr.width > 0 && sr.width < window.innerWidth * 0.5 ? Math.round(sr.right) : 0;
     document.querySelectorAll('body > *, [id*="odal"], [class*="modal"], [class*="overlay"], [class*="backdrop"]').forEach((fondo) => {
         if (fondo.matches(_MODAL_SALTAR) || fondo.closest(_MODAL_SALTAR)) return;
         const cs = getComputedStyle(fondo);
@@ -5857,7 +5867,13 @@ function _modalesUnificar() {
         if (r.width < window.innerWidth * 0.9 || r.height < window.innerHeight * 0.6) return;
         const tarjeta = [...fondo.children].filter((c) => c.nodeType === 1 && getComputedStyle(c).display !== 'none' && c.getClientRects().length)
             .sort((a, b) => (b.offsetWidth * b.offsetHeight) - (a.offsetWidth * a.offsetHeight))[0];
-        if (tarjeta && getComputedStyle(tarjeta).position !== 'fixed') _modalUnificarTarjeta(fondo, tarjeta);
+        if (tarjeta && getComputedStyle(tarjeta).position !== 'fixed') {
+            _modalUnificarTarjeta(fondo, tarjeta);
+            // Centrada en el área de información: se descuenta la columna lateral (solo si es vertical; en celular no hay).
+            fondo.style.setProperty('box-sizing', 'border-box', 'important');
+            fondo.style.setProperty('padding-left', `${lateral + 12}px`, 'important');
+            fondo.style.setProperty('padding-right', '12px', 'important');
+        }
     });
 }
 
