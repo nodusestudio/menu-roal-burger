@@ -246,12 +246,15 @@ async function enviar(sugerencia) {
     }
 }
 
+const GOOGLE_RESENA_URL = 'https://g.page/r/CWR7IKp8khuOEAE/review';
+
 function celebrar() {
     pintar(`<div class="en-centro en-celebra">
         <div class="en-emoji pop" aria-hidden="true">🎉</div>
         <h1 class="en-h">¡Gracias!</h1>
         <p class="en-sub">${tipo === 'cuponera' ? 'Tu opinión nos ayuda a mejorar la cuponera. ¡Nos vemos pronto!' : tipo === 'general' ? 'Tu opinión nos ayuda a mejorar cada pedido. ¡Nos vemos pronto!' : 'Tu opinión nos ayuda a mejorar la Trifásica. ¡Nos vemos pronto!'}</p>
-        <a class="en-btn" href="https://roalburger.com/">Volver al menú</a>
+        <a class="en-btn" href="${GOOGLE_RESENA_URL}" target="_blank" rel="noopener" style="margin-bottom:10px">⭐ Calificanos en Google (opcional)</a>
+        <a class="en-sub" href="https://roalburger.com/" style="text-decoration:underline">Volver al menú</a>
     </div>`);
     const colores = ['#FF6B00', '#F5EBDD', '#FF9A3C', '#34d399', '#ffffff'];
     const caja = document.createElement('div');
