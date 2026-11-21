@@ -114,6 +114,25 @@ function estadisticasRegalos(cupones) {
     return st;
 }
 
+// Vigencia del regalo que se prueba (dias): el sistema aprende cual canjea mas, igual que con el regalo.
+const VIGENCIAS = [2, 3, 5];
+const VIGENCIA_BASE = 3;
+function estadisticasVigencia(cupones) {
+    const st = {};
+    (cupones || []).forEach((c) => {
+        if (c.motivo !== 'reactivar' || !c.vigenciaDias) return;
+        const s = st[c.vigenciaDias] || (st[c.vigenciaDias] = { envios: 0, canjes: 0 });
+        s.envios += 1; if (c.estado === 'canjeado') s.canjes += 1;
+    });
+    return st;
+}
+function elegirVigencia(statsV, cfg, rnd) {
+    if (rnd() * 100 < cfg.exploracionPct) return { dias: VIGENCIAS[Math.floor(rnd() * VIGENCIAS.length)], modo: 'explora' };
+    const conDatos = VIGENCIAS.filter((d) => ((statsV[d] || {}).envios || 0) >= cfg.minMuestras)
+        .sort((a, b) => (statsV[b].canjes / statsV[b].envios) - (statsV[a].canjes / statsV[a].envios));
+    return conDatos.length ? { dias: conDatos[0], modo: 'mejor' } : { dias: VIGENCIA_BASE, modo: 'base' };
+}
+
 function elegirRegalo(dias, ticket, cfg, stats, rnd) {
     const tramo = ESCALERA.find((t) => dias < t.hasta) || ESCALERA[ESCALERA.length - 1];
     const cap = (cfg.topeRegaloPct / 100) * (ticket || 0);
@@ -156,6 +175,7 @@ function construirCola({ pedidos, envios = [], cupones = [], cfg: cfgRaw = {}, a
     const fuera = excluidosPorEnvios(envios, ultimoPorK, ahora, cfg.descansoDias);
     const conCuponActivo = new Set((cupones || []).filter((c) => c.estado === 'activo' && ms(c.venceAt) > ahora).map((c) => llave(c.telefono)));
     const stats = estadisticasRegalos(cupones);
+    const statsV = estadisticasVigencia(cupones);
     const horaPico = moda([].concat(...[...clientes.values()].map((c) => c.horas)).filter((h) => h >= cfg.horaMin && h <= cfg.horaMax)) || cfg.horaDefecto;
 
     const elegibles = [];
@@ -187,6 +207,7 @@ function construirCola({ pedidos, envios = [], cupones = [], cfg: cfgRaw = {}, a
         const elegido = elegirRegalo(x.dias, x.ticket, cfg, stats, rnd);
         const { modo, cap } = elegido;
         const regalo = adaptarRegalo(elegido.regalo, fav);
+        const vig = elegirVigencia(statsV, cfg, rnd);
         const propias = x.c.n >= 3 ? x.c.horas : [];
         const horaPropia = moda(propias.filter((h) => h >= cfg.horaMin && h <= cfg.horaMax));
         return {
@@ -195,6 +216,7 @@ function construirCola({ pedidos, envios = [], cupones = [], cfg: cfgRaw = {}, a
             favorito: fav ? fav.nombre : '', favoritoVeces: fav ? fav.veces : 0,
             hora: horaPropia != null ? horaPropia : horaPico, horaOrigen: horaPropia != null ? 'cliente' : 'local',
             regalo: regalo.tipo, regaloTexto: regalo.texto, costoRegalo: regalo.costo, topeCosto: Math.round(cap), modo,
+            vigenciaDias: vig.dias, modoVigencia: vig.modo,
             mensaje: mensajeReactivar(x.c.nombre, fav, regalo.texto),
             estado: 'pendiente'
         };
@@ -285,8 +307,10 @@ async function resultadosCola(db, dias = 30, ahora = Date.now()) {
     });
     const pct = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : null);
     const st = estadisticasRegalos(datos.cupones);
+    const sv = estadisticasVigencia(datos.cupones);
     return {
         dias, colas: docs.length, mensajes_enviados: msgs, volvieron_con_mensaje: msgsVolvio, tasa_con_mensaje_pct: pct(msgsVolvio, msgs),
+        por_vigencia: VIGENCIAS.map((d) => ({ vigencia_dias: d, cupones_emitidos: (sv[d] || {}).envios || 0, cupones_canjeados: (sv[d] || {}).canjes || 0, tasa_canje_pct: pct((sv[d] || {}).canjes || 0, (sv[d] || {}).envios || 0) })),
         grupo_control: ctl, volvieron_control: ctlVolvio, tasa_control_pct: pct(ctlVolvio, ctl), entradas_sin_enviar: sinEnviar,
         por_regalo: Object.entries(porRegalo).map(([regalo, v]) => ({ regalo, ...v, tasa_pct: pct(v.volvieron, v.enviados), cupones_canjeados: (st[regalo] || {}).canjes || 0, cupones_emitidos: (st[regalo] || {}).envios || 0 })),
         lectura: ctl < 15 || msgs < 30 ? 'Muestra todavía pequeña (menos de 30 mensajes o 15 de control): no concluyas aún.' : 'Compara tasa_con_mensaje_pct contra tasa_control_pct: la diferencia es lo que el mensaje aporta de verdad.'
@@ -299,7 +323,7 @@ async function colaDeHoy(db, ahora = Date.now()) {
     const d = snap.data();
     return {
         existe: true, dia: d.dia, resumen: d.resumen,
-        entradas: (d.entradas || []).map((e) => ({ nombre: e.nombre, hora: `${e.hora}:00`, dias_sin_pedir: e.dias, favorito: e.favorito, regalo: e.regalo, costo_regalo: e.costoRegalo, estado: e.estado })),
+        entradas: (d.entradas || []).map((e) => ({ nombre: e.nombre, hora: `${e.hora}:00`, dias_sin_pedir: e.dias, favorito: e.favorito, regalo: e.regalo, costo_regalo: e.costoRegalo, vigencia_dias: e.vigenciaDias || null, estado: e.estado })),
         en_control_sin_mensaje: (d.control || []).length
     };
 }
@@ -314,4 +338,4 @@ async function reactivarCola(db, args = {}, ahora = Date.now()) {
     return args.parte === 'resultados' ? resultadosCola(db, args.dias, ahora) : colaDeHoy(db, ahora);
 }
 
-module.exports = { adaptarRegalo, construirCola, agruparClientes, elegirRegalo, excluidosPorEnvios, estadisticasRegalos, generarCola, avisarCola, resultadosCola, reactivarCola, TOOL, REGALOS, ESCALERA, cfgDe };
+module.exports = { elegirVigencia, estadisticasVigencia, adaptarRegalo, construirCola, agruparClientes, elegirRegalo, excluidosPorEnvios, estadisticasRegalos, generarCola, avisarCola, resultadosCola, reactivarCola, TOOL, REGALOS, ESCALERA, cfgDe };

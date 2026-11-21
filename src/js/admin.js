@@ -14686,7 +14686,7 @@ function _fidColaHtml() {
             <div class="met-avatar">${ICONO[e.estado] || '🔁'}</div>
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(e.nombre)}" title="Tocar para copiar el nombre">${escapeHtml(e.nombre)}</button> · 🕒 ${escapeHtml(hora)}${aviso}</div>
-                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(e.regaloTexto)} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}</div>
+                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(e.regaloTexto)} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.vigenciaDias ? ` · vale ${e.vigenciaDias} días` : ''}${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}</div>
             </div>
             ${acciones}
         </div>`;
@@ -14963,7 +14963,8 @@ function _fidClick(e) {
         _fidReactOcupado.add(entrada.k);
         (async () => {
             try {
-                const dias = Number(_fidCfg.vigenciaDias) || 3;
+                // La vigencia la prueba el sistema (2, 3 o 5 dias) y aprende cual canjea mas; la cola vieja usa la de Ajustes.
+                const dias = Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3;
                 const codigo = _fidNuevoCodigo(entrada.nombre);
                 const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === entrada.k)
                     || { id: '', customerName: entrada.nombre, customerPhoneDigits: entrada.telefono, customerPhone: entrada.telefono };
@@ -14976,7 +14977,7 @@ function _fidClick(e) {
                 }
                 const copiado = copyTextToClipboard(mensaje);
                 // El cupón lleva el tipo de regalo (queso, papas, carne…): de ahí aprende el sistema cuál canjea más.
-                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio, dias, productoId: '', envioExtra: { pendiente: true, mensaje, regalo: entrada.regalo, cola: _fidCola.dia, colaK: entrada.k, costoRegalo: entrada.costoRegalo, modoRegalo: entrada.modo || '' }, cuponExtra: { regalo: entrada.regalo, cola: _fidCola.dia } });
+                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio, dias, productoId: '', envioExtra: { pendiente: true, mensaje, regalo: entrada.regalo, cola: _fidCola.dia, colaK: entrada.k, costoRegalo: entrada.costoRegalo, modoRegalo: entrada.modo || '' }, cuponExtra: { regalo: entrada.regalo, cola: _fidCola.dia, vigenciaDias: dias } });
                 _fidColaMarcar(_fidCola.dia, entrada.k, 'copiado');
                 const ok = await copiado;
                 showNotice(ok ? `Mensaje listo para ${entrada.nombre}. Pégalo en WhatsApp y luego márcalo «Ya lo envié».` : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');
@@ -37132,6 +37133,10 @@ async function renderMetricasCuponera() {
                 <div class="met-kpi-card met-kpi-card--green"><span class="met-kpi-val">${nf(total)}</span><span class="met-kpi-lbl">Bonos canjeados</span></div>
                 <div class="met-kpi-card met-kpi-card--purple"><span class="met-kpi-val">$${nf(ventas)}</span><span class="met-kpi-lbl">Ventas por bonos</span></div>
                 <div class="met-kpi-card"><span class="met-kpi-val">${total ? escapeHtml(nombres[topId] || topId) : '—'}</span><span class="met-kpi-lbl">Bono que más se canjea</span></div>
+            </div>
+            <div class="met-section-title">Bonos redimidos por tipo</div>
+            <div class="met-kpi-row" style="margin-bottom:16px;">
+                ${POS_CUPONERA_BONOS.map((b) => `<div class="met-kpi-card"><span class="met-kpi-val">${nf(porBono[b.id].n)}</span><span class="met-kpi-lbl">${escapeHtml(b.nombre)}</span><span class="met-kpi-sub">redimidos · $${nf(porBono[b.id].ventas)}</span></div>`).join('')}
             </div>
             <div class="met-section-title">Comparación por bono</div>
             <div class="cpana-table-wrap"><table class="cpana-table">
