@@ -26562,6 +26562,15 @@ function renderPosCartTicketInfo() {
     renderPosTypeBar();
     const el = document.getElementById('posCartTicketInfo');
     if (!el) return;
+    // Tocar «Mesa 1 · cliente…» abre lo mismo que el botón Info (tipo, mesa y cliente: buscar uno creado o crear uno nuevo con sus datos).
+    if (el.dataset.abreInfo !== '1') {
+        el.dataset.abreInfo = '1';
+        el.setAttribute('role', 'button');
+        el.tabIndex = 0;
+        el.title = 'Tocar para ver o cambiar el cliente y los datos del pedido';
+        el.addEventListener('click', () => document.getElementById('posCartCustomizeBtn')?.click());
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.getElementById('posCartCustomizeBtn')?.click(); } });
+    }
     // Al editar un pedido existente, posTicketConfig se deja en null a propósito (el modal de
     // tipo/cliente es quien lo termina de fijar) — mientras tanto se usa _posEditPrefill, para
     // no mostrar el carrito sin saber a nombre de quién está el pedido que se está editando.

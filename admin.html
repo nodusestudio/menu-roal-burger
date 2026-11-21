@@ -17122,6 +17122,10 @@
     html body .pos-extra-btn { min-height: 28px; padding: 3px 6px; font-size: clamp(.6rem, 3.6cqw, .78rem); text-overflow: clip; }
     html body .pos-drawer-actions { gap: 6px; }
     html body .pos-drawer-actions .pos-save-order-btn, html body .pos-drawer-actions .pos-cobrar-full-btn { padding: 8px 6px; min-height: 36px; font-size: .88rem; letter-spacing: .3px; white-space: nowrap; overflow: hidden; }
+    /* «Mesa 1 · cliente» del carrito es tocable (abre lo mismo que Info): se nota con el cursor y un ✎ discreto a la derecha */
+    html body #posCartTicketInfo { cursor: pointer; position: relative; padding-right: 32px; }
+    html body #posCartTicketInfo::after { content: '✎'; position: absolute; top: 8px; right: 12px; opacity: .6; font-size: .85rem; }
+    html body #posCartTicketInfo:hover::after { opacity: 1; }
     /* La tarjeta de Mesas es fija: sin scroll propio ni altura máxima (crece con sus mesas) */
     html body .orders-workspace .orders-lane[data-mobile-lane="mesa"] { max-height: none; overflow: visible; }
     /* La barra naranja de "feedback pendiente" ya no se muestra aquí: todo está en el botón 📣 de la barra inferior */
