@@ -3935,6 +3935,7 @@ function normalizeOrder(raw) {
         enviadoAt: raw.enviadoAt || null,
         entregadoAt: raw.entregadoAt || null,
         feedbackRequestedAt: raw.feedbackRequestedAt || null,
+        feedbackPostal: raw.feedbackPostal && typeof raw.feedbackPostal === 'object' ? raw.feedbackPostal : null, // postal enviada ({foto, frase}): se reabre igual
         feedbackAnsweredAt: raw.feedbackAnsweredAt || null,
         createdAt: raw.createdAt || raw.created_at || null,
         updatedAt: raw.updatedAt || raw.updated_at || null,
@@ -4174,7 +4175,7 @@ function renderFeedbackPending() {
     }
 }
 
-async function sendFeedbackRequest(orderId, btn, orderOverride) {
+async function sendFeedbackRequest(orderId, btn, orderOverride, extra = {}, soloMarcar = false) {
     // orderOverride: pedidos ya archivados (seguimiento por día), que no están en ordersState; updateOrder los guarda en el archivo.
     const order = orderOverride || ordersState.find((o) => o.id === orderId);
     if (!order || _feedbackSending.has(orderId)) return false;
@@ -4190,7 +4191,8 @@ async function sendFeedbackRequest(orderId, btn, orderOverride) {
     try {
         const message = buildFeedbackMessage(order);
         let copiado = false;
-        try { copiado = await conLimite(copyTextToClipboard(message), 3000, 'portapapeles'); } catch (_) { copiado = false; }
+        if (soloMarcar) copiado = true; // «Ya lo envié»: solo se marca, no se vuelve a tocar el portapapeles
+        else { try { copiado = await conLimite(copyTextToClipboard(message), 3000, 'portapapeles'); } catch (_) { copiado = false; } }
         if (!copiado) {
             // La API del portapapeles no respondió: se intenta el método clásico (textarea + execCommand).
             const ta = document.createElement('textarea');
@@ -4208,12 +4210,13 @@ async function sendFeedbackRequest(orderId, btn, orderOverride) {
         _feedbackMarcadosLocal.add(orderId);
         order.feedbackRequestedAt = new Date();
         marcado = true;
-        showNotice(`Mensaje de ${{ general: 'fidelización', cuponera: 'cuponera' }[feedbackTipoOrden(order)] || 'feedback'} listo para ${nombre}.`, 'ok');
+        showNotice(soloMarcar ? `Listo: feedback de ${nombre} marcado como enviado.` : `Mensaje de ${{ general: 'fidelización', cuponera: 'cuponera' }[feedbackTipoOrden(order)] || 'feedback'} listo para ${nombre}.`, 'ok');
+        if (extra && extra.feedbackPostal) order.feedbackPostal = extra.feedbackPostal;
         // Marca de hora del cliente (no serverTimestamp): así el valor local es real desde el primer momento y no
         // "null" hasta que el servidor responda.
         let confirmado = false;
         const avisoLento = setTimeout(() => { if (!confirmado) showNotice(`El guardado de ${nombre} tarda más de lo normal. Si recargas la página antes de que termine, este pedido volverá a salir en la lista.`, 'info'); }, 20000);
-        updateOrder(orderId, { feedbackRequestedAt: firebase.firestore.Timestamp.now(), feedbackTipo: feedbackTipoOrden(order) })
+        updateOrder(orderId, { feedbackRequestedAt: firebase.firestore.Timestamp.now(), feedbackTipo: feedbackTipoOrden(order), ...(extra || {}) })
             .then(() => { confirmado = true; })
             .catch((error) => {
                 confirmado = true;
@@ -5702,28 +5705,41 @@ function _posFbPreviaFeedback(orderId) {
     if (!order) { showNotice('No encuentro ese pedido: recarga la lista.', 'error'); return; }
     const nombre = getOrderDisplayCustomerName(order);
     const yaEnviado = !!order.feedbackRequestedAt || _feedbackMarcadosLocal.has(orderId);
+    const fijo = order.feedbackPostal && order.feedbackPostal.foto ? order.feedbackPostal : null; // ya enviada: SIEMPRE la misma imagen
+    const mensaje = buildFeedbackMessage(order);
     _fidCerrarPrevia();
     const ov = document.createElement('div');
     ov.id = 'fidPreviaOverlay';
     ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
     document.body.appendChild(ov);
     _bindOverlayClose(ov, _fidCerrarPrevia);
-    // Misma postal que Reactivar y Cumpleaños (frases de agradecimiento): se manda junto al mensaje con el link de la encuesta.
     const pintarImagen = async () => {
-        const blob = await _fidCopiarImagen(nombre, 'gracias', true, '', '', order.id);
+        const blob = await _fidCopiarImagen(nombre, 'gracias', true, '', '', order.id, fijo);
         if (!document.getElementById('fidPreviaOverlay')) return;
         if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
         _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
-    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: order.customerPhoneDigits || order.customerPhone, texto: buildFeedbackMessage(order), botones: `<button type="button" class="${yaEnviado ? 'ghost-button' : 'feedback-pending-btn'}" data-fb-prev-copiar>${yaEnviado ? 'Volver a copiar el mensaje' : 'Copiar mensaje'}</button>`, hint: 'Pega primero la imagen en el chat y luego el mensaje. Al copiar el mensaje, el pedido queda marcado como enviado.' });
+    const botones = `<button type="button" class="section-action-btn" data-fb-prev-copiar>Copiar mensaje</button>${yaEnviado
+        ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Ya marcado como enviado</span>'
+        : '<button type="button" class="feedback-pending-btn" data-fb-prev-enviado>✅ Ya lo envié</button>'}`;
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: order.customerPhoneDigits || order.customerPhone, texto: mensaje, botones,
+        hint: yaEnviado ? (fijo ? 'Esta es la misma postal que se le envió: puedes volver a copiarla y el mensaje.' : 'Este pedido se marcó como enviado antes de guardar la postal, por eso aquí se genera una nueva.') : 'Copia la imagen y el mensaje y envíalos. Cuando ya los mandes toca «Ya lo envié»: ahí se archiva y la postal queda guardada para poder reenviar la misma.' });
+    if (yaEnviado && fijo) ov.querySelector('[data-fid-prev-otra]')?.remove(); // enviada: no se cambia la imagen
     ov.addEventListener('click', async (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
         if (e.target.closest('[data-fid-prev-otra]')) { pintarImagen(); return; }
-        const b = e.target.closest('[data-fb-prev-copiar]');
-        if (b) { await sendFeedbackRequest(orderId, b); _fidCerrarPrevia(); _posFbRender(); _posFbActualizarInsignia(); }
+        const c = e.target.closest('[data-fb-prev-copiar]');
+        if (c) { copyTextToClipboard(mensaje).then((ok) => { showNotice(ok ? `Mensaje de ${nombre} copiado.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'); if (ok) _btnHecho(c, 'Mensaje copiado'); }); return; }
+        const env = e.target.closest('[data-fb-prev-enviado]');
+        if (env) {
+            env.disabled = true;
+            const spec = _fidPostalUlt ? { foto: _fidPostalUlt.foto, frase: _fidPostalUlt.frase } : null;
+            const ok = await sendFeedbackRequest(orderId, null, undefined, spec ? { feedbackPostal: spec } : {}, true);
+            if (ok) { _btnHecho(env, 'Archivado'); setTimeout(() => { _fidCerrarPrevia(); _posFbRender(); _posFbActualizarInsignia(); }, 1100); } else env.disabled = false;
+        }
     });
     pintarImagen();
 }
@@ -14663,6 +14679,7 @@ function _fidCargarImg(src) {
 // ── POSTAL (2026-11-21): todos los mensajes (reactivar, cumpleaños, encuesta…) van con una imagen en forma de postal: foto de paisaje de
 // Venezuela, sello y matasellos, frase manuscrita, «Para: nombre» y el logo pequeño de marca de agua. El regalo va como una línea
 // discreta, no como protagonista. Las fotos viven en /postales-img (Unsplash, sin crédito obligatorio).
+let _fidPostalUlt = null; // {foto, frase} de la última postal dibujada: se guarda al confirmar el envío para poder reabrir LA MISMA
 const FID_POSTALES = ['p01', 'p04', 'p05', 'p06', 'p07', 'p08', 'p09', 'p10', 'p11', 'p12'];
 function _fidPostalSiguiente() {
     let ult = '';
@@ -14673,13 +14690,14 @@ function _fidPostalSiguiente() {
     return f;
 }
 // Genera la postal PNG 1080x1350 y la deja en el portapapeles (o la devuelve si soloBlob). `favorito` ya no se usa (se mantiene por compatibilidad).
-async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = '', favorito = '', clienteKey = '') {
+async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = '', favorito = '', clienteKey = '', fijo = null) {
     const W = 1080, H = 1350;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
+    const fotoId = (fijo && FID_POSTALES.includes(fijo.foto) && fijo.foto) || _fidPostalSiguiente(); // con `fijo` se repite exactamente la postal ya enviada
     const MANO = '"Caveat","Segoe Script","Brush Script MT",cursive';
     try { await Promise.all([document.fonts.load(`700 80px ${MANO}`), document.fonts.load(`600 40px ${MANO}`)]); } catch (_) { /* usa la letra de respaldo */ }
-    const [foto, logo] = await Promise.all([_fidCargarImg(`/postales-img/${_fidPostalSiguiente()}.webp`), _fidCargarImg('/logo-blanco.png')]);
+    const [foto, logo] = await Promise.all([_fidCargarImg(`/postales-img/${fotoId}.webp`), _fidCargarImg('/logo-blanco.png')]);
     // Papel crema y foto con borde blanco (como una postal impresa)
     g.fillStyle = '#f3e9d8'; g.fillRect(0, 0, W, H);
     const FX = 40, FY = 40, FW = 1000, FH = 1130;
@@ -14699,7 +14717,9 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     g.lineWidth = 4; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(-170, -24 + i * 16); g.lineTo(-90, -24 + i * 16); g.stroke(); }
     g.restore();
     // Texto manuscrito: «Para: nombre» y la frase (la frase no se repite por cliente: memoria en Firebase)
-    const frase = (await _fidFrase(tipo, clienteKey)).replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim();
+    const fraseBase = (fijo && fijo.frase) || await _fidFrase(tipo, clienteKey);
+    _fidPostalUlt = { foto: fotoId, frase: fraseBase };
+    const frase = fraseBase.replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim();
     const n = String(nombre || '').trim().split(/\s+/)[0];
     const maxW = FW - 120;
     const envolver = (size) => {
@@ -14745,6 +14765,7 @@ async function _fidCopiarBlob(blob) {
     try {
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
         showNotice('Imagen copiada: pégala en el chat junto al mensaje.', 'ok');
+        _btnHecho(document.querySelector('#fidPreviaOverlay [data-fid-prev-imgcopiar]'), 'Imagen copiada');
     } catch (_) {
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'roal-mensaje.png'; a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -14785,11 +14806,21 @@ new MutationObserver((muts) => {
         ov.style.bottom = '40px';
     }));
 }).observe(document.body, { childList: true });
+// Confirmación visible al tocar un botón de copiar/archivar: se pone verde con ✓, rebota y lanza un aro (ver .btn-hecho en style.css).
+function _btnHecho(btn, texto) {
+    if (!btn || btn.dataset.hechoActivo) return;
+    btn.dataset.hechoActivo = '1';
+    const html = btn.innerHTML, w = btn.offsetWidth;
+    btn.style.minWidth = `${w}px`;
+    btn.innerHTML = `✓ ${escapeHtml(texto)}`;
+    btn.classList.add('btn-hecho');
+    setTimeout(() => { btn.classList.remove('btn-hecho'); btn.innerHTML = html; btn.style.minWidth = ''; delete btn.dataset.hechoActivo; }, 1800);
+}
 // Botón «Copiar número» de las vistas previas (un solo oyente para todas).
 document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-fid-prev-tel]');
     if (!b) return;
-    copyTextToClipboard(b.dataset.fidPrevTel).then((ok) => showNotice(ok ? `Número ${b.dataset.fidPrevTel} copiado.` : 'No se pudo copiar el número.', ok ? 'ok' : 'error'));
+    copyTextToClipboard(b.dataset.fidPrevTel).then((ok) => { showNotice(ok ? `Número ${b.dataset.fidPrevTel} copiado.` : 'No se pudo copiar el número.', ok ? 'ok' : 'error'); if (ok) _btnHecho(b, 'Número copiado'); });
 });
 function _fidCerrarPrevia() {
     const habia = document.getElementById('fidPreviaOverlay');
@@ -15620,7 +15651,7 @@ async function _fidPreviaReactivar({ k = '', envioId = '' }) {
             const txt = textoActual();
             if (txt !== envio.mensaje) { envio.mensaje = txt; firebaseDb.collection('fidelizacion_envios').doc(envio.id).update({ mensaje: txt }).catch(() => {}); }
             const caja = document.getElementById('fidPreviaTexto'); if (caja) caja.textContent = txt;
-            copyTextToClipboard(txt).then((ok) => showNotice(ok ? `Texto de ${nombre} copiado.` : 'No se pudo copiar. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
+            copyTextToClipboard(txt).then((ok) => { showNotice(ok ? `Texto de ${nombre} copiado.` : 'No se pudo copiar. Vuelve a intentarlo.', ok ? 'ok' : 'error'); if (ok) _btnHecho(t.closest('[data-fid-prev-txtcopiar]'), 'Texto copiado'); });
             return;
         }
         if (t.closest('[data-fid-prev-enviado]')) {
