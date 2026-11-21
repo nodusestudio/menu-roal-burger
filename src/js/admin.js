@@ -14725,11 +14725,11 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
     g.fillStyle = 'rgba(255,162,77,0.8)'; g.fillRect(TX, py + 12, Math.min(g.measureText(ptxt).width, FW - 160), 4);
     if (regalo) { g.font = `600 44px ${MANO}`; g.fillStyle = '#ffd6aa'; g.fillText(`Un detalle de nuestra parte: ${regalo}`, TX, baseY + 62, FW - 140); }
-    // Marca de agua: solo el logo, pequeño y muy sutil, en la esquina inferior derecha
-    if (logo) { const lw = 150, lh2 = lw * (logo.height / logo.width); g.globalAlpha = 0.4; g.drawImage(logo, FX + FW - lw - 30, FY + FH - lh2 - 26, lw, lh2); g.globalAlpha = 1; }
+    // Marca de agua: solo el logo, pequeño y muy sutil, en la esquina inferior izquierda
+    if (logo) { const lw = 150, lh2 = lw * (logo.height / logo.width); g.globalAlpha = 0.4; g.drawImage(logo, FX + 30, FY + FH - lh2 - 26, lw, lh2); g.globalAlpha = 1; }
     // Pie de la postal (sobre el papel)
     g.fillStyle = '#6b4a2b'; g.font = `600 40px ${MANO}`; g.textAlign = 'center';
-    g.fillText('Con cariño, tu gente de ROAL BURGER  ·  roalburger.com', W / 2, FY + FH + 78);
+    g.fillText('Con cariño, tu gente de Roal Burger', W / 2, FY + FH + 78);
     let blob = null;
     try { blob = await new Promise((ok) => cv.toBlob(ok, 'image/png')); } catch (err) { console.warn('[Postal] imagen:', err && err.message); }
     if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return null; }
