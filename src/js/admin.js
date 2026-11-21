@@ -5609,10 +5609,11 @@ function _posFbHace(o) {
 }
 // Resumen de pendientes del día (📣): feedback por pedir, cola de Reactivar, cumpleaños sin saludar y alertas de FODI.
 // Cola y alertas se leen una vez cada 5 min (y al abrir la ventana); cumpleaños sale de los clientes ya cargados.
-const _posPend = { cola: 0, atender: 0 };
-function _posPendCumples() {
+const _posPend = { cola: [], atender: [] };
+function _posPendCumples() { return _posPendCumplesLista().length; }
+function _posPendCumplesLista() {
     const anio = Number(_sqDayKey(Date.now()).slice(0, 4));
-    return (clientsState || []).filter((c) => /^\d{2}-\d{2}$/.test(c.fechaCumple) && String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '').length >= 10 && _cumpleDiasFaltan(c.fechaCumple) === 0 && Number(c.cumpleSaludoAnio) !== anio).length;
+    return (clientsState || []).filter((c) => /^\d{2}-\d{2}$/.test(c.fechaCumple) && String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '').length >= 10 && _cumpleDiasFaltan(c.fechaCumple) === 0 && Number(c.cumpleSaludoAnio) !== anio);
 }
 async function _posPendRefrescar() {
     if (!firebaseDb || (typeof _meseroSession !== 'undefined' && _meseroSession)) return;
@@ -5624,10 +5625,10 @@ async function _posPendRefrescar() {
             firebaseDb.collection('encuestas_pedido').where('requiereAtencion', '==', true).limit(300).get(),
             firebaseDb.collection('fidelizacion_envios').where('motivo', '==', 'disculpa').limit(500).get()
         ]);
-        _posPend.cola = cola.exists ? ((cola.data() || {}).entradas || []).filter((e) => e.estado === 'pendiente').length : 0;
+        _posPend.cola = cola.exists ? ((cola.data() || {}).entradas || []).filter((e) => e.estado === 'pendiente') : [];
         // «Atender»: respuestas malas sin mensaje de disculpa registrado (misma regla que la pestaña Atender de Feedback)
         const atendidas = new Set(disc.docs.map((d) => d.data().encuestaId).filter(Boolean));
-        _posPend.atender = mal.docs.filter((d) => !atendidas.has(d.id)).length;
+        _posPend.atender = mal.docs.filter((d) => !atendidas.has(d.id)).map((d) => { const x = d.data() || {}; return { id: d.id, name: String(x.customerName || ''), code: String(x.orderCode || ''), motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [] }; });
     } catch (_) { /* sin permiso o sin conexión: el resumen muestra lo que haya */ }
     _posFbActualizarInsignia();
 }
@@ -5639,7 +5640,7 @@ function _posFbIr(tipo) {
 function _posFbActualizarInsignia() {
     const btn = document.getElementById('posFeedbackBtn');
     if (!btn) return;
-    const faltan = _posFbPedidosHoy().filter((o) => _posFbEstado(o).estado === 'sin_enviar').length + _posPend.cola + _posPendCumples() + _posPend.atender;
+    const faltan = _posFbPedidosHoy().filter((o) => _posFbEstado(o).estado === 'sin_enviar').length + _posPend.cola.length + _posPendCumples() + _posPend.atender.length;
     let b = btn.querySelector('.pos-fb-badge');
     if (!b) { b = document.createElement('span'); b.className = 'pos-fb-badge'; b.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#f87171;color:#111;border-radius:10px;padding:0 5px;font-size:11px;font-weight:800;line-height:16px'; btn.style.position = 'relative'; btn.appendChild(b); }
     b.textContent = faltan; b.hidden = faltan === 0;
@@ -5647,52 +5648,64 @@ function _posFbActualizarInsignia() {
 function _posFbRender() {
     const modal = document.getElementById('posFbModal');
     if (!modal) return;
-    const lista = _posFbPedidosHoy();
-    const BADGE = { respondio: ['✅ Respondió', '#34d399'], enviado: ['📨 Enviado, sin respuesta', '#fbbf24'], sin_enviar: ['⏳ Sin enviar', '#f87171'], sin_telefono: ['📵 Sin teléfono', '#9ca3af'] };
-    const items = lista.map((o) => ({ o, ..._posFbEstado(o) }));
-    const cnt = (e) => items.filter((x) => x.estado === e).length;
-    const filtro = modal.dataset.filtro || 'todos';
-    const visibles = items.filter((x) => filtro === 'todos' || x.estado === filtro);
-    const chip = (k, txt) => `<button type="button" data-posfb-filtro="${k}" style="border:1px solid rgba(255,255,255,.25);background:${filtro === k ? 'rgba(255,255,255,.22)' : 'transparent'};color:inherit;border-radius:16px;padding:4px 10px;font-size:12px;cursor:pointer">${txt}</button>`;
-    const filas = visibles.map(({ o, phone, estado }) => {
+    const BADGE = { enviado: ['📨 Enviado, sin respuesta', '#fbbf24'], sin_enviar: ['⏳ Sin enviar', '#f87171'] };
+    const items = _posFbPedidosHoy().map((o) => ({ o, ..._posFbEstado(o) })).filter((x) => x.estado === 'sin_enviar' || x.estado === 'enviado')
+        .sort((a, b) => (a.estado === b.estado ? 0 : (a.estado === 'sin_enviar' ? -1 : 1)));
+    const card = 'display:block;width:100%;box-sizing:border-box;min-width:0;overflow:hidden;padding:8px 10px;margin-bottom:6px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.04);color:inherit;text-align:left;';
+    const linea = (txt, extra = '') => `<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${extra}">${txt}</div>`;
+    const vacio = '<p style="opacity:.55;font-size:12px;text-align:center;padding:14px 0;margin:0">Nada pendiente 🎉</p>';
+
+    const cardsFeedback = items.map(({ o, phone, estado }) => {
         const [txt, color] = BADGE[estado];
-        const accion = estado === 'sin_enviar' ? `<button type="button" class="feedback-pending-btn" data-posfb-copy="${escapeHtml(o.id)}">Copiar mensaje</button>`
-            : (estado === 'enviado' ? `<button type="button" class="ghost-button" data-posfb-copy="${escapeHtml(o.id)}">Volver a copiar</button>` : '');
-        const tipo = { general: '💛 Fidelización', cuponera: '🎟️ Cuponera', quindio: '⭐ Sabe a Quindío' }[feedbackTipoOrden(o)] || '';
-        return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.12)">
-            <div style="min-width:0"><div style="font-weight:700">${escapeHtml(getOrderDisplayCustomerName(o))} · ${escapeHtml(o.code)} <small style="opacity:.65;font-weight:400">${tipo}</small></div>
-            <div style="font-size:12px;opacity:.9">${phone ? `<button type="button" class="feedback-pending-phone" data-posfb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <span style="color:${color};font-weight:700">${txt}</span>${_posFbHace(o)}</div></div>
+        const accion = estado === 'sin_enviar' ? `<button type="button" class="feedback-pending-btn" data-posfb-copy="${escapeHtml(o.id)}" style="margin-top:6px;max-width:100%">Copiar mensaje</button>`
+            : `<button type="button" class="ghost-button" data-posfb-copy="${escapeHtml(o.id)}" style="margin-top:6px;max-width:100%">Volver a copiar</button>`;
+        return `<div style="${card}${estado === 'enviado' ? 'opacity:.7;' : ''}">
+            ${linea(`<b>${escapeHtml(getOrderDisplayCustomerName(o))}</b> · ${escapeHtml(o.code)}`, 'font-size:13px')}
+            ${linea(`${phone ? `<button type="button" class="feedback-pending-phone" data-posfb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'}`, 'font-size:12px;margin-top:2px')}
+            ${linea(`<span style="color:${color};font-weight:700">${txt}</span>${_posFbHace(o)}`, 'font-size:11px;margin-top:2px')}
             ${accion}</div>`;
     }).join('');
-    // Cuatro columnas iguales (tarjetas con borde fino y acento naranja de la marca); el texto siempre queda dentro.
-    const col = (ico, txt, n, ir) => `<button type="button" data-posfb-ir="${ir}" style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.04);color:inherit;cursor:pointer;font-size:12px"><span style="font-size:14px;line-height:1">${ico}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">${txt}</span><b style="font-family:'Space Grotesk',sans-serif;font-size:14px;color:${n ? '#ff9a3d' : '#9ca3af'}">${n}</b></button>`;
-    const resumen = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px">
-        ${col('⏳', 'Feedback', cnt('sin_enviar'), 'general')}
-        ${col('🔁', 'Reactivar', _posPend.cola, 'reactivar')}
-        ${col('🎂', 'Cumpleaños', _posPendCumples(), 'cumple')}
-        ${col('⚠️', 'Atender', _posPend.atender, 'atender')}</div>`;
-    modal.querySelector('.posfb-body').innerHTML = `${resumen}
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${chip('todos', `Todos (${items.length})`)}${chip('sin_enviar', `⏳ Faltan (${cnt('sin_enviar')})`)}${chip('enviado', `📨 Enviados (${cnt('enviado')})`)}${chip('respondio', `✅ Respondieron (${cnt('respondio')})`)}</div>
-        ${filas || '<p style="opacity:.7;padding:12px 0">No hay pedidos entregados hoy en esta vista.</p>'}`;
+
+    const ahoraH = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
+    const cardsReactivar = _posPend.cola.map((e) => `<button type="button" data-posfb-ir="reactivar" style="${card}cursor:pointer">
+        ${linea(`<b>${escapeHtml(e.nombre || 'Cliente')}</b>`, 'font-size:13px')}
+        ${linea(`🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))}`, 'font-size:12px;margin-top:2px')}
+        ${linea(`🕒 ${escapeHtml(_fidHoraTexto(e.hora))}${e.hora <= ahoraH ? ' · <b style="color:#fbbf24">es su hora</b>' : ''}`, 'font-size:11px;margin-top:2px')}</button>`).join('');
+
+    const cardsCumple = _posPendCumplesLista().map((c) => `<button type="button" data-posfb-ir="cumple" style="${card}cursor:pointer">
+        ${linea(`<b>${escapeHtml(c.customerName || 'Cliente')}</b>`, 'font-size:13px')}
+        ${linea(`🎉 Hoy · ${escapeHtml(String(c.customerPhoneDigits || c.customerPhone || ''))}`, 'font-size:12px;margin-top:2px')}</button>`).join('');
+
+    const cardsAtender = _posPend.atender.map((r) => `<button type="button" data-posfb-ir="atender" style="${card}cursor:pointer">
+        ${linea(`<b>${escapeHtml(r.name || 'Cliente')}</b>${r.code ? ` · ${escapeHtml(r.code)}` : ''}`, 'font-size:13px')}
+        ${r.motivos.length ? linea(escapeHtml(r.motivos.map((m) => (typeof m === 'string' ? m : (m && (m.label || m.texto)) || '')).filter(Boolean).join(', ')), 'font-size:11px;margin-top:2px;opacity:.8') : ''}</button>`).join('');
+
+    // Cuatro columnas: encabezado compacto (ícono · nombre · número; al tocarlo va a su sección) y debajo la tarjeta de cada cliente.
+    const col = (ico, txt, n, ir, cards) => `<div style="display:flex;flex-direction:column;min-width:0;min-height:0">
+        <button type="button" data-posfb-ir="${ir}" style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;padding:6px 8px;margin-bottom:8px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.04);color:inherit;cursor:pointer;font-size:12px"><span style="font-size:14px;line-height:1">${ico}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">${txt}</span><b style="font-family:'Space Grotesk',sans-serif;font-size:14px;color:${n ? '#ff9a3d' : '#9ca3af'}">${n}</b></button>
+        <div style="flex:1;min-height:0;overflow-y:auto">${cards || vacio}</div></div>`;
+    modal.querySelector('.posfb-body').innerHTML = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;height:100%">
+        ${col('⏳', 'Feedback', items.filter((x) => x.estado === 'sin_enviar').length, 'general', cardsFeedback)}
+        ${col('🔁', 'Reactivar', _posPend.cola.length, 'reactivar', cardsReactivar)}
+        ${col('🎂', 'Cumpleaños', _posPendCumples(), 'cumple', cardsCumple)}
+        ${col('⚠️', 'Atender', _posPend.atender.length, 'atender', cardsAtender)}</div>`;
 }
 function openPosFeedbackModal() {
     let modal = document.getElementById('posFbModal');
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'posFbModal';
-        modal.style.cssText = 'position:fixed;inset:0;z-index:10400;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
-        modal.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:14px;max-width:620px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.15)"><strong>📣 Pendientes de hoy</strong><button type="button" data-posfb-close style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
-            <div class="posfb-body" style="padding:12px 16px;overflow:auto"></div>
-            <div style="padding:8px 16px 12px;font-size:11px;opacity:.6">Solo pedidos entregados hoy. Al copiar el mensaje el pedido queda marcado como enviado.</div></div>`;
+        modal.style.cssText = 'position:fixed;top:0;right:0;bottom:40px;left:0;z-index:10400;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
+        modal.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:14px;max-width:1180px;width:100%;height:min(82vh,760px);display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.07)"><strong>📣 Pendientes de hoy</strong><button type="button" data-posfb-close style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
+            <div class="posfb-body" style="padding:12px 16px;flex:1;min-height:0"></div>
+            <div style="padding:6px 16px 10px;font-size:11px;opacity:.6">Feedback: pedidos entregados hoy; al copiar el mensaje el pedido queda marcado como enviado. Toca un encabezado o una tarjeta para ir a su sección.</div></div>`;
         document.body.appendChild(modal);
         new MutationObserver(_posFbSyncBoton).observe(modal, { attributes: true, attributeFilter: ['style'] });
         modal.addEventListener('click', async (e) => {
             if (e.target === modal || e.target.closest('[data-posfb-close]')) { modal.style.display = 'none'; return; }
             const ir = e.target.closest('[data-posfb-ir]');
             if (ir) { modal.style.display = 'none'; _posFbIr(ir.dataset.posfbIr); return; }
-            const f = e.target.closest('[data-posfb-filtro]');
-            if (f) { modal.dataset.filtro = f.dataset.posfbFiltro; _posFbRender(); return; }
             const ph = e.target.closest('[data-posfb-phone]');
             if (ph) { copyTextToClipboard(ph.dataset.posfbPhone); return; }
             const cp = e.target.closest('[data-posfb-copy]');
@@ -5700,8 +5713,10 @@ function openPosFeedbackModal() {
         });
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.style.display !== 'none') modal.style.display = 'none'; });
     }
+    // Centrada en el área de contenido: se deja libre la columna lateral (si la barra lateral es vertical).
+    const sb = document.querySelector('.admin-sidebar'), r = sb ? sb.getBoundingClientRect() : null;
+    modal.style.left = (r && r.height > 200 && r.width < window.innerWidth * 0.5 ? Math.round(r.right) : 0) + 'px';
     modal.style.display = 'flex';
-    modal.dataset.filtro = modal.dataset.filtro || 'todos';
     _posFbRender();
     _posPendRefrescar().then(() => { if (modal.style.display !== 'none') _posFbRender(); });
 }

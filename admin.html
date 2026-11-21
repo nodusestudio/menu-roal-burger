@@ -17064,6 +17064,8 @@
     #posOrdersCard { padding: 0 !important; background: none; border: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
     /* El ticket sube a la altura de los botones verdes (alto 48 + margen 16 = 64) cuando hay 3 columnas */
     @media (min-width: 1025px) { #orderTicketPanel { margin-top: -64px; } }
+    /* La barra naranja de "feedback pendiente" ya no se muestra aquí: todo está en el botón 📣 de la barra inferior */
+    #feedbackPendingHost { display: none !important; }
     /* REGLA: bordes mínimos (como la barra lateral): una línea fina y sin brillo interno que parezca un segundo borde */
     #salesDayBanner, .orders-workspace .orders-lane { border: 1px solid rgba(255,255,255,0.07); box-shadow: none; }
     #orderTicketPanel { border: none; box-shadow: none; }
