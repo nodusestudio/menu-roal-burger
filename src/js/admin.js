@@ -5922,7 +5922,7 @@ function _formaUnificarEl(el) {
 // --modal-h-max con scroll interno. Pie con botones en el mismo orden: Atrás · Cancelar · (Eliminar) · Siguiente/Guardar a la derecha,
 // con el mismo estilo (primario naranja, secundario gris, peligro rojo). Se puede forzar el tamaño con data-modal-tam="grande|estandar"
 // en la tarjeta, y excluir una ventana con data-modal="libre".
-const _MODAL_SALTAR = '#adminAuthOverlay,.admin-auth-overlay,#posFbModal,#_genericConfirmOverlay,#fodiFlot,#orderTicketPanel,.mobile-ticket-backdrop,.mesero-invalid-screen,[data-modal="libre"]';
+const _MODAL_SALTAR = '#fidPreviaOverlay,#_fidDisculpaOverlay,#adminAuthOverlay,.admin-auth-overlay,#posFbModal,#_genericConfirmOverlay,#fodiFlot,#orderTicketPanel,.mobile-ticket-backdrop,.mesero-invalid-screen,[data-modal="libre"]';
 const _MODAL_ROLES = [
     [/^(eliminar|borrar|anular|quitar)/i, 'peligro', 2],
     [/^(atrás|atras|volver)/i, 'atras', 0],
