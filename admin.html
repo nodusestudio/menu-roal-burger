@@ -18130,6 +18130,18 @@
             .rr-bar-btn.on{background:#ff7a1a;border-color:#ff7a1a}
             #rrBtn[data-tip]:hover::after,.rr-bar-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;right:0;bottom:34px;white-space:nowrap;background:#0d111b;color:#fff;font-size:.78rem;padding:5px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.2);pointer-events:none}
         }
+        /* Letrero corredizo de notificaciones (solo PC): ocupa el espacio libre entre Accesos y los íconos y recorta lo que se sale, así pasa por debajo de los botones */
+        #rrTicker{display:none}
+        @media (min-width:1024px){
+            body.admin-unlocked:not(.mesero-mode) #rrTicker:not([hidden]){display:block;flex:1 1 0;min-width:0;height:26px;overflow:hidden;position:relative;margin:0 8px}
+            #rrTicker .rr-tk-track{display:flex;width:max-content;white-space:nowrap;line-height:26px;font-size:.78rem;font-weight:600;color:rgba(255,255,255,.88);animation:rrTkRun 40s linear infinite;will-change:transform}
+            #rrTicker:hover .rr-tk-track{animation-play-state:paused}
+            #rrTicker .rr-tk-item{padding:0 28px;position:relative}
+            #rrTicker .rr-tk-item::after{content:"•";position:absolute;right:-3px;color:#ff7a1a}
+            /* arranca fuera por la derecha (100% del letrero) y termina fuera por la izquierda (la mitad del contenido duplicado) */
+            @keyframes rrTkRun{from{transform:translateX(100%)}to{transform:translateX(-50%)}}
+            @media (prefers-reduced-motion:reduce){#rrTicker .rr-tk-track{animation:none}}
+        }
         /* CELULAR: la misma barra fija abajo que en PC (Cerrar sesión, Accesos, voz, FODI, respuestas rápidas) */
         @media (max-width:1023px){
             body.admin-unlocked:not(.mesero-mode) #rrWrap,
@@ -18245,6 +18257,7 @@
             <button type="button" class="preview-refresh-btn" id="sidebarMoreBtn" aria-expanded="false" aria-controls="sidebarMoreMenu" title="Ir a público, avisos, Modo TV y más">🧰 Accesos <span class="sidebar-more-flecha">▴</span></button>
         </div>
         </div>
+        <div id="rrTicker" hidden aria-live="off"></div>
         <div id="rrPanel" hidden>
             <div class="rr-head"><strong>📋 Respuestas rápidas</strong><button type="button" id="rrCerrar" aria-label="Cerrar">✕</button></div>
             <input type="search" id="rrBuscar" placeholder="Buscar…" autocomplete="off">
