@@ -5389,6 +5389,56 @@ function _posCuponeraOtraBebida() {
     renderPosBebidasPanel(ov.querySelector('#posCupBebGrid'));
 }
 
+// Editar una línea de cuponera (o cupón exclusivo) que ya está en el carrito: cambiar el sabor de la bebida y/o dejar una especificación
+// del cliente. Todo queda escrito en las líneas de la cuponera (lo que lee la cocina y el ticket), sin tocar el precio.
+function _posEditarCombo(item) {
+    document.getElementById('posComboEditOv')?.remove();
+    const lineas = Array.isArray(item.comboItems) ? item.comboItems.map((l) => String(l)) : [];
+    const reBeb = /^(.*bebida[^:]*:\s*)(.+)$/i;
+    const reNota = /^NOTA:\s*/i;
+    const idxBeb = lineas.findIndex((l) => reBeb.test(l));
+    const idxNota = lineas.findIndex((l) => reNota.test(l));
+    let sabor = idxBeb >= 0 ? lineas[idxBeb].match(reBeb)[2].trim() : null;
+    const nota0 = idxNota >= 0 ? lineas[idxNota].replace(reNota, '').trim() : '';
+    let sabores = _posCuponeraSabores();
+    if (sabor && !sabores.some((s) => s.toLowerCase() === sabor.toLowerCase())) sabores = [sabor, ...sabores];
+    const ov = document.createElement('div');
+    ov.id = 'posComboEditOv';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10500;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML = `<div style="background:#1b1b22;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:20px;max-width:420px;width:100%;max-height:92vh;overflow:auto;color:#fff;">
+        <h4 style="margin:0 0 12px;">${escapeHtml(item.productName)}</h4>
+        ${sabor ? `<p style="margin:0 0 6px;font-size:.85rem;opacity:.8;">Sabor de la bebida</p>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px;">${sabores.map((s) => `<button type="button" class="pos-product-btn" data-sabor="${escapeHtml(s)}" style="padding:12px 6px;">${escapeHtml(s)}</button>`).join('')}</div>` : ''}
+        <p style="margin:0 0 6px;font-size:.85rem;opacity:.8;">Especificación del cliente (opcional)</p>
+        <textarea id="posComboNota" maxlength="200" rows="3" placeholder="Ej: sin cebolla, bien cocida, sin servilleta…" style="width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.06);color:#fff;resize:vertical;margin-bottom:14px;">${escapeHtml(nota0)}</textarea>
+        <div style="display:flex;gap:8px;">
+            <button type="button" data-cancel="1" style="flex:1;padding:12px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">Cancelar</button>
+            <button type="button" id="posComboGuardar" style="flex:2;padding:12px;border:0;border-radius:8px;background:#22a05a;color:#fff;font-weight:800;">GUARDAR</button>
+        </div></div>`;
+    const marcar = () => ov.querySelectorAll('[data-sabor]').forEach((b) => { b.style.outline = (sabor && b.dataset.sabor.toLowerCase() === sabor.toLowerCase()) ? '3px solid #ffaa1e' : 'none'; });
+    ov.addEventListener('click', (e) => {
+        const s = e.target.closest('[data-sabor]');
+        if (s) { sabor = s.dataset.sabor; marcar(); return; }
+        if (e.target.closest('#posComboGuardar')) {
+            const out = lineas.filter((l) => !reNota.test(l));
+            const iB = out.findIndex((l) => reBeb.test(l));
+            if (iB >= 0 && sabor) out[iB] = out[iB].replace(reBeb, (_m, pre) => pre + sabor);
+            const nota = String(ov.querySelector('#posComboNota')?.value || '').trim();
+            if (nota) out.push(`NOTA: ${nota}`);
+            item.comboItems = out;
+            item.note = out.join(' + ');
+            item.optionLabel = out.join(' + ');
+            ov.remove();
+            renderPosOrderItems();
+            showNotice('Cuponera actualizada.', 'ok');
+            return;
+        }
+        if (e.target === ov || e.target.closest('[data-cancel]')) ov.remove();
+    });
+    document.body.appendChild(ov);
+    marcar();
+}
+
 function _posAgregarCuponera(bono, sabor1, sabor2) {
     // Línea del bono: hamburguesa + su combo + el regalo (siempre al final). Va junta porque es lo que
     // cubre el cartón. El 2.º combo (si lo piden) es OTRA línea del ticket: se cobra y se quita aparte.
@@ -9319,6 +9369,7 @@ function renderPosOrderItems() {
                 </div>
                 <div class="pos-item-qty-price">
                     ${priceHTML}
+                    <button type="button" class="pos-item-combo-edit" data-item-key="${escapeHtml(item.itemKey)}" title="Cambiar el sabor de la bebida o agregar una especificación del cliente">✎</button>
                     <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
                 </div>
             </div>`;
@@ -9397,6 +9448,12 @@ function renderPosOrderItems() {
             if (sinBtn) {
                 const sinItem = internalOrderItems.find((i) => i.itemKey === sinBtn.dataset.itemKey);
                 if (sinItem) _openPosSinModal(sinItem);
+                return;
+            }
+            const comboEdit = event.target.closest('.pos-item-combo-edit');
+            if (comboEdit) {
+                const ce = internalOrderItems.find((i) => i.itemKey === comboEdit.dataset.itemKey);
+                if (ce) _posEditarCombo(ce);
                 return;
             }
             const commentBtn = event.target.closest('.pos-item-comment-btn');
@@ -9571,6 +9628,8 @@ function renderPosOrderItems() {
             }
             _swReset(s.el);
             if (s.dx > w * 0.35) {
+                const ce = s.el.querySelector('.pos-item-combo-edit');
+                if (ce) { ce.click(); return; }
                 const cb = s.el.querySelector('.pos-item-comment-btn');
                 if (cb) _posItemMenu(cb, s.key, () => { cb.dataset.go = '1'; cb.click(); delete cb.dataset.go; });
             }
