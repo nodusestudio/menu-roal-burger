@@ -847,8 +847,15 @@ function posIngredientesDeProducto(prod) {
     return posParseIngredientes(prod.descripcion || prod.description || '');
 }
 
+// Una bebida (catálogo Bebidas o categoría BEBIDAS) no lleva ingredientes ni notas de cocina.
+function posEsItemBebida(item) {
+    if (!item) return false;
+    if (String(item.productId || '').startsWith('bebida::')) return true;
+    return /^bebidas?$/.test(normalizeCategoryKey(item.categoryName || ''));
+}
+
 function posIngredientesDeItem(item) {
-    if (!item || item.isComboEspecial || item.codigoDiaCanjeId) return [];
+    if (!item || item.isComboEspecial || item.codigoDiaCanjeId || posEsItemBebida(item)) return [];
     const base = String(item.productId || '').split('::')[0];
     const prod = productsState.find((p) => p.id === base);
     return posIngredientesDeProducto(prod);
@@ -5859,6 +5866,13 @@ function _modalUnificarTarjeta(fondo, tarjeta) {
 function _modalesUnificar() {
     const sb = document.querySelector('.admin-sidebar'), sr = sb ? sb.getBoundingClientRect() : null;
     const lateral = sr && sr.height > 200 && sr.width > 0 && sr.width < window.innerWidth * 0.5 ? Math.round(sr.right) : 0;
+    // Columna del menú del POS (la del centro) cuando se está tomando un pedido y el carrito va a su lado.
+    const pv = document.getElementById('posView'), pm = document.getElementById('posScreenMain');
+    let colMenu = null;
+    if (pv && pm && pv.getClientRects().length && getComputedStyle(pv).display !== 'none' && pm.getClientRects().length) {
+        const cm = pm.getBoundingClientRect();
+        if (cm.width > 300 && cm.width < window.innerWidth * 0.85) colMenu = cm;
+    }
     document.querySelectorAll('body > *, [id*="odal"], [class*="modal"], [class*="overlay"], [class*="backdrop"]').forEach((fondo) => {
         if (fondo.matches(_MODAL_SALTAR) || fondo.closest(_MODAL_SALTAR)) return;
         const cs = getComputedStyle(fondo);
@@ -5871,7 +5885,16 @@ function _modalesUnificar() {
             _modalUnificarTarjeta(fondo, tarjeta);
             // Centrada en el área de información: se descuenta la columna lateral (solo si es vertical; en celular no hay).
             fondo.style.setProperty('box-sizing', 'border-box', 'important');
-            fondo.style.setProperty('padding-left', `${lateral + 12}px`, 'important');
+            if (colMenu) {
+                // Tomando un pedido: la ventana se centra SOLO en la columna del menú y el carrito queda libre, a la vista.
+                fondo.style.setProperty('left', `${Math.round(colMenu.left)}px`, 'important');
+                fondo.style.setProperty('right', `${Math.round(window.innerWidth - colMenu.right)}px`, 'important');
+                fondo.style.setProperty('padding-left', '12px', 'important');
+            } else {
+                fondo.style.removeProperty('left');
+                fondo.style.removeProperty('right');
+                fondo.style.setProperty('padding-left', `${lateral + 12}px`, 'important');
+            }
             fondo.style.setProperty('padding-right', '12px', 'important');
         }
     });
@@ -5889,6 +5912,20 @@ function _formaUnificar(raiz) {
         muts.forEach((m) => m.addedNodes.forEach((n) => { if (n.nodeType === 1) cola.push(n); }));
         if (cola.length && !programado) { programado = true; setTimeout(vaciar, 60); }
     });
+    // Pantalla de tomar pedido (POS): su borde superior queda alineado con el del contenido que está detrás (simetría), en vez del
+    // desfase fijo de 62 px que ya no coincide con el diseño actual. Solo en escritorio (en celular/mesero ocupa toda la pantalla).
+    const alinearPos = () => {
+        const pv = document.getElementById('posView');
+        if (!pv || !pv.classList.contains('is-open')) return;
+        const cs = getComputedStyle(pv);
+        if (cs.left === '0px' || document.body.classList.contains('mesero-mode')) return;
+        const panel = document.querySelector('.admin-tab-panel.active') || document.querySelector('.admin-dashboard');
+        const r = panel ? panel.getBoundingClientRect() : null;
+        if (r && r.height > 100 && r.top >= 0 && r.top < window.innerHeight * 0.4) pv.style.setProperty('top', `${Math.round(r.top)}px`, 'important');
+    };
+    const pvEl = document.getElementById('posView');
+    if (pvEl) new MutationObserver(alinearPos).observe(pvEl, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', alinearPos);
     // Lo que cambia de forma al cambiar de estado (abrir un panel, cambiar de pestaña) se repasa poco después de cada toque.
     let repaso = false;
     document.addEventListener('click', () => { if (repaso) return; repaso = true; setTimeout(() => { repaso = false; _formaUnificar(document.body); try { _modalesUnificar(); } catch (_) { /* sin ventanas */ } }, 300); }, true);
@@ -5979,7 +6016,26 @@ function renderPosBebidasPanel(grid) {
     });
 }
 
-function openPosBebidaPickerModal(bev) {
+// Bebida del catálogo (Bebidas) a la que corresponde una línea/producto: por el id `bebida::<id>::<pres>` o, si es un
+// producto suelto con el nombre "Marca Presentación" y esa presentación tiene sabores, por el nombre.
+function _posBebidaConSaboresPara(productId, productName) {
+    const m = String(productId || '').match(/^bebida::([^:]+)::([^:]+)/);
+    if (m) {
+        const bev = bebidasState.find((b) => b.id === m[1]);
+        if (bev) return { bev, presId: m[2] };
+    }
+    const nombre = normalizeCategoryKey(String(productName || '').replace(/\s*\(.*\)\s*$/, ''));
+    if (!nombre) return null;
+    for (const bev of bebidasState) {
+        if (bev.estado !== 'active') continue;
+        const pres = (bev.presentaciones || []).find((p) => Array.isArray(p.sabores) && p.sabores.length > 0
+            && normalizeCategoryKey(`${bev.marca} ${p.nombre}`) === nombre);
+        if (pres) return { bev, presId: pres.id };
+    }
+    return null;
+}
+
+function openPosBebidaPickerModal(bev, replaceKey = null, presIdInicial = null) {
     const prev = document.getElementById('pos-bebida-picker-modal');
     if (prev) prev.remove();
 
@@ -5992,7 +6048,7 @@ function openPosBebidaPickerModal(bev) {
     const body = document.createElement('div');
     body.style.cssText = 'padding:12px 16px;display:flex;flex-direction:column;gap:14px;';
 
-    let selectedPres = bev.presentaciones.length === 1 ? bev.presentaciones[0] : null;
+    let selectedPres = bev.presentaciones.length === 1 ? bev.presentaciones[0] : (bev.presentaciones.find((p) => p.id === presIdInicial) || null);
     // Varios sabores de una vez: cada toque en un sabor suma una unidad (mora ×2, mango ×1…); el − de al lado resta.
     const cuentas = new Map();
     const totalUnidades = () => [...cuentas.values()].reduce((a, b) => a + b, 0);
@@ -6095,6 +6151,11 @@ function openPosBebidaPickerModal(bev) {
             return;
         }
         overlay.remove();
+        // Editando una línea: se quita 1 unidad de la vieja y se agrega la elegida (sabor/presentación nuevos)
+        if (replaceKey) {
+            const _old = internalOrderItems.find((i) => i.itemKey === replaceKey);
+            if (_old && _old.quantity > 1) PosCart.incrementQuantity(replaceKey, -1); else PosCart.removeItem(replaceKey);
+        }
         if (!selectedPres.sabores.length) {
             addProductToPosOrder(`bebida::${bev.id}::${selectedPres.id}`, `${bev.marca} ${selectedPres.nombre}`, selectedPres.precio);
             return;
@@ -7198,6 +7259,13 @@ function handlePosProductAdd(productId, productName, productPrice) {
     // Bebida incluida → pedir sabor directo
     if (prodEntry?.bebida_incluida?.activo && prodEntry.bebida_incluida.bebida_ref_id) {
         openPosBebidaModal(productId, productName, productPrice, prodEntry.bebida_incluida);
+        return;
+    }
+
+    // Producto que es una bebida del catálogo con sabores (ej. Coca-Cola 1500 ml → original / cero): preguntar el sabor
+    const _bebSab = _posBebidaConSaboresPara(productId, productName);
+    if (_bebSab) {
+        openPosBebidaPickerModal(_bebSab.bev, null, _bebSab.presId);
         return;
     }
 
@@ -9006,7 +9074,7 @@ function _openPosNoteModal(item, itemKey, container) {
         <div class="pos-note-modal-box">
             <p class="pos-note-modal-title">Nota para <strong>${escapeHtml(item.productName)}</strong></p>
             <textarea class="pos-note-modal-input" maxlength="400" placeholder="Ej: sin cebolla, extra picante…">${escapeHtml(item.note || '')}</textarea>
-            <div class="pos-salsas-chips pos-note-chips" style="margin:0 0 8px;">${_posNotasFrecuentes().map((t) => `<button type="button" class="pos-salsa-chip" data-nota="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')}</div>
+            <div class="pos-salsas-chips pos-note-chips" style="margin:0 0 8px;">${(posEsItemBebida(item) ? ['Sin hielo', 'Con hielo', 'Bien fría', 'Para llevar'] : _posNotasFrecuentes()).map((t) => `<button type="button" class="pos-salsa-chip" data-nota="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join('')}</div>
             ${posIngredientesDeItem(item).length ? '<button type="button" class="pos-note-sin-link">🚫 Quitar ingredientes</button>' : ''}
             <div class="pos-note-modal-actions">
                 <button type="button" class="pos-note-cancel-btn">Cancelar</button>
@@ -9221,8 +9289,11 @@ function renderPosOrderItems() {
                 if (item) {
                     const baseProductId = String(item.productId || '').split('::')[0];
                     const prod = productsState.find((p) => p.id === baseProductId);
+                    const _bebSabEdit = item.codigoDiaCanjeId ? null : _posBebidaConSaboresPara(item.productId, item.productName);
                     if (item.codigoDiaCanjeId) {
                         _openPosNoteModal(item, key, itemsContainer);
+                    } else if (_bebSabEdit && !(prod && Array.isArray(prod.variantes) && prod.variantes.length > 0)) {
+                        openPosBebidaPickerModal(_bebSabEdit.bev, key, _bebSabEdit.presId);
                     } else if (prod && Array.isArray(prod.variantes) && prod.variantes.length > 0) {
                         openProductVariantesModal(baseProductId, item.productName, item.categoryName, prod.variantes, key);
                     } else if (prod?.bebida_incluida?.activo && prod.bebida_incluida.bebida_ref_id) {
