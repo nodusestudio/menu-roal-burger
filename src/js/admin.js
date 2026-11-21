@@ -5685,6 +5685,37 @@ async function _posPendRefrescar() {
     } catch (_) { /* sin permiso o sin conexión: el resumen muestra lo que haya */ }
     _posFbActualizarInsignia();
 }
+// La vista previa de Reactivar lee la cola y los envíos que solo se escuchan con la sección Feedback abierta: se cargan al vuelo.
+async function _posFbAsegurarFid() {
+    if (_fbUnsubs.length && _fidCola && _fbResponses.length) return;
+    if (!_fbUnsubs.length) _fbAttach();
+    for (let i = 0; i < 20 && !(_fidCola && _fbResponses.length); i++) await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 300));
+}
+// Vista previa de Feedback (mismo diseño que la de Reactivar/Cumpleaños): el mensaje con el link de la encuesta; al copiarlo el pedido queda enviado.
+function _posFbPreviaFeedback(orderId) {
+    const order = ordersState.find((o) => o.id === orderId);
+    if (!order) { showNotice('No encuentro ese pedido: recarga la lista.', 'error'); return; }
+    const nombre = getOrderDisplayCustomerName(order);
+    const yaEnviado = !!order.feedbackRequestedAt || _feedbackMarcadosLocal.has(orderId);
+    _fidCerrarPrevia();
+    const ov = document.createElement('div');
+    ov.id = 'fidPreviaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    document.body.appendChild(ov);
+    _bindOverlayClose(ov, _fidCerrarPrevia);
+    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:620px;width:100%;max-height:92vh;overflow:auto;color:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(nombre)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
+        <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
+        <div style="white-space:pre-wrap;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(buildFeedbackMessage(order))}</div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="${yaEnviado ? 'ghost-button' : 'feedback-pending-btn'}" data-fb-prev-copiar>${yaEnviado ? 'Volver a copiar el mensaje' : 'Copiar mensaje'}</button></div>
+        <p class="admin-hint" style="margin-top:10px">Al copiar el mensaje, el pedido queda marcado como enviado.</p></div>`;
+    ov.addEventListener('click', async (e) => {
+        if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
+        const b = e.target.closest('[data-fb-prev-copiar]');
+        if (b) { await sendFeedbackRequest(orderId, b); _fidCerrarPrevia(); _posFbRender(); _posFbActualizarInsignia(); }
+    });
+}
 function _posFbIr(tipo) {
     const sec = tipo === 'asistente' ? 'asistente' : 'feedback';
     document.querySelector(`[data-accordion-target="${sec}"]`)?.click();
@@ -5710,26 +5741,23 @@ function _posFbRender() {
 
     const cardsFeedback = items.map(({ o, phone, estado }) => {
         const [txt, color] = BADGE[estado];
-        const accion = estado === 'sin_enviar' ? `<button type="button" class="feedback-pending-btn" data-posfb-copy="${escapeHtml(o.id)}" style="margin-top:6px;max-width:100%">Copiar mensaje</button>`
-            : `<button type="button" class="ghost-button" data-posfb-copy="${escapeHtml(o.id)}" style="margin-top:6px;max-width:100%">Volver a copiar</button>`;
-        return `<div style="${card}${estado === 'enviado' ? 'opacity:.7;' : ''}">
+        return `<button type="button" data-posfb-prev="feedback" data-posfb-id="${escapeHtml(o.id)}" style="${card}cursor:pointer${estado === 'enviado' ? 'opacity:.7;' : ''}">
             ${linea(`<b>${escapeHtml(getOrderDisplayCustomerName(o))}</b> · ${escapeHtml(o.code)}`, 'font-size:13px')}
-            ${linea(`${phone ? `<button type="button" class="feedback-pending-phone" data-posfb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'}`, 'font-size:12px;margin-top:2px')}
-            ${linea(`<span style="color:${color};font-weight:700">${txt}</span>${_posFbHace(o)}`, 'font-size:11px;margin-top:2px')}
-            ${accion}</div>`;
+            ${linea(phone ? `📋 ${escapeHtml(phone)}` : 'Sin teléfono', 'font-size:12px;margin-top:2px')}
+            ${linea(`<span style="color:${color};font-weight:700">${txt}</span>${_posFbHace(o)}`, 'font-size:11px;margin-top:2px')}</button>`;
     }).join('');
 
     const ahoraH = Number(new Date().toLocaleString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', hourCycle: 'h23' }));
-    const cardsReactivar = _posPend.cola.map((e) => `<button type="button" data-posfb-ir="reactivar" style="${card}cursor:pointer">
+    const cardsReactivar = _posPend.cola.map((e) => `<button type="button" data-posfb-prev="reactivar" data-posfb-k="${escapeHtml(e.k || '')}" style="${card}cursor:pointer">
         ${linea(`<b>${escapeHtml(e.nombre || 'Cliente')}</b>`, 'font-size:13px')}
         ${linea(`🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))}`, 'font-size:12px;margin-top:2px')}
         ${linea(`🕒 ${escapeHtml(_fidHoraTexto(e.hora))}${e.hora <= ahoraH ? ' · <b style="color:#fbbf24">es su hora</b>' : ''}`, 'font-size:11px;margin-top:2px')}</button>`).join('');
 
-    const cardsCumple = _posPendCumplesLista().map((c) => `<button type="button" data-posfb-ir="cumple" style="${card}cursor:pointer">
+    const cardsCumple = _posPendCumplesLista().map((c) => `<button type="button" data-posfb-prev="cumple" data-posfb-id="${escapeHtml(c.id)}" style="${card}cursor:pointer">
         ${linea(`<b>${escapeHtml(c.customerName || 'Cliente')}</b>`, 'font-size:13px')}
         ${linea(`🎉 Hoy · ${escapeHtml(String(c.customerPhoneDigits || c.customerPhone || ''))}`, 'font-size:12px;margin-top:2px')}</button>`).join('');
 
-    const cardsAtender = _posPend.atender.map((r) => `<button type="button" data-posfb-ir="atender" style="${card}cursor:pointer">
+    const cardsAtender = _posPend.atender.map((r) => `<button type="button" data-posfb-prev="atender" data-posfb-id="${escapeHtml(r.id)}" style="${card}cursor:pointer">
         ${linea(`<b>${escapeHtml(r.name || 'Cliente')}</b>${r.code ? ` · ${escapeHtml(r.code)}` : ''}`, 'font-size:13px')}
         ${r.motivos.length ? linea(escapeHtml(r.motivos.map((m) => (typeof m === 'string' ? m : (m && (m.label || m.texto)) || '')).filter(Boolean).join(', ')), 'font-size:11px;margin-top:2px;opacity:.8') : ''}</button>`).join('');
 
@@ -5752,11 +5780,25 @@ function openPosFeedbackModal() {
         modal.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:14px;max-width:1180px;width:100%;height:min(82vh,760px);display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
             <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.07)"><strong>📣 Pendientes de hoy</strong><button type="button" data-posfb-close style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
             <div class="posfb-body" style="padding:12px 16px;flex:1;min-height:0"></div>
-            <div style="padding:6px 16px 10px;font-size:11px;opacity:.6">Feedback: pedidos entregados hoy; al copiar el mensaje el pedido queda marcado como enviado. Toca un encabezado o una tarjeta para ir a su sección.</div></div>`;
+            <div style="padding:6px 16px 10px;font-size:11px;opacity:.6">Feedback: pedidos entregados hoy; al copiar el mensaje el pedido queda marcado como enviado. Toca el título de una columna para ir a su sección, o una tarjeta para ver su mensaje (copiar imagen y texto, marcar enviado).</div></div>`;
         document.body.appendChild(modal);
         new MutationObserver(_posFbSyncBoton).observe(modal, { attributes: true, attributeFilter: ['style'] });
         modal.addEventListener('click', async (e) => {
             if (e.target === modal || e.target.closest('[data-posfb-close]')) { modal.style.display = 'none'; return; }
+            // Tarjeta de un cliente: abre su vista previa (copiar imagen / texto, ya lo envié) sin salir de la ventana.
+            const prev = e.target.closest('[data-posfb-prev]');
+            if (prev) {
+                const tp = prev.dataset.posfbPrev;
+                if (tp === 'cumple') { _fidAbrirPrevia('cumple', prev.dataset.posfbId); return; }
+                if (tp === 'feedback') { _posFbPreviaFeedback(prev.dataset.posfbId); return; }
+                prev.disabled = true;
+                try {
+                    await _posFbAsegurarFid();
+                    if (tp === 'atender') _fidAtender({ dataset: { fidAtender: prev.dataset.posfbId, fidAtenderTipo: 'baja' } });
+                    else await _fidPreviaReactivar({ k: prev.dataset.posfbK });
+                } finally { prev.disabled = false; }
+                return;
+            }
             const ir = e.target.closest('[data-posfb-ir]');
             if (ir) { modal.style.display = 'none'; _posFbIr(ir.dataset.posfbIr); return; }
             const ph = e.target.closest('[data-posfb-phone]');
@@ -14669,7 +14711,11 @@ const _fidPrevioCodigo = new Map(); // cumpleaños: el código que se vio en la 
 let _fidPrevio = null; // { blob, url }
 
 function _fidCerrarPrevia() {
-    document.getElementById('fidPreviaOverlay')?.remove();
+    const habia = document.getElementById('fidPreviaOverlay');
+    habia?.remove();
+    // Si se abrió desde «Pendientes de hoy», al cerrar se refresca esa ventana (el cliente atendido sale de su columna).
+    const pm = document.getElementById('posFbModal');
+    if (habia && pm && pm.style.display !== 'none') setTimeout(() => { _posPendRefrescar().then(() => { if (pm.style.display !== 'none') _posFbRender(); }); }, 900);
     if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
     _fidPrevio = null;
 }
