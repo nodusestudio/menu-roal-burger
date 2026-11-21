@@ -17083,6 +17083,8 @@
     html body .pos-item-row .pos-item-price { min-width: 58px; flex-shrink: 0; text-align: right; align-items: flex-end; align-self: flex-start; margin-top: 1px; }
     html body .pos-extra-chip { align-items: flex-start; }
     html body .pos-item-comment-btn.has-cortesia { color: #34d399; }
+    /* táctil: el gesto horizontal lo maneja el carrito (deslizar = borrar / editar); el vertical sigue siendo scroll */
+    html body .pos-item-row, html body .pos-extra-chip { touch-action: pan-y; }
     html body .pos-item-row .pos-item-name { letter-spacing: 0; }
     html body .pos-item-row .pos-item-remove, html body .pos-extra-chip .pos-extra-chip-del {
         position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0;

@@ -9500,6 +9500,57 @@ function renderPosOrderItems() {
             }
         });
 
+        // Pantallas táctiles (como en el iPhone): deslizar una línea a la izquierda la BORRA directo; a la derecha abre el menú ✎ (Editar / Cortesía).
+        // Solo reacciona a un gesto claramente horizontal y que no empiece sobre un botón o campo, para no estorbar el scroll ni los toques.
+        let _sw = null;
+        const _swReset = (el) => { el.style.transition = 'transform .15s'; el.style.transform = ''; setTimeout(() => { el.style.transition = ''; }, 170); };
+        itemsContainer.addEventListener('touchstart', (e) => {
+            _sw = null;
+            if (e.touches.length !== 1 || e.target.closest('button, input, textarea, select')) return;
+            const el = e.target.closest('.pos-extra-chip, .pos-item-row');
+            if (!el) return;
+            const key = el.querySelector('.pos-item-remove')?.dataset.itemKey || el.dataset.itemKey;
+            if (!key) return;
+            _sw = { el, key, x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, lock: null };
+        }, { passive: true });
+        itemsContainer.addEventListener('touchmove', (e) => {
+            if (!_sw) return;
+            const dx = e.touches[0].clientX - _sw.x;
+            const dy = e.touches[0].clientY - _sw.y;
+            if (!_sw.lock && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) _sw.lock = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'h' : 'v';
+            if (_sw.lock !== 'h') return;
+            e.preventDefault();
+            _sw.dx = dx;
+            _sw.el.style.transition = 'none';
+            _sw.el.style.transform = `translateX(${dx * 0.85}px)`;
+            _sw.el.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / (_sw.el.offsetWidth * 1.2)));
+        }, { passive: false });
+        const _swEnd = () => {
+            const s = _sw; _sw = null;
+            if (!s || s.lock !== 'h') return;
+            const w = s.el.offsetWidth || 300;
+            s.el.style.opacity = '';
+            if (s.dx < -w * 0.35) {
+                s.el.style.transition = 'transform .15s, opacity .15s';
+                s.el.style.transform = 'translateX(-110%)';
+                s.el.style.opacity = '0';
+                setTimeout(() => {
+                    PosCart.removeItem(s.key);
+                    renderPosOrderItems();
+                    renderPosTotals();
+                    renderPosBottomBar();
+                }, 150);
+                return;
+            }
+            _swReset(s.el);
+            if (s.dx > w * 0.35) {
+                const cb = s.el.querySelector('.pos-item-comment-btn');
+                if (cb) _posItemMenu(cb, s.key, () => { cb.dataset.go = '1'; cb.click(); delete cb.dataset.go; });
+            }
+        };
+        itemsContainer.addEventListener('touchend', _swEnd);
+        itemsContainer.addEventListener('touchcancel', () => { if (_sw && _sw.lock === 'h') _swReset(_sw.el); _sw = null; });
+
         itemsContainer.dataset.listenerAttached = 'true';
     }
 }
