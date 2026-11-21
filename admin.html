@@ -17076,34 +17076,39 @@
     }
     /* ── CARRITO COMPACTO: nombre a la izquierda, precio a la derecha, × diminuta en la esquina, adicionales todos del mismo tamaño ── */
     /* REGLA: nombre a la izquierda y precio a la derecha SIEMPRE en la misma línea (producto o adicional) y con el mismo borde derecho */
-    html body .pos-item-row { position: relative; flex-wrap: nowrap; align-items: center; padding: 6px 30px 6px 10px; gap: 6px; }
-    html body .pos-item-row .pos-item-name { flex: 1 1 0; min-width: 0; margin-right: 0; }
+    /* Fila del producto en cuadrícula: el NOMBRE a la izquierda ocupa 2 líneas; en la 1.ª línea de la derecha va el PRECIO y debajo ✎ y cantidad,
+       los dos pegados a la derecha con el mismo margen. El margen derecho (38 px) es el mismo que el del adicional, para que todo quede simétrico. */
+    html body .pos-item-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto; align-items: center; column-gap: 6px; row-gap: 2px; padding: 6px 38px 6px 17px; }
+    html body .pos-item-row .pos-item-name { grid-column: 1; grid-row: 1 / span 2; align-self: start; min-width: 0; min-height: 2.6em; margin-right: 0; }
     html body .pos-item-row .pos-item-qty-price { display: contents; }
-    /* el precio va siempre en la PRIMERA línea del nombre, aunque el nombre ocupe 2 o más líneas */
-    html body .pos-item-row .pos-item-price { min-width: 58px; flex-shrink: 0; text-align: right; align-items: flex-end; align-self: flex-start; margin-top: 1px; }
-    html body .pos-extra-chip { align-items: flex-start; }
+    html body .pos-item-row .pos-item-price { grid-column: 2 / span 2; grid-row: 1; justify-self: end; min-width: 0; text-align: right; align-items: flex-end; }
+    html body .pos-item-row .pos-item-comment-btn { grid-column: 2; grid-row: 2; justify-self: end; }
+    html body .pos-item-row .pos-item-qty { grid-column: 3; grid-row: 2; justify-self: end; }
     html body .pos-item-comment-btn.has-cortesia { color: #34d399; }
     /* táctil: el gesto horizontal lo maneja el carrito (deslizar = borrar / editar); el vertical sigue siendo scroll */
     html body .pos-item-row, html body .pos-extra-chip { touch-action: pan-y; }
     html body .pos-item-row .pos-item-name { letter-spacing: 0; }
     html body .pos-item-row .pos-item-remove, html body .pos-extra-chip .pos-extra-chip-del {
         position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0;
+        /* (la × del producto se desplaza 8 px para quedar en la misma columna que la del adicional, que va dentro de la tarjeta con 8 px de margen) */
         background: none !important; border: none !important; box-shadow: none; color: rgba(255,110,110,.75);
         font-size: .95rem; line-height: 1; display: flex; align-items: center; justify-content: center;
     }
+    html body .pos-item-row .pos-item-remove { right: 11px; }
     html body .pos-item-row .pos-item-remove:hover, html body .pos-extra-chip .pos-extra-chip-del:hover { color: #ff8080; background: rgba(255,70,70,.18) !important; }
     /* 🎁 y ✎ más pequeños y pegados; cantidad compacta */
     html body .pos-item-cortesia-btn, html body .pos-item-comment-btn { width: 18px; height: 16px; font-size: .68rem; }
-    html body .pos-item-qty { padding: 0; gap: 0; border-radius: 6px; }
-    html body .pos-item-qty button { width: 16px; height: 20px; font-size: .8rem; }
-    html body .pos-item-qty input { width: 16px; font-size: .74rem; padding: 0; }
-    html body .pos-item-comment-btn { width: 20px; height: 20px; font-size: .85rem; }
+    /* cantidad: el número SIEMPRE se ve (antes quedaba en 16 px y se tapaba el 1) */
+    html body .pos-item-qty { padding: 0; gap: 0; border-radius: 6px; align-items: center; }
+    html body .pos-item-qty button { width: 22px; height: 24px; font-size: .95rem; }
+    html body .pos-item-qty input { width: 26px; min-width: 26px; height: 24px; font-size: .9rem; line-height: 1; padding: 0; text-align: center; color: #ffdca7; -moz-appearance: textfield; appearance: textfield; }
+    html body .pos-item-qty input::-webkit-outer-spin-button, html body .pos-item-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    html body .pos-item-comment-btn { width: 22px; height: 22px; font-size: .9rem; }
     html body .pos-item-qty-price { gap: 3px; flex-wrap: nowrap; }
     html body .pos-item-price { font-size: .85rem; }
     /* Adicionales: una fila por adicional, todas iguales; nombre a la izquierda y precio a la derecha */
-    html body .pos-extras-chips { flex-direction: column; flex-wrap: nowrap; gap: 4px; padding: 0 0 8px 8px; }
-    /* el adicional llega hasta el borde derecho de la tarjeta para que su precio quede en la misma columna que el del producto */
-    html body .pos-extra-chip { border-right-width: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+    /* SIMETRÍA: el adicional queda centrado dentro de la tarjeta del producto, con 8 px de aire a izquierda, derecha y abajo */
+    html body .pos-extras-chips { flex-direction: column; flex-wrap: nowrap; gap: 4px; padding: 0 8px 8px 8px; }
     html body .pos-extra-chip {
         position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px;
         width: 100%; box-sizing: border-box; min-height: 28px; padding: 4px 30px 4px 9px;
