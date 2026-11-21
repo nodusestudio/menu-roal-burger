@@ -14592,7 +14592,6 @@
                 <article class="admin-card" id="posOrdersCard" style="position:relative;">
                     <div class="card-head">
                         <div style="display:flex;align-items:center;gap:12px;">
-                            <h2>Recepcion de Pedidos</h2>
                             <button type="button" class="section-action-btn unread-tray-btn" id="unreadTrayBtn" aria-expanded="false" aria-controls="unreadTray" hidden>
                                 Por Confirmar
                                 <span class="unread-tray-badge" id="ordersCountUnread">0</span>
@@ -17060,6 +17059,43 @@
     /* ── Tarjetas, campos y secciones compactos (todo el admin; lo propio de Configuración sigue acotado) ── */
     .admin-card, .menu-inner-panel .admin-card { padding: var(--ui-pad); border-radius: 16px; }
     .card-head { margin-bottom: 8px; min-height: 0; }
+    /* Recepción de Pedidos: sin título; el encabezado solo aparece si hay botón "Por Confirmar" visible, y todo sube al borde */
+    #posOrdersCard > .card-head:not(:has(.unread-tray-btn:not([hidden]))) { display: none; }
+    #posOrdersCard { padding: 0 !important; background: none; border: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    /* El ticket sube a la altura de los botones verdes (alto 48 + margen 16 = 64) cuando hay 3 columnas */
+    @media (min-width: 1025px) { #orderTicketPanel { margin-top: -64px; } }
+    /* REGLA: bordes mínimos (como la barra lateral): una línea fina y sin brillo interno que parezca un segundo borde */
+    #salesDayBanner, .orders-workspace .orders-lane { border: 1px solid rgba(255,255,255,0.07); box-shadow: none; }
+    #orderTicketPanel { border: none; box-shadow: none; }
+    #orderTicketBody { border: 1px solid rgba(255,255,255,0.07); }
+    /* Tarjeta del ticket: un solo borde (el de .ticket-body); sin recuadro punteado interno */
+    #orderTicketPanel .ticket-empty, #orderTicketPanel .ticket-paper { border: none; }
+    #orderTicketPanel .ticket-empty { background: transparent; }
+    /* Tarjeta de jornada: más angosta, texto en una línea, ojo con el ancho de los saldos */
+    @media (min-width: 769px) {
+        /* Barra lateral: sin la palabra "Paneles", botones pegados a la tarjeta del logo, logo centrado
+           y texto FODEXA con la misma altura (de letra) que el isotipo */
+        .admin-sidebar .sidebar-section-label { display: none; }
+        /* Mismo margen que el contenido (20 arriba / 18 a los lados) para que todo se vea simétrico */
+        .admin-sidebar { padding: 20px 18px 20px; }        .admin-sidebar .admin-header { margin-bottom: 12px; justify-content: center; container-type: inline-size; }
+        .admin-sidebar .admin-title-wrap { gap: 3cqw; justify-content: center; }
+        .admin-sidebar .admin-sidebar-logo { width: 16.7cqw; height: 16.7cqw; } /* la "F" azul (73 % del cuadro) mide igual que las letras; el cuadro blanco sobresale un poco */
+        .admin-sidebar .admin-title-wrap h1 { font-size: 17.5cqw; line-height: 1; }
+        /* Botones Nueva mesa / Para llevar / Domicilio: mitad del ancho y texto ocupando ~90% */
+        /* Ancho = columnas Domicilios + Mesas (alineado con ellas; el ticket queda a la derecha) */
+        #quickOrderBar { width: calc((100% - 24px) * 2.07 / 3.5 + 12px); gap: 12px; }
+        #quickOrderBar .quick-order-btn { min-height: 0; height: 48px; padding-top: 0; padding-bottom: 0; gap: 10px; white-space: nowrap; line-height: 1; }
+        /* REGLA: el texto siempre queda dentro del botón (la letra se achica con el botón, nunca se desborda) */
+        #quickOrderBar .quick-order-btn { container-type: inline-size; overflow: hidden; padding-left: 4px; padding-right: 4px; }
+        #quickOrderBar .quick-order-btn > span:last-child { font-size: min(1.7rem, 8.5cqw); }
+        #quickOrderBar .quick-order-btn .qo-ico { font-size: min(1.9rem, 9cqw); }
+        #salesDayBanner { width: 100%; box-sizing: border-box; gap: 18px; padding: 10px 14px; }
+        #salesDayBanner .sales-day-banner-copy { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+        #salesDayBanner .sales-day-banner-copy strong::after { content: ' ·'; color: rgba(255,255,255,0.3); }
+        #salesDayBanner .sales-day-banner-data .sales-day-chip { width: 104px; min-width: 104px; box-sizing: border-box; justify-content: center; }
+        #salesDayBanner .sales-day-banner-data .sales-day-eye { width: 28px; height: 28px; min-height: 28px; border-radius: 8px; }
+        #salesDayBanner .sales-day-banner-data .sales-day-eye svg { width: 16px; height: 16px; }
+    }
     .card-head h2 { font-size: 1rem; letter-spacing: 1px; margin: 0; }
     .card-desc, .card-body > p {
         font-size: 0.76rem; line-height: 1.4; color: var(--admin-muted); margin: 0 0 10px;
@@ -18137,7 +18173,7 @@
                 <button type="button" id="rrVozStop" class="rr-nuevo" style="width:auto;padding:8px 16px">⏹</button>
             </div>
         </div>
-        <button type="button" id="posFeedbackBtn" class="rr-bar-btn" data-tip="Feedback de hoy: a quién ya se le envió y a quién falta" aria-label="Feedback de hoy">📣</button>
+        <button type="button" id="posFeedbackBtn" class="rr-bar-btn" data-tip="Pendientes de hoy: feedback, reactivar, cumpleaños y alertas" aria-label="Pendientes de hoy">📣</button>
         <button type="button" id="rrFodi" class="rr-bar-btn" data-tip="FODI (mostrar / ocultar)" aria-label="Mostrar u ocultar a FODI" aria-pressed="false">💛</button>
         <button type="button" id="rrVoz" class="rr-bar-btn rr-voz" data-tip="Escribir y reproducir en voz" aria-label="Escribir texto y reproducirlo en voz alta">🔊</button>
         <button type="button" id="rrBtn" data-tip="Respuestas rápidas" aria-label="Respuestas rápidas (tocar para copiar)">📋</button>

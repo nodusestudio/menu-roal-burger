@@ -196,6 +196,10 @@ service cloud.firestore {
     match /cupones_fidelizacion/{codigo} {
       allow read, write: if isAdmin();
     }
+    // Frases de la imagen ya mostradas a cada cliente (para no repetirlas).
+    match /fidelizacion_frases/{id} {
+      allow read, write: if isAdmin();
+    }
     match /fidelizacion_envios/{id} {
       allow read, write: if isAdmin();
     }

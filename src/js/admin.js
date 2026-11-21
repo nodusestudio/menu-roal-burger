@@ -5607,10 +5607,39 @@ function _posFbHace(o) {
     const txt = min < 1 ? 'hace menos de 1 min' : (min < 60 ? `hace ${min} min` : `hace ${Math.floor(min / 60)} h ${min % 60} min`);
     return ` · <span style="opacity:.8">🕒 ${txt}</span>`;
 }
+// Resumen de pendientes del día (📣): feedback por pedir, cola de Reactivar, cumpleaños sin saludar y alertas de FODI.
+// Cola y alertas se leen una vez cada 5 min (y al abrir la ventana); cumpleaños sale de los clientes ya cargados.
+const _posPend = { cola: 0, atender: 0 };
+function _posPendCumples() {
+    const anio = Number(_sqDayKey(Date.now()).slice(0, 4));
+    return (clientsState || []).filter((c) => /^\d{2}-\d{2}$/.test(c.fechaCumple) && String(c.customerPhoneDigits || c.customerPhone || '').replace(/\D/g, '').length >= 10 && _cumpleDiasFaltan(c.fechaCumple) === 0 && Number(c.cumpleSaludoAnio) !== anio).length;
+}
+async function _posPendRefrescar() {
+    if (!firebaseDb || (typeof _meseroSession !== 'undefined' && _meseroSession)) return;
+    try {
+        if (!clientsState.length) fetchClients().then(() => _posFbActualizarInsignia()).catch(() => {});
+        const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+        const [cola, mal, disc] = await Promise.all([
+            firebaseDb.collection('fidelizacion_cola').doc(hoy).get(),
+            firebaseDb.collection('encuestas_pedido').where('requiereAtencion', '==', true).limit(300).get(),
+            firebaseDb.collection('fidelizacion_envios').where('motivo', '==', 'disculpa').limit(500).get()
+        ]);
+        _posPend.cola = cola.exists ? ((cola.data() || {}).entradas || []).filter((e) => e.estado === 'pendiente').length : 0;
+        // «Atender»: respuestas malas sin mensaje de disculpa registrado (misma regla que la pestaña Atender de Feedback)
+        const atendidas = new Set(disc.docs.map((d) => d.data().encuestaId).filter(Boolean));
+        _posPend.atender = mal.docs.filter((d) => !atendidas.has(d.id)).length;
+    } catch (_) { /* sin permiso o sin conexión: el resumen muestra lo que haya */ }
+    _posFbActualizarInsignia();
+}
+function _posFbIr(tipo) {
+    const sec = tipo === 'asistente' ? 'asistente' : 'feedback';
+    document.querySelector(`[data-accordion-target="${sec}"]`)?.click();
+    if (sec === 'feedback') { _fbTipo = tipo; _fbQ = { seg: '', resp: '' }; try { renderMetricasFeedback(); } catch (_) { /* se pinta al abrir */ } }
+}
 function _posFbActualizarInsignia() {
     const btn = document.getElementById('posFeedbackBtn');
     if (!btn) return;
-    const faltan = _posFbPedidosHoy().filter((o) => _posFbEstado(o).estado === 'sin_enviar').length;
+    const faltan = _posFbPedidosHoy().filter((o) => _posFbEstado(o).estado === 'sin_enviar').length + _posPend.cola + _posPendCumples() + _posPend.atender;
     let b = btn.querySelector('.pos-fb-badge');
     if (!b) { b = document.createElement('span'); b.className = 'pos-fb-badge'; b.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#f87171;color:#111;border-radius:10px;padding:0 5px;font-size:11px;font-weight:800;line-height:16px'; btn.style.position = 'relative'; btn.appendChild(b); }
     b.textContent = faltan; b.hidden = faltan === 0;
@@ -5635,7 +5664,14 @@ function _posFbRender() {
             <div style="font-size:12px;opacity:.9">${phone ? `<button type="button" class="feedback-pending-phone" data-posfb-phone="${escapeHtml(phone)}" title="Tocar para copiar el número">📋 ${escapeHtml(phone)}</button>` : 'Sin teléfono'} · <span style="color:${color};font-weight:700">${txt}</span>${_posFbHace(o)}</div></div>
             ${accion}</div>`;
     }).join('');
-    modal.querySelector('.posfb-body').innerHTML = `
+    // Cuatro columnas iguales (tarjetas con borde fino y acento naranja de la marca); el texto siempre queda dentro.
+    const col = (ico, txt, n, ir) => `<button type="button" data-posfb-ir="${ir}" style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;padding:6px 8px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.04);color:inherit;cursor:pointer;font-size:12px"><span style="font-size:14px;line-height:1">${ico}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">${txt}</span><b style="font-family:'Space Grotesk',sans-serif;font-size:14px;color:${n ? '#ff9a3d' : '#9ca3af'}">${n}</b></button>`;
+    const resumen = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px">
+        ${col('⏳', 'Feedback', cnt('sin_enviar'), 'general')}
+        ${col('🔁', 'Reactivar', _posPend.cola, 'reactivar')}
+        ${col('🎂', 'Cumpleaños', _posPendCumples(), 'cumple')}
+        ${col('⚠️', 'Atender', _posPend.atender, 'atender')}</div>`;
+    modal.querySelector('.posfb-body').innerHTML = `${resumen}
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${chip('todos', `Todos (${items.length})`)}${chip('sin_enviar', `⏳ Faltan (${cnt('sin_enviar')})`)}${chip('enviado', `📨 Enviados (${cnt('enviado')})`)}${chip('respondio', `✅ Respondieron (${cnt('respondio')})`)}</div>
         ${filas || '<p style="opacity:.7;padding:12px 0">No hay pedidos entregados hoy en esta vista.</p>'}`;
 }
@@ -5645,13 +5681,16 @@ function openPosFeedbackModal() {
         modal = document.createElement('div');
         modal.id = 'posFbModal';
         modal.style.cssText = 'position:fixed;inset:0;z-index:10400;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
-        modal.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:14px;max-width:560px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.15)"><strong>📣 Feedback de hoy</strong><button type="button" data-posfb-close style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
+        modal.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:14px;max-width:620px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.15)"><strong>📣 Pendientes de hoy</strong><button type="button" data-posfb-close style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
             <div class="posfb-body" style="padding:12px 16px;overflow:auto"></div>
             <div style="padding:8px 16px 12px;font-size:11px;opacity:.6">Solo pedidos entregados hoy. Al copiar el mensaje el pedido queda marcado como enviado.</div></div>`;
         document.body.appendChild(modal);
+        new MutationObserver(_posFbSyncBoton).observe(modal, { attributes: true, attributeFilter: ['style'] });
         modal.addEventListener('click', async (e) => {
             if (e.target === modal || e.target.closest('[data-posfb-close]')) { modal.style.display = 'none'; return; }
+            const ir = e.target.closest('[data-posfb-ir]');
+            if (ir) { modal.style.display = 'none'; _posFbIr(ir.dataset.posfbIr); return; }
             const f = e.target.closest('[data-posfb-filtro]');
             if (f) { modal.dataset.filtro = f.dataset.posfbFiltro; _posFbRender(); return; }
             const ph = e.target.closest('[data-posfb-phone]');
@@ -5664,9 +5703,19 @@ function openPosFeedbackModal() {
     modal.style.display = 'flex';
     modal.dataset.filtro = modal.dataset.filtro || 'todos';
     _posFbRender();
+    _posPendRefrescar().then(() => { if (modal.style.display !== 'none') _posFbRender(); });
 }
-document.getElementById('posFeedbackBtn')?.addEventListener('click', (e) => { e.stopPropagation(); openPosFeedbackModal(); });
+// Un toque abre la ventana; otro toque (el botón queda por encima de la ventana) la oculta. Mientras está abierta el botón se ve encendido.
+document.getElementById('posFeedbackBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const m = document.getElementById('posFbModal');
+    if (m && m.style.display !== 'none') { m.style.display = 'none'; return; }
+    openPosFeedbackModal();
+});
+function _posFbSyncBoton() { const m = document.getElementById('posFbModal'); document.getElementById('posFeedbackBtn')?.classList.toggle('on', !!m && m.style.display !== 'none'); }
 setInterval(() => { try { _posFbActualizarInsignia(); } catch (_) { /* aún sin datos */ } }, 15000);
+setTimeout(() => { try { _posPendRefrescar(); } catch (_) { /* aún sin sesión */ } }, 12000);
+setInterval(() => { try { _posPendRefrescar(); } catch (_) { /* aún sin sesión */ } }, 300000);
 
 const _waImgReducir = (file) => new Promise((ok, mal) => {
     const url = URL.createObjectURL(file), im = new Image();
@@ -14062,11 +14111,80 @@ function _fidMensajeReactivar(c, codigo, dias, extra = []) {
 
 // Frases motivacionales para la imagen que acompaña los mensajes de fidelización (se rotan para no repetir).
 const FID_FRASES = {
-    reactivar: ['Hoy es un buen día para darte un gusto', 'Lo bueno de la vida también se come con calma', 'Te mereces un respiro y algo rico', 'Los días largos se sienten mejor con algo que te gusta', 'Tú sigues dándolo todo: hoy te toca consentirte', 'Un buen momento no necesita razón, solo ganas', 'Las cosas buenas siempre se saborean mejor en compañía'],
-    cumple: ['Que este nuevo año te sepa a victoria', 'Hoy se celebra a lo grande, ¡te lo mereces!', 'Cumplir años es sumar historias; la de hoy va con burger', 'Que tus sueños se cumplan igual que tus antojos'],
-    referido: ['Compartir una buena burger hace mejor el día de dos', 'Gracias por traer a los tuyos a la mesa', 'Las mejores recomendaciones vienen de amigos como tú'],
-    gracias: ['Gracias por contarnos, así crecemos juntos', 'Tu opinión nos hace mejores cada día', 'Con clientes como tú, cada burger sale mejor']
+    reactivar: [
+        'Hoy es un buen día para darte un gusto', 'Lo bueno de la vida también se come con calma', 'Te mereces un respiro y algo rico',
+        'Los días largos se sienten mejor con algo que te gusta', 'Tú sigues dándolo todo: hoy te toca consentirte', 'Un buen momento no necesita razón, solo ganas',
+        'Las cosas buenas siempre se saborean mejor en compañía', 'Lo que ya aprendiste y lo que todavía te emociona: esa mezcla eres tú',
+        'Hoy no se trata de correr: se trata de volver a disfrutar lo que te gusta', 'Cada día que sumas te hace más fuerte; hoy te toca una pausa rica',
+        'Lo bueno de la vida también se come con calma, y se disfruta mejor contigo', 'Sigues construyendo tu historia; hoy te mereces un buen capítulo',
+        'Parar un momento también es avanzar', 'Nadie te regala el descanso: hoy te lo regalas tú', 'Lo que te hace feliz no necesita permiso',
+        'Disfrutar lo simple es una forma de ganar', 'Hoy tu único trabajo es disfrutar', 'Tú ya hiciste lo difícil; ahora te toca lo rico',
+        'Las pausas buenas también hacen parte del camino', 'Sé amable contigo: hoy mereces un antojo cumplido', 'Un día a la vez y con algo rico en la mano',
+        'Quien trabaja con ganas merece comer con ganas', 'Lo mejor de hoy puede ser lo que te des a ti mismo', 'No todo es afán: también hay tiempo para saborear',
+        'Volver a lo que te gusta es empezar de nuevo', 'Que no se te pase la vida sin darte ese gusto', 'Los mejores planes son los sencillos y sabrosos',
+        'Hoy toca recompensarte por todo lo que aguantaste', 'Tu esfuerzo de esta semana se merece un premio', 'La felicidad a veces cabe entre dos panes',
+        'Tienes más fuerza de la que crees; hoy cárgala de sabor', 'Cada antojo es una excusa para sentirte bien', 'Respira, sonríe y date ese momento',
+        'La constancia también se celebra con algo delicioso', 'Lo que construyes hoy se disfruta mañana; y hoy también', 'Un buen día se arma de pequeños placeres',
+        'Cuando todo pese, que lo rico pese más', 'Hoy es tu día para volver a sonreír', 'Eres más de lo que cargas: hoy suelta y disfruta',
+        'La vida es corta para comer sin ganas', 'Tus ganas valen: hazles caso hoy', 'Mereces cosas buenas y hoy puede empezar por una',
+        'No esperes una fecha especial: el día de hoy ya lo es', 'Hay antojos que son una forma de quererse', 'Que hoy te encuentre tranquilo y bien servido',
+        'Cuando te cuidas, todo lo demás fluye mejor', 'Date permiso de disfrutar sin culpa', 'Lo que se disfruta con calma se recuerda para siempre',
+        'La energía buena se carga comiendo rico', 'Tú pones la actitud, nosotros ponemos el sabor', 'Un buen bocado y a seguir con más ganas',
+        'Quien sabe disfrutar, sabe vivir', 'Hoy vale la pena lo que te haga sonreír', 'Detrás de cada gran día hay un buen almuerzo',
+        'No tienes que ganarte un gusto: ya te lo mereces', 'Tu historia sigue y hoy trae sabor', 'Sé tu propio plan favorito de hoy',
+        'Que lo rico te recuerde lo bueno que eres', 'Hay días para correr y días para saborear: hoy es de los segundos', 'Quien se cuida, se consiente',
+        'Lo mejor de crecer es saber qué te hace feliz', 'Valórate hoy: te lo has ganado', 'Que el afán no te quite lo mejor del día',
+        'A veces la mejor decisión es la más sabrosa', 'Hoy tu antojo manda', 'Vuelve a lo que te hizo sonreír',
+        'Cada comienzo se celebra con buena compañía y buena comida', 'La vida sabe mejor cuando le das tiempo', 'Eres de los que no se rinden; hoy descansa un poquito',
+        'Un buen momento es el que tú decides crear', 'Lo bueno se hace esperar, pero hoy ya llegó', 'Que tu mejor versión de hoy tenga hambre de más',
+        'Hoy sonríe más, preocúpate menos', 'Las mejores historias empiezan con un antojo', 'Cuando hay ganas, hay un buen motivo',
+        'Te toca a ti: hoy el protagonista eres tú', 'Eso que te emociona de la vida también se come', 'Agradece lo que tienes y disfruta lo que te das',
+        'Un día sin darte un gusto es un día a medias', 'Lo mejor está en disfrutar lo que ya tienes cerca', 'Que tu semana sepa a lo que más te gusta',
+        'Pon la calma de tu lado y deja que el sabor haga el resto', 'Siempre hay espacio para algo que te alegre el día', 'Ser constante también es quererte',
+        'La mejor versión de ti merece una buena comida', 'Pequeños gustos, grandes días', 'Hoy se te permite pensar solo en lo rico'
+    ],
+    cumple: [
+        'Que este nuevo año te sepa a victoria', 'Hoy se celebra a lo grande, ¡te lo mereces!', 'Cumplir años es sumar historias; la de hoy va con burger',
+        'Que tus sueños se cumplan igual que tus antojos', 'Cada año te hace más tú: celebra quién eres', 'Hoy el mundo es un poquito más feliz porque naciste',
+        'Que todo lo que viene sea mejor que lo que ya fue', 'Un año más de aprender, reír y comer rico', 'Brindemos por todo lo que ya viviste y lo que falta por vivir',
+        'Hoy no cuentes los años: cuenta los motivos para celebrar', 'Que tu año nuevo venga con salud, ganas y mucho sabor', 'Cumplir años es llegar con más historias para contar',
+        'Hoy toca celebrar por todo lo que lograste', 'Que cada nuevo año te encuentre mejor que el anterior', 'Tu día se celebra con alegría y buen provecho',
+        'La mejor torta es la compañía; el mejor antojo, una burger', 'Que lo mejor de tu vida apenas esté por empezar', 'Feliz día: te lo ganaste a pulso',
+        'Un año más y cada vez con más ganas de vivir', 'Hoy se agradece la vida y se celebra con sabor'
+    ],
+    referido: [
+        'Compartir una buena burger hace mejor el día de dos', 'Gracias por traer a los tuyos a la mesa', 'Las mejores recomendaciones vienen de amigos como tú',
+        'Lo bueno se comparte, y tú lo sabes', 'Gracias por confiar y por contarle a otros', 'Cuando recomiendas, haces crecer a un negocio de barrio',
+        'Una buena mesa se arma con buena gente', 'Contigo cada mesa se llena un poco más', 'Tu recomendación vale más que cualquier publicidad',
+        'Gracias por hacernos parte de tus planes', 'Quien comparte lo rico, comparte felicidad', 'Las mejores amistades se construyen alrededor de una buena comida'
+    ],
+    gracias: [
+        'Gracias por contarnos, así crecemos juntos', 'Tu opinión nos hace mejores cada día', 'Con clientes como tú, cada burger sale mejor',
+        'Escucharte es lo que nos mantiene mejorando', 'Gracias por tomarte el tiempo de decirnos cómo te fue', 'Tu voz hace parte de cada burger que preparamos',
+        'Cada comentario tuyo nos acerca a tu burger ideal', 'Gracias por ayudarnos a hacerlo cada vez mejor', 'Lo que nos dices construye lo que servimos',
+        'Hacemos esto por personas como tú', 'Tu sinceridad es nuestro mejor ingrediente', 'Gracias por ser parte de la familia Roal'
+    ]
 };
+// Memoria por cliente EN FIREBASE (fidelizacion_frases/{cliente}_{tipo}): a la misma persona no se le repite una frase
+// hasta haber visto toda la biblioteca de ese tipo, desde cualquier computador. Si Firebase falla, elige al azar.
+const _fidFrasesCache = new Map();
+async function _fidFrase(tipo, clienteKey = '') {
+    const lista = FID_FRASES[tipo] || FID_FRASES.reactivar;
+    const k = String(clienteKey || '').trim().replace(/[\/]/g, '_');
+    if (!k || !firebaseDb) return lista[Math.floor(Math.random() * lista.length)];
+    const id = `${k}_${tipo}`;
+    let usadas = _fidFrasesCache.get(id);
+    if (!usadas) {
+        try { const d = await firebaseDb.collection('fidelizacion_frases').doc(id).get(); usadas = d.exists && Array.isArray(d.data().usadas) ? d.data().usadas : []; } catch (_) { usadas = []; }
+    }
+    let libres = lista.filter((f) => !usadas.includes(f));
+    if (!libres.length) { usadas = []; libres = lista.slice(); }
+    const f = libres[Math.floor(Math.random() * libres.length)];
+    usadas = usadas.concat(f);
+    _fidFrasesCache.set(id, usadas);
+    firebaseDb.collection('fidelizacion_frases').doc(id).set({ tipo, usadas, actualizadoAt: firebase.firestore.Timestamp.now() }).catch(() => {});
+    return f;
+}
 // Reescribe el regalo de colas ya armadas para que nombre el producto favorito (misma regla que functions/reactivarCola.js).
 function _fidRegaloEnProducto(texto, favorito) {
     const fav = String(favorito || '').trim();
@@ -14116,10 +14234,6 @@ function _fidFavoritoDeMensaje(msg) {
     const m = String(msg || '').match(/favorito, ([^:\n]+):|tu pedido: ([^\n]+?)\./);
     return m ? String(m[1] || m[2]).trim() : '';
 }
-function _fidFrase(tipo) {
-    const lista = FID_FRASES[tipo] || FID_FRASES.reactivar;
-    return lista[Math.floor(Math.random() * lista.length)];
-}
 
 // Fotos que rotan en la imagen (nunca la misma dos veces seguidas). Están en /productos-img/.
 const FID_FOTOS = ['burger-premium-papuda', 'burger-premium-triplete', 'burger-premium-caracas', 'burger-premium-cordillera', 'burger-premium-ranchera', 'burger-premium-plus'];
@@ -14141,7 +14255,7 @@ function _fidCargarImg(src) {
 
 // Genera una tarjeta PNG 1080x1350 (logo, nombre, frase, foto de hamburguesa que rota y botón) y la deja en el portapapeles
 // para pegarla en WhatsApp junto al texto. Si el navegador no deja copiar imágenes, la descarga.
-async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = '', favorito = '') {
+async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = '', favorito = '', clienteKey = '') {
     const W = 1080, H = 1350;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
@@ -14188,7 +14302,7 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     else if (logo) { const lw = 440, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 46, lw, lh); }
     else { g.fillStyle = CRE; g.font = '900 64px Impact, sans-serif'; g.fillText('ROAL BURGER', W / 2, 120); }
     // Titular: frase en mayúsculas, última línea en naranja; el tamaño baja si la frase es larga
-    const frase = _fidFrase(tipo).replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim().toUpperCase();
+    const frase = (await _fidFrase(tipo, clienteKey)).replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim().toUpperCase();
     const envolver = (size) => {
         g.font = `${size}px Impact, "Anton", "Arial Narrow", sans-serif`;
         const lineas = []; let cur = '';
@@ -14285,7 +14399,7 @@ async function _fidAbrirPrevia(tipo, clienteId) {
         favManual = (_fidProductoFavorito(cliente, extra) || {}).nombre || '';
     }
     const pintarImagen = async () => {
-        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true, regaloImg, favManual);
+        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true, regaloImg, favManual, cliente.id);
         if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
         _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
         const img = document.getElementById('fidPreviaImg');
@@ -15065,7 +15179,7 @@ async function _fidPreviaReactivar({ k = '', envioId = '' }) {
     // Mensajes ya guardados con el texto viejo («una doble carne gratis en tu hamburguesa») se corrigen al mostrarlos y al copiarlos.
     const textoActual = () => (envio && envio.mensaje) ? _fidRegaloEnProducto(envio.mensaje, favorito) : _fidRegaloEnProducto(String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3)), favorito);
     const pintarImagen = async () => {
-        const blob = await _fidCopiarImagen(nombre, 'reactivar', true, '', favorito);
+        const blob = await _fidCopiarImagen(nombre, 'reactivar', true, '', favorito, k || (envio && envio.colaK) || nombre);
         if (!document.getElementById('fidPreviaOverlay')) return;
         if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
         _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
