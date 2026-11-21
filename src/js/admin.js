@@ -5737,7 +5737,7 @@ function _posFbRender() {
     const col = (ico, txt, n, ir, cards) => `<div style="display:flex;flex-direction:column;min-width:0;min-height:0">
         <button type="button" data-posfb-ir="${ir}" style="display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;padding:6px 8px;margin-bottom:8px;border-radius:10px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.04);color:inherit;cursor:pointer;font-size:12px"><span style="font-size:14px;line-height:1">${ico}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">${txt}</span><b style="font-family:'Space Grotesk',sans-serif;font-size:14px;color:${n ? '#ff9a3d' : '#9ca3af'}">${n}</b></button>
         <div style="flex:1;min-height:0;overflow-y:auto">${cards || vacio}</div></div>`;
-    modal.querySelector('.posfb-body').innerHTML = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;height:100%">
+    modal.querySelector('.posfb-body').innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;height:100%">
         ${col('⏳', 'Feedback', items.filter((x) => x.estado === 'sin_enviar').length, 'general', cardsFeedback)}
         ${col('🔁', 'Reactivar', _posPend.cola.length, 'reactivar', cardsReactivar)}
         ${col('🎂', 'Cumpleaños', _posPendCumples(), 'cumple', cardsCumple)}

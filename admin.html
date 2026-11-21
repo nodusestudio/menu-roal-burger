@@ -17074,6 +17074,8 @@
         #orderTicketPanel { grid-template-rows: 1fr; }
         #orderTicketBody { align-self: stretch; }
     }
+    /* La tarjeta de Mesas es fija: sin scroll propio ni altura máxima (crece con sus mesas) */
+    html body .orders-workspace .orders-lane[data-mobile-lane="mesa"] { max-height: none; overflow: visible; }
     /* La barra naranja de "feedback pendiente" ya no se muestra aquí: todo está en el botón 📣 de la barra inferior */
     #feedbackPendingHost { display: none !important; }
     /* REGLA DE FORMA: nada de círculos ni píldoras. Todo botón, tarjeta, contador o saldo es un rectángulo/cuadrado con la MISMA esquina
