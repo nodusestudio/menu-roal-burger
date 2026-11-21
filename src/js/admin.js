@@ -9190,6 +9190,36 @@ function updatePosItemRow(itemKey) {
     return true;
 }
 
+// Mini menú del ✎ de cada producto del carrito: «Editar» (la nota/opciones de siempre) y «Cortesía» (antes un botón 🎁 aparte).
+function _posItemMenu(btn, key, onEdit) {
+    document.getElementById('posItemMenu')?.remove();
+    const it = internalOrderItems.find((i) => i.itemKey === key);
+    if (!it) return;
+    const menu = document.createElement('div');
+    menu.id = 'posItemMenu';
+    menu.style.cssText = 'position:fixed;z-index:10600;background:#1f2430;color:#f3f4f6;border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:2px;min-width:150px';
+    const mk = (txt, fn) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = txt;
+        b.style.cssText = 'background:none;border:0;color:inherit;text-align:left;padding:8px 10px;border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap';
+        b.addEventListener('mouseenter', () => { b.style.background = 'rgba(255,255,255,.08)'; });
+        b.addEventListener('mouseleave', () => { b.style.background = 'none'; });
+        b.addEventListener('click', () => { menu.remove(); fn(); });
+        menu.appendChild(b);
+    };
+    mk('✎ Editar / nota', onEdit);
+    mk(it.cortesia ? '🎁 Quitar cortesía' : '🎁 Cortesía', () => {
+        if (it.codigoDiaCanjeId || it.promo2x1 || it.isComboEspecial) { showNotice('Esta línea ya trae su promoción; no se puede marcar como cortesía.', 'warn'); return; }
+        if (PosCart.toggleCortesia(it.itemKey)) { renderPosOrderItems(); renderPosTotals(); renderPosBottomBar(); }
+    });
+    document.body.appendChild(menu);
+    const r = btn.getBoundingClientRect();
+    menu.style.top = Math.min(window.innerHeight - menu.offsetHeight - 8, r.bottom + 4) + 'px';
+    menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth)) + 'px';
+    const cerrar = (e) => { if (e.type === 'keydown' ? e.key === 'Escape' : !menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', cerrar, true); document.removeEventListener('keydown', cerrar, true); } };
+    setTimeout(() => { document.addEventListener('click', cerrar, true); document.addEventListener('keydown', cerrar, true); }, 0);
+}
 function renderPosOrderItems() {
     if (typeof _updatePosSaveBtnLabel === 'function') _updatePosSaveBtnLabel();
     renderPosOrderExtras();
@@ -9261,10 +9291,7 @@ function renderPosOrderItems() {
             </div>
             <div class="pos-item-qty-price">
                 ${sinBtnHTML}
-                <div class="pos-item-mini">
-                    <button type="button" class="pos-item-cortesia-btn${item.cortesia ? ' on' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="${item.cortesia ? 'Quitar cortesía' : 'Marcar como cortesía'}">🎁</button>
-                    <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
-                </div>
+                <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}${item.cortesia ? ' has-cortesia' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Editar o marcar cortesía">✎</button>
                 <div class="pos-item-qty">
                     <button type="button" class="pos-qty-minus" data-item-key="${escapeHtml(item.itemKey)}">−</button>
                     <input type="number" class="pos-qty-input" value="${item.quantity}" data-item-key="${escapeHtml(item.itemKey)}" min="1" />
@@ -9306,6 +9333,11 @@ function renderPosOrderItems() {
             const commentBtn = event.target.closest('.pos-item-comment-btn');
             if (commentBtn) {
                 const key = commentBtn.dataset.itemKey;
+                // El ✎ abre un mini menú (Editar / Cortesía); «Editar» vuelve a este mismo botón con la marca data-go.
+                if (commentBtn.dataset.go !== '1') {
+                    _posItemMenu(commentBtn, key, () => { commentBtn.dataset.go = '1'; commentBtn.click(); delete commentBtn.dataset.go; });
+                    return;
+                }
                 const item = internalOrderItems.find((i) => i.itemKey === key);
                 if (item) {
                     const baseProductId = String(item.productId || '').split('::')[0];

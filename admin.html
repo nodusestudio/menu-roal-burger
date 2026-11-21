@@ -17082,7 +17082,8 @@
     /* el precio va siempre en la PRIMERA línea del nombre, aunque el nombre ocupe 2 o más líneas */
     html body .pos-item-row .pos-item-price { min-width: 58px; flex-shrink: 0; text-align: right; align-items: flex-end; align-self: flex-start; margin-top: 1px; }
     html body .pos-extra-chip { align-items: flex-start; }
-    html body .pos-item-mini { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+    html body .pos-item-comment-btn.has-cortesia { color: #34d399; }
+    html body .pos-item-row .pos-item-name { letter-spacing: 0; }
     html body .pos-item-row .pos-item-remove, html body .pos-extra-chip .pos-extra-chip-del {
         position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0;
         background: none !important; border: none !important; box-shadow: none; color: rgba(255,110,110,.75);
@@ -17092,8 +17093,9 @@
     /* 🎁 y ✎ más pequeños y pegados; cantidad compacta */
     html body .pos-item-cortesia-btn, html body .pos-item-comment-btn { width: 18px; height: 16px; font-size: .68rem; }
     html body .pos-item-qty { padding: 0; gap: 0; border-radius: 6px; }
-    html body .pos-item-qty button { width: 18px; height: 20px; font-size: .8rem; }
-    html body .pos-item-qty input { width: 18px; font-size: .74rem; padding: 0; }
+    html body .pos-item-qty button { width: 16px; height: 20px; font-size: .8rem; }
+    html body .pos-item-qty input { width: 16px; font-size: .74rem; padding: 0; }
+    html body .pos-item-comment-btn { width: 20px; height: 20px; font-size: .85rem; }
     html body .pos-item-qty-price { gap: 3px; flex-wrap: nowrap; }
     html body .pos-item-price { font-size: .85rem; }
     /* Adicionales: una fila por adicional, todas iguales; nombre a la izquierda y precio a la derecha */
