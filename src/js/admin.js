@@ -5713,7 +5713,7 @@ function _posFbPreviaFeedback(orderId) {
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
-    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, texto: buildFeedbackMessage(order), botones: `<button type="button" class="${yaEnviado ? 'ghost-button' : 'feedback-pending-btn'}" data-fb-prev-copiar>${yaEnviado ? 'Volver a copiar el mensaje' : 'Copiar mensaje'}</button>`, hint: 'Pega primero la imagen en el chat y luego el mensaje. Al copiar el mensaje, el pedido queda marcado como enviado.' });
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: order.customerPhoneDigits || order.customerPhone, texto: buildFeedbackMessage(order), botones: `<button type="button" class="${yaEnviado ? 'ghost-button' : 'feedback-pending-btn'}" data-fb-prev-copiar>${yaEnviado ? 'Volver a copiar el mensaje' : 'Copiar mensaje'}</button>`, hint: 'Pega primero la imagen en el chat y luego el mensaje. Al copiar el mensaje, el pedido queda marcado como enviado.' });
     ov.addEventListener('click', async (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
@@ -14754,15 +14754,17 @@ let _fidPrevio = null; // { blob, url }
 
 // Marco único de las vistas previas (Feedback, Reactivar, Cumpleaños): HORIZONTAL siempre, imagen a la izquierda y a la derecha el
 // texto con sus botones. Mismo ancho (--modal-w-grande), mismos botones de imagen y mismo pie, para que no cambie de una a otra.
-function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '' }) {
-    return `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;width:min(100%,var(--modal-w-grande,900px));box-sizing:border-box;max-height:92vh;overflow:auto;color:#fff">
+function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '', telefono = '' }) {
+    const tel = String(telefono || '').replace(/\D/g, '');
+    return `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;width:min(100%,1180px);box-sizing:border-box;max-height:94vh;overflow:auto;color:#fff">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(titulo)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
-        <div style="display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:18px;align-items:start">
+        <div style="display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:22px;align-items:start">
             <div>
-                <img id="fidPreviaImg" alt="Postal del mensaje" style="width:100%;border-radius:12px;background:#000;min-height:200px">
+                <img id="fidPreviaImg" alt="Postal del mensaje" style="display:block;width:auto;max-width:100%;max-height:calc(94vh - 210px);margin:0 auto;border-radius:12px;background:#000;min-height:200px">
                 <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
             </div>
             <div style="min-width:0">
+                ${tel ? `<button type="button" class="ghost-button" data-fid-prev-tel="${tel}" title="Copiar el número del cliente" style="margin-bottom:10px">📋 Copiar número · ${tel}</button>` : ''}
                 <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
                 <div${idTexto ? ` id="${idTexto}"` : ''} style="white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>
                 <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${botones}</div>
@@ -14770,6 +14772,21 @@ function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '' }) {
             </div>
         </div></div>`;
 }
+// Las vistas previas y la ventana de compensar se centran como «Pendientes de hoy»: sin tapar la barra lateral ni la barra inferior.
+new MutationObserver((muts) => {
+    muts.forEach((m) => m.addedNodes.forEach((ov) => {
+        if (!ov || ov.nodeType !== 1 || (ov.id !== 'fidPreviaOverlay' && ov.id !== '_fidDisculpaOverlay')) return;
+        const sb = document.querySelector('.admin-sidebar'), r = sb ? sb.getBoundingClientRect() : null;
+        ov.style.left = (r && r.height > 200 && r.width < window.innerWidth * 0.5 ? Math.round(r.right) : 0) + 'px';
+        ov.style.bottom = '40px';
+    }));
+}).observe(document.body, { childList: true });
+// Botón «Copiar número» de las vistas previas (un solo oyente para todas).
+document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-fid-prev-tel]');
+    if (!b) return;
+    copyTextToClipboard(b.dataset.fidPrevTel).then((ok) => showNotice(ok ? `Número ${b.dataset.fidPrevTel} copiado.` : 'No se pudo copiar el número.', ok ? 'ok' : 'error'));
+});
 function _fidCerrarPrevia() {
     const habia = document.getElementById('fidPreviaOverlay');
     habia?.remove();
@@ -14819,7 +14836,7 @@ async function _fidAbrirPrevia(tipo, clienteId) {
             ? `<button type="button" class="ghost-button" data-cumple-recopy="${escapeHtml(cliente.id)}">Volver a copiar el mensaje</button>`
             : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(cliente.id)}">Copiar mensaje</button>`)
         : `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(cliente.id)}">Copiar mensaje</button>`;
-    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: cliente.customerName, texto, botones: btnCopiar, hint: 'Pega primero la imagen en el chat y luego el mensaje como texto. Al copiar el mensaje, la persona sale de la cola.' });
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: cliente.customerName, telefono: cliente.customerPhoneDigits || cliente.customerPhone, texto, botones: btnCopiar, hint: 'Pega primero la imagen en el chat y luego el mensaje como texto. Al copiar el mensaje, la persona sale de la cola.' });
     ov.addEventListener('click', (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
@@ -15010,8 +15027,9 @@ function _fidAbrirDisculpa(r, cliente, regenerar = false) {
     const overlay = document.createElement('div');
     overlay.id = '_fidDisculpaOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
-    overlay.innerHTML = `<div style="background:#1e1e2e;border:1.5px solid rgba(255,140,40,0.55);border-radius:18px;padding:1.3rem 1.3rem 1.1rem;max-width:560px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.55);color:#fff;text-align:left">
+    overlay.innerHTML = `<div style="background:#1e1e2e;border:1.5px solid rgba(255,140,40,0.55);border-radius:18px;padding:1.3rem 1.3rem 1.1rem;width:min(100%,1180px);box-sizing:border-box;max-height:94vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.55);color:#fff;text-align:left">
         <h3 style="margin:0 0 4px;font-size:1.1rem">${regenerar ? '🔄 Regenerar la compensación de' : '⚠️ Compensar a'} ${escapeHtml(r.name || 'el cliente')}</h3>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:22px;align-items:start"><div style="min-width:0">
         <p style="margin:0 0 10px;font-size:0.82rem;opacity:0.65">Pedido ${escapeHtml(r.orderCode)}${orden ? ` · ${escapeHtml(formatMoney(orden.total))}` : ''}${ficha ? ` · ${ficha.totalOrders} pedido${ficha.totalOrders === 1 ? '' : 's'} en total` : ''}</p>
         ${r.q4 ? `<div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:0.88rem">💬 «${escapeHtml(r.q4)}»</div>` : ''}
         <div style="border:1.5px solid ${nivel.color};border-radius:12px;padding:9px 11px;margin-bottom:12px">
@@ -15019,6 +15037,7 @@ function _fidAbrirDisculpa(r, cliente, regenerar = false) {
             <div style="font-size:0.82rem;opacity:.85;margin:2px 0 4px">${escapeHtml(nivel.texto)}</div>
             <ul style="margin:0;padding-left:18px;font-size:0.8rem;opacity:.8">${(g.razones.length ? g.razones : ['Calificación baja sin más detalles']).map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
         </div>
+        </div><div style="min-width:0">
         <label style="display:block;font-size:0.82rem;margin-bottom:4px">🎁 Obsequio sugerido <span style="opacity:.6">— ${escapeHtml(sug.motivo)}</span></label>
         <select id="fidDisculpaSel" class="admin-input" style="width:100%;margin-bottom:10px"><option value="">Sin producto (solo la disculpa)</option>${prods.map((p) => `<option value="${escapeHtml(p.id)}"${sug.producto && sug.producto.id === p.id ? ' selected' : ''}>${escapeHtml(p.nombre)} — ${escapeHtml(String(p.categoria || ''))} · ${escapeHtml(formatMoney(p.precio))}</option>`).join('')}</select>
         <label style="display:block;font-size:0.82rem;margin-bottom:4px">Mensaje (puedes editarlo)</label>
@@ -15027,6 +15046,7 @@ function _fidAbrirDisculpa(r, cliente, regenerar = false) {
             <button type="button" class="ghost-button" id="fidDisculpaCancel" style="flex:1;">Cancelar</button>
             <button type="button" class="feedback-pending-btn" id="fidDisculpaOk" style="flex:1.6;padding:.65rem">Copiar y registrar</button>
         </div>
+        </div></div>
     </div>`;
     document.body.appendChild(overlay);
     const sel = overlay.querySelector('#fidDisculpaSel');
@@ -15582,7 +15602,7 @@ async function _fidPreviaReactivar({ k = '', envioId = '' }) {
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
-    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, texto: textoActual(), idTexto: 'fidPreviaTexto', botones: '<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button><button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>', hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: (entrada && entrada.telefono) || (envio && envio.telefono), texto: textoActual(), idTexto: 'fidPreviaTexto', botones: '<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button><button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>', hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
     ov.addEventListener('click', (ev) => {
         const t = ev.target;
         if (t.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
