@@ -14082,6 +14082,11 @@ function _fidRegaloEnProducto(texto, favorito) {
         .replace(/(doble carne|una carne extra) y doble queso gratis en tu hamburguesa(, para que te quede triple 🍔)?/, `${carne} y doble queso gratis en ${prod}${triple}`)
         .replace('un queso extra en tu hamburguesa', `un queso extra en ${prod}`);
 }
+// El favorito que nombra un mensaje ya guardado («Me acordé de tu favorito, X:» o «…de tu pedido: X.»).
+function _fidFavoritoDeMensaje(msg) {
+    const m = String(msg || '').match(/favorito, ([^:\n]+):|tu pedido: ([^\n]+?)\./);
+    return m ? String(m[1] || m[2]).trim() : '';
+}
 function _fidFrase(tipo) {
     const lista = FID_FRASES[tipo] || FID_FRASES.reactivar;
     return lista[Math.floor(Math.random() * lista.length)];
@@ -14103,7 +14108,7 @@ function _fidCargarImg(src) {
 
 // Genera una tarjeta PNG 1080x1350 (logo, nombre, frase, foto de hamburguesa que rota y botón) y la deja en el portapapeles
 // para pegarla en WhatsApp junto al texto. Si el navegador no deja copiar imágenes, la descarga.
-async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = '') {
+async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = '', favorito = '') {
     const W = 1080, H = 1350;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
@@ -14114,13 +14119,23 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     g.fillStyle = bg; g.fillRect(0, 0, W, H);
     // Reactivar: tarjeta «para compartir» (sin regalo ni botón): el nombre manda y solo va el isotipo como marca de agua.
     const esR = tipo === 'reactivar';
-    const [foto, logo] = await Promise.all([_fidCargarImg(`/productos-img/${_fidFotoSiguiente()}.webp`), _fidCargarImg(esR ? '/isotipo.png' : '/logo-blanco.png')]);
+    // La foto es la del producto favorito del cliente (si la tiene en el mismo sitio); si no, rota entre las de hamburguesas.
+    const favProd = esR && favorito ? (productsState || []).find((x) => x && String(x.nombre || '').trim().toLowerCase() === String(favorito).trim().toLowerCase() && /^\/[^/]/.test(String(x.imagen_url || ''))) : null;
+    let fotoFav = favProd ? await _fidCargarImg(favProd.imagen_url) : null;
+    const [fotoRot, logo] = await Promise.all([fotoFav ? null : _fidCargarImg(`/productos-img/${_fidFotoSiguiente()}.webp`), _fidCargarImg(esR ? '/isotipo.png' : '/logo-blanco.png')]);
+    const foto = fotoFav || fotoRot;
     // Foto con bordes que se funden con el fondo
     if (foto) {
         const ph = document.createElement('canvas'); ph.width = 1080; ph.height = 850;
         const p = ph.getContext('2d');
-        const k = foto.width / 900;
-        p.drawImage(foto, 24 * k, 118 * k, 853 * k, 671 * k, 0, 0, 1080, 850);
+        if (fotoFav) { // recorte centrado con la proporción del cuadro (las fotos de producto no son todas iguales)
+            const r = 1080 / 850; let sw = foto.width; let sh = sw / r;
+            if (sh > foto.height) { sh = foto.height; sw = sh * r; }
+            p.drawImage(foto, (foto.width - sw) / 2, (foto.height - sh) / 2, sw, sh, 0, 0, 1080, 850);
+        } else {
+            const k = foto.width / 900;
+            p.drawImage(foto, 24 * k, 118 * k, 853 * k, 671 * k, 0, 0, 1080, 850);
+        }
         p.globalCompositeOperation = 'destination-in';
         const vy = p.createLinearGradient(0, 0, 0, 850);
         vy.addColorStop(0, 'rgba(0,0,0,0)'); vy.addColorStop(0.28, '#000'); vy.addColorStop(0.84, '#000'); vy.addColorStop(1, 'rgba(0,0,0,0)');
@@ -14222,6 +14237,7 @@ async function _fidAbrirPrevia(tipo, clienteId) {
     let texto = '';
     let yaSaludado = false;
     let regaloImg = '';
+    let favManual = '';
     if (esCumple) {
         const anio = Number(_sqDayKey(Date.now()).slice(0, 4));
         yaSaludado = Number(cliente.cumpleSaludoAnio) === anio;
@@ -14232,9 +14248,10 @@ async function _fidAbrirPrevia(tipo, clienteId) {
         try { extra = await _fidPedidosCliente(cliente); } catch (_) { extra = []; }
         texto = _fidMensajeReactivar(cliente, '', Number(_fidCfg.vigenciaDias) || 3, extra);
         regaloImg = _fidRegaloReactivar(cliente, extra).oferta;
+        favManual = (_fidProductoFavorito(cliente, extra) || {}).nombre || '';
     }
     const pintarImagen = async () => {
-        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true, regaloImg);
+        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true, regaloImg, favManual);
         if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
         _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
         const img = document.getElementById('fidPreviaImg');
@@ -15010,9 +15027,11 @@ async function _fidPreviaReactivar({ k = '', envioId = '' }) {
     ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
     document.body.appendChild(ov);
     _bindOverlayClose(ov, _fidCerrarPrevia);
-    const textoActual = () => (envio && envio.mensaje) || _fidRegaloEnProducto(String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3)), entrada.favorito);
+    const favorito = (entrada && entrada.favorito) || _fidFavoritoDeMensaje(envio && envio.mensaje);
+    // Mensajes ya guardados con el texto viejo («una doble carne gratis en tu hamburguesa») se corrigen al mostrarlos y al copiarlos.
+    const textoActual = () => (envio && envio.mensaje) ? _fidRegaloEnProducto(envio.mensaje, favorito) : _fidRegaloEnProducto(String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3)), favorito);
     const pintarImagen = async () => {
-        const blob = await _fidCopiarImagen(nombre, 'reactivar', true);
+        const blob = await _fidCopiarImagen(nombre, 'reactivar', true, '', favorito);
         if (!document.getElementById('fidPreviaOverlay')) return;
         if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
         _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
@@ -15043,7 +15062,8 @@ async function _fidPreviaReactivar({ k = '', envioId = '' }) {
             if (!envio) { if (_fidReactOcupado.has(k)) return; envio = _fidColaCrearEnvio(entrada); primera = true; renderMetricasFeedback(); }
             const kp = envio.cuponCodigo ? _fidCupones.find((x) => x.codigo === envio.cuponCodigo) : null;
             if (!primera && kp && _fidEstadoCupon(kp) !== 'activo') { showNotice('El cupón de este mensaje ya venció (la fecha del texto es vieja). Descártalo y genera uno nuevo desde la lista.', 'error'); return; }
-            const txt = envio.mensaje;
+            const txt = textoActual();
+            if (txt !== envio.mensaje) { envio.mensaje = txt; firebaseDb.collection('fidelizacion_envios').doc(envio.id).update({ mensaje: txt }).catch(() => {}); }
             const caja = document.getElementById('fidPreviaTexto'); if (caja) caja.textContent = txt;
             copyTextToClipboard(txt).then((ok) => showNotice(ok ? `Texto de ${nombre} copiado.` : 'No se pudo copiar. Vuelve a intentarlo.', ok ? 'ok' : 'error'));
             return;
