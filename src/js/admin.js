@@ -14593,6 +14593,11 @@ function _fidMensajeReactivar(c, codigo, dias, extra = []) {
 
 // Frases motivacionales para la imagen que acompaña los mensajes de fidelización (se rotan para no repetir).
 const FID_FRASES = {
+    disculpa: [
+        'Gracias por decirnos, así mejoramos', 'Tu opinión nos ayuda a hacerlo mejor', 'Nos importa que cada pedido sea especial', 'Queremos volver a sacarte una sonrisa',
+        'Lo que nos dices vale oro para nosotros', 'Gracias por darnos la oportunidad de mejorar', 'Mereces una buena experiencia y vamos a lograrla', 'Cada comentario sincero nos hace crecer',
+        'Gracias por ser sincero con nosotros', 'Hacemos esto por ti y queremos hacerlo mejor', 'Tu confianza es lo más importante para nosotros', 'Estamos para servirte, siempre'
+    ],
     reactivar: [
         'Hoy es un buen día para darte un gusto', 'Lo bueno de la vida también se come con calma', 'Te mereces un respiro y algo rico',
         'Los días largos se sienten mejor con algo que te gusta', 'Tú sigues dándolo todo: hoy te toca consentirte', 'Un buen momento no necesita razón, solo ganas',
@@ -14842,19 +14847,20 @@ let _fidPrevio = null; // { blob, url }
 
 // Marco único de las vistas previas (Feedback, Reactivar, Cumpleaños): HORIZONTAL siempre, imagen a la izquierda y a la derecha el
 // texto con sus botones. Mismo ancho (--modal-w-grande), mismos botones de imagen y mismo pie, para que no cambie de una a otra.
-function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '', telefono = '' }) {
+function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '', telefono = '', encabezado = '', extraDer = '', contenido = '', sinImagen = false }) {
     const tel = String(telefono || '').replace(/\D/g, '');
     return `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;width:min(100%,1180px);box-sizing:border-box;max-height:94vh;overflow:auto;color:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(titulo)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
-        <div style="display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:22px;align-items:start">
-            <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">${encabezado ? escapeHtml(encabezado) : `👁 Vista previa para ${escapeHtml(titulo)}`}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
+        <div style="display:grid;grid-template-columns:${sinImagen ? 'minmax(0,1fr)' : 'minmax(0,360px) minmax(0,1fr)'};gap:22px;align-items:start">
+            <div${sinImagen ? ' hidden' : ''}>
                 <img id="fidPreviaImg" alt="Postal del mensaje" style="display:block;width:auto;max-width:100%;max-height:calc(94vh - 210px);margin:0 auto;border-radius:12px;background:#000;min-height:200px">
                 <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
             </div>
             <div style="min-width:0">
                 ${tel ? `<button type="button" class="ghost-button" data-fid-prev-tel="${tel}" title="Copiar el número del cliente" style="margin-bottom:10px">📋 Copiar número · ${tel}</button>` : ''}
-                <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
-                <div${idTexto ? ` id="${idTexto}"` : ''} style="white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>
+                ${extraDer}
+                ${contenido || `<div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
+                <div${idTexto ? ` id="${idTexto}"` : ''} style="white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>`}
                 <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${botones}</div>
                 <p class="admin-hint" style="margin-top:10px">${hint}</p>
             </div>
@@ -15110,30 +15116,76 @@ function _fidAtender(clic) {
     const saludo = nombre ? ` ${nombre}` : '';
     const cliente = { id: r.clientId, customerName: r.name, customerPhoneDigits: String(r.phone || '').replace(/\D/g, '') };
     const yaHecho = _fidEncuestasAtendidas(vista === 'baja' ? 'disculpa' : 'resena').has(id);
-    if (vista === 'resena') {
+    if (vista === 'resena') { _fidAtenderEstatico(r, cliente, 'resena', yaHecho); return; }
+    // Ya atendido: se reabre el mismo mensaje con el mismo cupón y LA MISMA postal (sin crear nada nuevo).
+    if (yaHecho) { _fidAtenderEstatico(r, cliente, 'baja', true); return; }
+    _fidAbrirDisculpa(r, cliente);
+}
+
+// Ventana de Atender en modo lectura/envío simple: reseña de Google (aún no enviada o ya enviada) y disculpa ya atendida (reenviar el mismo mensaje).
+function _fidAtenderEstatico(r, cliente, vista, yaHecho) {
+    const nombre = String(r.name || '').trim().split(/\s+/)[0];
+    const saludo = nombre ? ` ${nombre}` : '';
+    const esResena = vista === 'resena';
+    let mensaje = '';
+    let gravedad = '';
+    if (esResena) {
         if (!_fidCfg.googleResenaUrl) { showNotice('Primero guarda el link de reseñas de Google.', 'error'); return; }
-        const copiado = copyTextToClipboard(`¡Gracias${saludo}! 🔥 Nos alegra mucho que hayas disfrutado tu pedido de ROAL BURGER. ¿Nos regalas una reseña en Google? Nos ayuda muchísimo 🙏 👉 ${_fidCfg.googleResenaUrl}`);
-        if (!yaHecho) _fidGuardarEnvio(cliente, 'resena', { envioExtra: { encuestaId: id } });
-        copiado.then((ok) => showNotice(ok ? `Pedido de reseña listo para ${r.name || 'el cliente'}.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
-        renderMetricasFeedback();
-        return;
-    }
-    // Ya atendido: se vuelve a copiar el mismo mensaje con el mismo cupón (sin crear otro).
-    if (yaHecho) {
-        const previo = _fidCupones.filter((k) => k.encuestaId === id && k.estado !== 'anulado').sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt))[0];
+        mensaje = `¡Gracias${saludo}! 🔥 Nos alegra mucho que hayas disfrutado tu pedido de ROAL BURGER. ¿Nos regalas una reseña en Google? Nos ayuda muchísimo 🙏 👉 ${_fidCfg.googleResenaUrl}`;
+    } else {
+        const previo = _fidCupones.filter((k) => k.encuestaId === r.id && k.estado !== 'anulado').sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt))[0];
         const prodPrevio = previo && previo.productoId ? productsState.find((p) => p.id === previo.productoId) : null;
         const diasPrevio = previo ? Math.max(1, Math.round((_tsMs(previo.venceAt) - _tsMs(previo.creadoAt)) / 86400000)) : (Number(_fidCfg.vigenciaDias) || 3);
-        const copiadoPrevio = copyTextToClipboard(_fidMensajeDisculpa(r, previo?.gravedad || 'medio', prodPrevio, previo?.codigo || '', diasPrevio, previo?.beneficio));
-        copiadoPrevio.then((ok) => showNotice(ok ? 'Mensaje copiado otra vez.' : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
-        return;
+        gravedad = (previo && previo.gravedad) || 'medio';
+        mensaje = _fidMensajeDisculpa(r, gravedad, prodPrevio, (previo && previo.codigo) || '', diasPrevio, previo && previo.beneficio);
     }
-    _fidAbrirDisculpa(r, cliente);
+    const envPrev = (_fidEnvios || []).filter((x) => x.motivo === (esResena ? 'resena' : 'disculpa') && x.encuestaId === r.id).sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt))[0];
+    let fijo = yaHecho && envPrev && envPrev.postal && envPrev.postal.foto ? envPrev.postal : null;
+    const sinPostal = !esResena && gravedad === 'grave';
+    _fidCerrarPrevia();
+    const ov = document.createElement('div');
+    ov.id = 'fidPreviaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    document.body.appendChild(ov);
+    _bindOverlayClose(ov, _fidCerrarPrevia);
+    const pintarImagen = async () => {
+        if (sinPostal) return;
+        const blob = await _fidCopiarImagen(r.name, esResena ? 'gracias' : 'disculpa', true, '', '', r.id, fijo);
+        if (!document.getElementById('fidPreviaImg')) return;
+        if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
+        _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
+        const img = document.getElementById('fidPreviaImg');
+        if (img && _fidPrevio) img.src = _fidPrevio.url;
+    };
+    const botones = `<button type="button" class="section-action-btn" data-at-copiar>Copiar mensaje</button>${yaHecho
+        ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Ya marcado como enviado</span>'
+        : '<button type="button" class="feedback-pending-btn" data-at-enviado>✅ Ya lo envié</button>'}`;
+    ov.innerHTML = _fidPreviaMarcoHtml({
+        titulo: r.name || 'el cliente', encabezado: `${esResena ? '⭐ Pedir reseña a' : '⚠️ Disculpa para'} ${r.name || 'el cliente'}`, telefono: r.phone, texto: mensaje, botones, sinImagen: sinPostal,
+        hint: sinPostal ? 'Caso grave: va solo el mensaje personal, sin postal. Cuando lo envíes toca «Ya lo envié».' : (yaHecho ? 'Es el mismo mensaje y la misma postal que ya se enviaron.' : 'Copia la imagen y el mensaje y envíalos. Cuando ya los mandes toca «Ya lo envié»: se archiva y la postal queda guardada.')
+    });
+    if (fijo) ov.querySelector('[data-fid-prev-otra]')?.remove();
+    ov.addEventListener('click', (e) => {
+        if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
+        if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
+        if (e.target.closest('[data-fid-prev-otra]')) { fijo = null; pintarImagen(); return; }
+        const c = e.target.closest('[data-at-copiar]');
+        if (c) { copyTextToClipboard(mensaje).then((ok) => { showNotice(ok ? `Mensaje de ${r.name || 'el cliente'} copiado.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'); if (ok) _btnHecho(c, 'Mensaje copiado'); }); return; }
+        const env = e.target.closest('[data-at-enviado]');
+        if (env) {
+            env.disabled = true;
+            _fidGuardarEnvio(cliente, 'resena', { envioExtra: { encuestaId: r.id, ...(sinPostal ? {} : _fidPostalEnvio(r.id)) } });
+            _btnHecho(env, 'Archivado');
+            setTimeout(() => { _fidCerrarPrevia(); renderMetricasFeedback(); }, 1100);
+        }
+    });
+    pintarImagen();
 }
 
 // Ventana de revisión: muestra qué dijo el cliente, qué tan grave fue, el obsequio que sugiere el sistema (se puede cambiar)
 // y el mensaje final (se puede editar). Solo al confirmar se crea el cupón y se registra el envío.
 function _fidAbrirDisculpa(r, cliente, regenerar = false) {
-    document.getElementById('_fidDisculpaOverlay')?.remove();
+    _fidCerrarPrevia();
     const orden = [..._fbArchOrders, ...ordersState].find((o) => o.id === r.id) || null;
     const ficha = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === _sqPhoneKey(r.phone));
     const general = r.tipo === 'general';
@@ -15144,31 +15196,28 @@ function _fidAbrirDisculpa(r, cliente, regenerar = false) {
     const nivel = FID_NIVELES[g.nivel];
     const prods = (productsState || []).filter((p) => p && p.id && p.nombre && Number(p.precio) > 0).slice()
         .sort((a, b) => String(a.categoria || '').localeCompare(String(b.categoria || ''), 'es') || String(a.nombre).localeCompare(String(b.nombre), 'es'));
+    const sinPostal = g.nivel === 'grave'; // caso grave: solo el mensaje personal (una postal de paisaje puede sentirse como burla si el cliente se enfermó)
     const overlay = document.createElement('div');
-    overlay.id = '_fidDisculpaOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;padding:1rem;';
-    overlay.innerHTML = `<div style="background:#1e1e2e;border:1.5px solid rgba(255,140,40,0.55);border-radius:18px;padding:1.3rem 1.3rem 1.1rem;width:min(100%,1180px);box-sizing:border-box;max-height:94vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.55);color:#fff;text-align:left">
-        <h3 style="margin:0 0 4px;font-size:1.1rem">${regenerar ? '🔄 Regenerar la compensación de' : '⚠️ Compensar a'} ${escapeHtml(r.name || 'el cliente')}</h3>
-        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:22px;align-items:start"><div style="min-width:0">
-        <p style="margin:0 0 10px;font-size:0.82rem;opacity:0.65">Pedido ${escapeHtml(r.orderCode)}${orden ? ` · ${escapeHtml(formatMoney(orden.total))}` : ''}${ficha ? ` · ${ficha.totalOrders} pedido${ficha.totalOrders === 1 ? '' : 's'} en total` : ''}</p>
+    overlay.id = 'fidPreviaOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    document.body.appendChild(overlay);
+    _bindOverlayClose(overlay, _fidCerrarPrevia);
+    const info = `<p style="margin:0 0 10px;font-size:0.82rem;opacity:0.65">Pedido ${escapeHtml(r.orderCode)}${orden ? ` · ${escapeHtml(formatMoney(orden.total))}` : ''}${ficha ? ` · ${ficha.totalOrders} pedido${ficha.totalOrders === 1 ? '' : 's'} en total` : ''}</p>
         ${r.q4 ? `<div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:0.88rem">💬 «${escapeHtml(r.q4)}»</div>` : ''}
         <div style="border:1.5px solid ${nivel.color};border-radius:12px;padding:9px 11px;margin-bottom:12px">
             <div style="font-weight:800;color:${nivel.color}">Gravedad: ${nivel.etiqueta} <span style="opacity:.6;font-weight:400">(${g.puntos} punto${g.puntos === 1 ? '' : 's'})</span></div>
             <div style="font-size:0.82rem;opacity:.85;margin:2px 0 4px">${escapeHtml(nivel.texto)}</div>
             <ul style="margin:0;padding-left:18px;font-size:0.8rem;opacity:.8">${(g.razones.length ? g.razones : ['Calificación baja sin más detalles']).map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
-        </div>
-        </div><div style="min-width:0">
-        <label style="display:block;font-size:0.82rem;margin-bottom:4px">🎁 Obsequio sugerido <span style="opacity:.6">— ${escapeHtml(sug.motivo)}</span></label>
+        </div>`;
+    const contenido = `<label style="display:block;font-size:0.82rem;margin-bottom:4px">🎁 Obsequio sugerido <span style="opacity:.6">— ${escapeHtml(sug.motivo)}</span></label>
         <select id="fidDisculpaSel" class="admin-input" style="width:100%;margin-bottom:10px"><option value="">Sin producto (solo la disculpa)</option>${prods.map((p) => `<option value="${escapeHtml(p.id)}"${sug.producto && sug.producto.id === p.id ? ' selected' : ''}>${escapeHtml(p.nombre)} — ${escapeHtml(String(p.categoria || ''))} · ${escapeHtml(formatMoney(p.precio))}</option>`).join('')}</select>
         <label style="display:block;font-size:0.82rem;margin-bottom:4px">Mensaje (puedes editarlo)</label>
-        <textarea id="fidDisculpaMsg" class="admin-input" rows="6" style="width:100%;resize:vertical"></textarea>
-        <div style="display:flex;gap:10px;margin-top:12px">
-            <button type="button" class="ghost-button" id="fidDisculpaCancel" style="flex:1;">Cancelar</button>
-            <button type="button" class="feedback-pending-btn" id="fidDisculpaOk" style="flex:1.6;padding:.65rem">Copiar y registrar</button>
-        </div>
-        </div></div>
-    </div>`;
-    document.body.appendChild(overlay);
+        <textarea id="fidDisculpaMsg" class="admin-input" rows="7" style="width:100%;resize:vertical;box-sizing:border-box"></textarea>`;
+    overlay.innerHTML = _fidPreviaMarcoHtml({
+        titulo: r.name || 'el cliente', encabezado: `${regenerar ? '🔄 Regenerar la compensación de' : '⚠️ Compensar a'} ${r.name || 'el cliente'}`, telefono: r.phone, extraDer: info, contenido, sinImagen: sinPostal,
+        botones: '<button type="button" class="section-action-btn" data-at-copiar>Copiar mensaje</button><button type="button" class="feedback-pending-btn" data-at-enviado>✅ Ya lo envié</button>',
+        hint: sinPostal ? 'Caso grave: va solo el mensaje personal, sin postal. Copia el mensaje y, cuando lo envíes, toca «Ya lo envié» (ahí se crea el cupón y queda registrado).' : 'Copia la imagen y el mensaje y envíalos. Cuando ya los mandes toca «Ya lo envié»: ahí se crea el cupón, se archiva y la postal queda guardada.'
+    });
     const sel = overlay.querySelector('#fidDisculpaSel');
     const ta = overlay.querySelector('#fidDisculpaMsg');
     let editado = false;
@@ -15177,12 +15226,25 @@ function _fidAbrirDisculpa(r, cliente, regenerar = false) {
     ta.addEventListener('input', () => { editado = true; });
     sel.addEventListener('change', () => { editado = false; pintar(); });
     pintar();
-    overlay.querySelector('#fidDisculpaCancel').addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-    overlay.querySelector('#fidDisculpaOk').addEventListener('click', () => {
+    const pintarImagen = async () => {
+        if (sinPostal) return;
+        const blob = await _fidCopiarImagen(r.name, 'disculpa', true, '', '', r.id, null);
+        if (!document.getElementById('fidPreviaImg')) return;
+        if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
+        _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
+        const img = document.getElementById('fidPreviaImg');
+        if (img && _fidPrevio) img.src = _fidPrevio.url;
+    };
+    overlay.addEventListener('click', (e) => {
+        if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
+        if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
+        if (e.target.closest('[data-fid-prev-otra]')) { pintarImagen(); return; }
+        const c = e.target.closest('[data-at-copiar]');
+        if (c) { copyTextToClipboard(ta.value).then((ok) => { showNotice(ok ? `Mensaje de ${r.name || 'el cliente'} copiado.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'); if (ok) _btnHecho(c, 'Mensaje copiado'); }); return; }
+        const env = e.target.closest('[data-at-enviado]');
+        if (!env || env.disabled) return;
+        env.disabled = true;
         const prod = prodActual();
-        // El copiado va primero (el navegador solo deja escribir al portapapeles durante el clic); el registro sigue en segundo plano.
-        const copiado = copyTextToClipboard(ta.value);
         // Regenerar: el cupón anterior de esta encuesta, si sigue activo, queda anulado (no pueden existir dos).
         if (regenerar) {
             _fidCupones.filter((k) => k.encuestaId === r.id && k.motivo === 'disculpa' && _fidEstadoCupon(k) === 'activo').forEach((k) => {
@@ -15196,12 +15258,13 @@ function _fidAbrirDisculpa(r, cliente, regenerar = false) {
         }
         _fidGuardarEnvio(cliente, 'disculpa', {
             codigo, beneficio: prod ? `${prod.nombre} gratis` : _fidCfg.disculpaOferta, dias, productoId: prod ? prod.id : '',
-            envioExtra: { encuestaId: r.id, gravedad: g.nivel, ...(regenerar ? { regenerado: true } : {}) }, cuponExtra: { encuestaId: r.id, gravedad: g.nivel }
+            envioExtra: { encuestaId: r.id, gravedad: g.nivel, ...(regenerar ? { regenerado: true } : {}), ...(sinPostal ? {} : _fidPostalEnvio(r.id)) }, cuponExtra: { encuestaId: r.id, gravedad: g.nivel }
         });
-        overlay.remove();
-        copiado.then((ok) => showNotice(ok ? `Disculpa con cupón lista para ${r.name || 'el cliente'}.` : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'));
-        renderMetricasFeedback();
+        _btnHecho(env, 'Archivado');
+        showNotice(`Disculpa con cupón registrada para ${r.name || 'el cliente'}.`, 'ok');
+        setTimeout(() => { _fidCerrarPrevia(); renderMetricasFeedback(); }, 1100);
     });
+    pintarImagen();
 }
 
 let _fidRefQ = '';
