@@ -152,19 +152,28 @@ const esDobleCarne = (nombre) => /\b(2|dos)\s*carnes?\b|doble/i.test(String(nomb
 // El regalo se nombra sobre SU producto (Pepito, salchipapa, perro…): «una adición de carne gratis en tu Pepito Urbano»,
 // para que no parezca que se regala otra hamburguesa. Hamburguesa/pepito ya doble: una carne extra (queda triple); perro: una salchicha extra.
 const esPerro = (nombre) => /perro|hot\s?dog|salchicha/i.test(String(nombre || ''));
+// Proteína extra según el producto favorito (regla del dueño 2026-11-21: el regalo SIEMPRE es proteína, nombrada sobre su producto):
+//  · hamburguesa / Pepito → carne; perro → salchicha; salchipapa → doble proteína; combos → según lo que trae cada uno.
+// Combos conocidos: De La Casa (doble carne en la Burger Caracas), Emparejados y Familiar 3 (doble carne en las dos hamburguesas).
+// Familiar 4: pendiente de confirmar su composición (usa la regla general de combo con hamburguesa).
+function proteinaGratis(nombre, extraQueso = false) {
+    const n = String(nombre || '').trim();
+    const prod = `tu ${n}`;
+    const qs = extraQueso ? ' y doble queso' : '';
+    if (/de la casa/i.test(n)) return `doble carne${qs} gratis en la Burger Caracas de ${prod}`;
+    if (/emparejados/i.test(n) || /familiar\s*(3|tres)(?!\d)/i.test(n)) return `doble carne${qs} gratis en las dos hamburguesas de ${prod}`;
+    const combo = /combo/i.test(n);
+    if (esPerro(n)) return combo ? `una salchicha extra${qs} gratis en el perro de ${prod}` : `una salchicha extra${qs} gratis en ${prod}`;
+    if (/salchi/i.test(n)) return `doble proteína${qs} gratis en ${prod}`;
+    if (combo) return `una carne extra${qs} gratis en la hamburguesa de ${prod}`;
+    if (/pepito/i.test(n)) return `una adición de carne${qs} gratis en ${prod}`;
+    return esDobleCarne(n) ? `una carne extra${qs} gratis en ${prod}, para que te quede triple 🍔` : `una adición de carne${qs} gratis en ${prod}`;
+}
 function adaptarRegalo(regalo, fav) {
     if (!fav || !fav.nombre) return regalo;
     const prod = `tu ${String(fav.nombre).trim()}`;
-    const doble = esDobleCarne(fav.nombre);
-    const perro = esPerro(fav.nombre);
-    if (regalo.tipo === 'carne') {
-        if (perro) return { ...regalo, texto: `una salchicha extra gratis en ${prod}` };
-        return { ...regalo, texto: doble ? `una carne extra gratis en ${prod}, para que te quede triple 🍔` : `una adición de carne gratis en ${prod}` };
-    }
-    if (regalo.tipo === 'carne_queso') {
-        if (perro) return { ...regalo, texto: `una salchicha extra y doble queso gratis en ${prod}` };
-        return { ...regalo, texto: doble ? `una carne extra y doble queso gratis en ${prod}, para que te quede triple 🍔` : `una adición de carne y doble queso gratis en ${prod}` };
-    }
+    if (regalo.tipo === 'carne') return { ...regalo, texto: proteinaGratis(fav.nombre) };
+    if (regalo.tipo === 'carne_queso') return { ...regalo, texto: proteinaGratis(fav.nombre, true) };
     if (regalo.tipo === 'queso') return { ...regalo, texto: `un queso extra en ${prod}` };
     return regalo;
 }
@@ -351,4 +360,4 @@ async function reactivarCola(db, args = {}, ahora = Date.now()) {
     return args.parte === 'resultados' ? resultadosCola(db, args.dias, ahora) : colaDeHoy(db, ahora);
 }
 
-module.exports = { elegirVigencia, estadisticasVigencia, adaptarRegalo, construirCola, agruparClientes, elegirRegalo, excluidosPorEnvios, estadisticasRegalos, generarCola, avisarCola, resultadosCola, reactivarCola, TOOL, REGALOS, ESCALERA, cfgDe };
+module.exports = { proteinaGratis, elegirVigencia, estadisticasVigencia, adaptarRegalo, construirCola, agruparClientes, elegirRegalo, excluidosPorEnvios, estadisticasRegalos, generarCola, avisarCola, resultadosCola, reactivarCola, TOOL, REGALOS, ESCALERA, cfgDe };
