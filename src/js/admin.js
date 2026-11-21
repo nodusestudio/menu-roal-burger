@@ -2882,7 +2882,7 @@ function _tickerActualizar() {
     el.hidden = false;
     const html = items.map((t) => `<span class="rr-tk-item">${escapeHtml(t)}</span>`).join('');
     // Se repite el contenido 2 veces para que el recorrido sea continuo; velocidad constante según el largo.
-    const seg = Math.max(18, Math.round(firma.length / 6));
+    const seg = Math.max(27, Math.round(firma.length / 4));
     el.innerHTML = `<div class="rr-tk-track" style="animation-duration:${seg}s">${html}${html}</div>`;
 }
 
