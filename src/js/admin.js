@@ -7048,7 +7048,7 @@ async function _posCanjearCuponFid(codigo) {
     if (previo.motivo === 'referido') {
         amigoTelefono = String(posTicketConfig?.customerPhone || '').replace(/\D/g, '');
         const clave = _sqPhoneKey(amigoTelefono);
-        if (!clave) throw new Error('Para validar que es un cliente nuevo, primero pon el celular del cliente en el ticket (botón ✎ Info).');
+        if (!clave) throw new Error('Para validar que es un cliente nuevo, primero pon el celular del cliente en el ticket (toca el recuadro de Mesa/Recoger/Domicilio del carrito).');
         if (clave === _sqPhoneKey(previo.referidorTelefono)) throw new Error('Quien invita no puede usar su propia invitación: tiene que ser un amigo.');
         await fetchClients().catch(() => {});
         const ficha = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === clave);
@@ -10185,7 +10185,7 @@ function _updatePosSaveBtnLabel() {
 async function saveOrderEnEspera() {
     const client = _posCurrentClient();
     if (!client) {
-        showNotice('Primero asigna un cliente (botón "✎ Info").', 'error');
+        showNotice('Primero asigna un cliente (toca el recuadro de Mesa/Recoger/Domicilio del carrito).', 'error');
         return;
     }
     const cfg = _posCurrentTicketConfig();
@@ -26471,6 +26471,7 @@ let _ptsSelectedType = null;
 let _ptsSelectedMesa = null;
 let _ptsSelectedPickupMode = 'llego'; // 'llamo' (pidió por telefono/web) vs 'llego' (ya esta en el local) — solo aplica a orderType 'retiro'
 let _ptsSelectedClient = null; // { name, phone }
+let _ptsAddingAddr = false; // true cuando se tocó «+ Agregar dirección»: la dirección nueva se guarda en el cliente sin volver a preguntar
 let _ptsActiveTab = 'none';
 let _ptsConfigOnly = false; // true = abierto desde ✎, solo guarda config sin enviar
 let _ptsCobrarAfterSave = false; // true = este guardado viene de COBRAR sin tipo asignado aún: abrir el modal de pago apenas se confirme el tipo
@@ -26640,10 +26641,29 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
     _ptsSelectedMesa = prefill?.mesaNumber || null;
     _ptsSelectedPickupMode = prefill?.pickupMode || 'llego';
     _ptsSelectedClient = prefill?.customerName ? { name: prefill.customerName, phone: prefill.customerPhone || '' } : null;
+    _ptsAddingAddr = false;
+    // Al reabrir desde el carrito (tocar el cliente) se recupera el cliente REAL de la base de datos (con su id y sus direcciones):
+    // así se le puede agregar otra dirección y todo queda guardado en el mismo cliente, no en un lado aparte.
+    let _ptsClienteReal = null;
+    if (configOnly && prefill?.customerName) {
+        const _dig = String(prefill.customerPhone || '').replace(/\D/g, '').slice(-10);
+        const _nom = String(prefill.customerName || '').trim().toLowerCase();
+        const _lista = clientsState || [];
+        _ptsClienteReal = (_dig.length >= 7 ? _lista.find((c) => String(c.customerPhone || '').replace(/\D/g, '').slice(-10) === _dig) : null)
+            || (() => { const m = _lista.filter((c) => String(c.customerName || '').trim().toLowerCase() === _nom); return m.length === 1 ? m[0] : null; })();
+        if (_ptsClienteReal?.id) {
+            _ptsSelectedClient = {
+                id: _ptsClienteReal.id,
+                name: _ptsClienteReal.customerName || prefill.customerName,
+                phone: _ptsClienteReal.customerPhone || prefill.customerPhone || '',
+                savedAddresses: (_ptsClienteReal.savedAddressesRaw?.length ? _ptsClienteReal.savedAddressesRaw : _ptsClienteReal.savedAddresses) || []
+            };
+        } else { _ptsClienteReal = null; }
+    }
     // Si hay cliente prefill, usar tab 'quick' para mostrar los datos
     // Por defecto se abre en "Buscar cliente" (campo único: se busca por nombre o teléfono y, si no existe, se crea desde ahí
     // mismo); vacío = pedido sin cliente. Ya no hay que decidir entre 4 pestañas antes de empezar.
-    _ptsActiveTab = (_ptsSelectedClient && configOnly) ? 'quick' : 'search';
+    _ptsActiveTab = (_ptsSelectedClient && configOnly && !_ptsClienteReal) ? 'quick' : 'search';
     // Atajo rápido de columna: abrir directo en tab búsqueda (no para mesa)
     if (presetType && presetType !== 'mesa') _ptsActiveTab = 'search';
 
@@ -26693,6 +26713,7 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
     const selectedChipLabel = document.getElementById('ptsSelectedChipLabel');
     if (selectedChipLabel) selectedChipLabel.textContent = '';
     if (selectedChip) selectedChip.classList.remove('is-visible');
+    if (_ptsClienteReal) _ptsShowSelectedClientChip(_ptsSelectedClient);
 
     // Pre-llenar dirección (domicilio)
     const domicilioSection = document.getElementById('ptsDomicilioSection');
@@ -26708,6 +26729,17 @@ function openPosTicketSetupModal(configOnly = false, presetType = null) {
     if (feeWrap) feeWrap.setAttribute('hidden', '');
     _ptsRefreshDomicilioSection();
     if (addrInput) addrInput.value = (configOnly && prefill?.deliveryAddress) ? prefill.deliveryAddress : '';
+    // Cliente real + domicilio: la dirección del pedido queda fija y salen «✏️ Editar» y «+ Agregar dirección» (otra dirección para el MISMO cliente).
+    if (_ptsClienteReal && configOnly && prefill?.deliveryAddress && _ptsSelectedType === 'domicilio' && addrInput) {
+        const _n = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        if (addrPicker && !addrPicker.hasAttribute('hidden')) {
+            const chips = [...addrPicker.querySelectorAll('.pts-addr-chip')];
+            const hit = chips.find((c) => _n(c.dataset.addr) === _n(prefill.deliveryAddress));
+            if (hit) chips.forEach((c) => c.classList.toggle('active', c === hit));
+            else { addrPicker.setAttribute('hidden', ''); addrInput.removeAttribute('hidden'); }
+        }
+        _ptsLockAddrInput(prefill.deliveryAddress);
+    }
     const feeInput = document.getElementById('ptsDeliveryFee');
     if (feeInput) {
         const prefillFee = configOnly && prefill?.deliveryFee !== undefined && prefill.deliveryFee !== null
@@ -27029,6 +27061,12 @@ document.getElementById('ptsConfirmBtn')?.addEventListener('click', () => {
     // Verificar si la dirección es nueva para ofrecer guardarla en el perfil
     if (resolvedType === 'domicilio' && _ptsActiveTab === 'search' && _ptsSelectedClient?.id) {
         const addrVal = String(document.getElementById('ptsDeliveryAddress')?.value || '').trim();
+        if (addrVal && _ptsIsAddrNew(addrVal) && _ptsAddingAddr) {
+            // Tocó «+ Agregar dirección»: ya dijo que la quiere para este cliente, se guarda directo y se sigue.
+            _ptsAddingAddr = false;
+            _ptsSaveAddrToProfile(addrVal).then(() => document.getElementById('ptsConfirmBtn')?.click());
+            return;
+        }
         if (addrVal && _ptsIsAddrNew(addrVal)) {
             const panel = document.getElementById('ptsSaveAddrConfirm');
             if (panel) {
@@ -27355,6 +27393,7 @@ document.getElementById('ptsEditAddrBtn')?.addEventListener('click', () => {
 
 // Botón + Nueva dirección — borra el input y desbloquea para escribir una dirección adicional
 document.getElementById('ptsAddNewAddrBtn')?.addEventListener('click', () => {
+    _ptsAddingAddr = true;
     const input = document.getElementById('ptsDeliveryAddress');
     if (input) { input.value = ''; }
     _ptsUnlockAddrInput();

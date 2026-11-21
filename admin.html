@@ -16571,10 +16571,9 @@
                 <div class="pos-drawer-handle"></div>
                 <div class="pos-drawer-head">
                     <span class="pos-drawer-title">Pedido actual</span>
-                    <div class="pos-drawer-edit-btns">
-                        <button type="button" class="pos-drawer-edit-btn" id="posCartCustomizeBtn" title="Editar tipo de pedido y cliente">&#9998; Info</button>
-                    </div>
-                    <button type="button" class="pos-drawer-clear-btn" id="posClearCartBtn" title="Vaciar carrito">🗑</button>
+                    <!-- El botón Info ya no se muestra: se toca el recuadro «Mesa 1 · cliente» del carrito (misma ventana). Queda oculto porque ese recuadro lo dispara. -->
+                    <button type="button" id="posCartCustomizeBtn" hidden aria-hidden="true" tabindex="-1" title="Editar tipo de pedido y cliente"></button>
+                    <button type="button" class="pos-drawer-clear-btn" id="posClearCartBtn" title="Vaciar pedido" aria-label="Vaciar pedido">&times;</button>
                     <button type="button" class="pos-drawer-close" id="posCartDrawerCloseBtn">&#215;</button>
                 </div>
                 <div id="posCartTicketInfo" class="pos-cart-ticket-info" hidden></div>
@@ -17122,6 +17121,9 @@
     html body .pos-extra-btn { min-height: 28px; padding: 3px 6px; font-size: clamp(.6rem, 3.6cqw, .78rem); text-overflow: clip; }
     html body .pos-drawer-actions { gap: 6px; }
     html body .pos-drawer-actions .pos-save-order-btn, html body .pos-drawer-actions .pos-cobrar-full-btn { padding: 8px 6px; min-height: 36px; font-size: .88rem; letter-spacing: .3px; white-space: nowrap; overflow: hidden; }
+    /* Vaciar pedido: una × pequeña (como la de cada línea), sin icono de papelera; el recuadro «Mesa 1 · cliente» ocupa el lugar del botón Info */
+    html body .pos-drawer-clear-btn { width: 24px; height: 24px; min-width: 0; min-height: 0; padding: 0; font-size: 1.15rem; line-height: 1; display: inline-flex; align-items: center; justify-content: center; background: none; border: none; color: rgba(255,110,110,.8); }
+    html body .pos-drawer-clear-btn:hover { background: rgba(255,70,70,.18); color: #ff8080; }
     /* «Mesa 1 · cliente» del carrito es tocable (abre lo mismo que Info): se nota con el cursor y un ✎ discreto a la derecha */
     html body #posCartTicketInfo { cursor: pointer; position: relative; padding-right: 32px; }
     html body #posCartTicketInfo::after { content: '✎'; position: absolute; top: 8px; right: 12px; opacity: .6; font-size: .85rem; }
@@ -17652,7 +17654,7 @@
                 <!-- Acciones sobre dirección guardada (solo con cliente BUSCAR) -->
                 <div class="pts-addr-actions" id="ptsAddrActions" hidden>
                     <button type="button" class="pts-addr-act-btn" id="ptsEditAddrBtn">✏️ Editar</button>
-                    <button type="button" class="pts-addr-act-btn pts-addr-act-add" id="ptsAddNewAddrBtn">+ Nueva dirección</button>
+                    <button type="button" class="pts-addr-act-btn pts-addr-act-add" id="ptsAddNewAddrBtn" title="Agregar otra dirección a este cliente (se guarda en su ficha)">+ Agregar dirección</button>
                 </div>
                 <!-- Confirmación guardar dirección (aparece al Guardar configuración con dirección nueva) -->
                 <div class="pts-save-addr-confirm" id="ptsSaveAddrConfirm" hidden>
