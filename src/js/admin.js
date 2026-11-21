@@ -14606,6 +14606,7 @@ function _fidProductoFavorito(c, extra = []) {
             const cat = String(it.categoryName || '');
             const esCombo = /combo/i.test(`${nom} ${cat}`); // los combos cuentan como plato (traen bebida y papas)
             if (!nom || nom === 'Producto' || (!esCombo && /bebida|gaseosa|jugo|adicion|extra|salsa|ajuste/i.test(cat))) return;
+            if (esCombo && _fidEsComboSimple(nom, cat)) return; // nunca como favorito: queda el siguiente que más pide
             cuenta.set(nom, (cuenta.get(nom) || 0) + (Number(it.quantity) || 1));
             if (esCombo) combos.add(nom);
         });
@@ -14633,20 +14634,30 @@ async function _fidPedidosCliente(c) {
 
 // Regalo de Reactivar: juega entre bebida y papas. Si lo que más pide es un combo (ya trae bebida) siempre papas;
 // con los demás se alterna contra el último regalo que recibió (si es la primera vez, se reparte parejo por cliente).
+// Combos simples (Burger Normal/Papuda/Super, Perro… por 1–4 personas): NUNCA se usan como favorito ni para el regalo (regla del dueño 2026-11-21).
+function _fidEsComboSimple(nom, cat) {
+    return /papas\s*y\s*bebida/i.test(String(cat || '')) || /combo\s*(de\s*)?(burger|burguer|hamburguesa|perro|hot\s*dog)/i.test(String(nom || ''));
+}
+// SYNC: functions/reactivarCola.js → proteinaGratis. El regalo de Reactivar SIEMPRE es proteína extra, nombrada sobre su producto.
+function _fidProteinaGratis(nombre) {
+    const n = String(nombre || '').trim();
+    if (!n) return 'una adición de proteína gratis en tu pedido';
+    const prod = `tu ${n}`;
+    if (/de la casa/i.test(n)) return `doble carne gratis en la Burger Caracas de ${prod}`;
+    if (/emparejados/i.test(n)) return `doble carne gratis en la hamburguesa de ${prod}`;
+    if (/familiar\s*(3|tres)(?!\d)/i.test(n)) return `el agrandado de las dos hamburguesas de ${prod}`;
+    if (/familiar\s*(4|cuatro)(?!\d)/i.test(n)) return `el agrandado de la hamburguesa y del Salchi papa de ${prod}`;
+    const combo = /combo/i.test(n);
+    const doble = /\b(2|dos)\s*carnes?\b|doble/i.test(n);
+    if (/perro|hot\s?dog|salchicha/i.test(n)) return combo ? `una salchicha extra gratis en el perro de ${prod}` : `una salchicha extra gratis en ${prod}`;
+    if (/salchi/i.test(n)) return `doble proteína gratis en ${prod}`;
+    if (combo) return `una carne extra gratis en la hamburguesa de ${prod}`;
+    if (/pepito/i.test(n)) return `una adición de carne gratis en ${prod}`;
+    return doble ? `una carne extra gratis en ${prod}, para que te quede triple 🍔` : `una adición de carne gratis en ${prod}`;
+}
 function _fidRegaloReactivar(c, extra = []) {
     const fav = _fidProductoFavorito(c, extra);
-    let tipo;
-    if (fav && fav.esCombo) tipo = 'papas';
-    else {
-        const k = _sqPhoneKey(c.customerPhoneDigits || c.customerPhone);
-        const previos = (_fidCupones || []).filter((x) => x.motivo === 'reactivar' && x.regalo && _sqPhoneKey(x.telefono) === k)
-            .sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt));
-        if (previos.length) tipo = previos[0].regalo === 'papas' ? 'bebida' : 'papas';
-        else { let h = 0; String(c.id || '').split('').forEach((ch) => { h += ch.charCodeAt(0); }); tipo = h % 2 ? 'papas' : 'bebida'; }
-    }
-    return tipo === 'papas'
-        ? { tipo, oferta: _fidCfg.reactivarOfertaPapas || FID_CFG_DEF.reactivarOfertaPapas, productoId: _fidCfg.reactivarProductoPapasId || '' }
-        : { tipo, oferta: _fidCfg.reactivarOferta, productoId: _fidCfg.reactivarProductoId || '' };
+    return { tipo: 'carne', oferta: _fidProteinaGratis(fav && fav.nombre), productoId: '' };
 }
 
 // Mensaje cálido firmado por Johan (modelo aprobado 2026-11-15): conecta primero, regala después, sin código ni presión.

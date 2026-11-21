@@ -22,18 +22,18 @@ test('elige por ritmo propio: quien pide cada 10 días entra a los 16; quien pid
     assert.ok(!k.includes('3001000002'));
 });
 
-test('el regalo nunca cuesta más que el tope del ticket y baja de escalón si el ticket es bajo', () => {
+test('el regalo es SIEMPRE proteína (carne), aunque el ticket sea bajo y pase el tope', () => {
     const pedidos = [ped('c1', '3002000001', 100, 15000), ped('c2', '3002000001', 95, 15000)]; // 95 días → tramo 3
     const r = rc.construirCola({ pedidos, ahora: AHORA, cfg: { controlPct: 0, topeRegaloPct: 15 }, rnd: sinAzar });
     const e = r.entradas[0];
-    assert.ok(e.costoRegalo <= 15000 * 0.15 || e.regalo === 'queso', `costo ${e.costoRegalo} supera el tope`);
+    assert.equal(e.regalo, 'carne');
     assert.equal(e.topeCosto, 2250);
 });
 
-test('con ticket alto y mucho tiempo sin pedir ofrece el regalo más fuerte', () => {
+test('con ticket alto y mucho tiempo sin pedir el regalo sigue siendo proteína', () => {
     const pedidos = [ped('d1', '3003000001', 120, 40000), ped('d2', '3003000001', 110, 40000)];
     const e = rc.construirCola({ pedidos, ahora: AHORA, cfg: { controlPct: 0 }, rnd: sinAzar }).entradas[0];
-    assert.equal(e.regalo, 'carne_queso');
+    assert.equal(e.regalo, 'carne');
 });
 
 test('hora ideal: la moda del cliente si tiene 3+ pedidos; si no, la hora pico del local', () => {
@@ -56,13 +56,13 @@ test('descanso: quien recibió un mensaje hace menos de 45 días no entra; con 2
     assert.deepEqual(k, ['3005000003']);
 });
 
-test('aprendizaje: con 10+ envíos usa el regalo que más canjea; con rnd bajo explora', () => {
+test('sin queso ni papas: aunque haya estadísticas de otros regalos, siempre se elige proteína', () => {
     const cupones = [];
     for (let i = 0; i < 10; i += 1) { cupones.push({ motivo: 'reactivar', regalo: 'queso', estado: 'vencido' }); cupones.push({ motivo: 'reactivar', regalo: 'papas', estado: i < 4 ? 'canjeado' : 'vencido' }); }
     const stats = rc.estadisticasRegalos(cupones);
     const cfg = rc.cfgDe({ exploracionPct: 20 });
-    assert.equal(rc.elegirRegalo(30, 28000, cfg, stats, () => 0.99).regalo.tipo, 'papas'); // papas canjea 40 % vs 0 %
-    assert.equal(rc.elegirRegalo(30, 28000, cfg, stats, () => 0).modo, 'explora');
+    assert.equal(rc.elegirRegalo(30, 28000, cfg, stats, () => 0.99).regalo.tipo, 'carne');
+    assert.equal(rc.elegirRegalo(120, 5000, cfg, stats, () => 0).regalo.tipo, 'carne');
 });
 
 test('control: sale de la misma franja de mejores clientes y los mensajes son 10', () => {
@@ -81,6 +81,24 @@ test('el mensaje nombra el favorito y el regalo, y deja {VENCE} para el panel', 
     const pedidos = [ped('m1', '3006000001', 40), ped('m2', '3006000001', 50)];
     const e = rc.construirCola({ pedidos, ahora: AHORA, cfg: { controlPct: 0 }, rnd: sinAzar }).entradas[0];
     assert.match(e.mensaje, /Burger Caracas/);
-    assert.match(e.mensaje, /te regalo un queso extra/);
+    assert.match(e.mensaje, /te regalo doble carne gratis en la Burger Caracas|te regalo una adición de carne gratis en tu Burger Caracas/);
     assert.match(e.mensaje, /\{VENCE\}/);
+});
+
+test('regalo por producto: combos mixtos, perro, salchipapa y hamburguesa', () => {
+    assert.equal(rc.proteinaGratis('Combo De La Casa'), 'doble carne gratis en la Burger Caracas de tu Combo De La Casa');
+    assert.equal(rc.proteinaGratis('Combo Emparejados'), 'doble carne gratis en la hamburguesa de tu Combo Emparejados');
+    assert.equal(rc.proteinaGratis('Combo Familiar 3'), 'el agrandado de las dos hamburguesas de tu Combo Familiar 3');
+    assert.equal(rc.proteinaGratis('Combo Familiar 4'), 'el agrandado de la hamburguesa y del Salchi papa de tu Combo Familiar 4');
+    assert.match(rc.proteinaGratis('Perro Sencillo'), /salchicha extra/);
+    assert.match(rc.proteinaGratis('Salchi Papa Super Grande'), /doble proteína/);
+});
+
+test('los combos simples (Burger Normal/Super, Perro) nunca son el favorito: se usa el siguiente que más pide', () => {
+    const simple = (veces) => Array.from({ length: veces }, () => ({ productName: 'Combo Burger Normal', categoryName: 'COMBOS CON PAPAS Y BEBIDA', quantity: 1 }));
+    const pedidos = [ped('s1', '3007000001', 40, 28000, 19, [...simple(3), { productName: 'Pepito Urbano', categoryName: 'Pepitos', quantity: 1 }]), ped('s2', '3007000001', 50, 28000, 19, [{ productName: 'Pepito Urbano', categoryName: 'Pepitos', quantity: 1 }])];
+    const e = rc.construirCola({ pedidos, ahora: AHORA, cfg: { controlPct: 0 }, rnd: sinAzar }).entradas[0];
+    assert.equal(e.favorito, 'Pepito Urbano');
+    assert.equal(rc.esComboSimple('Combo Perro Normal', 'COMBOS CON PAPAS Y BEBIDA'), true);
+    assert.equal(rc.esComboSimple('Combo Familiar 4', 'COMBOS MIXTOS'), false);
 });

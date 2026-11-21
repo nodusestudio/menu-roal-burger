@@ -26,15 +26,14 @@ const hash = (txt) => { let h = 0; String(txt).split('').forEach((ch) => { h = (
 const REGALOS = {
     queso: { tipo: 'queso', texto: 'un queso extra en tu hamburguesa', costo: 671 },
     papas: { tipo: 'papas', texto: 'unas papas pequeñas gratis con tu pedido', costo: 1100 },
-    carne: { tipo: 'carne', texto: 'una doble carne gratis en tu hamburguesa', costo: 2100 },
+    carne: { tipo: 'carne', texto: 'una adición de proteína gratis en tu pedido', costo: 2100 },
     papas_medianas: { tipo: 'papas_medianas', texto: 'unas papas medianas gratis con tu pedido', costo: 1950 },
     carne_queso: { tipo: 'carne_queso', texto: 'doble carne y doble queso gratis en tu hamburguesa', costo: 2800 }
 };
 // Escalera: cuanto más lleva sin pedir, más fuerte el regalo (el primero es el predeterminado mientras no hay datos).
+// Regla del dueño (2026-11-21): el regalo SIEMPRE es proteína extra (nunca queso ni papas), en todos los escalones.
 const ESCALERA = [
-    { hasta: 45, opciones: ['queso', 'papas'] },
-    { hasta: 90, opciones: ['carne', 'papas'] },
-    { hasta: Infinity, opciones: ['carne_queso', 'papas_medianas', 'carne'] }
+    { hasta: Infinity, opciones: ['carne'] }
 ];
 
 const CFG_DEF = { reactivarDiarios: 10, topeRegaloPct: 15, controlPct: 20, descansoDias: 45, reactivarDias: 21, exploracionPct: 20, minMuestras: 10, horaMin: 11, horaMax: 21, horaDefecto: 18, maxDias: 150 };
@@ -53,6 +52,8 @@ const cfgDe = (raw = {}) => {
 };
 const regaloConCosto = (tipo, cfg) => { const r = REGALOS[tipo]; const c = Number(cfg.costosRegalo && cfg.costosRegalo[tipo]); return { ...r, costo: Number.isFinite(c) && c > 0 ? c : r.costo }; };
 
+// Combos simples (Burger Normal/Papuda/Super, Perro… por 1, 2, 3 o 4 personas): el dueño pidió NO usarlos nunca como favorito ni para el regalo.
+const esComboSimple = (nom, cat) => /papas\s*y\s*bebida/i.test(String(cat || '')) || /combo\s*(de\s*)?(burger|burguer|hamburguesa|perro|hot\s*dog)/i.test(String(nom || ''));
 const esAnulado = (o) => !o || o.anulado === true || o.voided === true || /cancel/i.test(String(o.status || o.estado || ''));
 
 // Agrupa los pedidos por cliente (llave = últimos 10 dígitos del teléfono). Sirve el favorito con la misma regla del panel:
@@ -76,6 +77,7 @@ function agruparClientes(pedidos) {
             const nom = String(it.productName || '').trim(); const cat = String(it.categoryName || '');
             const combo = /combo/i.test(`${nom} ${cat}`);
             if (!nom || nom === 'Producto' || (!combo && /bebida|gaseosa|jugo|adicion|extra|salsa|ajuste/i.test(cat))) return;
+            if (combo && esComboSimple(nom, cat)) return; // nunca se usa como favorito: queda el siguiente que más pide
             const p = c.prod.get(nom) || { veces: 0, combo };
             p.veces += Number(it.quantity) || 1; c.prod.set(nom, p);
         });
@@ -138,7 +140,7 @@ function elegirRegalo(dias, ticket, cfg, stats, rnd) {
     const cap = (cfg.topeRegaloPct / 100) * (ticket || 0);
     const todos = tramo.opciones.map((t) => regaloConCosto(t, cfg));
     let caben = todos.filter((r) => r.costo <= cap);
-    if (!caben.length) caben = [regaloConCosto('queso', cfg)]; // ticket muy bajo: el regalo más barato de la escalera
+    if (!caben.length) caben = todos; // ticket bajo: igual va proteína (decisión del dueño: pasa el tope del % antes que cambiar el regalo)
     const probar = rnd() * 100 < cfg.exploracionPct && caben.length > 1;
     const conDatos = caben.filter((r) => ((stats[r.tipo] || {}).envios || 0) >= cfg.minMuestras)
         .sort((a, b) => (stats[b.tipo].canjes / stats[b.tipo].envios) - (stats[a.tipo].canjes / stats[a.tipo].envios));
@@ -153,15 +155,19 @@ const esDobleCarne = (nombre) => /\b(2|dos)\s*carnes?\b|doble/i.test(String(nomb
 // para que no parezca que se regala otra hamburguesa. Hamburguesa/pepito ya doble: una carne extra (queda triple); perro: una salchicha extra.
 const esPerro = (nombre) => /perro|hot\s?dog|salchicha/i.test(String(nombre || ''));
 // Proteína extra según el producto favorito (regla del dueño 2026-11-21: el regalo SIEMPRE es proteína, nombrada sobre su producto):
-//  · hamburguesa / Pepito → carne; perro → salchicha; salchipapa → doble proteína; combos → según lo que trae cada uno.
-// Combos conocidos: De La Casa (doble carne en la Burger Caracas), Emparejados y Familiar 3 (doble carne en las dos hamburguesas).
-// Familiar 4: pendiente de confirmar su composición (usa la regla general de combo con hamburguesa).
+//  · hamburguesa / Pepito → carne; perro → salchicha; salchipapa → doble proteína.
+//  · Combos mixtos (cada uno con su regalo): De La Casa → doble carne en la Burger Caracas · Emparejados → doble carne solo en la hamburguesa
+//    · Familiar 3 → agrandar las dos hamburguesas · Familiar 4 → agrandar la hamburguesa y el Salchi papa.
+//  · Los combos simples (Burger Normal/Super, Perro…) NUNCA se usan: no cuentan como favorito (ver esComboSimple).
 function proteinaGratis(nombre, extraQueso = false) {
     const n = String(nombre || '').trim();
+    if (!n) return 'una adición de proteína gratis en tu pedido';
     const prod = `tu ${n}`;
     const qs = extraQueso ? ' y doble queso' : '';
     if (/de la casa/i.test(n)) return `doble carne${qs} gratis en la Burger Caracas de ${prod}`;
-    if (/emparejados/i.test(n) || /familiar\s*(3|tres)(?!\d)/i.test(n)) return `doble carne${qs} gratis en las dos hamburguesas de ${prod}`;
+    if (/emparejados/i.test(n)) return `doble carne${qs} gratis en la hamburguesa de ${prod}`;
+    if (/familiar\s*(3|tres)(?!\d)/i.test(n)) return `el agrandado de las dos hamburguesas de ${prod}`;
+    if (/familiar\s*(4|cuatro)(?!\d)/i.test(n)) return `el agrandado de la hamburguesa y del Salchi papa de ${prod}`;
     const combo = /combo/i.test(n);
     if (esPerro(n)) return combo ? `una salchicha extra${qs} gratis en el perro de ${prod}` : `una salchicha extra${qs} gratis en ${prod}`;
     if (/salchi/i.test(n)) return `doble proteína${qs} gratis en ${prod}`;
@@ -360,4 +366,4 @@ async function reactivarCola(db, args = {}, ahora = Date.now()) {
     return args.parte === 'resultados' ? resultadosCola(db, args.dias, ahora) : colaDeHoy(db, ahora);
 }
 
-module.exports = { proteinaGratis, elegirVigencia, estadisticasVigencia, adaptarRegalo, construirCola, agruparClientes, elegirRegalo, excluidosPorEnvios, estadisticasRegalos, generarCola, avisarCola, resultadosCola, reactivarCola, TOOL, REGALOS, ESCALERA, cfgDe };
+module.exports = { esComboSimple, proteinaGratis, elegirVigencia, estadisticasVigencia, adaptarRegalo, construirCola, agruparClientes, elegirRegalo, excluidosPorEnvios, estadisticasRegalos, generarCola, avisarCola, resultadosCola, reactivarCola, TOOL, REGALOS, ESCALERA, cfgDe };
