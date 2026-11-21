@@ -5736,7 +5736,7 @@ function _posFbPreviaFeedback(orderId) {
         const env = e.target.closest('[data-fb-prev-enviado]');
         if (env) {
             env.disabled = true;
-            const spec = _fidPostalUlt ? { foto: _fidPostalUlt.foto, frase: _fidPostalUlt.frase } : null;
+            const spec = _fidPostalSpec(order.id);
             const ok = await sendFeedbackRequest(orderId, null, undefined, spec ? { feedbackPostal: spec } : {}, true);
             if (ok) { _btnHecho(env, 'Archivado'); setTimeout(() => { _fidCerrarPrevia(); _posFbRender(); _posFbActualizarInsignia(); }, 1100); } else env.disabled = false;
         }
@@ -14272,7 +14272,7 @@ function _fbCumpleClick(e) {
     const codigo = _fidPrevioCodigo.get(cliente.id) || _fidNuevoCodigo(cliente.customerName); // el de la vista previa: el cupon es el mismo que se vio
     _fidPrevioCodigo.delete(cliente.id);
     const copiado = copyTextToClipboard(_cumpleMensaje(cliente, codigo, 7));
-    _fidGuardarEnvio(cliente, 'cumple', { codigo, beneficio: _cumpleRegalo, dias: 7, productoId: _fidCfg.cumpleProductoId });
+    _fidGuardarEnvio(cliente, 'cumple', { codigo, beneficio: _cumpleRegalo, dias: 7, productoId: _fidCfg.cumpleProductoId, envioExtra: _fidPostalEnvio(id) });
     cliente.cumpleSaludoAnio = anio;
     cliente.cumpleSaludoAt = firebase.firestore.Timestamp.now();
     firebaseDb.collection(CLIENTS_COLLECTION).doc(id).update({ cumpleSaludoAnio: anio, cumpleSaludoAt: cliente.cumpleSaludoAt })
@@ -14679,6 +14679,10 @@ function _fidCargarImg(src) {
 // ── POSTAL (2026-11-21): todos los mensajes (reactivar, cumpleaños, encuesta…) van con una imagen en forma de postal: foto de paisaje de
 // Venezuela, sello y matasellos, frase manuscrita, «Para: nombre» y el logo pequeño de marca de agua. El regalo va como una línea
 // discreta, no como protagonista. Las fotos viven en /postales-img (Unsplash, sin crédito obligatorio).
+// Postal que se enviará/envió a `clave` (cliente, cola o pedido): solo se guarda si la última dibujada es de esa misma clave.
+function _fidPostalSpec(clave) { return _fidPostalUlt && _fidPostalUlt.clave === String(clave || '') ? { foto: _fidPostalUlt.foto, frase: _fidPostalUlt.frase } : null; }
+function _fidPostalEnvio(clave) { const sp = _fidPostalSpec(clave); return sp ? { postal: sp } : {}; }
+let _fidReactUltimoEnvio = null; // {clienteId, id} del último envío de Reactivar creado desde la vista previa
 let _fidPostalUlt = null; // {foto, frase} de la última postal dibujada: se guarda al confirmar el envío para poder reabrir LA MISMA
 const FID_POSTALES = ['p01', 'p04', 'p05', 'p06', 'p07', 'p08', 'p09', 'p10', 'p11', 'p12'];
 function _fidPostalSiguiente() {
@@ -14718,7 +14722,7 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     g.restore();
     // Texto manuscrito: «Para: nombre» y la frase (la frase no se repite por cliente: memoria en Firebase)
     const fraseBase = (fijo && fijo.frase) || await _fidFrase(tipo, clienteKey);
-    _fidPostalUlt = { foto: fotoId, frase: fraseBase };
+    _fidPostalUlt = { foto: fotoId, frase: fraseBase, clave: String(clienteKey || '') };
     const frase = fraseBase.replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim();
     const n = String(nombre || '').trim().split(/\s+/)[0];
     const maxW = FW - 120;
@@ -14859,23 +14863,45 @@ async function _fidAbrirPrevia(tipo, clienteId) {
         regaloImg = _fidRegaloReactivar(cliente, extra).oferta;
         favManual = (_fidProductoFavorito(cliente, extra) || {}).nombre || '';
     }
+    // Cumpleaños ya saludado: se reabre LA MISMA postal que se envió (se guardó en el envío de este año).
+    const anioC = Number(_sqDayKey(Date.now()).slice(0, 4));
+    const envC = esCumple && yaSaludado ? (_fidEnvios || []).filter((x) => x.clientId === cliente.id && x.motivo === 'cumple' && _tsMs(x.creadoAt) >= Date.UTC(anioC, 0, 1)).sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt))[0] : null;
+    let fijo = envC && envC.postal && envC.postal.foto ? envC.postal : null;
     const pintarImagen = async () => {
-        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true, regaloImg, favManual, cliente.id);
+        const blob = await _fidCopiarImagen(cliente.customerName, esCumple ? 'cumple' : 'reactivar', true, regaloImg, favManual, cliente.id, fijo);
         if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
         _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
+    // Copiar NO archiva. Cumpleaños: «Copiar mensaje» solo copia; «Ya lo envié» registra el saludo (y guarda la postal). Reactivar: copiar crea el envío
+    // «copiado, falta enviar» y la ventana pasa sola a la vista con «Ya lo envié» (misma postal).
     const btnCopiar = esCumple
-        ? (yaSaludado
-            ? `<button type="button" class="ghost-button" data-cumple-recopy="${escapeHtml(cliente.id)}">Volver a copiar el mensaje</button>`
-            : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(cliente.id)}">Copiar mensaje</button>`)
-        : `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(cliente.id)}">Copiar mensaje</button>`;
+        ? `<button type="button" class="section-action-btn" data-cumple-copytxt>Copiar mensaje</button>${yaSaludado
+            ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Saludo ya enviado</span>'
+            : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(cliente.id)}">✅ Ya lo envié</button>`}`
+        : `<button type="button" class="section-action-btn" data-fid-reactivar="${escapeHtml(cliente.id)}">Copiar mensaje</button>`;
     ov.innerHTML = _fidPreviaMarcoHtml({ titulo: cliente.customerName, telefono: cliente.customerPhoneDigits || cliente.customerPhone, texto, botones: btnCopiar, hint: 'Pega primero la imagen en el chat y luego el mensaje como texto. Al copiar el mensaje, la persona sale de la cola.' });
+    if (fijo) ov.querySelector('[data-fid-prev-otra]')?.remove(); // ya enviada: no se cambia la imagen
     ov.addEventListener('click', (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
-        if (e.target.closest('[data-fid-prev-otra]')) { pintarImagen(); return; }
+        if (e.target.closest('[data-fid-prev-otra]')) { fijo = null; pintarImagen(); return; }
+        const solo = e.target.closest('[data-cumple-copytxt]');
+        if (solo) { copyTextToClipboard(texto).then((ok) => { showNotice(ok ? `Saludo de ${cliente.customerName} copiado.` : 'No se pudo copiar el saludo.', ok ? 'ok' : 'error'); if (ok) _btnHecho(solo, 'Mensaje copiado'); }); return; }
+        const env = e.target.closest('[data-cumple-copy]');
+        if (env) { _fbCumpleClick(e); _btnHecho(env, 'Archivado'); setTimeout(_fidCerrarPrevia, 1100); return; }
+        const react = e.target.closest('[data-fid-reactivar]');
+        if (react) {
+            _fidReactUltimoEnvio = null;
+            const postal = _fidPostalSpec(cliente.id);
+            _fidClick(e); _btnHecho(react, 'Mensaje copiado');
+            (async () => {
+                for (let i = 0; i < 40 && !(_fidReactUltimoEnvio && _fidReactUltimoEnvio.clienteId === cliente.id); i++) await new Promise((r) => setTimeout(r, 100));
+                if (_fidReactUltimoEnvio && document.getElementById('fidPreviaOverlay')) _fidPreviaReactivar({ envioId: _fidReactUltimoEnvio.id, postalInicial: postal });
+            })();
+            return;
+        }
         const hecho = _fbCumpleClick(e) || _fidClick(e);
         if (hecho) _fidCerrarPrevia();
     });
@@ -15614,7 +15640,7 @@ function _fidColaCrearEnvio(entrada) {
 }
 
 // Vista previa de Reactivar (cola del día o «Copiados, falta enviar»): imagen + texto, con Copiar imagen, Copiar texto y Ya lo envié.
-async function _fidPreviaReactivar({ k = '', envioId = '' }) {
+async function _fidPreviaReactivar({ k = '', envioId = '', postalInicial = null }) {
     let envio = envioId ? _fidEnvios.find((x) => x.id === envioId) : null;
     const entrada = k && _fidCola ? (_fidCola.entradas || []).find((x) => x.k === k) : null;
     if (!envio && entrada && entrada.estado !== 'pendiente') envio = _fidEnvios.find((x) => x.motivo === 'reactivar' && x.colaK === k && x.cola === _fidCola.dia && x.descartado !== true) || null;
@@ -15629,20 +15655,23 @@ async function _fidPreviaReactivar({ k = '', envioId = '' }) {
     const favorito = (entrada && entrada.favorito) || _fidFavoritoDeMensaje(envio && envio.mensaje);
     // Mensajes ya guardados con el texto viejo («una doble carne gratis en tu hamburguesa») se corrigen al mostrarlos y al copiarlos.
     const textoActual = () => (envio && envio.mensaje) ? _fidRegaloEnProducto(envio.mensaje, favorito) : _fidRegaloEnProducto(String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3)), favorito);
+    const clave = k || (envio && envio.colaK) || nombre;
+    const enviado = !!(envio && envio.pendiente === false);
+    let fijo = (enviado && envio.postal && envio.postal.foto) ? envio.postal : postalInicial; // enviada: SIEMPRE la misma postal
     const pintarImagen = async () => {
-        const blob = await _fidCopiarImagen(nombre, 'reactivar', true, '', favorito, k || (envio && envio.colaK) || nombre);
+        const blob = await _fidCopiarImagen(nombre, 'reactivar', true, '', favorito, clave, fijo);
         if (!document.getElementById('fidPreviaOverlay')) return;
         if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
         _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
-    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: (entrada && entrada.telefono) || (envio && envio.telefono), texto: textoActual(), idTexto: 'fidPreviaTexto', botones: '<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button><button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>', hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: (entrada && entrada.telefono) || (envio && envio.telefono), texto: textoActual(), idTexto: 'fidPreviaTexto', botones: `<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button>${enviado ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Ya marcado como enviado</span>' : '<button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>'}`, hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
     ov.addEventListener('click', (ev) => {
         const t = ev.target;
         if (t.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (t.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
-        if (t.closest('[data-fid-prev-otra]')) { pintarImagen(); return; }
+        if (t.closest('[data-fid-prev-otra]')) { fijo = null; pintarImagen(); return; }
         if (t.closest('[data-fid-prev-txtcopiar]')) {
             let primera = false;
             if (!envio) { if (_fidReactOcupado.has(k)) return; envio = _fidColaCrearEnvio(entrada); primera = true; renderMetricasFeedback(); }
@@ -15657,9 +15686,13 @@ async function _fidPreviaReactivar({ k = '', envioId = '' }) {
         if (t.closest('[data-fid-prev-enviado]')) {
             if (!envio) envio = _fidColaCrearEnvio(entrada);
             _fidMarcarEnviado(envio);
-            _fidCerrarPrevia();
+            const spec = _fidPostalSpec(clave); // la postal que se vio al enviar queda guardada para reabrirla igual
+            if (spec) { envio.postal = spec; firebaseDb.collection('fidelizacion_envios').doc(envio.id).update({ postal: spec }).catch(() => {}); }
+            _btnHecho(t.closest('[data-fid-prev-enviado]'), 'Archivado');
+            setTimeout(_fidCerrarPrevia, 1100);
         }
     });
+    if (enviado && fijo) ov.querySelector('[data-fid-prev-otra]')?.remove();
     pintarImagen();
 }
 
@@ -15849,7 +15882,8 @@ function _fidClick(e) {
                 const copiado = copyTextToClipboard(mensaje);
                 // Queda «pendiente de envío» con el texto guardado: si no alcanzas a enviarlo, lo recuperas en Reactivar → «Copiados, falta enviar».
                 const regalo = _fidRegaloReactivar(cliente, extra);
-                _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: regalo.oferta, dias, productoId: regalo.productoId, envioExtra: { pendiente: true, mensaje, regalo: regalo.tipo }, cuponExtra: { regalo: regalo.tipo } });
+                const idEnvioR = _fidGuardarEnvio(cliente, 'reactivar', { codigo, beneficio: regalo.oferta, dias, productoId: regalo.productoId, envioExtra: { pendiente: true, mensaje, regalo: regalo.tipo }, cuponExtra: { regalo: regalo.tipo } });
+                _fidReactUltimoEnvio = { clienteId: cliente.id, id: idEnvioR };
                 const ok = await copiado;
                 showNotice(ok ? `Mensaje listo para ${cliente.customerName}. Cuando lo envíes, márcalo «Ya lo envié» en Reactivar.` : 'No se pudo copiar a la primera: usa «Copiar de nuevo» en «Copiados, falta enviar».', ok ? 'ok' : 'error');
                 renderMetricasFeedback();
