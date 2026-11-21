@@ -5713,20 +5713,7 @@ function _posFbPreviaFeedback(orderId) {
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
-    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:920px;width:100%;max-height:92vh;overflow:auto;color:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(nombre)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
-        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-            <div style="flex:0 0 300px;max-width:100%">
-                <img id="fidPreviaImg" alt="Postal del mensaje" style="width:100%;border-radius:12px;background:#000;min-height:200px">
-                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
-            </div>
-            <div style="flex:1;min-width:260px">
-                <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
-                <div style="white-space:pre-wrap;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(buildFeedbackMessage(order))}</div>
-                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="${yaEnviado ? 'ghost-button' : 'feedback-pending-btn'}" data-fb-prev-copiar>${yaEnviado ? 'Volver a copiar el mensaje' : 'Copiar mensaje'}</button></div>
-                <p class="admin-hint" style="margin-top:10px">Pega primero la imagen en el chat y luego el mensaje. Al copiar el mensaje, el pedido queda marcado como enviado.</p>
-            </div>
-        </div></div>`;
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, texto: buildFeedbackMessage(order), botones: `<button type="button" class="${yaEnviado ? 'ghost-button' : 'feedback-pending-btn'}" data-fb-prev-copiar>${yaEnviado ? 'Volver a copiar el mensaje' : 'Copiar mensaje'}</button>`, hint: 'Pega primero la imagen en el chat y luego el mensaje. Al copiar el mensaje, el pedido queda marcado como enviado.' });
     ov.addEventListener('click', async (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
@@ -14688,7 +14675,7 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     const g = cv.getContext('2d');
     const MANO = '"Caveat","Segoe Script","Brush Script MT",cursive';
     try { await Promise.all([document.fonts.load(`700 80px ${MANO}`), document.fonts.load(`600 40px ${MANO}`)]); } catch (_) { /* usa la letra de respaldo */ }
-    const [foto, logo, sello] = await Promise.all([_fidCargarImg(`/postales-img/${_fidPostalSiguiente()}.webp`), _fidCargarImg('/logo-blanco.png'), _fidCargarImg('/isotipo.png')]);
+    const [foto, logo] = await Promise.all([_fidCargarImg(`/postales-img/${_fidPostalSiguiente()}.webp`), _fidCargarImg('/logo-blanco.png')]);
     // Papel crema y foto con borde blanco (como una postal impresa)
     g.fillStyle = '#f3e9d8'; g.fillRect(0, 0, W, H);
     const FX = 40, FY = 40, FW = 1000, FH = 1130;
@@ -14700,21 +14687,9 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     const sombra = g.createLinearGradient(0, FY + 560, 0, FY + FH);
     sombra.addColorStop(0, 'rgba(10,6,3,0)'); sombra.addColorStop(1, 'rgba(10,6,3,0.78)');
     g.fillStyle = sombra; g.fillRect(FX, FY + 560, FW, FH - 560);
-    // Sello postal (esquina superior derecha): borde dentado + isotipo
-    const sx = FX + FW - 190, sy = FY + 34, sw = 150, sh = 180;
-    g.save(); g.translate(sx + sw / 2, sy + sh / 2); g.rotate(0.07); g.translate(-sw / 2, -sh / 2);
-    g.fillStyle = '#fffdf8'; g.fillRect(0, 0, sw, sh);
-    g.globalCompositeOperation = 'destination-out';
-    for (let x = 6; x < sw; x += 14) { g.beginPath(); g.arc(x, 0, 5, 0, 7); g.arc(x, sh, 5, 0, 7); g.fill(); }
-    for (let y = 6; y < sh; y += 14) { g.beginPath(); g.arc(0, y, 5, 0, 7); g.arc(sw, y, 5, 0, 7); g.fill(); }
-    g.globalCompositeOperation = 'source-over';
-    g.fillStyle = '#2b1a0e'; g.fillRect(14, 14, sw - 28, sh - 28);
-    if (sello) { const iw = sw - 60; g.drawImage(sello, 30, 30, iw, iw * (sello.height / sello.width)); }
-    g.fillStyle = '#ffd6aa'; g.font = `700 22px ${MANO}`; g.textAlign = 'center'; g.fillText('ROAL BURGER', sw / 2, sh - 24);
-    g.restore();
     // Matasellos: círculo y rayas sobre la foto, con la fecha
     const fecha = new Date().toLocaleDateString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase().replace(/\./g, '');
-    g.save(); g.translate(sx - 70, sy + 110); g.rotate(-0.2); g.strokeStyle = 'rgba(255,255,255,0.75)'; g.fillStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 4;
+    g.save(); g.translate(FX + FW - 120, FY + 120); g.rotate(-0.2); g.strokeStyle = 'rgba(255,255,255,0.55)'; g.fillStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 4;
     g.beginPath(); g.arc(0, 0, 76, 0, 7); g.stroke(); g.beginPath(); g.arc(0, 0, 62, 0, 7); g.lineWidth = 2; g.stroke();
     g.textAlign = 'center'; g.font = '700 17px "Segoe UI", system-ui, sans-serif'; g.fillText('ARMENIA · QUINDÍO', 0, -12); g.fillText(fecha, 0, 20);
     g.lineWidth = 4; for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(-170, -24 + i * 16); g.lineTo(-90, -24 + i * 16); g.stroke(); }
@@ -14734,18 +14709,24 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     while (lineas.length > 4 && size > 64) { size -= 6; lineas = envolver(size); }
     const lh = Math.round(size * 1.08);
     const regalo = String(regaloTexto || '').replace(/[\u{1F300}-\u{1FAFF}☀-➿]/gu, '').replace(/\s+/g, ' ').trim();
-    const baseY = FY + FH - (regalo ? 150 : 110); // la última línea de la frase termina aquí
-    g.textAlign = 'center';
+    const TX = FX + 64; // todo el texto alineado a la izquierda
+    const baseY = FY + FH - (regalo ? 150 : 112); // la última línea de la frase termina aquí
+    g.textAlign = 'left';
     g.shadowColor = 'rgba(0,0,0,0.6)'; g.shadowBlur = 10; g.shadowOffsetY = 3;
     g.fillStyle = '#fff4e2';
     g.font = `700 ${size}px ${MANO}`;
-    lineas.forEach((l, i) => g.fillText(l, FX + FW / 2, baseY - (lineas.length - 1 - i) * lh));
-    g.font = `700 ${Math.round(size * 0.7)}px ${MANO}`; g.fillStyle = '#ffb067';
-    g.fillText(n && n !== 'Cliente' ? `Para ${n},` : 'Para ti,', FX + FW / 2, baseY - lineas.length * lh + 6);
+    lineas.forEach((l, i) => g.fillText(l, TX, baseY - (lineas.length - 1 - i) * lh));
+    // El nombre resalta: más grande, más claro y con un subrayado
+    const ptxt = n && n !== 'Cliente' ? `Para ${n},` : 'Para ti,';
+    const ps = Math.round(size * 1.02);
+    g.font = `700 ${ps}px ${MANO}`; g.fillStyle = '#ffa24d';
+    const py = baseY - lineas.length * lh - 4;
+    g.fillText(ptxt, TX, py);
     g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
-    if (regalo) { g.font = `600 44px ${MANO}`; g.fillStyle = '#ffd6aa'; g.fillText(`Un detalle de nuestra parte: ${regalo}`, FX + FW / 2, baseY + 56, FW - 80); }
-    // Marca de agua: logo pequeño abajo, centrado
-    if (logo) { const lw = 210, lh2 = lw * (logo.height / logo.width); g.globalAlpha = 0.85; g.drawImage(logo, FX + (FW - lw) / 2, FY + FH - lh2 - 22, lw, lh2); g.globalAlpha = 1; }
+    g.fillStyle = 'rgba(255,162,77,0.8)'; g.fillRect(TX, py + 12, Math.min(g.measureText(ptxt).width, FW - 160), 4);
+    if (regalo) { g.font = `600 44px ${MANO}`; g.fillStyle = '#ffd6aa'; g.fillText(`Un detalle de nuestra parte: ${regalo}`, TX, baseY + 62, FW - 140); }
+    // Marca de agua: solo el logo, pequeño y muy sutil, en la esquina inferior derecha
+    if (logo) { const lw = 150, lh2 = lw * (logo.height / logo.width); g.globalAlpha = 0.4; g.drawImage(logo, FX + FW - lw - 30, FY + FH - lh2 - 26, lw, lh2); g.globalAlpha = 1; }
     // Pie de la postal (sobre el papel)
     g.fillStyle = '#6b4a2b'; g.font = `600 40px ${MANO}`; g.textAlign = 'center';
     g.fillText('Con cariño, tu gente de ROAL BURGER  ·  roalburger.com', W / 2, FY + FH + 78);
@@ -14771,6 +14752,24 @@ async function _fidCopiarBlob(blob) {
 const _fidPrevioCodigo = new Map(); // cumpleaños: el código que se vio en la vista previa es el que se guarda
 let _fidPrevio = null; // { blob, url }
 
+// Marco único de las vistas previas (Feedback, Reactivar, Cumpleaños): HORIZONTAL siempre, imagen a la izquierda y a la derecha el
+// texto con sus botones. Mismo ancho (--modal-w-grande), mismos botones de imagen y mismo pie, para que no cambie de una a otra.
+function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '' }) {
+    return `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;width:min(100%,var(--modal-w-grande,900px));box-sizing:border-box;max-height:92vh;overflow:auto;color:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(titulo)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
+        <div style="display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:18px;align-items:start">
+            <div>
+                <img id="fidPreviaImg" alt="Postal del mensaje" style="width:100%;border-radius:12px;background:#000;min-height:200px">
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
+            </div>
+            <div style="min-width:0">
+                <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
+                <div${idTexto ? ` id="${idTexto}"` : ''} style="white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>
+                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${botones}</div>
+                <p class="admin-hint" style="margin-top:10px">${hint}</p>
+            </div>
+        </div></div>`;
+}
 function _fidCerrarPrevia() {
     const habia = document.getElementById('fidPreviaOverlay');
     habia?.remove();
@@ -14820,20 +14819,7 @@ async function _fidAbrirPrevia(tipo, clienteId) {
             ? `<button type="button" class="ghost-button" data-cumple-recopy="${escapeHtml(cliente.id)}">Volver a copiar el mensaje</button>`
             : `<button type="button" class="feedback-pending-btn" data-cumple-copy="${escapeHtml(cliente.id)}">Copiar mensaje</button>`)
         : `<button type="button" class="feedback-pending-btn" data-fid-reactivar="${escapeHtml(cliente.id)}">Copiar mensaje</button>`;
-    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:920px;width:100%;max-height:92vh;overflow:auto;color:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(cliente.customerName)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
-        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-            <div style="flex:0 0 300px;max-width:100%">
-                <img id="fidPreviaImg" alt="Imagen del mensaje" style="width:100%;border-radius:12px;background:#000;min-height:200px">
-                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
-            </div>
-            <div style="flex:1;min-width:260px">
-                <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
-                <div style="white-space:pre-wrap;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>
-                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${btnCopiar}</div>
-                <p class="admin-hint" style="margin-top:10px">Pega primero la imagen en el chat y luego el mensaje como texto. Al copiar el mensaje, la persona sale de la cola.</p>
-            </div>
-        </div></div>`;
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: cliente.customerName, texto, botones: btnCopiar, hint: 'Pega primero la imagen en el chat y luego el mensaje como texto. Al copiar el mensaje, la persona sale de la cola.' });
     ov.addEventListener('click', (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
@@ -15596,20 +15582,7 @@ async function _fidPreviaReactivar({ k = '', envioId = '' }) {
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
-    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:920px;width:100%;max-height:92vh;overflow:auto;color:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong style="font-size:1.05rem">👁 Vista previa para ${escapeHtml(nombre)}</strong><button type="button" class="ghost-button" data-fid-prev-cerrar>✕ Cerrar</button></div>
-        <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-            <div style="flex:0 0 300px;max-width:100%">
-                <img id="fidPreviaImg" alt="Imagen del mensaje" style="width:100%;border-radius:12px;background:#000;min-height:200px">
-                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
-            </div>
-            <div style="flex:1;min-width:260px">
-                <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
-                <div id="fidPreviaTexto" style="white-space:pre-wrap;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(textoActual())}</div>
-                <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button><button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button></div>
-                <p class="admin-hint" style="margin-top:10px">Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».</p>
-            </div>
-        </div></div>`;
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, texto: textoActual(), idTexto: 'fidPreviaTexto', botones: '<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button><button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>', hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
     ov.addEventListener('click', (ev) => {
         const t = ev.target;
         if (t.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
