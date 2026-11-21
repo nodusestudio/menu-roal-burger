@@ -14082,6 +14082,24 @@ function _fidRegaloEnProducto(texto, favorito) {
         .replace(/(doble carne|una carne extra) y doble queso gratis en tu hamburguesa(, para que te quede triple 🍔)?/, `${carne} y doble queso gratis en ${prod}${triple}`)
         .replace('un queso extra en tu hamburguesa', `un queso extra en ${prod}`);
 }
+// Producto del catálogo que corresponde al favorito del cliente («Pepito Urbano» → producto «Urbano» de PEPITOS VENEZOLANOS) con foto propia en este sitio.
+function _fidProductoDeFavorito(fav) {
+    const nz = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+    const f = nz(fav);
+    if (!f) return null;
+    let mejor = null; let pts = 0;
+    (productsState || []).forEach((p) => {
+        const url = String((p && p.image_url) || '');
+        if (!p || !p.nombre || !/^\/[^/]/.test(url) || /^\/logo\./.test(url)) return;
+        const n = nz(p.nombre);
+        const stem = nz(p.categoria).split(' ')[0].replace(/s$/, '');
+        let sc = 0;
+        if (f === n) sc = 1000;
+        else if (n.length >= 3 && f.includes(n) && stem && f.includes(stem)) sc = 100 + n.length;
+        if (sc > pts) { pts = sc; mejor = p; }
+    });
+    return mejor;
+}
 // El favorito que nombra un mensaje ya guardado («Me acordé de tu favorito, X:» o «…de tu pedido: X.»).
 function _fidFavoritoDeMensaje(msg) {
     const m = String(msg || '').match(/favorito, ([^:\n]+):|tu pedido: ([^\n]+?)\./);
@@ -14120,8 +14138,8 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
     // Reactivar: tarjeta «para compartir» (sin regalo ni botón): el nombre manda y solo va el isotipo como marca de agua.
     const esR = tipo === 'reactivar';
     // La foto es la del producto favorito del cliente (si la tiene en el mismo sitio); si no, rota entre las de hamburguesas.
-    const favProd = esR && favorito ? (productsState || []).find((x) => x && String(x.nombre || '').trim().toLowerCase() === String(favorito).trim().toLowerCase() && /^\/[^/]/.test(String(x.imagen_url || ''))) : null;
-    let fotoFav = favProd ? await _fidCargarImg(favProd.imagen_url) : null;
+    const favProd = esR && favorito ? _fidProductoDeFavorito(favorito) : null;
+    let fotoFav = favProd ? await _fidCargarImg(favProd.image_url) : null;
     const [fotoRot, logo] = await Promise.all([fotoFav ? null : _fidCargarImg(`/productos-img/${_fidFotoSiguiente()}.webp`), _fidCargarImg(esR ? '/isotipo.png' : '/logo-blanco.png')]);
     const foto = fotoFav || fotoRot;
     // Foto con bordes que se funden con el fondo
