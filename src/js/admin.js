@@ -29162,6 +29162,14 @@ function _colaReactivarAvisoPc() {
             const llaves = new Set(avisadas.map((e) => `${e.k}|${e.avisadoAt}`));
             if (vistos) {
                 const nuevas = avisadas.filter((e) => !vistos.has(`${e.k}|${e.avisadoAt}`));
+                if (nuevas.length) {
+                    // Aviso dentro de la página + sonido: sale SIEMPRE, aunque el permiso/Windows bloqueen el cuadrito del sistema.
+                    try {
+                        const p0 = nuevas[0];
+                        _adminPopup(nuevas.length === 1 ? `🔁 Es hora de reactivar a ${p0.nombre} (${p0.dias} días sin pedir). Feedback › Reactivar › Cola del día.` : `🔁 Es hora de reactivar a ${nuevas.length} clientes. Feedback › Reactivar › Cola del día.`, 'ok', 20000);
+                        playAlertTonePattern(CHAT_ROAL_SOUND_PRESETS.ding.steps);
+                    } catch (_) { /* sin aviso en página */ }
+                }
                 if (nuevas.length && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                     try {
                         const p = nuevas[0];
