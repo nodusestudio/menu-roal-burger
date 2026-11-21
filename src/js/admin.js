@@ -5678,6 +5678,7 @@ async function _posPendRefrescar() {
             firebaseDb.collection('encuestas_pedido').where('requiereAtencion', '==', true).limit(300).get(),
             firebaseDb.collection('fidelizacion_envios').where('motivo', '==', 'disculpa').limit(500).get()
         ]);
+        _posPend.colaDoc = cola.exists ? (cola.data() || null) : null;
         _posPend.cola = cola.exists ? ((cola.data() || {}).entradas || []).filter((e) => e.estado === 'pendiente') : [];
         // «Atender»: respuestas malas sin mensaje de disculpa registrado (misma regla que la pestaña Atender de Feedback)
         const atendidas = new Set(disc.docs.map((d) => d.data().encuestaId).filter(Boolean));
@@ -5686,11 +5687,14 @@ async function _posPendRefrescar() {
     _posFbActualizarInsignia();
 }
 // La vista previa de Reactivar lee la cola y los envíos que solo se escuchan con la sección Feedback abierta: se cargan al vuelo.
-async function _posFbAsegurarFid() {
+// soloCola (Reactivar): la cola del día ya se leyó para el resumen, así que se usa tal cual y NO se espera ninguna escucha de Firebase.
+// Atender necesita además las respuestas de la encuesta: ahí sí se activan y se espera lo justo.
+async function _posFbAsegurarFid(soloCola) {
+    if (soloCola && !_fidCola && _posPend.colaDoc) _fidCola = { ..._posPend.colaDoc, dia: _posPend.colaDoc.dia || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' }) };
+    if (soloCola && _fidCola) return;
     if (_fbUnsubs.length && _fidCola && _fbResponses.length) return;
     if (!_fbUnsubs.length) _fbAttach();
-    for (let i = 0; i < 20 && !(_fidCola && _fbResponses.length); i++) await new Promise((r) => setTimeout(r, 150));
-    await new Promise((r) => setTimeout(r, 300));
+    for (let i = 0; i < 40 && !(_fidCola && (soloCola || _fbResponses.length)); i++) await new Promise((r) => setTimeout(r, 100));
 }
 // Vista previa de Feedback (mismo diseño que la de Reactivar/Cumpleaños): el mensaje con el link de la encuesta; al copiarlo el pedido queda enviado.
 function _posFbPreviaFeedback(orderId) {
@@ -5800,7 +5804,7 @@ function openPosFeedbackModal() {
                 if (tp === 'feedback') { _posFbPreviaFeedback(prev.dataset.posfbId); return; }
                 prev.disabled = true;
                 try {
-                    await _posFbAsegurarFid();
+                    await _posFbAsegurarFid(tp !== 'atender');
                     if (tp === 'atender') _fidAtender({ dataset: { fidAtender: prev.dataset.posfbId, fidAtenderTipo: 'baja' } });
                     else await _fidPreviaReactivar({ k: prev.dataset.posfbK });
                 } finally { prev.disabled = false; }
@@ -14804,7 +14808,7 @@ async function _fidAbrirPrevia(tipo, clienteId) {
     const ov = document.createElement('div');
     ov.id = 'fidPreviaOverlay';
     ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
-    ov.innerHTML = '<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;max-width:920px;width:100%;color:#fff">Preparando la vista previa…</div>';
+    ov.innerHTML = '<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;width:min(100%,1180px);box-sizing:border-box;min-height:380px;color:#fff">Preparando la vista previa…</div>';
     document.body.appendChild(ov);
     _bindOverlayClose(ov, _fidCerrarPrevia);
     const esCumple = tipo === 'cumple';
