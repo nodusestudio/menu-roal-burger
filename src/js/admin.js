@@ -9261,8 +9261,10 @@ function renderPosOrderItems() {
             </div>
             <div class="pos-item-qty-price">
                 ${sinBtnHTML}
-                <button type="button" class="pos-item-cortesia-btn${item.cortesia ? ' on' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="${item.cortesia ? 'Quitar cortesía' : 'Marcar como cortesía'}">🎁</button>
-                <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
+                <div class="pos-item-mini">
+                    <button type="button" class="pos-item-cortesia-btn${item.cortesia ? ' on' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="${item.cortesia ? 'Quitar cortesía' : 'Marcar como cortesía'}">🎁</button>
+                    <button type="button" class="pos-item-comment-btn${item.note ? ' has-note' : ''}" data-item-key="${escapeHtml(item.itemKey)}" title="Agregar nota">✎</button>
+                </div>
                 <div class="pos-item-qty">
                     <button type="button" class="pos-qty-minus" data-item-key="${escapeHtml(item.itemKey)}">−</button>
                     <input type="number" class="pos-qty-input" value="${item.quantity}" data-item-key="${escapeHtml(item.itemKey)}" min="1" />
