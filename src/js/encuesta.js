@@ -12,6 +12,7 @@ const FUNCTIONS_BASE = IS_LOCAL
     : `https://us-central1-${PROJECT_ID}.cloudfunctions.net`;
 
 const orderId = String(new URLSearchParams(location.search).get('orderId') || '').trim();
+const esDemo = /^demo(-(general|quindio|cuponera))?$/.test(orderId); // /encuesta?orderId=demo-general: para probar el formulario sin guardar nada
 const app = document.getElementById('encuestaApp');
 
 // Dos cuestionarios: el servidor decide cuál según el pedido (con 2×1 → Quindío; si no → fidelización general).
@@ -236,7 +237,8 @@ async function enviar(sugerencia) {
     btn.textContent = 'Enviando…';
     err.innerHTML = '';
     try {
-        const res = await callFunction('submitOrderFeedback', { orderId, ...respuestas });
+        if (!esDemo) await callFunction('submitOrderFeedback', { orderId, ...respuestas }); // modo prueba: no se envía ni se guarda nada
+        else await new Promise((ok) => setTimeout(ok, 600));
         celebrar();
     } catch (e) {
         if (e.status === 'ALREADY_EXISTS') return estadoMensaje('🙌', '¡Ya nos contaste!', 'Esta encuesta ya fue respondida. ¡Gracias!');
@@ -275,7 +277,8 @@ function celebrar() {
 async function iniciar() {
     if (!orderId) return estadoMensaje('🔗', 'Link incompleto', 'Abre el link completo que te enviamos por WhatsApp.');
     try {
-        const st = await callFunction('getOrderFeedbackStatus', { orderId });
+        const st = esDemo ? { state: 'ok', tipo: orderId.slice(5) || 'general' } : await callFunction('getOrderFeedbackStatus', { orderId });
+        if (esDemo) { const b = document.createElement('div'); b.textContent = 'MODO PRUEBA · no se guarda nada'; b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#facc15;color:#1b1b1f;text-align:center;font:700 12px sans-serif;padding:4px'; document.body.appendChild(b); }
         if (st.state === 'answered') return estadoMensaje('🙌', '¡Ya nos contaste!', 'Esta encuesta ya fue respondida. ¡Gracias por tu opinión!');
         if (st.state !== 'ok') return estadoMensaje('🍔', 'Encuesta no disponible', 'Este link no está activo. Si crees que es un error, escríbenos por WhatsApp.');
         tipo = ['general', 'cuponera'].includes(st.tipo) ? st.tipo : 'quindio';
