@@ -14132,7 +14132,11 @@ function _fidFotoSiguiente() {
     return f;
 }
 function _fidCargarImg(src) {
-    return new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
+    const directa = (url) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = url; });
+    // Vía fetch (CORS) y blob local: si el sitio redirige entre www y roalburger.com, el lienzo no queda «contaminado» y la imagen sí se puede copiar.
+    return fetch(src, { mode: 'cors' }).then((r) => (r.ok ? r.blob() : Promise.reject(new Error('http'))))
+        .then((b) => { const u = URL.createObjectURL(b); return directa(u).then((i) => { setTimeout(() => URL.revokeObjectURL(u), 10000); return i; }); })
+        .catch(() => directa(src));
 }
 
 // Genera una tarjeta PNG 1080x1350 (logo, nombre, frase, foto de hamburguesa que rota y botón) y la deja en el portapapeles
@@ -14225,7 +14229,8 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
         g.fillStyle = '#140802'; g.font = '700 44px "Segoe UI", system-ui, sans-serif'; g.fillText('PIDE AHORA  ›', W / 2, 1210);
         g.fillStyle = '#ffd6aa'; g.font = '700 32px "Segoe UI", system-ui, sans-serif'; g.fillText('roalburger.com  ·  Armenia, Quindío', W / 2, 1306);
     }
-    const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
+    let blob = null;
+    try { blob = await new Promise((ok) => cv.toBlob(ok, 'image/png')); } catch (err) { console.warn('[Reactivar] imagen:', err && err.message); }
     if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return null; }
     if (soloBlob) return blob; // la vista previa la muestra y la copia despues sin volver a generarla
     return _fidCopiarBlob(blob);
