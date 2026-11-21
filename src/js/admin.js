@@ -679,10 +679,11 @@ const PosCart = {
             categoryName: item.categoryName,
             // optionLabelOrig: combo/bebida/sabor de un pedido web o de agente (ver _orderItemToPosCartItem).
             optionLabel: item.optionLabelOrig || item.note || '',
-            note: item.note || '',
+            note: _notaDoble(item.note, item.reactivacionDoble === true),
             quantity: Number(item.quantity || 0),
             unitPrice: Number(item.unitPrice || 0),
             subtotal: Number(item.subtotal || 0),
+            ...(item.reactivacionDoble ? { reactivacionDoble: true } : {}),
             ...(item.cortesia ? { cortesia: true, cortesiaPrecio: Number(item.cortesiaPrecio || 0), originalUnitPrice: Number(item.cortesiaPrecio || 0) } : {}),
             ...(item.aplicadoPor ? { aplicadoPor: item.aplicadoPor } : {}),
             ...(item.almuerzo ? { almuerzo: item.almuerzo } : {}),
@@ -3870,6 +3871,7 @@ function normalizeOrderItem(raw, index = 0) {
         // Cortesía (botón 🎁 del POS): sin esto se perdía al recargar el pedido y no entraba a las métricas.
         cortesia: raw.cortesia === true,
         cortesiaPrecio: raw.cortesia === true ? Number(raw.cortesiaPrecio ?? raw.originalUnitPrice ?? 0) : null,
+        reactivacionDoble: raw.reactivacionDoble === true, // regalo de Reactivar: proteína extra (se mide; luego descontará inventario)
         // Almuerzo configurable: copia INMUTABLE de la combinación vendida (componentes, costos y consumos de ese momento).
         almuerzo: raw.almuerzo && typeof raw.almuerzo === 'object' ? raw.almuerzo : null
     };
@@ -9347,6 +9349,11 @@ function updatePosItemRow(itemKey) {
 }
 
 // Mini menú del ✎ de cada producto del carrito: «Editar» (la nota/opciones de siempre) y «Cortesía» (antes un botón 🎁 aparte).
+// La nota que ve cocina lleva «DOBLE PROTEÍNA (reactivación)» mientras el botón esté activo (se quita sola si se desactiva).
+function _notaDoble(note, on) {
+    const n = String(note || '').replace(/\s*·?\s*DOBLE PROTEÍNA \(reactivación\)/g, '').trim();
+    return on ? [n, 'DOBLE PROTEÍNA (reactivación)'].filter(Boolean).join(' · ') : n;
+}
 function _posItemMenu(btn, key, onEdit) {
     document.getElementById('posItemMenu')?.remove();
     const it = internalOrderItems.find((i) => i.itemKey === key);
@@ -9365,6 +9372,8 @@ function _posItemMenu(btn, key, onEdit) {
         menu.appendChild(b);
     };
     mk('✎ Editar / nota', onEdit);
+    // Reactivar: el regalo es una proteína extra en el producto favorito. Hoy solo avisa a cocina y queda medido; más adelante descontará inventario.
+    mk(it.reactivacionDoble ? '🔁 Quitar doble proteína' : '🔁 Doble proteína (reactivación)', () => { it.reactivacionDoble = !it.reactivacionDoble; renderPosOrderItems(); });
     mk(it.cortesia ? '🎁 Quitar cortesía' : '🎁 Cortesía', () => {
         if (it.codigoDiaCanjeId || it.promo2x1 || it.isComboEspecial) { showNotice('Esta línea ya trae su promoción; no se puede marcar como cortesía.', 'warn'); return; }
         if (PosCart.toggleCortesia(it.itemKey)) { renderPosOrderItems(); renderPosTotals(); renderPosBottomBar(); }
@@ -9434,7 +9443,7 @@ function renderPosOrderItems() {
         const _noteTag = (_tieneIng && _hasSin)
             ? `<span class="pos-item-note pos-item-note-sin" data-item-key="${escapeHtml(item.itemKey)}" title="Toca para cambiar lo que se quita">`
             : '<span class="pos-item-note">';
-        const noteHTML = (item.cortesia ? '<span class="pos-item-promo-badge">🎁 CORTESÍA</span>' : '')
+        const noteHTML = (item.reactivacionDoble ? '<span class="pos-item-promo-badge">🔁 DOBLE PROTEÍNA</span>' : '') + (item.cortesia ? '<span class="pos-item-promo-badge">🎁 CORTESÍA</span>' : '')
             + (item.promoLabel
             ? `<span class="pos-item-promo-badge">🏷 ${escapeHtml(item.promoLabel)}</span>`
             : (item.note ? `${_noteTag}${escapeHtml(item.note)}</span>` : ''))
@@ -10708,7 +10717,8 @@ function _orderItemToPosCartItem(item) {
         promo2x1Incremento: item.orderOptions?.promo2x1Incremento === true || item.promo2x1Incremento === true,
         aplicadoPor: item.aplicadoPor || null,
         cortesia: item.cortesia === true,
-        cortesiaPrecio: item.cortesia === true ? Number(item.cortesiaPrecio ?? item.originalUnitPrice ?? 0) : null
+        cortesiaPrecio: item.cortesia === true ? Number(item.cortesiaPrecio ?? item.originalUnitPrice ?? 0) : null,
+        reactivacionDoble: item.reactivacionDoble === true
     };
 }
 
@@ -13707,7 +13717,7 @@ function _fbPedidosPorTel() {
         const ts = _orderTs(o);
         if (!k || !ts) return;
         if (!porTel.has(k)) porTel.set(k, []);
-        porTel.get(k).push({ id: o.id, ts, total: getOrderDisplayTotal(o) });
+        porTel.get(k).push({ id: o.id, ts, total: getOrderDisplayTotal(o), order: o });
     });
     porTel.forEach((arr) => arr.sort((a, b) => a.ts - b.ts));
     return porTel;
@@ -14208,6 +14218,7 @@ const FB_AYUDA = {
     cumple: 'Clientes que dejaron su cumpleaños. Copia el saludo y mándalo por WhatsApp.',
     referidos: 'Invita a tus mejores clientes a traer amigos: el amigo recibe un cupón y, al canjearlo en caja, tu cliente recibe su recompensa.',
     temporadas: 'Cada edición de un evento (Sabe a Quindío, Cuponera…) se mide sola y se compara con las otras. Las encuestas de cada evento están en Campañas.',
+    respuesta: 'Mide qué pasó después de cada mensaje de Reactivar que marcaste como enviado: cuántos clientes pidieron, en cuánto tiempo (mismo día, 2.º o 3.er día…, en cuántas horas), si pidieron lo mismo de siempre u otra cosa, si usaron el regalo y cuánto vendieron. Se calcula solo con los pedidos que ya existen: no tienes que marcar nada.',
     archivo: 'Todos los mensajes que marcaste como enviados (Reactivar, Cumpleaños, Disculpa, Reseña…). Ábrelos para ver el mensaje y la postal exacta que se mandó y poder copiarlos otra vez. Los envíos hechos antes de las postales no tienen la imagen guardada.',
     cupones: 'Cada cupón es único por cliente, con vigencia. Canjéalo aquí cuando el cliente dé su código.',
     metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Sale de los mensajes y cupones registrados y de los pedidos.',
@@ -14220,7 +14231,7 @@ function _fbNavTipoHtml() {
         ['campanas', '📣', 'Campañas', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['reactivar', 'Reactivar'], ['nuevo', 'Nuevo cliente'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
         ['atender', '⚠️', 'Atender', [['atender', 'Atender']]],
         ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones']]],
-        ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas'], ['archivo', 'Archivados']]],
+        ['resultados', '📊', 'Resultados', [['respuesta', 'Respuesta'], ['cupones', 'Cupones'], ['metas', 'Metas'], ['archivo', 'Archivados']]],
         ['ajustes', '⚙️', 'Ajustes', [['config', 'Configuración']]]
     ];
     const grupoActivo = GRUPOS.find((g) => g[3].some((s) => s[0] === _fbTipo)) || GRUPOS[0];
@@ -14389,7 +14400,7 @@ function _fbCumpleClick(e) {
 //  · cupones_fidelizacion/{codigo}: cupón personal (cliente, beneficio, vigencia, estado, canje).
 //  · configuracion/fidelizacion: textos, umbrales y metas semanales editables.
 // Atribución: un cliente "volvió" si hizo un pedido pagado dentro de los 14 días siguientes al último mensaje/cupón que recibió.
-const FB_TIPOS_FID = ['temporadas', 'cumple', 'nuevo', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config', 'archivo'];
+const FB_TIPOS_FID = ['temporadas', 'cumple', 'nuevo', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config', 'archivo', 'respuesta'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', reactivarOfertaPapas: 'unas papas gratis con tu pedido', reactivarProductoPapasId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
@@ -15693,6 +15704,8 @@ function _fbRenderFid(body) {
         const vistas = [['cola', '🎯 Cola del día'], ['lista', '📋 Todos los inactivos']]
             .map(([v, l]) => `<button type="button" class="rango-btn${_fidReactVista === v ? ' active' : ''}" data-fid-vista="${v}">${l}</button>`).join('');
         html = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${vistas}</div>${_fidReactVista === 'cola' ? `${tarjetaPend}${_fidColaHtml()}` : html}`;
+    } else if (_fbTipo === 'respuesta') {
+        html = _fidRespuestaHtml();
     } else if (_fbTipo === 'archivo') {
         const ARCH_MOT = { reactivar: '🔁 Reactivar', cumple: '🎂 Cumpleaños', disculpa: '⚠️ Disculpa', resena: '⭐ Reseña', nuevo: '👋 Nuevo cliente', referido: '🤝 Invitación', referidor: '🎁 Recompensa' };
         const fechaE = (e) => _tsMs(e.enviadoAt) || _tsMs(e.creadoAt);
@@ -15884,6 +15897,119 @@ async function _fidPreviaReactivar({ k = '', envioId = '', postalInicial = null 
     });
     if (enviado && fijo) ov.querySelector('[data-fid-prev-otra]')?.remove();
     pintarImagen();
+}
+
+// ── Respuesta a Reactivar: qué pasó después de cada mensaje enviado (se calcula solo con los pedidos que ya existen) ──
+function _fidNormTxt(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+// ¿Alguno de los productos del pedido es el favorito del mensaje? (compara por palabras: «Salchi super grande» ~ «Salchipapa súper grande»)
+function _fidPidioFavorito(items, fav) {
+    const ft = _fidNormTxt(fav).split(' ').filter((w) => w.length >= 3);
+    if (!ft.length) return null;
+    return (items || []).some((it) => {
+        const n = _fidNormTxt(it.productName);
+        return ft.filter((w) => n.includes(w.slice(0, Math.max(4, w.length - 2)))).length >= Math.ceil(ft.length * 0.6);
+    });
+}
+function _fidDurTxt(ms) {
+    const m = Math.max(0, Math.round(ms / 60000));
+    if (m < 60) return `${m} min`;
+    if (m < 1440) return `${Math.floor(m / 60)} h ${m % 60} min`;
+    return `${Math.floor(m / 1440)} d ${Math.floor((m % 1440) / 60)} h`;
+}
+function _fidRespuestaDatos() {
+    const porTel = _fbPedidosPorTel();
+    const ahora = Date.now();
+    const filas = [];
+    _fidEnvios.filter((e) => e.motivo === 'reactivar' && e.descartado !== true && e.pendiente === false).forEach((e) => {
+        const enviadoMs = _tsMs(e.enviadoAt) || _tsMs(e.creadoAt);
+        if (!enviadoMs || !rangoEnRango('fid', enviadoMs)) return;
+        const k = _sqPhoneKey(e.telefono);
+        const ped = (porTel.get(k) || []).find((x) => x.ts > enviadoMs && x.ts - enviadoMs <= FID_VENTANA_MS) || null;
+        const fav = (e.cola && _fidFavoritoDeMensaje(e.mensaje)) || _fidFavoritoDeMensaje(e.mensaje) || '';
+        const items = ped && ped.order && Array.isArray(ped.order.items) ? ped.order.items : [];
+        const cupon = e.cuponCodigo ? _fidCupones.find((c) => c.codigo === e.cuponCodigo) : null;
+        filas.push({
+            e, enviadoMs, ped, fav, items,
+            dt: ped ? ped.ts - enviadoMs : 0,
+            dia: ped ? Math.round((new Date(`${_sqDayKey(ped.ts)}T00:00:00-05:00`).getTime() - new Date(`${_sqDayKey(enviadoMs)}T00:00:00-05:00`).getTime()) / 86400000) : -1,
+            mismo: ped ? _fidPidioFavorito(items, fav) : null,
+            regalo: ped ? items.some((i) => i.reactivacionDoble === true) : false,
+            canjeado: !!(cupon && cupon.estado === 'canjeado'),
+            esperando: !ped && ahora - enviadoMs < FID_VENTANA_MS
+        });
+    });
+    return filas.sort((a, b) => b.enviadoMs - a.enviadoMs);
+}
+function _fidRespuestaHtml() {
+    const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+    const filas = _fidRespuestaDatos();
+    const pidieron = filas.filter((f) => f.ped);
+    const cerradas = filas.filter((f) => f.ped || !f.esperando); // ventana de 14 días ya vencida o con pedido
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+    const durs = pidieron.map((f) => f.dt).sort((a, b) => a - b);
+    const mediana = durs.length ? durs[Math.floor(durs.length / 2)] : 0;
+    const prom = durs.length ? durs.reduce((a, b) => a + b, 0) / durs.length : 0;
+    const dia = (d0, d1) => pidieron.filter((f) => f.dia >= d0 && f.dia <= d1).length;
+    const horas = (h0, h1) => pidieron.filter((f) => f.dt >= h0 * 3600000 && f.dt < h1 * 3600000).length;
+    const mismo = pidieron.filter((f) => f.mismo === true).length;
+    const otra = pidieron.filter((f) => f.mismo === false).length;
+    const ventas = pidieron.reduce((a, f) => a + Number(f.ped.total || 0), 0);
+    const kpi = (cls, v, l) => _fidKpi(cls, v, l);
+    const filasHtml = filas.slice(0, 200).map((f) => {
+        const e = f.e;
+        const envTxt = new Date(f.enviadoMs).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+        let estado;
+        if (f.ped) {
+            const pedTxt = new Date(f.ped.ts).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+            const nombres = f.items.filter((i) => !i.parentItemKey).map((i) => `${i.quantity > 1 ? `${i.quantity}× ` : ''}${i.productName}`).join(', ');
+            estado = `<span style="color:#34d399;font-weight:700">✅ Pidió ${escapeHtml(pedTxt)} · ${escapeHtml(_fidDurTxt(f.dt))} después${f.dia === 0 ? ' (mismo día)' : ` (día ${f.dia + 1})`}</span><br>🍔 ${escapeHtml(nombres || 'sin detalle')} · ${escapeHtml(formatMoney(f.ped.total))}<br>${f.mismo === true ? '🎯 Pidió lo mismo de siempre' : (f.mismo === false ? '🔀 Pidió otra cosa' : '')}${f.regalo ? ' · 🎁 usó el regalo (doble proteína)' : ''}${f.canjeado ? ' · 🎟️ canjeó el cupón' : ''}`;
+        } else {
+            estado = f.esperando ? '<span style="color:#fbbf24;font-weight:700">⏳ Esperando (tiene 14 días)</span>' : '<span style="opacity:.7">— No pidió en 14 días</span>';
+        }
+        return `<div class="met-user-row-v2">
+            <div class="met-avatar">${f.ped ? '✅' : (f.esperando ? '⏳' : '💤')}</div>
+            <div class="met-user-info-v2">
+                <div class="met-user-name-v2">${escapeHtml(e.nombre || 'Cliente')} <small style="opacity:.6;font-weight:400">· enviado ${escapeHtml(envTxt)}${f.fav ? ` · favorito: ${escapeHtml(f.fav)}` : ''}</small></div>
+                <div class="met-user-meta-v2">${estado}</div>
+            </div>
+            <button type="button" class="ghost-button" data-fid-arch-ver="${escapeHtml(e.id)}">👁 Ver mensaje</button>
+        </div>`;
+    }).join('');
+    return `${rangoSelectorHtml('fid')}
+    <article class="admin-card">
+        <div class="met-section-title">📈 Respuesta a Reactivar</div>
+        <p class="admin-hint" style="margin:0 0 8px">Mide qué pasó después de cada mensaje de Reactivar que marcaste como enviado: cuántos pidieron, en cuánto tiempo, si fue lo mismo de siempre u otra cosa, y cuánto vendieron. Se calcula solo con los pedidos que ya existen (ventana de 14 días por mensaje).</p>
+        <div class="met-kpi-row">
+            ${kpi('met-kpi-card--hi', nf(filas.length), 'Mensajes enviados')}
+            ${kpi('met-kpi-card--green', `${nf(pidieron.length)} (${pct(pidieron.length, cerradas.length)}%)`, 'Pidieron después (de los ya cerrados)')}
+            ${kpi('met-kpi-card--purple', formatMoney(ventas), 'Ventas de esos pedidos')}
+            ${kpi('', pidieron.length ? `${_fidDurTxt(mediana)}` : '—', `Tiempo típico (promedio ${pidieron.length ? _fidDurTxt(prom) : '—'})`)}
+        </div>
+        <div class="met-section-title" style="margin-top:14px">⏱️ ¿Cuándo pidieron?</div>
+        <div class="met-kpi-row">
+            ${kpi('', nf(dia(0, 0)), 'El mismo día')}
+            ${kpi('', nf(dia(1, 1)), 'Al 2.º día')}
+            ${kpi('', nf(dia(2, 2)), 'Al 3.er día')}
+            ${kpi('', nf(dia(3, 14)), 'Del 4.º al 14.º día')}
+        </div>
+        <div class="met-kpi-row" style="margin-top:10px">
+            ${kpi('', nf(horas(0, 2)), 'En menos de 2 horas')}
+            ${kpi('', nf(horas(2, 6)), 'Entre 2 y 6 horas')}
+            ${kpi('', nf(horas(6, 24)), 'Entre 6 y 24 horas')}
+            ${kpi('', nf(horas(24, 24 * 15)), 'Después de un día')}
+        </div>
+        <div class="met-section-title" style="margin-top:14px">🍔 ¿Qué pidieron?</div>
+        <div class="met-kpi-row">
+            ${kpi('met-kpi-card--green', `${nf(mismo)} (${pct(mismo, pidieron.length)}%)`, 'Lo mismo de siempre (su favorito)')}
+            ${kpi('', `${nf(otra)} (${pct(otra, pidieron.length)}%)`, 'Otra cosa')}
+            ${kpi('', nf(pidieron.filter((f) => f.regalo).length), 'Usaron el regalo (doble proteína)')}
+            ${kpi('', nf(filas.filter((f) => f.canjeado).length), 'Canjearon el cupón')}
+        </div>
+    </article>
+    <article class="admin-card">
+        <div class="met-section-title">Detalle por cliente</div>
+        <div class="metrics-users-list">${filasHtml || '<p class="met-empty-note">Todavía no hay mensajes de Reactivar marcados como enviados en este período.</p>'}</div>
+    </article>`;
 }
 
 // Archivados: abre un mensaje ya enviado con su postal guardada (solo lectura; copiar no cambia nada).
