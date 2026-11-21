@@ -14208,6 +14208,7 @@ const FB_AYUDA = {
     cumple: 'Clientes que dejaron su cumpleaños. Copia el saludo y mándalo por WhatsApp.',
     referidos: 'Invita a tus mejores clientes a traer amigos: el amigo recibe un cupón y, al canjearlo en caja, tu cliente recibe su recompensa.',
     temporadas: 'Cada edición de un evento (Sabe a Quindío, Cuponera…) se mide sola y se compara con las otras. Las encuestas de cada evento están en Campañas.',
+    archivo: 'Todos los mensajes que marcaste como enviados (Reactivar, Cumpleaños, Disculpa, Reseña…). Ábrelos para ver el mensaje y la postal exacta que se mandó y poder copiarlos otra vez. Los envíos hechos antes de las postales no tienen la imagen guardada.',
     cupones: 'Cada cupón es único por cliente, con vigencia. Canjéalo aquí cuando el cliente dé su código.',
     metas: 'Lo que se hizo esta semana contra las metas, con semáforo. Sale de los mensajes y cupones registrados y de los pedidos.',
     config: 'Todos los ajustes de fidelización en un solo lugar: ofertas, productos regalo, vigencias, reseña de Google y metas. Lo que guardes aquí lo usan las demás pestañas.'
@@ -14219,7 +14220,7 @@ function _fbNavTipoHtml() {
         ['campanas', '📣', 'Campañas', [['general', 'Fidelización'], ['quindio', 'Sabe a Quindío'], ['cuponera', 'Cuponera'], ['reactivar', 'Reactivar'], ['nuevo', 'Nuevo cliente'], ['cumple', 'Cumpleaños'], ['referidos', 'Referidos']]],
         ['atender', '⚠️', 'Atender', [['atender', 'Atender']]],
         ['temporadas', '🏆', 'Temporadas', [['temporadas', 'Ediciones']]],
-        ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas']]],
+        ['resultados', '📊', 'Resultados', [['cupones', 'Cupones'], ['metas', 'Metas'], ['archivo', 'Archivados']]],
         ['ajustes', '⚙️', 'Ajustes', [['config', 'Configuración']]]
     ];
     const grupoActivo = GRUPOS.find((g) => g[3].some((s) => s[0] === _fbTipo)) || GRUPOS[0];
@@ -14388,7 +14389,7 @@ function _fbCumpleClick(e) {
 //  · cupones_fidelizacion/{codigo}: cupón personal (cliente, beneficio, vigencia, estado, canje).
 //  · configuracion/fidelizacion: textos, umbrales y metas semanales editables.
 // Atribución: un cliente "volvió" si hizo un pedido pagado dentro de los 14 días siguientes al último mensaje/cupón que recibió.
-const FB_TIPOS_FID = ['temporadas', 'cumple', 'nuevo', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config'];
+const FB_TIPOS_FID = ['temporadas', 'cumple', 'nuevo', 'reactivar', 'atender', 'referidos', 'cupones', 'metas', 'config', 'archivo'];
 const FID_VENTANA_MS = 14 * 86400000;
 const FID_CFG_DEF = {
     reactivarOferta: 'una bebida gratis con tu pedido', reactivarProductoId: '', reactivarOfertaPapas: 'unas papas gratis con tu pedido', reactivarProductoPapasId: '', cumpleProductoId: '', reactivarDias: 21, vigenciaDias: 3,
@@ -14401,7 +14402,8 @@ const FID_CFG_DEF = {
 let _fidCfg = { ...FID_CFG_DEF };
 let _fidEnvios = [];
 let _fidCupones = [];
-let _fidQ = { reactivar: '', cupones: '' };
+let _fidQ = { reactivar: '', cupones: '', archivo: '' };
+let _fidArchMotivo = 'todos'; // Archivados: filtro por motivo
 let _fidReactMin = 0;        // 0 = usar el umbral configurado
 let _fidReactVista = 'cola'; // Reactivar: 'cola' (cola inteligente del día) | 'lista' (todos los inactivos)
 let _fidCola = null;         // fidelizacion_cola/{hoy}: la arma el servidor a las 6 a. m. (functions/reactivarCola.js)
@@ -15691,6 +15693,35 @@ function _fbRenderFid(body) {
         const vistas = [['cola', '🎯 Cola del día'], ['lista', '📋 Todos los inactivos']]
             .map(([v, l]) => `<button type="button" class="rango-btn${_fidReactVista === v ? ' active' : ''}" data-fid-vista="${v}">${l}</button>`).join('');
         html = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${vistas}</div>${_fidReactVista === 'cola' ? `${tarjetaPend}${_fidColaHtml()}` : html}`;
+    } else if (_fbTipo === 'archivo') {
+        const ARCH_MOT = { reactivar: '🔁 Reactivar', cumple: '🎂 Cumpleaños', disculpa: '⚠️ Disculpa', resena: '⭐ Reseña', nuevo: '👋 Nuevo cliente', referido: '🤝 Invitación', referidor: '🎁 Recompensa' };
+        const fechaE = (e) => _tsMs(e.enviadoAt) || _tsMs(e.creadoAt);
+        const baseA = _fidEnvios.filter((e) => e.descartado !== true && e.pendiente !== true && rangoEnRango('fid', fechaE(e)));
+        const listaA = baseA.filter((e) => (_fidArchMotivo === 'todos' || e.motivo === _fidArchMotivo) && smartMatch(_fidQ.archivo, e.nombre, e.telefono, e.codigo))
+            .sort((a, b) => fechaE(b) - fechaE(a));
+        const cuentaA = (m) => baseA.filter((e) => e.motivo === m).length;
+        const chipsA = [['todos', `Todos (${baseA.length})`], ...Object.keys(ARCH_MOT).filter((m) => cuentaA(m)).map((m) => [m, `${ARCH_MOT[m]} (${cuentaA(m)})`])]
+            .map(([m, l]) => `<button type="button" class="rango-btn${_fidArchMotivo === m ? ' active' : ''}" data-fid-arch-mot="${m}">${l}</button>`).join('');
+        const filasA = listaA.slice(0, 200).map((e) => {
+            const fh = new Date(fechaE(e)).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+            const tel = String(e.telefono || '').replace(/\D/g, '');
+            return `<div class="met-user-row-v2">
+                <div class="met-avatar">${escapeHtml((ARCH_MOT[e.motivo] || '📨').split(' ')[0])}</div>
+                <div class="met-user-info-v2">
+                    <div class="met-user-name-v2">${escapeHtml(e.nombre || 'Cliente')} · ${escapeHtml((ARCH_MOT[e.motivo] || e.motivo || 'Mensaje').replace(/^\S+\s/, ''))}</div>
+                    <div class="met-user-meta-v2">${tel ? `<button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · ` : ''}${escapeHtml(fh)}${e.codigo ? ` · cupón ${escapeHtml(e.codigo)}` : ''}${e.postal ? ' · 🖼 postal guardada' : ''}</div>
+                </div>
+                <button type="button" class="ghost-button" data-fid-arch-ver="${escapeHtml(e.id)}">👁 Ver mensaje y postal</button>
+            </div>`;
+        }).join('');
+        html = `${rangoSelectorHtml('fid')}
+        <article class="admin-card">
+            <div class="met-section-title">📦 Mensajes enviados (archivados)</div>
+            <p class="admin-hint" style="margin:0 0 8px">Aquí quedan todos los mensajes que marcaste como enviados. Ábrelos para ver el mensaje y la postal exacta que se mandó y poder copiarlos otra vez. Los envíos hechos antes de las postales no tienen la imagen guardada.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">${chipsA}</div>
+            ${searchBoxHtml('fidQarchivo', 'Buscar por cliente, teléfono o cupón', _fidQ.archivo)}
+            <div class="metrics-users-list" id="fidLista">${filasA || '<p class="met-empty-note">No hay mensajes enviados con estos filtros.</p>'}</div>
+        </article>`;
     } else if (_fbTipo === 'cupones') {
         const lista = _fidCupones.filter((k) => rangoEnRango('fid', _tsMs(k.creadoAt))
             && (_fidCupEstado === 'todos' || _fidEstadoCupon(k) === _fidCupEstado)
@@ -15855,6 +15886,51 @@ async function _fidPreviaReactivar({ k = '', envioId = '', postalInicial = null 
     pintarImagen();
 }
 
+// Archivados: abre un mensaje ya enviado con su postal guardada (solo lectura; copiar no cambia nada).
+function _fidArchivoVer(envioId) {
+    const e = (_fidEnvios || []).find((x) => x.id === envioId);
+    if (!e) { showNotice('No encuentro ese envío: recarga la lista.', 'error'); return; }
+    if (e.motivo === 'reactivar') { _fidPreviaReactivar({ envioId }); return; }
+    if ((e.motivo === 'disculpa' || e.motivo === 'resena') && e.encuestaId && _fbResponses.some((x) => x.id === e.encuestaId)) {
+        _fidAtender({ dataset: { fidAtender: e.encuestaId, fidAtenderTipo: e.motivo === 'resena' ? 'resena' : 'baja' } });
+        return;
+    }
+    _fidArchivoGenerico(e);
+}
+function _fidArchivoGenerico(e) {
+    const nombre = e.nombre || 'Cliente';
+    const fijo = e.postal && e.postal.foto ? e.postal : null;
+    const MOT = { cumple: 'Cumpleaños', disculpa: 'Disculpa', resena: 'Reseña', nuevo: 'Nuevo cliente', referido: 'Invitación', referidor: 'Recompensa', reactivar: 'Reactivar' };
+    const fh = new Date(_tsMs(e.enviadoAt) || _tsMs(e.creadoAt)).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const texto = e.mensaje ? String(e.mensaje) : `Este envío no guardó el texto del mensaje.\n\nMotivo: ${MOT[e.motivo] || e.motivo || '—'}\nEnviado: ${fh}${e.codigo ? `\nCupón: ${e.codigo}` : ''}${e.beneficio ? `\nBeneficio: ${e.beneficio}` : ''}`;
+    _fidCerrarPrevia();
+    const ov = document.createElement('div');
+    ov.id = 'fidPreviaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    document.body.appendChild(ov);
+    _bindOverlayClose(ov, _fidCerrarPrevia);
+    ov.innerHTML = _fidPreviaMarcoHtml({
+        titulo: nombre, encabezado: `📦 ${MOT[e.motivo] || 'Mensaje'} enviado a ${nombre}`, telefono: e.telefono, texto, sinImagen: !fijo,
+        botones: e.mensaje ? '<button type="button" class="section-action-btn" data-arch-copiar>Copiar mensaje</button>' : '',
+        hint: `Enviado el ${fh}. ${fijo ? 'Esta es la misma postal que se mandó.' : 'Este envío se hizo antes de las postales, por eso no tiene imagen guardada.'}`
+    });
+    ov.querySelector('[data-fid-prev-otra]')?.remove();
+    ov.addEventListener('click', (ev) => {
+        if (ev.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
+        if (ev.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
+        const c = ev.target.closest('[data-arch-copiar]');
+        if (c) copyTextToClipboard(String(e.mensaje)).then((ok) => { showNotice(ok ? 'Mensaje copiado.' : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'); if (ok) _btnHecho(c, 'Mensaje copiado'); });
+    });
+    if (fijo) {
+        _fidCopiarImagen(nombre, 'reactivar', true, '', '', e.id, fijo).then((blob) => {
+            if (!document.getElementById('fidPreviaImg')) return;
+            _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
+            const img = document.getElementById('fidPreviaImg');
+            if (img && _fidPrevio) img.src = _fidPrevio.url;
+        });
+    }
+}
+
 // Clics de Reactivar, Cupones y Metas (listener delegado de #fbBody).
 function _fidClick(e) {
     const t = e.target;
@@ -15870,6 +15946,10 @@ function _fidClick(e) {
     if (vistaReact) { _fidReactVista = vistaReact.dataset.fidVista === 'lista' ? 'lista' : 'cola'; renderMetricasFeedback(); return true; }
     const omitirCola = t.closest('[data-fid-cola-omitir]');
     if (omitirCola) { _fidColaMarcar(_fidCola && _fidCola.dia, omitirCola.dataset.fidColaOmitir, 'omitido'); return true; }
+    const archMot = t.closest('[data-fid-arch-mot]');
+    if (archMot) { _fidArchMotivo = archMot.dataset.fidArchMot; renderMetricasFeedback(); return true; }
+    const archVer = t.closest('[data-fid-arch-ver]');
+    if (archVer) { _fidArchivoVer(archVer.dataset.fidArchVer); return true; }
     const prevCola = t.closest('[data-fid-prev-cola]');
     if (prevCola) { _fidPreviaReactivar({ k: prevCola.dataset.fidPrevCola }); return true; }
     const prevEnv = t.closest('[data-fid-prev-env]');
@@ -16085,9 +16165,9 @@ function _fbBind(body) {
         });
         // Buscadores: solo se repinta la lista (no toda la pestaña) para no perder el foco del teclado.
         body.addEventListener('input', (e) => {
-            if (['fidQreactivar', 'fidQcupones', 'fidQatender', 'fidQref'].includes(e.target.id)) {
+            if (['fidQreactivar', 'fidQcupones', 'fidQarchivo', 'fidQatender', 'fidQref'].includes(e.target.id)) {
                 const id = e.target.id; const keep = e.target.value;
-                if (id === 'fidQatender') _fidAtenderQ = keep; else if (id === 'fidQref') _fidRefQ = keep; else _fidQ[id === 'fidQreactivar' ? 'reactivar' : 'cupones'] = keep;
+                if (id === 'fidQatender') _fidAtenderQ = keep; else if (id === 'fidQref') _fidRefQ = keep; else _fidQ[id === 'fidQreactivar' ? 'reactivar' : (id === 'fidQarchivo' ? 'archivo' : 'cupones')] = keep;
                 renderMetricasFeedback(); const inp = document.getElementById(id); if (inp) { inp.focus(); inp.setSelectionRange(keep.length, keep.length); }
                 return;
             }
