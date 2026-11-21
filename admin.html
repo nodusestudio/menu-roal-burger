@@ -17011,7 +17011,7 @@
        3) VISTA: tarjeta (.admin-card) → encabezado (.card-head) → descripción corta (.card-desc) → campos en rejilla
           adaptable (.admin-form / .biz-fields) → acciones al pie, alineadas a la izquierda y nunca a todo el ancho.
        Cualquier botón o tarjeta nueva usa estas clases; NO se pegan estilos en línea. (tests/regla-interfaz.test.js lo vigila) */
-    :root { --ui-btn-h: 32px; --ui-gap: 8px; --ui-pad: 14px; --ui-sec: 12px; --ui-radius: 9px; --ui-field-h: 34px; }
+    :root { --ui-btn-h: 32px; --ui-gap: 8px; --ui-pad: 14px; --ui-sec: 12px; --ui-radius: 9px; --ui-field-h: 34px; --modal-w-estandar: 560px; --modal-w-grande: 900px; --modal-h-max: 90vh; }
     .informes-action-btn, .section-action-btn, .section-save-btn, .preview-refresh-btn, .admin-button, .ghost-button,
     .biz-save-btn, .biz-pass-btn, button.cat-new-save-btn, .ticket-bt-btn,
     .ticket-action-btn, .pos-note-cancel-btn, .pos-note-save-btn, .client-action-btn, .cd-btn, .feedback-pending-btn,
@@ -17064,8 +17064,32 @@
     #posOrdersCard { padding: 0 !important; background: none; border: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
     /* El ticket sube a la altura de los botones verdes (alto 48 + margen 16 = 64) cuando hay 3 columnas */
     @media (min-width: 1025px) { #orderTicketPanel { margin-top: -64px; } }
+    /* Simetría: la base de Domicilios/Para llevar, Mesas y Ticket queda en la misma línea (las tres columnas se estiran a la misma altura) */
+    @media (min-width: 1025px) {
+        .orders-workspace { align-items: stretch; min-height: calc(100vh - 400px); }
+        .orders-workspace .orders-lanes-left { flex-direction: column; align-self: stretch; }
+        .orders-workspace .orders-lanes-left > .orders-lane:last-child { flex: 1 1 auto; }
+        .orders-workspace > #ordersBoard > .orders-lane, .orders-workspace #orderTicketPanel { align-self: stretch; }
+        /* la tarjeta visible del ticket (.ticket-body) llena todo el alto del panel, no solo su contenido */
+        #orderTicketPanel { grid-template-rows: 1fr; }
+        #orderTicketBody { align-self: stretch; }
+    }
     /* La barra naranja de "feedback pendiente" ya no se muestra aquí: todo está en el botón 📣 de la barra inferior */
     #feedbackPendingHost { display: none !important; }
+    /* REGLA DE FORMA: nada de círculos ni píldoras. Todo botón, tarjeta, contador o saldo es un rectángulo/cuadrado con la MISMA esquina
+       redondeada (--ui-radius), sin importar si es grande o pequeño. Aquí aplica a POS, barra lateral y barra inferior. */
+    html body [data-tab-panel="pedidos"] :where(button, span, div, article, aside, a, label, input, select, textarea):not(.admin-skel):not(svg *),
+    html body .admin-sidebar :where(button, header, div, a, span, nav):not(svg *),
+    html body #rrWrap :where(button, div, a, span):not(svg *),
+    html body button.quick-order-btn:not(#fodiFlot *),
+    html body #salesDayBanner .sales-day-chip, html body #salesDayBanner .sales-day-chip--total, html body #salesDayBanner .sales-day-chip--delivery,
+    html body .admin-sidebar .admin-sidebar-logo { border-radius: var(--ui-radius) !important; }
+    /* VENTANAS EMERGENTES (Fase 2): botones del pie con el mismo estilo; el tamaño y el orden los pone _modalesUnificar() en admin.js */
+    html body [data-modal-rol] { min-height: 36px; padding: 0 14px; font-weight: 700; font-size: .9rem; cursor: pointer; box-sizing: border-box; }
+    html body [data-modal-rol="primario"] { background: #ff7a1a !important; border: 1px solid #ff7a1a !important; color: #fff !important; }
+    html body [data-modal-rol="secundario"], html body [data-modal-rol="atras"] { background: rgba(255,255,255,.08) !important; border: 1px solid rgba(255,255,255,.14) !important; color: inherit !important; }
+    html body [data-modal-rol="peligro"] { background: rgba(248,113,113,.15) !important; border: 1px solid rgba(248,113,113,.5) !important; color: #fff !important; }
+    html body [data-modal-rol]:disabled { opacity: .5; cursor: not-allowed; }
     /* REGLA: bordes mínimos (como la barra lateral): una línea fina y sin brillo interno que parezca un segundo borde */
     #salesDayBanner, .orders-workspace .orders-lane { border: 1px solid rgba(255,255,255,0.07); box-shadow: none; }
     #orderTicketPanel { border: none; box-shadow: none; }
@@ -17092,9 +17116,17 @@
         #quickOrderBar .quick-order-btn > span:last-child { font-size: min(1.7rem, 8.5cqw); }
         #quickOrderBar .quick-order-btn .qo-ico { font-size: min(1.9rem, 9cqw); }
         #salesDayBanner { width: 100%; box-sizing: border-box; gap: 18px; padding: 10px 14px; }
+        /* REGLA: la tarjeta de jornada SIEMPRE va en una sola línea (aunque aparezcan más saldos): nada baja de renglón, los saldos se encogen y el texto se recorta con "…" */
+        #salesDayBanner, #salesDayBanner .sales-day-banner-metrics, #salesDayBanner .sales-day-banner-data, #salesDayBanner .sales-day-banner-actions { flex-wrap: nowrap; }
+        #salesDayBanner .sales-day-banner-metrics { min-width: 0; flex: 1 1 auto; justify-content: flex-end; }
+        #salesDayBanner .sales-day-banner-data { min-width: 0; flex: 0 1 auto; }
+        #salesDayBanner .sales-day-banner-actions { flex: 0 0 auto; }
+        #salesDayBanner .sales-day-banner-copy { min-width: 0; flex: 0 1 auto; overflow: hidden; }
+        #salesDayBanner .sales-day-banner-copy > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+        #salesDayBanner .sales-day-banner-data .sales-day-chip { white-space: nowrap; overflow: hidden; flex: 0 1 104px; min-width: 56px; }
         #salesDayBanner .sales-day-banner-copy { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
         #salesDayBanner .sales-day-banner-copy strong::after { content: ' ·'; color: rgba(255,255,255,0.3); }
-        #salesDayBanner .sales-day-banner-data .sales-day-chip { width: 104px; min-width: 104px; box-sizing: border-box; justify-content: center; }
+        #salesDayBanner .sales-day-banner-data .sales-day-chip { width: 104px; box-sizing: border-box; justify-content: center; }
         #salesDayBanner .sales-day-banner-data .sales-day-eye { width: 28px; height: 28px; min-height: 28px; border-radius: 8px; }
         #salesDayBanner .sales-day-banner-data .sales-day-eye svg { width: 16px; height: 16px; }
     }

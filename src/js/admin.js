@@ -1209,13 +1209,44 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
         }
     }, true);
 
-    const preguntar = () => showConfirmModal({
-        icon: '✋',
-        title: '¿Cerrar sin guardar?',
-        message: 'Hay cambios sin guardar en esta ventana. Si la cierras, se pierden.',
-        confirmText: 'Sí, cerrar',
-        cancelText: 'Seguir editando'
+    // Botón de guardar de una ventana (el principal del pie) y botón de cerrar (×).
+    const botonesDe = (r) => [...r.querySelectorAll('button,input[type="submit"],[role="button"]')].filter((b) => visible(b) && !b.disabled);
+    const txt = (b) => `${b.textContent || ''} ${b.getAttribute('aria-label') || ''} ${b.title || ''}`.trim();
+    const botonGuardar = (r) => {
+        const bs = botonesDe(r);
+        return bs.find((b) => /guardar|registrar|crear|confirmar|aplicar|actualizar|agregar|añadir/i.test(txt(b)) && !/cancel|cerrar/i.test(txt(b))) || bs.find((b) => b.getAttribute('type') === 'submit' && !esCerrarTxt(b)) || null;
+    };
+    const esCerrarTxt = (b) => /^(×|✕|✖)$/.test((b.textContent || '').trim()) || /cerrar|close|cancel/i.test(txt(b));
+    const esCerrar = (b) => !!b && (/^(×|✕|✖)$/.test((b.textContent || '').trim()) || /cerrar|close/i.test(`${b.getAttribute('aria-label') || ''} ${b.title || ''} ${typeof b.className === 'string' ? b.className : ''}`)) && !/cancelar/i.test(b.textContent || '');
+
+    // Pregunta estándar: Seguir editando / Guardar (si la ventana tiene botón de guardar) / Descartar cambios.
+    // Responde 'seguir' | 'guardar' | 'descartar'. Tamaño estándar de ventana: --modal-w-estandar (560 px).
+    const preguntar = (fondo) => new Promise((resolve) => {
+        document.getElementById('_genericConfirmOverlay')?.remove();
+        const guardar = fondo ? botonGuardar(fondo) : null;
+        const ov = document.createElement('div');
+        ov.id = '_genericConfirmOverlay';
+        ov.setAttribute('data-forma', 'libre');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:2147483600;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
+        const bt = 'min-height:36px;padding:0 14px;border:1px solid rgba(255,255,255,.07);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;';
+        ov.innerHTML = `<div role="alertdialog" aria-modal="true" style="background:#1f2430;color:#f3f4f6;border:1px solid rgba(255,255,255,.07);width:min(100%,var(--modal-w-estandar,560px));padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.5)">
+            <strong style="display:block;font-size:1.05rem;margin-bottom:6px">¿Qué deseas hacer?</strong>
+            <p style="margin:0 0 16px;opacity:.85;font-size:.9rem">Hay cambios sin guardar en esta ventana. Si sales ahora se pierden.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+                <button type="button" data-fv="descartar" style="${bt}background:rgba(248,113,113,.15);border-color:rgba(248,113,113,.5)">Descartar cambios</button>
+                ${guardar ? `<button type="button" data-fv="guardar" style="${bt}background:#16a34a">Guardar</button>` : ''}
+                <button type="button" data-fv="seguir" style="${bt}background:#ff7a1a">Seguir editando</button></div></div>`;
+        document.body.appendChild(ov);
+        const fin = (acc) => { ov.remove(); resolve(acc); };
+        ov.addEventListener('click', (e) => { const b = e.target.closest('[data-fv]'); if (b) fin(b.dataset.fv); else if (e.target === ov) fin('seguir'); });
+        ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); fin('seguir'); } });
+        ov.querySelector('[data-fv="seguir"]').focus();
     });
+    // Resuelve la respuesta: guardar = pulsa el botón de guardar de la ventana (si falta un dato, la ventana queda abierta con su aviso).
+    const resolver = (acc, fondo, descartar) => {
+        if (acc === 'guardar') { const g = fondo && botonGuardar(fondo); if (g) g.click(); return; }
+        if (acc === 'descartar') descartar();
+    };
 
     // Toque en el fondo (fuera de la ventana).
     document.addEventListener('click', (e) => {
@@ -1225,12 +1256,28 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
         if (fondo.dataset.cierreConfirmado) { delete fondo.dataset.cierreConfirmado; sucios.delete(fondo); return; }
         e.stopImmediatePropagation();
         e.preventDefault();
-        preguntar().then((ok) => {
-            if (!ok) return;
+        preguntar(fondo).then((acc) => resolver(acc, fondo, () => {
             fondo.dataset.cierreConfirmado = '1';
             fondo.click(); // reinyecta el clic: el manejador original cierra el modal
             setTimeout(() => { delete fondo.dataset.cierreConfirmado; }, 0);
-        });
+        }));
+    }, true);
+
+    // Botón de cerrar (×) de una ventana con cambios: misma pregunta, nunca se pierde lo escrito.
+    let cierreBtnConfirmado = false;
+    document.addEventListener('click', (e) => {
+        if (cierreBtnConfirmado || !(e.target instanceof Element)) return;
+        const btn = e.target.closest('button,[role="button"]');
+        if (!btn || !esCerrar(btn)) return;
+        const fondo = fondoDe(btn);
+        if (!fondo || !sucios.has(fondo) || !visible(fondo)) return;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        preguntar(fondo).then((acc) => resolver(acc, fondo, () => {
+            cierreBtnConfirmado = true;
+            btn.click();
+            setTimeout(() => { cierreBtnConfirmado = false; }, 0);
+        }));
     }, true);
 
     // Tecla Escape.
@@ -1242,12 +1289,11 @@ function showConfirmModal({ icon = '⚠️', title, message = '', confirmText = 
         if (document.getElementById('_genericConfirmOverlay')) return;
         e.stopImmediatePropagation();
         e.preventDefault();
-        preguntar().then((ok) => {
-            if (!ok) return;
+        preguntar(activo).then((acc) => resolver(acc, activo, () => {
             escConfirmado = true;
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
             setTimeout(() => { escConfirmado = false; }, 0);
-        });
+        }));
     }, true);
 
     // Lo "sucio" también cuenta para no recargar la pantalla (ver _admBloqueoRecarga).
@@ -5731,6 +5777,108 @@ function _posFbSyncBoton() { const m = document.getElementById('posFbModal'); do
 setInterval(() => { try { _posFbActualizarInsignia(); } catch (_) { /* aún sin datos */ } }, 15000);
 setTimeout(() => { try { _posPendRefrescar(); } catch (_) { /* aún sin sesión */ } }, 12000);
 setInterval(() => { try { _posPendRefrescar(); } catch (_) { /* aún sin sesión */ } }, 300000);
+
+// ── REGLA DE FORMA (todo el admin): nada de círculos ni píldoras. Todo lo que tenga esquinas redondeadas usa la MISMA curvatura
+// (--ui-radius, 9px) sin importar su tamaño. Las esquinas rectas (0) se respetan. Se aplica a lo que ya está en pantalla y a todo lo
+// que se dibuje después (listas, modales, tarjetas). Excepciones: FODI flotante, ilustraciones (img/svg/canvas/video) y spinners.
+const _FORMA_SALTAR = 'img,svg,canvas,video,picture,iframe,script,style,#fodiFlot,.grecaptcha-badge,[data-forma="libre"],.admin-skel,[class*="spinner"],[class*="loader"],[class*="loading-ring"]';
+const _FORMA_ESQ = ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'];
+function _formaUnificarEl(el) {
+    if (!el || el.nodeType !== 1 || el.matches(_FORMA_SALTAR) || el.closest('#fodiFlot,svg,.grecaptcha-badge,[data-forma="libre"]')) return;
+    const cs = getComputedStyle(el);
+    for (let i = 0; i < 4; i++) {
+        const v = cs[`border${_FORMA_ESQ[i]}Radius`];
+        if (v && v !== '0px' && v !== '9px') el.style.setProperty(`border-${['top-left', 'top-right', 'bottom-right', 'bottom-left'][i]}-radius`, 'var(--ui-radius)', 'important');
+    }
+}
+// ── FASE 2 · VENTANAS EMERGENTES: mismo tamaño, estilo y botones en todo el admin ────────────────────────────────
+// Dos tamaños: estándar (--modal-w-estandar, 560 px) y grande (--modal-w-grande, 900 px; formularios largos o con tablas). Alto máximo
+// --modal-h-max con scroll interno. Pie con botones en el mismo orden: Atrás · Cancelar · (Eliminar) · Siguiente/Guardar a la derecha,
+// con el mismo estilo (primario naranja, secundario gris, peligro rojo). Se puede forzar el tamaño con data-modal-tam="grande|estandar"
+// en la tarjeta, y excluir una ventana con data-modal="libre".
+const _MODAL_SALTAR = '#adminAuthOverlay,.admin-auth-overlay,#posFbModal,#_genericConfirmOverlay,#fodiFlot,#orderTicketPanel,.mobile-ticket-backdrop,.mesero-invalid-screen,[data-modal="libre"]';
+const _MODAL_ROLES = [
+    [/^(eliminar|borrar|anular|quitar)/i, 'peligro', 2],
+    [/^(atrás|atras|volver)/i, 'atras', 0],
+    [/^(cancelar|cerrar|omitir|descartar)/i, 'secundario', 1],
+    [/^(guardar|registrar|crear|confirmar|aceptar|aplicar|actualizar|agregar|añadir|siguiente|continuar|cobrar|enviar|listo|finalizar|imprimir|importar)/i, 'primario', 3]
+];
+function _modalRol(b) {
+    const t = (b.textContent || '').trim().replace(/^[^\p{L}]+/u, '');
+    const r = _MODAL_ROLES.find(([re]) => re.test(t));
+    return r ? { rol: r[1], orden: r[2] } : null;
+}
+function _modalEsPie(parent, tarjeta) {
+    for (let n = parent; n && n !== tarjeta; n = n.parentElement) {
+        const p = n.parentElement;
+        if (!p) return false;
+        const hijos = [...p.children];
+        if (hijos.indexOf(n) < hijos.length - 2) return false;
+    }
+    return true;
+}
+function _modalUnificarTarjeta(fondo, tarjeta) {
+    const sp = (el, k, v) => el.style.setProperty(k, v, 'important');
+    const csT = getComputedStyle(tarjeta);
+    const grande = tarjeta.dataset.modalTam === 'grande' || (tarjeta.dataset.modalTam !== 'estandar' && (tarjeta.querySelectorAll('input,select,textarea').length >= 8 || !!tarjeta.querySelector('table')));
+    sp(tarjeta, 'width', `min(100%, var(--modal-w-${grande ? 'grande' : 'estandar'}))`);
+    sp(tarjeta, 'min-width', '0');
+    sp(tarjeta, 'max-width', 'none');
+    sp(tarjeta, 'max-height', 'var(--modal-h-max)');
+    sp(tarjeta, 'box-sizing', 'border-box');
+    sp(tarjeta, 'border', '1px solid rgba(255,255,255,0.07)');
+    if (csT.overflowY === 'visible') sp(tarjeta, 'overflow-y', 'auto');
+    if (!/flex|grid/.test(getComputedStyle(fondo).display)) { sp(tarjeta, 'margin-left', 'auto'); sp(tarjeta, 'margin-right', 'auto'); }
+    // Botones del pie: mismo orden y estilo
+    const grupos = new Map();
+    tarjeta.querySelectorAll('button,input[type="submit"]').forEach((b) => {
+        if (b.closest('[data-modal="libre"]')) return;
+        const r = _modalRol(b);
+        if (!r) return;
+        const p = b.parentElement;
+        if (!grupos.has(p)) grupos.set(p, []);
+        grupos.get(p).push({ b, r });
+    });
+    grupos.forEach((lista, p) => {
+        if (lista.length < 2 || !_modalEsPie(p, tarjeta)) return;
+        if (!/flex|grid/.test(getComputedStyle(p).display)) sp(p, 'display', 'flex');
+        sp(p, 'flex-wrap', 'wrap');
+        sp(p, 'justify-content', 'flex-end');
+        sp(p, 'gap', '8px');
+        lista.forEach(({ b, r }) => { b.setAttribute('data-modal-rol', r.rol); sp(b, 'order', String(r.orden)); });
+    });
+}
+function _modalesUnificar() {
+    document.querySelectorAll('body > *, [id*="odal"], [class*="modal"], [class*="overlay"], [class*="backdrop"]').forEach((fondo) => {
+        if (fondo.matches(_MODAL_SALTAR) || fondo.closest(_MODAL_SALTAR)) return;
+        const cs = getComputedStyle(fondo);
+        if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden' || !fondo.getClientRects().length) return;
+        const r = fondo.getBoundingClientRect();
+        if (r.width < window.innerWidth * 0.9 || r.height < window.innerHeight * 0.6) return;
+        const tarjeta = [...fondo.children].filter((c) => c.nodeType === 1 && getComputedStyle(c).display !== 'none' && c.getClientRects().length)
+            .sort((a, b) => (b.offsetWidth * b.offsetHeight) - (a.offsetWidth * a.offsetHeight))[0];
+        if (tarjeta && getComputedStyle(tarjeta).position !== 'fixed') _modalUnificarTarjeta(fondo, tarjeta);
+    });
+}
+
+function _formaUnificar(raiz) {
+    if (!raiz) return;
+    _formaUnificarEl(raiz);
+    raiz.querySelectorAll && raiz.querySelectorAll('*').forEach(_formaUnificarEl);
+}
+(() => {
+    let cola = [], programado = false;
+    const vaciar = () => { programado = false; const lote = cola; cola = []; lote.forEach((n) => { if (n.isConnected) _formaUnificar(n); }); try { _modalesUnificar(); } catch (_) { /* sin ventanas */ } };
+    const obs = new MutationObserver((muts) => {
+        muts.forEach((m) => m.addedNodes.forEach((n) => { if (n.nodeType === 1) cola.push(n); }));
+        if (cola.length && !programado) { programado = true; setTimeout(vaciar, 60); }
+    });
+    // Lo que cambia de forma al cambiar de estado (abrir un panel, cambiar de pestaña) se repasa poco después de cada toque.
+    let repaso = false;
+    document.addEventListener('click', () => { if (repaso) return; repaso = true; setTimeout(() => { repaso = false; _formaUnificar(document.body); try { _modalesUnificar(); } catch (_) { /* sin ventanas */ } }, 300); }, true);
+    const arrancar = () => { _formaUnificar(document.body); try { _modalesUnificar(); } catch (_) { /* sin ventanas */ } obs.observe(document.body, { childList: true, subtree: true }); };
+    if (document.body) setTimeout(arrancar, 600); else document.addEventListener('DOMContentLoaded', () => setTimeout(arrancar, 600));
+})();
 
 const _waImgReducir = (file) => new Promise((ok, mal) => {
     const url = URL.createObjectURL(file), im = new Image();
