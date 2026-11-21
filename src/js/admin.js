@@ -8619,6 +8619,25 @@ function _posComboExtrasBar(productId, productName) {
     const state = { sinText: '', extras: [] };
     const el = document.createElement('div');
     el.className = 'combo-modal-extras';
+    // Las bebidas (catálogo Bebidas o categoría BEBIDAS) se manejan solo como bebida: sin «Quitar / Salsas» ni «Adicionales».
+    // En su lugar solo se elige cómo se sirve: «Con hielo» o «Al clima» (queda escrito en la nota del pedido).
+    const baseId = String(productId || '').split('::')[0];
+    const prodBase = (productsState || []).find((p) => p.id === baseId);
+    if (String(productId || '').startsWith('bebida::') || /^bebidas?$/.test(normalizeCategoryKey((prodBase && (prodBase.categoria || prodBase.categoryName)) || ''))) {
+        el.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;';
+        [['🧊 Con hielo', 'Con hielo'], ['🌡️ Al clima', 'Al clima']].forEach(([lbl, val]) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = lbl;
+            b.dataset.sirve = val;
+            b.addEventListener('click', () => {
+                state.sinText = state.sinText === val ? '' : val; // tocar otra vez la deselecciona
+                el.querySelectorAll('button').forEach((x) => x.classList.toggle('has-val', x.dataset.sirve === state.sinText));
+            });
+            el.appendChild(b);
+        });
+        return { el, state };
+    }
     const btnSin = document.createElement('button');
     btnSin.type = 'button';
     const btnAdic = document.createElement('button');
