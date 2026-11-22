@@ -739,34 +739,50 @@
         $('btnAviso').hidden = ya || !avisoSoportado() || Notification.permission === 'denied' || (estado && estado.avisoRachaActivo === false);
     }
     async function activarAviso() {
-        const b = $('btnAviso'); b.disabled = true;
+        const b = $('btnAviso'); if (b.disabled) return;
+        const original = b.innerHTML;
+        b.disabled = true; b.classList.add('cargando'); b.innerHTML = '<span class="campana">🔔</span> Activando…';
+        let ok = false, msg = '';
         try {
             if (await Notification.requestPermission() !== 'granted') throw new Error('Sin permiso no podemos avisarte. Puedes activarlo en los ajustes del navegador.');
             const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/juega-aviso/' });
-            if (!reg.active) await new Promise((ok) => { const sw = reg.installing || reg.waiting; if (!sw) return ok(); sw.addEventListener('statechange', () => { if (sw.state === 'activated') ok(); }); setTimeout(ok, 8000); });
+            if (!reg.active) await new Promise((res) => { const sw = reg.installing || reg.waiting; if (!sw) return res(); sw.addEventListener('statechange', () => { if (sw.state === 'activated') res(); }); setTimeout(res, 8000); });
             const token = await firebase.messaging().getToken({ vapidKey: VAPID_AVISOS, serviceWorkerRegistration: reg });
             if (!token) throw new Error('No se pudo activar el aviso en este celular.');
             await funciones.httpsCallable('juegoPush')({ accion: 'registrar', token });
             try { localStorage.setItem('roalAvisoRacha', '1'); } catch (_) { /* sin almacenamiento */ }
-            b.hidden = true; $('cofrePremio').textContent = '🔔 Listo: te avisamos si tu racha está en riesgo.'; $('cofrePremio').hidden = false;
-        } catch (e) { $('cofrePremio').textContent = e && e.message ? e.message : 'No se pudo activar el aviso.'; $('cofrePremio').hidden = false; }
-        b.disabled = false;
+            ok = true;
+        } catch (e) { msg = e && e.message ? e.message : 'No se pudo activar el aviso.'; }
+        b.classList.remove('cargando');
+        if (ok) {
+            b.classList.add('listo'); b.innerHTML = '✅ ¡Listo! Te avisamos si tu racha está en riesgo';
+            try { Sonido.monedas(); } catch (_) { /* sin sonido */ }
+            setTimeout(() => { b.hidden = true; b.classList.remove('listo'); b.disabled = false; b.innerHTML = original; }, 2600);
+        } else { b.disabled = false; b.innerHTML = original; $('cofrePremio').className = 'error'; $('cofrePremio').textContent = msg; $('cofrePremio').hidden = false; }
     }
     function abrirMisiones() { Sonido.clic(); $('cofrePremio').hidden = true; pintarMisiones(); $('misiones').hidden = false; }
     async function abrirCofre() {
-        const b = $('btnAbrirCofre'); b.disabled = true;
+        const b = $('btnAbrirCofre'); if (b.disabled) return;
+        const textoOrig = b.textContent;
+        b.disabled = true; b.classList.add('abriendo'); b.textContent = '🎁 Abriendo…'; $('cofrePremio').hidden = true;
+        let r = null, falla = '';
         try {
-            const r = (await funciones.httpsCallable('juegoAbrirCofre')({})).data;
-            const p = r.premio || {};
-            $('cofrePremio').textContent = p.tipo === 'escudo' ? '🛡️ ¡Un escudo de racha!' : `💰 ${peso(p.valor)} en créditos`;
-            $('cofrePremio').hidden = false;
-            Sonido.monedas(); if (escena) escena.confeti();
-            if (navigator.vibrate) try { navigator.vibrate([40, 30, 80]); } catch (_) { /* sin vibración */ }
-            estado = { ...estado, cofres: r.cofres, escudos: r.escudos };
-            if (r.creditoJuego != null) estado.creditoJuego = r.creditoJuego;
-            mostrarEstado(); pintarMisiones();
-        } catch (e) { $('cofrePremio').textContent = e && e.message ? e.message : 'No se pudo abrir el cofre.'; $('cofrePremio').hidden = false; }
-        b.disabled = false;
+            // El cofre se sacude al menos medio segundo (suspenso) mientras el servidor decide el premio.
+            const [resp] = await Promise.all([funciones.httpsCallable('juegoAbrirCofre')({}), new Promise((ok) => setTimeout(ok, 650))]);
+            r = resp.data;
+        } catch (e) { falla = e && e.message ? e.message : 'No se pudo abrir el cofre. Intenta de nuevo.'; }
+        b.classList.remove('abriendo'); b.disabled = false; b.textContent = textoOrig;
+        if (!r) { $('cofrePremio').textContent = falla; $('cofrePremio').className = 'error'; $('cofrePremio').hidden = false; return; }
+        const p = r.premio || {};
+        $('cofrePremio').className = ''; $('cofrePremio').textContent = p.tipo === 'escudo' ? '🛡️ ¡Un escudo de racha!' : `💰 ${peso(p.valor)} en créditos`;
+        $('cofrePremio').hidden = false;
+        estado = { ...estado, cofres: r.cofres, escudos: r.escudos };
+        if (r.creditoJuego != null) estado.creditoJuego = r.creditoJuego;
+        // Efectos y pantalla: si algo falla aquí (sonido, vibración) el premio ya quedó entregado y mostrado.
+        try { Sonido.monedas(); } catch (_) { /* sin sonido */ }
+        try { if (navigator.vibrate) navigator.vibrate([40, 30, 80]); } catch (_) { /* sin vibración */ }
+        try { mostrarEstado(); } catch (_) { /* nada */ }
+        try { pintarMisiones(); } catch (_) { /* nada */ }
     }
 
     async function jugarOtra() {
