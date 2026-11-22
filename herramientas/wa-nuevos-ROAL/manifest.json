@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "ROAL · Nuevos de WhatsApp",
+  "version": "1.0.0",
+  "description": "Avisa a FODEXA qué números sin guardar escribieron por WhatsApp Web, para la oferta de Nuevo cliente. Solo lee la lista de chats; no envía ni responde nada.",
+  "permissions": [],
+  "host_permissions": ["https://us-central1-roal-burger-menu.cloudfunctions.net/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://web.whatsapp.com/*"], "js": ["config.js", "content.js"], "run_at": "document_idle" }
+  ]
+}
