@@ -69,11 +69,111 @@
     root.BlockRoalMotor = Motor;
     root.BlockRoalEscena = () => escena; // solo para depurar/probar en el navegador
 
-    // ───────────────────────── 2) ESCENA + SERVIDOR ─────────────────────────
+    // ───────────────────────── 2) SONIDO + ESCENA + SERVIDOR ─────────────────────────
     const $ = (id) => document.getElementById(id);
     const fmt = (n) => Number(n || 0).toLocaleString('es-CO');
     const peso = (n) => '$' + fmt(n);
 
+    // ── Sonido: todo sintetizado con Web Audio (sin archivos). Efectos + música en bucle. ──
+    const Sonido = (function () {
+        let ctx = null, master = null, sfxG = null, musG = null, timer = null, paso = 0, proxT = 0, corriendo = false;
+        let musicaOn = true, sfxOn = true;
+        try { const o = JSON.parse(localStorage.getItem('blockroal_snd') || '{}'); musicaOn = o.m !== false; sfxOn = o.s !== false; } catch (_) { /* sin almacenamiento */ }
+        const guardar = () => { try { localStorage.setItem('blockroal_snd', JSON.stringify({ m: musicaOn, s: sfxOn })); } catch (_) { /* nada */ } };
+        const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+        function init() {
+            if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return;
+            ctx = new AC();
+            master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
+            sfxG = ctx.createGain(); sfxG.gain.value = sfxOn ? 0.85 : 0; sfxG.connect(master);
+            musG = ctx.createGain(); musG.gain.value = musicaOn ? 0.3 : 0; musG.connect(master);
+            if (musicaOn) iniciarMusica();
+        }
+        function tono(f, t0, dur, tipo, vol, dest, f2) {
+            if (!ctx) return;
+            const o = ctx.createOscillator(), g = ctx.createGain();
+            o.type = tipo; o.frequency.setValueAtTime(f, t0);
+            if (f2) o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t0 + dur);
+            g.gain.setValueAtTime(0.0001, t0);
+            g.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+            o.connect(g); g.connect(dest); o.start(t0); o.stop(t0 + dur + 0.03);
+        }
+        function ruido(t0, dur, vol, dest, fc) {
+            if (!ctx) return;
+            const n = Math.max(1, Math.floor(ctx.sampleRate * dur)), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+            for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+            const s = ctx.createBufferSource(); s.buffer = buf;
+            const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = fc || 6000;
+            const g = ctx.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+            s.connect(f); f.connect(g); g.connect(dest); s.start(t0); s.stop(t0 + dur + 0.02);
+        }
+        // Música: bajo + arpegio + bombo + hi-hat, 128 bpm, en bucle de 4 compases. Se agenda con anticipación.
+        const BAJO = [0, 0, 0, 0, 3, 3, 3, 3, -2, -2, -2, -2, -4, -4, -4, -4]; // raíz por semicorchea (compás de 16)
+        const ARP = [0, 4, 7, 12, 7, 4, 0, 4, 7, 12, 16, 12, 7, 4, 7, 12];
+        const RAICES = [57, 53, 55, 52]; // La, Fa, Sol, Mi
+        function agendar() {
+            if (!ctx || !corriendo) return;
+            const tp = 60 / 128 / 4;
+            while (proxT < ctx.currentTime + 0.25) {
+                const comp = Math.floor(paso / 16) % 4, k = paso % 16, raiz = RAICES[comp];
+                if (k % 4 === 0) tono(120, proxT, 0.14, 'sine', 0.9, musG, 45);                    // bombo
+                if (k % 2 === 1) ruido(proxT, 0.04, 0.16, musG, 7000);                              // hi-hat
+                if (k === 4 || k === 12) ruido(proxT, 0.1, 0.22, musG, 2500);                       // caja
+                if (k % 2 === 0) tono(hz(raiz - 24), proxT, tp * 1.8, 'triangle', 0.55, musG);       // bajo
+                tono(hz(raiz + 12 + ARP[k]), proxT, tp * 0.9, 'square', 0.1, musG);                 // arpegio
+                if (k === 0) tono(hz(raiz + 24), proxT, tp * 3, 'sine', 0.12, musG);                // brillo
+                proxT += tp; paso++;
+            }
+        }
+        function iniciarMusica() {
+            if (!ctx || corriendo) return;
+            corriendo = true; proxT = ctx.currentTime + 0.05; paso = 0;
+            timer = setInterval(agendar, 60);
+        }
+        function detenerMusica() { corriendo = false; if (timer) { clearInterval(timer); timer = null; } }
+        document.addEventListener('visibilitychange', () => {
+            if (!ctx) return;
+            if (document.hidden) { detenerMusica(); ctx.suspend(); } else { ctx.resume(); if (musicaOn) iniciarMusica(); }
+        });
+
+        const S = {
+            init,
+            get estadoAudio() { return ctx ? ctx.state : 'sin-iniciar'; }, get musicaCorriendo() { return corriendo; },
+            get musicaOn() { return musicaOn; }, get sfxOn() { return sfxOn; },
+            setMusica(v) { musicaOn = !!v; guardar(); if (musG) musG.gain.value = musicaOn ? 0.3 : 0; if (musicaOn) iniciarMusica(); else detenerMusica(); },
+            setSfx(v) { sfxOn = !!v; guardar(); if (sfxG) sfxG.gain.value = sfxOn ? 0.85 : 0; },
+            tomar() { if (!ctx) return; const t = ctx.currentTime; tono(520, t, 0.09, 'square', 0.22, sfxG, 880); },
+            invalido() { if (!ctx) return; const t = ctx.currentTime; tono(180, t, 0.2, 'sawtooth', 0.28, sfxG, 70); },
+            colocar() { if (!ctx) return; const t = ctx.currentTime; tono(240, t, 0.14, 'sine', 0.7, sfxG, 90); ruido(t, 0.05, 0.25, sfxG, 3000); },
+            limpiar(lineas, combo) {
+                if (!ctx) return; const t = ctx.currentTime, esc = [0, 4, 7, 12, 16, 19, 24, 28], n = Math.min(esc.length, 3 + lineas * 2), base = 72 + Math.min(combo, 6);
+                for (let i = 0; i < n; i++) tono(hz(base + esc[i]), t + i * 0.055, 0.22, i % 2 ? 'triangle' : 'square', 0.3, sfxG);
+                ruido(t, 0.35, 0.3, sfxG, 1500);
+                if (combo > 1) for (let i = 0; i < 4; i++) tono(hz(base + 36 + i * 4), t + n * 0.055 + i * 0.05, 0.25, 'sine', 0.28, sfxG);
+            },
+            nivel() {
+                if (!ctx) return; const t = ctx.currentTime;
+                [0, 4, 7, 12, 16, 19, 24].forEach((s, i) => tono(hz(72 + s), t + i * 0.09, 0.4, 'square', 0.26, sfxG));
+                [0, 4, 7, 12].forEach((s) => tono(hz(60 + s), t + 0.7, 0.9, 'triangle', 0.3, sfxG));
+            },
+            fin() {
+                if (!ctx) return; const t = ctx.currentTime;
+                [67, 64, 60, 55].forEach((m, i) => tono(hz(m), t + i * 0.2, 0.34, 'sawtooth', 0.26, sfxG, hz(m) * 0.92));
+                tono(80, t + 0.85, 0.7, 'sine', 0.6, sfxG, 40);
+            },
+            monedas() { if (!ctx) return; const t = ctx.currentTime; tono(hz(88), t, 0.12, 'square', 0.22, sfxG); tono(hz(95), t + 0.1, 0.4, 'square', 0.22, sfxG); },
+            clic() { if (!ctx) return; tono(700, ctx.currentTime, 0.06, 'triangle', 0.25, sfxG, 1000); }
+        };
+        return S;
+    })();
+
+    root.BlockRoalSonido = Sonido; // solo para depurar/probar en el navegador
+
+    // ── Estado / servidor ──
     let estado = null;        // lo que devuelve juegoEstado (el servidor manda)
     let funciones = null;
     let juego = null;         // instancia Phaser
@@ -120,7 +220,8 @@
                 partes.push(x.puntosOtorgados > 0 ? `+${fmt(x.puntosOtorgados)} puntos ROAL` : 'Hoy ya llegaste al tope de puntos');
                 if (x.topeAlcanzado && x.puntosOtorgados > 0) partes.push('(llegaste al tope diario)');
                 if (x.bonusRacha > 0) partes.push(`🔥 Bonus de racha +${x.bonusRacha}`);
-                if (x.nivelSuperado) { $('resTitulo').textContent = '¡Nivel superado!'; partes.push(`🏆 Pasaste al nivel ${estado.nivelMax + 1}`); }
+                if (x.nivelSuperado) { $('resTitulo').textContent = '¡Nivel superado!'; partes.push(`🏆 Pasaste al nivel ${estado.nivelMax + 1}`); Sonido.nivel(); if (escena) escena.confeti(); }
+                else if (x.creditoGanado > 0) Sonido.monedas();
                 if (x.creditoGanado > 0) partes.push(`Ganaste ${peso(x.creditoGanado)} en créditos ROAL`);
                 $('resDetalle').textContent = partes.join('\n');
             }
@@ -130,53 +231,82 @@
 
     function crearJuego() {
         const W = 360, H = 640, CELDA = 40, GX = 20, GY = 96, BANDEJA_Y = 480;
-        const COLORES = { pan: 0xd98a2b, carne: 0x6b3a22, queso: 0xf2b705, tequeno: 0xc9791e, arepa: 0xe8d3a8 };
-        const FONDO = 0x2a1810, TABLERO = 0x3a2418, CASILLA = 0x4a2e1e;
+        // Colores vibrantes ("otro mundo"): neón saturado sobre fondo cósmico.
+        const PAL = { pan: 0xff9100, carne: 0xff2e7e, queso: 0xffe600, tequeno: 0x22ff8f, arepa: 0x1fd8ff };
+        const NEON = [0xff2e7e, 0xff9100, 0xffe600, 0x22ff8f, 0x1fd8ff, 0x8a5cff];
+        const CASILLA = 0x2a1660;
+        const hsv = (h) => Phaser.Display.Color.HSVToRGB((h % 360) / 360, 0.85, 1).color;
 
         class Escena extends Phaser.Scene {
             create() {
                 escena = this;
-                this.cameras.main.setBackgroundColor(FONDO);
                 this.texturas();
-                this.add.rectangle(GX + (N * CELDA) / 2, GY + (N * CELDA) / 2, N * CELDA + 8, N * CELDA + 8, TABLERO).setStrokeStyle(2, 0xff6b00);
-                this.fondoCeldas = [];
-                for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) this.add.rectangle(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, CELDA - 3, CELDA - 3, CASILLA);
+                this.fondo();
+                this.add.rectangle(GX + (N * CELDA) / 2, GY + (N * CELDA) / 2, N * CELDA + 10, N * CELDA + 10, 0x0e0630, 0.82);
+                for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) this.add.rectangle(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, CELDA - 3, CELDA - 3, CASILLA).setStrokeStyle(1, 0x4a2a9a, 0.6);
+                this.borde = this.add.graphics().setDepth(4);                      // borde animado (se redibuja en update)
                 this.celdasImg = Array.from({ length: N }, () => Array(N).fill(null));
-                this.txtPuntos = this.add.text(W / 2, 28, '0', { fontFamily: 'Anton', fontSize: '44px', color: '#ff8a1f' }).setOrigin(0.5);
-                this.txtMeta = this.add.text(W / 2, 66, '', { fontFamily: 'Montserrat', fontSize: '13px', color: '#e8d3a8' }).setOrigin(0.5);
+                this.txtPuntos = this.add.text(W / 2, 30, '0', { fontFamily: 'Anton', fontSize: '46px', color: '#fff', stroke: '#ff2e7e', strokeThickness: 5, padding: { x: 24, y: 18 } }).setOrigin(0.5);
+                this.txtPuntos.setShadow(0, 0, '#22ff8f', 10, true, true);
+                this.txtMeta = this.add.text(W / 2, 68, '', { fontFamily: 'Montserrat', fontSize: '13px', fontStyle: '700', color: '#c9b8ff' }).setOrigin(0.5);
                 this.fantasma = this.add.graphics().setDepth(5);
+                this.emisores = INGREDIENTES.map((n) => this.add.particles(0, 0, 'chispa', { speed: { min: 90, max: 300 }, angle: { min: 0, max: 360 }, scale: { start: 1, end: 0 }, lifespan: { min: 350, max: 750 }, gravityY: 380, tint: PAL[n], blendMode: 'ADD', emitting: false }).setDepth(30));
+                this.arcoiris = this.add.particles(0, 0, 'chispa', { speed: { min: 120, max: 420 }, angle: { min: 200, max: 340 }, scale: { start: 1.4, end: 0 }, lifespan: 1400, gravityY: 500, tint: NEON, blendMode: 'ADD', emitting: false }).setDepth(31);
                 this.input.on('pointermove', (p) => this.arrastrar(p));
                 this.input.on('pointerup', () => this.soltar());
                 this.input.on('pointerupoutside', () => this.soltar());
                 this.nueva();
+            }
+            fondo() {
+                // Estrellas que titilan + nebulosas que flotan (sobre el degradado cósmico de la página).
+                for (let k = 0; k < 46; k++) {
+                    const s = this.add.circle(Phaser.Math.Between(0, W), Phaser.Math.Between(0, H), Phaser.Math.FloatBetween(0.8, 2.2), 0xffffff, 0.9).setBlendMode('ADD');
+                    this.tweens.add({ targets: s, alpha: { from: 0.15, to: 1 }, duration: Phaser.Math.Between(700, 2200), yoyo: true, repeat: -1, delay: Phaser.Math.Between(0, 1500) });
+                }
+                [[0xff2e7e, 40, 120], [0x1fd8ff, 330, 380], [0x8a5cff, 60, 560]].forEach(([c, x, y], i) => {
+                    const o = this.add.circle(x, y, 120, c, 0.16).setBlendMode('ADD');
+                    this.tweens.add({ targets: o, x: x + (i % 2 ? -50 : 50), y: y + 40, scale: { from: 0.85, to: 1.25 }, duration: 5000 + i * 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
+                });
             }
             texturas() {
                 const g = this.make.graphics({ x: 0, y: 0, add: false });
                 const S = CELDA - 3;
                 INGREDIENTES.forEach((nombre) => {
                     g.clear();
-                    g.fillStyle(COLORES[nombre], 1).fillRoundedRect(0, 0, S, S, 7);
+                    const c = PAL[nombre];
+                    g.fillStyle(c, 1).fillRoundedRect(0, 0, S, S, 8);
+                    g.fillStyle(0xffffff, 0.28).fillRoundedRect(2, 2, S - 4, S / 2.2, { tl: 6, tr: 6, bl: 2, br: 2 }); // brillo superior
                     if (nombre === 'pan') {                                  // pan: domo con ajonjolí
-                        g.fillStyle(0xf0b25a, 1).fillRoundedRect(3, 3, S - 6, S / 2, 9);
-                        g.fillStyle(0xfff3d6, 1); [[10, 9], [18, 7], [26, 10], [14, 16], [23, 16]].forEach(([x, y]) => g.fillEllipse(x, y, 4, 2.4));
+                        g.fillStyle(0xffd27a, 1).fillRoundedRect(4, 4, S - 8, S / 2, 10);
+                        g.fillStyle(0xffffff, 1); [[10, 9], [18, 7], [26, 10], [14, 16], [23, 16]].forEach(([x, y]) => g.fillEllipse(x, y, 4, 2.4));
                     } else if (nombre === 'carne') {                          // carne: parrilla
-                        g.fillStyle(0x3b1d10, 1); [9, 18, 27].forEach((y) => g.fillRect(4, y, S - 8, 3));
-                        g.fillStyle(0x8c5033, 1).fillRect(5, 5, S - 10, 2);
+                        g.fillStyle(0x5a0a2c, 0.85); [10, 19, 28].forEach((y) => g.fillRect(4, y, S - 8, 3));
                     } else if (nombre === 'queso') {                          // queso: huecos
-                        g.fillStyle(0xffd84a, 1).fillRoundedRect(2, 2, S - 4, S - 4, 6);
-                        g.fillStyle(0xc98a00, 1); [[10, 10, 4], [25, 14, 3], [16, 25, 4], [28, 28, 2.5]].forEach(([x, y, r]) => g.fillCircle(x, y, r));
-                    } else if (nombre === 'tequeno') {                        // tequeño: masa frita en rombos
-                        g.lineStyle(2, 0xf3b25c, 1);
+                        g.fillStyle(0xc99a00, 1); [[10, 10, 4], [25, 14, 3], [16, 25, 4], [28, 28, 2.5]].forEach(([x, y, r]) => g.fillCircle(x, y, r));
+                    } else if (nombre === 'tequeno') {                        // tequeño: rombos de masa
+                        g.lineStyle(2, 0xd8ffe9, 0.9);
                         for (let k = -S; k < S * 2; k += 9) { g.lineBetween(k, 0, k + S, S); g.lineBetween(k, S, k + S, 0); }
-                        g.fillStyle(0x8a4a10, 0.5).fillRect(0, S - 5, S, 5);
                     } else {                                                  // arepa: redonda con tostado
-                        g.fillStyle(0xf6e7c4, 1).fillCircle(S / 2, S / 2, S / 2 - 3);
-                        g.fillStyle(0xc99a55, 1); [[12, 14, 3], [24, 20, 3.5], [16, 26, 2.5], [26, 10, 2]].forEach(([x, y, r]) => g.fillCircle(x, y, r));
+                        g.fillStyle(0xe9fbff, 1).fillCircle(S / 2, S / 2, S / 2 - 4);
+                        g.fillStyle(0x4aa6c4, 1); [[12, 14, 3], [24, 20, 3.5], [16, 26, 2.5], [26, 10, 2]].forEach(([x, y, r]) => g.fillCircle(x, y, r));
                     }
-                    g.lineStyle(1.5, 0x000000, 0.28).strokeRoundedRect(0.75, 0.75, S - 1.5, S - 1.5, 7);
+                    g.lineStyle(2, 0xffffff, 0.55).strokeRoundedRect(1, 1, S - 2, S - 2, 8);
                     g.generateTexture('ing_' + nombre, S, S);
                 });
+                g.clear(); g.fillStyle(0xffffff, 1).fillCircle(5, 5, 5); g.generateTexture('chispa', 10, 10);
                 g.destroy();
+            }
+            update(time) {
+                // Borde del tablero: arcoíris neón que gira alrededor del marco, con resplandor.
+                const x0 = GX - 5, y0 = GY - 5, w = N * CELDA + 10, h = N * CELDA + 10, per = 2 * (w + h), seg = 96;
+                const pt = (t) => { let d = (t % 1) * per; if (d < w) return [x0 + d, y0]; d -= w; if (d < h) return [x0 + w, y0 + d]; d -= h; if (d < w) return [x0 + w - d, y0 + h]; d -= w; return [x0, y0 + h - d]; };
+                const b = this.borde; b.clear();
+                for (let k = 0; k < seg; k++) {
+                    const a = pt(k / seg), c = pt((k + 1.4) / seg), col = hsv(k * (360 / seg) + time * 0.12);
+                    b.lineStyle(11, col, 0.18); b.lineBetween(a[0], a[1], c[0], c[1]);
+                    b.lineStyle(4, col, 1); b.lineBetween(a[0], a[1], c[0], c[1]);
+                }
+                this.txtPuntos.setStroke(Phaser.Display.Color.IntegerToColor(hsv(time * 0.1)).rgba, 5);
             }
             nueva() {
                 this.grilla = nuevaGrilla();
@@ -191,12 +321,17 @@
             actualizarMeta() {
                 const meta = estado ? estado.metaSiguiente : 500;
                 this.txtMeta.setText(`Meta nivel ${estado ? estado.nivelMax + 1 : 1}: ${fmt(meta)} pts`);
-                this.txtMeta.setColor(this.puntos >= meta ? '#7dffa1' : '#e8d3a8');
+                this.txtMeta.setColor(this.puntos >= meta ? '#22ff8f' : '#c9b8ff');
             }
             repartir() {
                 const datos = nuevasPiezas(this.grilla);
                 this.piezas = datos.map((d, i) => this.crearPieza(d, i));
+                this.piezas.forEach((p, i) => { p.cont.setAlpha(0).setScale(0.2); this.tweens.add({ targets: p.cont, alpha: 1, scale: p.home.esc, duration: 320, delay: i * 90, ease: 'Back.Out', onComplete: () => this.flotar(p) }); });
                 if (!hayJugada(this.grilla, this.piezas.map((p) => p.shape))) this.terminar();
+            }
+            flotar(p) {
+                if (p.usada || !p.cont.active) return;
+                p.flota = this.tweens.add({ targets: p.cont, y: p.home.y - 5, duration: 900 + Math.random() * 400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
             }
             crearPieza(d, idx) {
                 const esc = 0.55, ancho = d.shape[0].length * CELDA, alto = d.shape.length * CELDA;
@@ -207,7 +342,12 @@
                 }
                 cont.setSize(ancho, alto).setInteractive(new Phaser.Geom.Rectangle(-10, -10, ancho + 20, alto + 20), Phaser.Geom.Rectangle.Contains);
                 const pieza = { cont, shape: d.shape, ing: d.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
-                cont.on('pointerdown', (p) => { if (this.fin || pieza.usada) return; this.arrastrando = pieza; cont.setScale(1).setDepth(10); this.arrastrar(p); });
+                cont.on('pointerdown', (p) => {
+                    if (this.fin || pieza.usada) return;
+                    Sonido.init(); Sonido.tomar();
+                    if (pieza.flota) { pieza.flota.stop(); pieza.flota = null; }
+                    this.arrastrando = pieza; cont.setScale(1).setDepth(10); this.arrastrar(p);
+                });
                 return pieza;
             }
             posicionSobreGrilla(p, pieza) {
@@ -221,8 +361,8 @@
                 pz.cont.setPosition(pos.x, pos.y);
                 this.fantasma.clear();
                 if (puedeColocar(this.grilla, pz.shape, pos.r, pos.c)) {
-                    this.fantasma.fillStyle(0xff6b00, 0.35);
-                    for (let i = 0; i < pz.shape.length; i++) for (let j = 0; j < pz.shape[0].length; j++) if (pz.shape[i][j]) this.fantasma.fillRoundedRect(GX + (pos.c + j) * CELDA, GY + (pos.r + i) * CELDA, CELDA - 3, CELDA - 3, 6);
+                    this.fantasma.fillStyle(PAL[INGREDIENTES[pz.ing]], 0.4);
+                    for (let i = 0; i < pz.shape.length; i++) for (let j = 0; j < pz.shape[0].length; j++) if (pz.shape[i][j]) this.fantasma.fillRoundedRect(GX + (pos.c + j) * CELDA, GY + (pos.r + i) * CELDA, CELDA - 3, CELDA - 3, 7);
                 }
             }
             soltar() {
@@ -230,18 +370,23 @@
                 this.arrastrando = null; this.fantasma.clear();
                 const c = Math.round((pz.cont.x - GX) / CELDA), r = Math.round((pz.cont.y - GY) / CELDA);
                 if (!puedeColocar(this.grilla, pz.shape, r, c)) {
-                    this.tweens.add({ targets: pz.cont, x: pz.home.x, y: pz.home.y, scale: pz.home.esc, duration: 160 });
+                    Sonido.invalido();
+                    this.tweens.add({ targets: pz.cont, x: pz.home.x, y: pz.home.y, scale: pz.home.esc, duration: 220, ease: 'Back.Out', onComplete: () => this.flotar(pz) });
                     pz.cont.setDepth(0); return;
                 }
                 this.aplicar(pz, r, c);
             }
             pintarCelda(i, j, ing) {
-                const im = this.add.image(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, 'ing_' + INGREDIENTES[ing]);
+                const im = this.add.image(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, 'ing_' + INGREDIENTES[ing]).setScale(0.4);
+                this.tweens.add({ targets: im, scale: 1, duration: 230, ease: 'Back.Out' });
                 this.celdasImg[i][j] = im; return im;
             }
             aplicar(pz, r, c) {
                 colocar(this.grilla, pz.shape, r, c, pz.ing);
-                for (let i = 0; i < pz.shape.length; i++) for (let j = 0; j < pz.shape[0].length; j++) if (pz.shape[i][j]) this.pintarCelda(r + i, c + j, pz.ing);
+                for (let i = 0; i < pz.shape.length; i++) for (let j = 0; j < pz.shape[0].length; j++) if (pz.shape[i][j]) {
+                    this.pintarCelda(r + i, c + j, pz.ing);
+                    this.emisores[pz.ing].explode(2, GX + (c + j) * CELDA + CELDA / 2, GY + (r + i) * CELDA + CELDA / 2);
+                }
                 pz.usada = true; pz.cont.destroy();
                 const l = lineasLlenas(this.grilla);
                 const nLineas = l.filas.length + l.cols.length;
@@ -249,40 +394,74 @@
                 const gan = puntosJugada({ casillas: celdas(pz.shape), lineas: nLineas, combo: this.combo - 1 });
                 this.puntos += gan; this.jugadas += 1;
                 if (nLineas > 0) {
-                    borrarLineas(this.grilla, l).forEach(([i, j]) => { const im = this.celdasImg[i][j]; if (im) { this.celdasImg[i][j] = null; this.tweens.add({ targets: im, alpha: 0, scale: 1.5, duration: 220, onComplete: () => im.destroy() }); } });
-                    const t = this.add.text(W / 2, GY + (N * CELDA) / 2, this.combo > 1 ? `¡COMBO x${this.combo}!\n+${gan}` : `+${gan}`, { fontFamily: 'Anton', fontSize: '34px', color: '#ffd84a', align: 'center', stroke: '#2a1810', strokeThickness: 5 }).setOrigin(0.5).setDepth(20);
-                    this.tweens.add({ targets: t, y: t.y - 60, alpha: 0, duration: 900, onComplete: () => t.destroy() });
-                    if (navigator.vibrate) try { navigator.vibrate(25); } catch (_) { /* sin vibración */ }
-                }
+                    Sonido.limpiar(nLineas, this.combo);
+                    borrarLineas(this.grilla, l).forEach(([i, j]) => {
+                        const im = this.celdasImg[i][j]; if (!im) return;
+                        this.celdasImg[i][j] = null;
+                        const x = im.x, y = im.y, ing = INGREDIENTES.findIndex((n) => im.texture.key === 'ing_' + n);
+                        im.setTintFill(0xffffff);
+                        this.emisores[Math.max(0, ing)].explode(7, x, y);
+                        this.tweens.add({ targets: im, alpha: 0, scale: 1.7, angle: Phaser.Math.Between(-40, 40), duration: 300, delay: Phaser.Math.Between(0, 120), onComplete: () => im.destroy() });
+                    });
+                    this.cameras.main.shake(140 + nLineas * 40, Math.min(0.012, 0.0035 * nLineas));
+                    if (this.combo > 1 || nLineas > 1) this.cameras.main.flash(140, 255, 255, 255, true);
+                    const col = ['#ff2e7e', '#ffe600', '#22ff8f', '#1fd8ff'][this.combo % 4];
+                    const t = this.add.text(W / 2, GY + (N * CELDA) / 2, this.combo > 1 ? `¡COMBO x${this.combo}!\n+${gan}` : (nLineas > 1 ? `¡DOBLE!\n+${gan}` : `+${gan}`), { fontFamily: 'Anton', fontSize: '38px', color: col, align: 'center', stroke: '#14072e', strokeThickness: 7, padding: { x: 30, y: 24 } }).setOrigin(0.5).setDepth(40).setScale(0.3);
+                    t.setShadow(0, 0, col, 10, true, true);
+                    this.tweens.add({ targets: t, scale: 1.25, duration: 220, ease: 'Back.Out' });
+                    this.tweens.add({ targets: t, y: t.y - 70, alpha: 0, duration: 800, delay: 450, onComplete: () => t.destroy() });
+                    if (navigator.vibrate) try { navigator.vibrate(30 + nLineas * 10); } catch (_) { /* sin vibración */ }
+                } else Sonido.colocar();
                 this.txtPuntos.setText(fmt(this.puntos));
+                this.tweens.add({ targets: this.txtPuntos, scale: { from: 1.3, to: 1 }, duration: 200, ease: 'Back.Out' });
                 this.actualizarMeta();
                 const quedan = this.piezas.filter((p) => !p.usada);
                 if (!quedan.length) this.repartir();
                 else if (!hayJugada(this.grilla, quedan.map((p) => p.shape))) this.terminar();
             }
+            confeti() {
+                for (let k = 0; k < 5; k++) this.time.delayedCall(k * 160, () => this.arcoiris.explode(40, Phaser.Math.Between(40, W - 40), H * 0.55));
+            }
             terminar() {
                 if (this.fin) return;
                 this.fin = true;
+                Sonido.fin();
+                this.cameras.main.shake(350, 0.008);
+                this.tweens.add({ targets: this.celdasImg.flat().filter(Boolean), alpha: 0.35, duration: 500 });
                 terminarPartida(this.puntos, this.jugadas);
             }
         }
 
         juego = new Phaser.Game({
-            type: Phaser.AUTO, parent: 'juegoCanvas', width: W, height: H, backgroundColor: '#2a1810',
+            type: Phaser.AUTO, parent: 'juegoCanvas', width: W, height: H, transparent: true,
             scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
             input: { touch: { capture: true } }, scene: Escena, render: { antialias: true }
         });
     }
 
     async function jugarOtra() {
+        Sonido.clic();
         $('resultado').hidden = true;
         await iniciarPartida();
         if (estado) { try { await cargarEstado(); } catch (_) { /* se queda con el estado anterior */ } }
         if (escena) escena.nueva();
     }
 
+    function pintarBotonesSonido() {
+        $('btnMusica').textContent = Sonido.musicaOn ? '🎵' : '🔇';
+        $('btnMusica').setAttribute('aria-pressed', String(Sonido.musicaOn));
+        $('btnSfx').textContent = Sonido.sfxOn ? '🔊' : '🔈';
+        $('btnSfx').setAttribute('aria-pressed', String(Sonido.sfxOn));
+    }
+
     async function arrancar() {
         const fuentes = Promise.all([document.fonts.load('44px Anton'), document.fonts.load('600 14px Montserrat')]).catch(() => {});
+        // El navegador solo deja sonar el audio tras un toque del usuario: el primero lo activa (y arranca la música).
+        const despertar = () => Sonido.init();
+        document.addEventListener('pointerdown', despertar, { once: true });
+        $('btnMusica').addEventListener('click', () => { Sonido.init(); Sonido.setMusica(!Sonido.musicaOn); pintarBotonesSonido(); });
+        $('btnSfx').addEventListener('click', () => { Sonido.init(); Sonido.setSfx(!Sonido.sfxOn); pintarBotonesSonido(); Sonido.clic(); });
+        pintarBotonesSonido();
         if (!window.firebase || !window.FIREBASE_CONFIG) { aviso('No se pudo cargar el servicio. Recarga la página.', true); return; }
         // Solo app + auth + functions (esta página no carga Firestore): no se usa initFirebaseServices() porque exige el SDK de Firestore.
         if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);

@@ -6,7 +6,7 @@
     <title>Juega · Block ROAL</title>
     <meta name="description" content="Juega Block ROAL, acumula puntos y canjéalos por créditos en tu próximo pedido de ROAL BURGER.">
     <meta name="robots" content="noindex">
-    <meta name="theme-color" content="#2a1810">
+    <meta name="theme-color" content="#1a0640">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,32 +17,38 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        :root { --naranja: #ff6b00; --beige: #e8d3a8; --choc: #2a1810; --choc2: #3a2418; --choc3: #4a2e1e; --ok: #7dffa1; }
+        @property --ang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+        :root { --naranja: #ff9100; --beige: #e9ddff; --choc: #12062e; --choc2: #24104f; --choc3: #3b1d80; --ok: #22ff8f; --rosa: #ff2e7e; --cian: #1fd8ff; --amar: #ffe600; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html, body { margin: 0; height: 100%; background: var(--choc); color: var(--beige); font-family: 'Montserrat', system-ui, sans-serif; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+        html, body { margin: 0; height: 100%; background: radial-gradient(ellipse at 20% 10%, #5b1fb8 0%, transparent 55%), radial-gradient(ellipse at 85% 30%, #0d4fc4 0%, transparent 50%), radial-gradient(ellipse at 50% 100%, #b3166b 0%, transparent 55%), #12062e; background-size: 140% 140%; animation: cosmos 14s ease-in-out infinite alternate; color: var(--beige); font-family: 'Montserrat', system-ui, sans-serif; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+        @keyframes cosmos { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+        @keyframes giro { to { --ang: 360deg; } }
+        @keyframes brillo { to { background-position: 200% center; } }
         h1, h2, .anton { font-family: 'Anton', 'Oswald', sans-serif; font-weight: 400; letter-spacing: .03em; text-transform: uppercase; }
         #app { display: flex; flex-direction: column; height: 100%; max-width: 520px; margin: 0 auto; padding: env(safe-area-inset-top) 10px env(safe-area-inset-bottom); }
         header { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
-        header a.volver { color: var(--beige); text-decoration: none; font-weight: 700; font-size: .85rem; border: 1px solid var(--choc3); border-radius: 9px; padding: 7px 11px; background: var(--choc2); }
-        header h1 { flex: 1; margin: 0; font-size: 1.5rem; color: var(--naranja); text-align: center; }
+        header a.volver { color: var(--beige); text-decoration: none; font-weight: 700; font-size: .85rem; border: 1px solid #6a3ad8; border-radius: 9px; padding: 8px 11px; background: rgba(36, 16, 79, .85); box-shadow: 0 0 10px rgba(138, 92, 255, .5); }
+        header h1 { flex: 1; margin: 0; font-size: 1.7rem; text-align: center; background: linear-gradient(90deg, #ff2e7e, #ff9100, #ffe600, #22ff8f, #1fd8ff, #8a5cff, #ff2e7e); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: brillo 4s linear infinite; filter: drop-shadow(0 0 8px rgba(255, 46, 126, .55)); }
+        .snd { display: flex; gap: 6px; }
+        .snd button { width: 38px; height: 34px; border-radius: 9px; border: 1px solid #6a3ad8; background: rgba(36, 16, 79, .85); font-size: 1rem; cursor: pointer; color: #fff; box-shadow: 0 0 10px rgba(138, 92, 255, .5); }
         .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-        .stat { background: var(--choc2); border: 1px solid var(--choc3); border-radius: 9px; padding: 6px 4px; text-align: center; }
-        .stat b { display: block; font-family: 'Anton', sans-serif; font-weight: 400; font-size: 1.2rem; color: var(--naranja); line-height: 1.1; }
+        .stat { background: rgba(36, 16, 79, .8); border: 1.5px solid transparent; border-radius: 9px; padding: 6px 4px; text-align: center; background-image: linear-gradient(rgba(26, 10, 62, .92), rgba(26, 10, 62, .92)), conic-gradient(from var(--ang), #ff2e7e, #ff9100, #ffe600, #22ff8f, #1fd8ff, #8a5cff, #ff2e7e); background-origin: border-box; background-clip: padding-box, border-box; animation: giro 5s linear infinite; }
+        .stat b { display: block; font-family: 'Anton', sans-serif; font-weight: 400; font-size: 1.25rem; color: #fff; text-shadow: 0 0 10px #ff2e7e, 0 0 18px #8a5cff; line-height: 1.1; }
         .stat span { font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
         .sub { font-size: .68rem; opacity: .75; text-align: center; margin: 5px 0 0; }
-        #juegoCanvas { flex: 1; min-height: 0; margin-top: 6px; display: flex; align-items: center; justify-content: center; }
+        #juegoCanvas { flex: 1; min-height: 0; margin-top: 6px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 18px rgba(138, 92, 255, .55)); }
         #juegoCanvas canvas { touch-action: none; }
-        .aviso { margin: 6px 0; padding: 8px 10px; border-radius: 9px; background: var(--choc3); font-size: .8rem; text-align: center; }
+        .aviso { margin: 6px 0; padding: 8px 10px; border-radius: 9px; background: var(--choc3); font-size: .8rem; text-align: center; box-shadow: 0 0 12px rgba(138, 92, 255, .5); }
         .aviso.err { background: #5a2018; color: #ffd0c4; }
-        .overlay { position: fixed; inset: 0; background: rgba(20, 10, 5, .88); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 10; }
+        .overlay { position: fixed; inset: 0; background: rgba(12, 4, 36, .86); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 10; }
         .overlay[hidden], [hidden] { display: none !important; }
-        .card { background: var(--choc2); border: 1px solid var(--naranja); border-radius: 14px; padding: 20px 18px; width: min(100%, 360px); text-align: center; }
-        .card h2 { margin: 0 0 6px; font-size: 1.7rem; color: var(--naranja); }
-        .card .pts { font-family: 'Anton', sans-serif; font-size: 2.4rem; color: #ffd84a; margin: 4px 0; }
+        .card { border: 3px solid transparent; border-radius: 16px; padding: 20px 18px; width: min(100%, 360px); text-align: center; background-image: linear-gradient(#1a0a42, #1a0a42), conic-gradient(from var(--ang), #ff2e7e, #ff9100, #ffe600, #22ff8f, #1fd8ff, #8a5cff, #ff2e7e); background-origin: border-box; background-clip: padding-box, border-box; animation: giro 4s linear infinite; box-shadow: 0 0 30px rgba(255, 46, 126, .45), 0 0 60px rgba(31, 216, 255, .25); }
+        .card h2 { margin: 0 0 6px; font-size: 1.8rem; color: #ffe600; text-shadow: 0 0 14px #ff9100; }
+        .card .pts { font-family: 'Anton', sans-serif; font-size: 2.6rem; color: #fff; text-shadow: 0 0 14px #22ff8f, 0 0 28px #1fd8ff; margin: 4px 0; }
         .card p { white-space: pre-line; font-size: .9rem; line-height: 1.5; margin: 8px 0 14px; }
-        .btn { display: inline-block; border: none; border-radius: 9px; padding: 12px 20px; font: 700 .95rem 'Montserrat', sans-serif; background: var(--naranja); color: #1a0c04; cursor: pointer; text-decoration: none; }
+        .btn { display: inline-block; border: none; border-radius: 10px; padding: 12px 20px; font: 800 .95rem 'Montserrat', sans-serif; background: linear-gradient(135deg, #ff2e7e, #ff9100); color: #fff; cursor: pointer; text-decoration: none; box-shadow: 0 0 16px rgba(255, 46, 126, .7); text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
         .btn:disabled { opacity: .5; }
-        .btn.sec { background: var(--choc3); color: var(--beige); margin-left: 6px; }
+        .btn.sec { background: rgba(59, 29, 128, .9); color: var(--beige); margin-left: 6px; box-shadow: 0 0 12px rgba(138, 92, 255, .6); }
     </style>
 </head>
 <body>
@@ -50,6 +56,7 @@
         <header>
             <a class="volver" href="/">← Menú</a>
             <h1>Block ROAL</h1>
+            <div class="snd"><button type="button" id="btnMusica" aria-label="Música" aria-pressed="true">🎵</button><button type="button" id="btnSfx" aria-label="Efectos de sonido" aria-pressed="true">🔊</button></div>
         </header>
         <div class="stats" aria-live="polite">
             <div class="stat"><b id="stNivel">1</b><span>Nivel</span></div>
@@ -84,6 +91,6 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script defer src="firebase-config.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
-    <script defer src="juega.js?v=20261122"></script>
+    <script defer src="juega.js?v=20261122c"></script>
 </body>
 </html>
