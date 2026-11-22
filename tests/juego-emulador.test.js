@@ -172,6 +172,8 @@ test('vencimiento: el saldo vencido vale 0, la partida nueva lo reinicia (no se 
     assert.equal(r.ok, true);
     const c = (await db.collection('clientes').doc(UID).get()).data();
     assert.equal(c.creditoJuego, 100);                         // no 600
+    assert.deepEqual(c.juegoDias, [J.diaBogota(Date.now())]);   // retención: días en que jugó
+    assert.equal(c.juegoPrimerDia, J.diaBogota(Date.now()));
     assert.ok(c.creditoJuegoVence > Date.now() + 29 * 86400000);
 });
 

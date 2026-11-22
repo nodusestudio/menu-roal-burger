@@ -476,7 +476,7 @@ test('juego) sesiones, partidas y canjes: el navegador no escribe; el admin solo
     });
     const userDb = testEnv.authenticatedContext('u').firestore();
     const adminDb = testEnv.authenticatedContext('admin-juego2').firestore();
-    for (const col of ['juego_sesiones', 'juego_partidas', 'juego_canjes', 'juego_presupuesto', 'juego_reto']) {
+    for (const col of ['juego_sesiones', 'juego_partidas', 'juego_canjes', 'juego_presupuesto', 'juego_reto', 'juego_eventos']) {
         await assertFails(userDb.collection(col).doc('nuevo').set({ uid: 'u', puntaje: 999999 }));
         await assertFails(adminDb.collection(col).doc('nuevo').set({ uid: 'u', puntaje: 999999 }));
     }

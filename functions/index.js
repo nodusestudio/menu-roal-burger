@@ -745,7 +745,7 @@ async function redeemGameCreditTransaction(db, orderId, clientId, amount) {
         const actual = Math.max(0, Math.min(amount, saldo));
         if (actual > 0) {
             transaction.update(clientRef, { creditoJuego: FieldValue.increment(-actual) });
-            transaction.set(db.collection('juego_canjes').doc(orderId), { orderId, uid: clientId, monto: actual, dia: juego.diaBogota(Date.now()), creadoAt: FieldValue.serverTimestamp() });
+            transaction.set(db.collection('juego_canjes').doc(orderId), { orderId, uid: clientId, monto: actual, totalPedido: orderSnap.exists ? Math.max(0, Number(orderSnap.data().total) || 0) : 0, dia: juego.diaBogota(Date.now()), creadoAt: FieldValue.serverTimestamp() });
         }
         const shortfall = amount - actual;
         if (shortfall > 0 && orderSnap.exists) {

@@ -166,6 +166,10 @@ async function tienePedidoPrevio(db, uid) {
     return false;
 }
 
+// Eventos del embudo: un documento por día y tipo con los jugadores ÚNICOS (mapa u: {uid: true}). Idempotente: repetir el evento no cambia nada.
+const EVENTOS_CLIENTE = ['abrir', 'entrar', 'compartir', 'ranking'];
+function refEvento(db, dia, tipo) { return db.collection('juego_eventos').doc(`${dia}_${tipo}`); }
+
 function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFirestore, FieldValue, avisarAdmin }) {
     const opts = { region: 'us-central1', cors: ALLOWED_ORIGINS, cpu: 0.5, maxInstances: 5 };
     const CLIENTS = 'clientes';
@@ -242,6 +246,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             const ref = db.collection('juego_sesiones').doc();
             tx.update(cliRef, { juegoSesDia: dia, juegoSesHoy: hoy + 1 });
             tx.set(ref, { uid, inicio: FieldValue.serverTimestamp(), usada: false, modo, semilla });
+            tx.set(refEvento(db, dia, 'iniciar'), { dia, tipo: 'iniciar', total: FieldValue.increment(1), u: { [uid]: true } }, { merge: true });   // partidas iniciadas (con abandonadas)
             if (modo === 'reto') tx.set(retoRef, { uid, dia, sesionId: ref.id, creadoAt: FieldValue.serverTimestamp() });
             return { sesionId: ref.id, semilla, modo, restantes: cfg.maxPartidasDia - hoy - 1 };
         });
@@ -309,6 +314,8 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
                 nivelMaxJuego: r.nuevoNivelMax
             };
             if (r.puntosTotales > 0) upd.puntosJuego = FieldValue.increment(r.puntosTotales);
+            upd.juegoDias = FieldValue.arrayUnion(dia);                  // días en que jugó (retención)
+            if (!c.juegoPrimerDia) upd.juegoPrimerDia = dia;
             if (credito > 0) { upd.creditoJuego = expirado ? credito : FieldValue.increment(credito); upd.creditoJuegoVence = nuevoVencimiento(cfg, ahora); }
             else if (expirado) { upd.creditoJuego = 0; upd.creditoJuegoVence = 0; }
             tx.update(cliRef, upd);
@@ -349,6 +356,16 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             try { if (avisarAdmin) await avisarAdmin('🎮 Block ROAL: se agotó el presupuesto de hoy', `Ya se repartieron los $${aviso.presupuesto.toLocaleString('es-CO')} de créditos del día. Hasta mañana no se entregan más.`); } catch (e) { console.error('juego: no se pudo avisar el agotamiento del presupuesto:', e.message); }
         } else if (res) delete res._avisar;
         return res;
+    });
+
+    // Evento del embudo que solo ve el celular (abrir el juego, entrar, compartir, ver el ranking). Solo cuenta jugadores únicos por día.
+    exp.juegoEvento = onCall(opts, async (request) => {
+        const uid = exigirUid(request);
+        const tipo = String(request.data?.tipo || '');
+        if (!EVENTOS_CLIENTE.includes(tipo)) throw new HttpsError('invalid-argument', 'Evento desconocido.');
+        const db = getFirestore();
+        await refEvento(db, diaBogota(Date.now()), tipo).set({ dia: diaBogota(Date.now()), tipo, u: { [uid]: true } }, { merge: true });
+        return { ok: true };
     });
 
     // Ranking del reto: tipo 'dia' (puntaje de hoy) o 'semana' (suma de la semana). Devuelve los 10 primeros y la posición del jugador.
@@ -393,5 +410,5 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
 
 module.exports = {
     DEFAULTS, normalizarConfig, diaBogota, diaAnterior, metaNivel, rachaVigente,
-    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, registrar
+    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, registrar
 };
