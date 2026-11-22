@@ -287,13 +287,15 @@
         mostrarEstado();
         return estado;
     }
+    // Invitado sin cuenta ROAL (el servidor responde not-found): se pide entrar desde el menú en vez de mostrar un error técnico.
+    function sinCuenta(e) { if (/not-found/.test(String(e && e.code || ''))) { $('sinSesion').hidden = false; aviso(''); return true; } return false; }
     function aviso(msg, esError) { const e = $('avisoJuego'); e.textContent = msg || ''; e.className = 'aviso' + (esError ? ' err' : ''); e.hidden = !msg; }
 
     function iniciarPartida() {
         sesionId = null;
         sesionPromesa = (async () => {
             try { const r = await funciones.httpsCallable('juegoIniciar')({}); sesionId = r.data.sesionId; aviso(''); }
-            catch (e) { aviso(e?.message || 'No se pudo iniciar la partida.', true); }
+            catch (e) { if (!sinCuenta(e)) aviso(e?.message || 'No se pudo iniciar la partida.', true); }
         })();
         return sesionPromesa;
     }
@@ -574,6 +576,7 @@
             iniciarPartida();
             const pJuego = Promise.all([phaserP, fuentes]).then(() => { if (!juego) crearJuego(); });
             Promise.all([pEstado, pJuego]).then(() => { if (escena) { escena.actualizarMeta(); } }).catch((e) => {
+                if (sinCuenta(e)) return;
                 aviso(e?.code === 'functions/not-found' ? 'Para jugar necesitas una cuenta ROAL. Crea una al hacer tu primer pedido.' : (e?.message || 'No se pudo cargar el juego.'), true);
             }).finally(() => listoOk());
         });
