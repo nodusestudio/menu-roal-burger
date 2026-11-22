@@ -16,8 +16,10 @@ async function nuevoCliente(db, args = {}, ahora = Date.now()) {
     const espera = (Number(cfg.nuevoEsperaMin) || 30) * 60000;
     const desdeEnvios = ahora - dias * DIA_MS;
 
-    const [convSnap, cliSnap, envSnap, pedSnap, arcSnap] = await Promise.all([
+    const [convSnap, entSnap, cliSnap, envSnap, pedSnap, arcSnap] = await Promise.all([
         db.collection('agent_conversations').orderBy('updatedAt', 'desc').limit(500).get(),
+        // Chats de WhatsApp Web que reporta la extensión del navegador (functions/waEntrantes.js): números sin guardar.
+        db.collection('wa_entrantes').orderBy('ultimoAt', 'desc').limit(300).get(),
         db.collection('clientes').get(),
         db.collection('fidelizacion_envios').where('motivo', '==', 'nuevo').get(),
         db.collection('pedidos').get(),
@@ -30,7 +32,10 @@ async function nuevoCliente(db, args = {}, ahora = Date.now()) {
     const envios = envSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((e) => e.descartado !== true);
     const yaOfrecido = new Set(envios.filter((e) => ahora - ms(e.creadoAt) < 30 * DIA_MS).map((e) => llave(e.telefono)));
 
-    const lista = convSnap.docs.map((d) => ({ id: d.id, ...d.data() })).map((cv) => {
+    const conversaciones = convSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const ya = new Set(conversaciones.map((c) => c.id));
+    const entrantes = entSnap.docs.map((d) => require('./waEntrantes').comoConversacion({ k: d.id, ...d.data() })).filter((c) => !ya.has(c.id));
+    const lista = conversaciones.concat(entrantes).map((cv) => {
         const tel = String((cv.customerInfo && cv.customerInfo.phone) || String(cv.id).replace(/^wa_/, '')).replace(/\D/g, '');
         return { cv, tel, k: llave(tel), t: ms(cv.updatedAt) };
     }).filter((x) => x.k && String(x.cv.id).startsWith('wa_') && x.cv.channel !== 'web'

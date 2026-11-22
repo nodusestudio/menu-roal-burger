@@ -39,3 +39,6 @@ herramientas/voz-pagos-ROAL.zip
 # Fotos del dinero (datos financieros reales): nunca al repositorio
 herramientas/baseline-dinero/
 /costosFuente.js
+
+# Clave de la extensión de WhatsApp Web (no subir)
+herramientas/wa-nuevos-ROAL/config.js

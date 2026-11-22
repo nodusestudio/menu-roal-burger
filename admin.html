@@ -14406,6 +14406,8 @@
             #enVivoWidget .ev-n{font-family:'Space Grotesk',sans-serif;font-size:1.7rem;line-height:1.1}
             #enVivoWidget .ev-sub{font-size:.72rem;opacity:.75;line-height:1.25;overflow-wrap:anywhere}
             #enVivoWidget.ev-activo{border-color:#ff9a3d}
+            /* REGLA: nada detrás de la barra fija de abajo: la barra lateral termina encima de ella */
+            @media (min-width:1024px){ body.admin-unlocked:not(.mesero-mode) .admin-sidebar{height:calc(100vh - var(--rr-bar-h,0px)) !important} }
         </style>
 
         <div id="adminNotice" class="notice" role="status" aria-live="polite"></div>

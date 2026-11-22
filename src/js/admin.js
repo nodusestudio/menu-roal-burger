@@ -15651,6 +15651,7 @@ function _fidLineaBaseHtml() {
 // fidelizacion_envios motivo 'nuevo' + cupones_fidelizacion). Solo para números que no existen en Clientes.
 const NUEVO_MAX_HORAS = 12;
 let _nuevoConvs = [];
+let _nuevoEntrantes = [];
 let _nuevoUnsub = null;
 const _nuevoOcupado = new Set();
 
@@ -15660,6 +15661,11 @@ function _nuevoIniciar() {
         _nuevoConvs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         if (_fbTipo === 'nuevo') renderMetricasFeedback();
     }, (err) => console.warn('[Nuevo cliente] conversaciones:', err.code || err.message));
+    // Chats de WhatsApp Web que reporta la extensión (wa_entrantes). SYNC: misma forma que functions/waEntrantes.js → comoConversacion.
+    firebaseDb.collection('wa_entrantes').orderBy('ultimoAt', 'desc').limit(300).onSnapshot((snap) => {
+        _nuevoEntrantes = snap.docs.map((d) => { const e = d.data() || {}; return { id: `wa_${d.id}`, channel: 'whatsapp', humanControl: e.respondido === true, customerInfo: { phone: String(e.telefono || ''), name: String(e.nombre || '') }, lastMessageText: String(e.texto || ''), updatedAt: Number(e.ultimoAt) || 0 }; });
+        if (_fbTipo === 'nuevo') renderMetricasFeedback();
+    }, (err) => console.warn('[Nuevo cliente] WhatsApp Web:', err.code || err.message));
 }
 
 function _nuevoHoraTexto(ms) {
@@ -15680,7 +15686,8 @@ function _nuevoCandidatos() {
     const registrados = new Set((clientsState || []).map((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone)).filter(Boolean));
     const conPedido = new Set([...(ordersState || []), ...(_fbArchOrders || [])].map((o) => _sqPhoneKey(o.customerPhoneDigits || o.customerPhone)).filter(Boolean));
     const yaOfrecido = new Set(_fidEnvios.filter((e) => e.motivo === 'nuevo' && e.descartado !== true && ahora - _tsMs(e.creadoAt) < 30 * 86400000).map((e) => _sqPhoneKey(e.telefono)));
-    return _nuevoConvs.map((cv) => {
+    const idsAgente = new Set(_nuevoConvs.map((c) => c.id));
+    return _nuevoConvs.concat(_nuevoEntrantes.filter((c) => !idsAgente.has(c.id))).map((cv) => {
         const tel = String(cv.customerInfo?.phone || String(cv.id).replace(/^wa_/, '')).replace(/\D/g, '');
         return { cv, tel, k: _sqPhoneKey(tel), ms: _tsMs(cv.updatedAt) };
     }).filter((x) => x.k && String(x.cv.id).startsWith('wa_') && x.cv.channel !== 'web'

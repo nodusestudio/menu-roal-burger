@@ -374,6 +374,28 @@ exports.bancoAviso = onRequest(
     }
 );
 
+// ─────────────────────────────────────────────────────────────
+// WhatsApp Web → FODEXA: la extensión de Brave (herramientas/wa-nuevos-ROAL) manda los chats de números sin guardar.
+// Alimenta «Nuevo cliente» (Feedback › Campañas) y el aviso push avisarNuevoCliente. Ver functions/waEntrantes.js.
+// ─────────────────────────────────────────────────────────────
+const WA_EXT_TOKEN = defineSecret('WA_EXT_TOKEN');
+exports.waEntrante = onRequest(
+    { region: 'us-central1', secrets: [WA_EXT_TOKEN], cors: false, maxInstances: 2 },
+    async (req, res) => {
+        if (req.method !== 'POST') { res.status(405).json({ ok: false, error: 'metodo' }); return; }
+        const recibido = Buffer.from(String(req.get('x-wa-token') || ''));
+        const esperado = Buffer.from(WA_EXT_TOKEN.value());
+        if (recibido.length !== esperado.length || !crypto.timingSafeEqual(recibido, esperado)) { res.status(401).json({ ok: false, error: 'clave' }); return; }
+        try {
+            const r = await require('./waEntrantes').procesar(getFirestore(), (req.body || {}).chats);
+            res.json({ ok: true, ...r });
+        } catch (err) {
+            console.error('waEntrante:', err?.message || err);
+            res.status(500).json({ ok: false, error: 'guardar' });
+        }
+    }
+);
+
 // Núcleo compartido: lo usan el Apps Script (bancoAviso) y el aviso inmediato de Gmail (gmailBancoPush).
 async function procesarCorreoBanco(db, { mensajeId, remitente, texto, prueba, correoMs }) {
     const banco = require('./bancoAviso');
