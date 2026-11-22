@@ -4,7 +4,7 @@
  * juegoRanking). El navegador solo JUEGA: puntos, rachas, niveles, créditos y ranking los decide y guarda el servidor (functions/juego.js). */
 (function (root) {
     'use strict';
-    const { N, SHAPES, INGREDIENTES, BONO_TABLERO_LIMPIO, tableroVacio, nuevaGrilla, celdas, puedeColocar, colocar, lineasLlenas, borrarLineas, hayJugada, puntosJugada, nuevasPiezas, crearRng, codificarJugada, reproducirHasta } = root.BlockRoalMotor;
+    const { N, SHAPES, INGREDIENTES, BONO_TABLERO_LIMPIO, tableroVacio, nuevaGrilla, celdas, puedeColocar, colocar, lineasLlenas, borrarLineas, hayJugada, puntosJugada, nuevasPiezas, crearRng, codificarJugada, reproducirHasta, REVIVE, aplicarRevive } = root.BlockRoalMotor;
     root.BlockRoalEscena = () => escena; // solo para depurar/probar en el navegador
 
     // ───────────────────────── 2) SONIDO + ESCENA + SERVIDOR ─────────────────────────
@@ -286,6 +286,7 @@
                 let r;
                 try { r = await funciones.httpsCallable('juegoIniciar')({ modo: modo === 'reto' ? 'reto' : 'libre', ...(conDesafio ? { desafio: conDesafio } : {}) }); }
                 catch (e) { if (conDesafio && /failed-precondition/.test(String(e && e.code || ''))) { desafioPend = ''; desafioMalo = true; $('desafioBanner').hidden = true; r = await funciones.httpsCallable('juegoIniciar')({ modo: 'libre' }); } else throw e; }   // enlace de desafío inválido: juega normal
+                sesionConDesafio = !!conDesafio && !desafioMalo;
                 if (conDesafio && desafioPend === conDesafio) desafioPend = '';   // el desafío vale para esta partida; las siguientes son normales
                 sesionId = r.data.sesionId; semilla = r.data.semilla; modoActual = r.data.modo || 'libre'; sesionIni = Date.now(); aviso('');
             } catch (e) {
@@ -339,6 +340,11 @@
         } catch (e) { if (!esErrorDeRed(e)) Guardado.borrarPendiente(); }
     }
 
+    // Revive: solo en partida libre (no en el reto del día ni en un desafío), con los revives que quedan hoy y por partida.
+    let reviveEscena = null, sesionConDesafio = false;
+    function puedeRevivir(esc) {
+        return modoActual === 'libre' && !sesionConDesafio && !!estado && (Number(estado.revivesRestantes) || 0) > 0 && esc.revives < (Number(estado.reviveMaxPartida) || 1);
+    }
     async function terminarPartida(puntaje, jugadas) {
         Guardado.borrarPartida();
         $('resultado').hidden = false;
@@ -416,10 +422,10 @@
                 Guardado.partida({ uid: uidActual, sesionId, semilla, modo: modoActual, ini: sesionIni || Date.now(), movs: this.movs });
             }
             restaurar(g) {
-                const e = reproducirHasta({ semilla: g.semilla, jugadas: g.movs });
+                const e = reproducirHasta({ semilla: g.semilla, jugadas: g.movs, maxRevives: 99 });   // el servidor es quien limita los revives
                 if (!e.ok) { Guardado.borrarPartida(); iniciarPartida('libre').then(() => this.nueva()); return; }
                 this.grilla = e.grilla; this.rng = e.rng; this.movs = g.movs.slice();
-                this.puntos = e.puntos; this.jugadas = e.hechas; this.combo = e.combo; this.fin = false;
+                this.puntos = e.puntos; this.jugadas = e.hechas; this.combo = e.combo; this.fin = false; this.revives = e.revives || 0;
                 for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (this.grilla[i][j] !== -1) this.pintarCelda(i, j, this.grilla[i][j]);
                 this.txtPuntos.setText(fmt(this.puntos));
                 this.actualizarMeta();
@@ -435,7 +441,7 @@
             nueva() {
                 this.grilla = nuevaGrilla(); this.movs = [];
                 this.rng = crearRng(Number.isInteger(semilla) ? semilla : Math.floor(Math.random() * 4294967296)); // la semilla del servidor: así la partida se puede repetir y comprobar
-                this.puntos = 0; this.jugadas = 0; this.combo = 0; this.fin = false; this.recordAviso = false;
+                this.puntos = 0; this.jugadas = 0; this.combo = 0; this.fin = false; this.recordAviso = false; this.revives = 0;
                 this.celdasImg.forEach((f) => f.forEach((im) => im && im.destroy()));
                 this.celdasImg = Array.from({ length: N }, () => Array(N).fill(null));
                 (this.piezas || []).forEach((p) => { if (p) { p.cont.destroy(); if (p.zona) p.zona.destroy(); } });
@@ -450,8 +456,8 @@
                 const meta = estado ? estado.metaSiguiente : 500;
                 if (this.txtMeta.progreso) this.txtMeta.progreso(this.puntos, meta, estado ? estado.nivelMax + 1 : 1);
             }
-            repartir() {
-                const datos = nuevasPiezas(this.grilla, this.rng);
+            repartir(dadas) {
+                const datos = dadas || nuevasPiezas(this.grilla, this.rng);
                 this.piezas = datos.map((dd, i) => this.crearPieza(dd, i));
                 this.piezas.forEach((p, i) => { p.cont.setAlpha(0).setScale(0.2); this.tweens.add({ targets: p.cont, alpha: 1, scale: p.home.esc, duration: 320, delay: i * 90, ease: 'Back.Out', onComplete: () => this.flotar(p) }); });
                 if (!hayJugada(this.grilla, this.piezas.map((p) => p.shape))) this.terminar();
@@ -584,6 +590,23 @@
             }
             terminar() {
                 if (this.fin) return;
+                if (puedeRevivir(this)) { this.fin = true; reviveEscena = this; $('reviveOv').hidden = false; return; }   // se ofrece seguir; si no, termina
+                this.finalizar();
+            }
+            // Revive: borra las 2 filas más llenas y reparte piezas nuevas (la jugada especial queda en el registro para que el servidor la repita).
+            revivir() {
+                this.movs.push(REVIVE); this.revives += 1;
+                if (estado) estado.revivesRestantes = Math.max(0, (Number(estado.revivesRestantes) || 0) - 1);
+                const r = aplicarRevive(this.grilla, this.rng);
+                r.filas.forEach((i) => { for (let j = 0; j < N; j++) { const im = this.celdasImg[i][j]; if (im) { this.tweens.add({ targets: im, alpha: 0, scale: 0, duration: 260, onComplete: () => im.destroy() }); this.celdasImg[i][j] = null; } } });
+                this.combo = 0;
+                this.celdasImg.flat().filter(Boolean).forEach((im) => { im.alpha = 1; });
+                (this.piezas || []).forEach((p) => { if (p) { if (p.flota) p.flota.stop(); p.cont.destroy(); if (p.zona) p.zona.destroy(); } });
+                this.fin = false; Sonido.nivel(); this.confeti();
+                this.repartir(r.piezas);
+                this.guardarPartida();
+            }
+            finalizar() {
                 this.fin = true;
                 Sonido.fin();
                 this.cameras.main.shake(350, 0.008);
@@ -820,6 +843,8 @@
         $('chipCofre').addEventListener('click', abrirMisiones);
         $('btnAbrirCofre').addEventListener('click', abrirCofre);
         $('btnAviso').addEventListener('click', activarAviso);
+        $('btnRevive').addEventListener('click', () => { $('reviveOv').hidden = true; if (reviveEscena) reviveEscena.revivir(); });
+        $('btnReviveNo').addEventListener('click', () => { $('reviveOv').hidden = true; if (reviveEscena) { const e = reviveEscena; reviveEscena = null; e.fin = false; e.finalizar(); } });
         $('btnMisionesCerrar').addEventListener('click', () => { $('misiones').hidden = true; });
         $('misiones').addEventListener('click', (e) => { if (e.target === $('misiones')) $('misiones').hidden = true; });
         $('btnReintentar').addEventListener('click', reintentar);

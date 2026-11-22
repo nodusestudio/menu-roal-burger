@@ -179,3 +179,15 @@ test('hora feliz: franja en hora de Bogotá, cruce de medianoche y tope extra', 
     const tope = J2.calcularResultado({ estado: { juegoHoyDia: '2026-11-22', juegoHoyPts: 400 }, cfg, puntaje: 500, dia: '2026-11-22', horaFeliz: hf });
     assert.equal(tope.puntosOtorgados, 50);   // tope 300 + 150 extra - 400 ya acreditados
 });
+
+test('revive: solo con permiso y solo si no cabe ninguna pieza; borra las 2 filas más llenas y reparte piezas', () => {
+    const M2 = require('../functions/juegoMotor.js');
+    assert.equal(M2.reproducirHasta({ semilla: 7, jugadas: [M2.REVIVE] }).error, 'revive-no-permitido');
+    assert.equal(M2.reproducirHasta({ semilla: 7, jugadas: [M2.REVIVE], maxRevives: 1 }).error, 'revive-innecesario');
+    const g = M2.nuevaGrilla();
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) g[i][j] = (i === 3 || i === 5) ? 0 : (j < 7 ? 1 : -1);
+    const r = M2.aplicarRevive(g, M2.crearRng(5));
+    assert.deepEqual(r.filas, [3, 5]);   // las dos filas llenas del todo
+    assert.ok(g[3].every((v) => v === -1) && g[5].every((v) => v === -1) && g[0][0] === 1);
+    assert.equal(r.piezas.length, 3);
+});

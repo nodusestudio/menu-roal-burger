@@ -113,16 +113,32 @@ var BlockRoalMotor = (() => {
         return piezas;
       }
       var codificarJugada = (pieza, fila, col) => pieza * 64 + fila * 8 + col;
+      var REVIVE = 192;
+      function aplicarRevive(grilla, rng) {
+        const filas = Array.from({ length: N }, (_, i) => ({ i, n: grilla[i].filter((v) => v !== -1).length })).sort((a, b) => b.n - a.n || a.i - b.i).slice(0, 2).map((f) => f.i).sort((a, b) => a - b);
+        filas.forEach((i) => {
+          for (let j = 0; j < N; j++) grilla[i][j] = -1;
+        });
+        return { filas, piezas: nuevasPiezas(grilla, rng) };
+      }
       var decodificarJugada = (cod) => ({ pieza: Math.floor(cod / 64), fila: Math.floor(cod % 64 / 8), col: cod % 8 });
-      function reproducirHasta({ semilla, jugadas }) {
+      function reproducirHasta({ semilla, jugadas, maxRevives }) {
         if (!Number.isInteger(semilla) || !Array.isArray(jugadas) || jugadas.length > 2e3) return { ok: false, error: "registro-invalido" };
         const rng = crearRng(semilla);
         const grilla = nuevaGrilla();
         const reparte = () => nuevasPiezas(grilla, rng).map((p) => ({ ...p, usada: false }));
-        let piezas = reparte(), puntos = 0, combo = 0, hechas = 0;
+        let piezas = reparte(), puntos = 0, combo = 0, hechas = 0, revives = 0;
         const stats = { lineas: 0, mejorCombo: 0, tablerosLimpios: 0, dobles: 0 };
         for (const cod of jugadas) {
-          if (!Number.isInteger(cod) || cod < 0 || cod > 191) return { ok: false, error: "jugada-invalida" };
+          if (!Number.isInteger(cod) || cod < 0 || cod > REVIVE) return { ok: false, error: "jugada-invalida" };
+          if (cod === REVIVE) {
+            if (revives >= Math.max(0, Math.trunc(Number(maxRevives) || 0))) return { ok: false, error: "revive-no-permitido" };
+            if (hayJugada(grilla, piezas.filter((x) => !x.usada).map((x) => x.shape))) return { ok: false, error: "revive-innecesario" };
+            revives += 1;
+            combo = 0;
+            piezas = aplicarRevive(grilla, rng).piezas.map((x) => ({ ...x, usada: false }));
+            continue;
+          }
           const { pieza, fila, col } = decodificarJugada(cod);
           const p = piezas[pieza];
           if (!p || p.usada) return { ok: false, error: "pieza-no-disponible" };
@@ -146,13 +162,13 @@ var BlockRoalMotor = (() => {
           hechas += 1;
           if (piezas.every((x) => x.usada)) piezas = reparte();
         }
-        return { ok: true, grilla, piezas, puntos, combo, hechas, rng, stats };
+        return { ok: true, grilla, piezas, puntos, combo, hechas, revives, rng, stats };
       }
       function repetirPartida(args) {
         const e = reproducirHasta(args);
         if (!e.ok) return e;
         const quedan = e.piezas.filter((p) => !p.usada);
-        return { ok: true, puntaje: e.puntos, jugadas: e.hechas, terminada: !hayJugada(e.grilla, quedan.map((p) => p.shape)), stats: e.stats };
+        return { ok: true, puntaje: e.puntos, jugadas: e.hechas, revives: e.revives, terminada: !hayJugada(e.grilla, quedan.map((p) => p.shape)), stats: e.stats };
       }
       module.exports = {
         N,
@@ -174,6 +190,8 @@ var BlockRoalMotor = (() => {
         semillaDeTexto,
         codificarJugada,
         decodificarJugada,
+        REVIVE,
+        aplicarRevive,
         reproducirHasta,
         repetirPartida
       };

@@ -33,6 +33,9 @@ const DEFAULTS = Object.freeze({
     maxPartidasDia: 40,        // partidas que un jugador puede iniciar por día
     cofresActivos: true,       // los cofres de las misiones diarias (premios sorpresa)
     retoActivo: true,          // reto del día (mismas piezas para todos, una sola oportunidad, ranking)
+    reviveActivo: true,        // revive: al perder, seguir jugando (borra 2 filas y reparte piezas nuevas). Sin costo en dinero: los puntos siguen sujetos al tope diario
+    reviveMaxPartida: 1,       // revives por partida
+    reviveMaxDia: 3,           // revives por jugador y día
     horaFelizActiva: false,    // hora feliz: en una franja del día los puntos valen más (apagada hasta que el dueño la encienda)
     horaFelizDesde: 15,        // hora de inicio (0-23, Bogotá)
     horaFelizHasta: 17,        // hora de fin (1-24, Bogotá; si es menor que «desde» cruza la medianoche)
@@ -73,6 +76,9 @@ function normalizarConfig(raw) {
         maxPartidasDia: Math.min(500, Math.max(1, Math.trunc(num(r.maxPartidasDia, DEFAULTS.maxPartidasDia)))),
         retoActivo: r.retoActivo !== false,
         cofresActivos: r.cofresActivos !== false,
+        reviveActivo: r.reviveActivo !== false,
+        reviveMaxPartida: Math.min(3, Math.max(1, Math.trunc(num(r.reviveMaxPartida, DEFAULTS.reviveMaxPartida)))),
+        reviveMaxDia: Math.min(20, Math.max(0, Math.trunc(num(r.reviveMaxDia, DEFAULTS.reviveMaxDia)))),
         horaFelizActiva: r.horaFelizActiva === true,
         horaFelizDesde: Math.min(23, Math.max(0, Math.trunc(num(r.horaFelizDesde, DEFAULTS.horaFelizDesde)))),
         horaFelizHasta: Math.min(24, Math.max(1, Math.trunc(num(r.horaFelizHasta, DEFAULTS.horaFelizHasta)))),
@@ -198,6 +204,12 @@ const PREMIOS_COFRE = [
 function premioCofre(n) { return PREMIOS_COFRE.find((p) => n < p.hasta); }
 const ESCUDOS_MAX = 3;
 // Racha que se muestra: si falló exactamente un día y tiene escudo, la racha sigue viva (el escudo se gasta al volver a jugar).
+// Revives que le quedan hoy al jugador (0 si el revive está apagado).
+function revivesDisponibles(c, cfg, hoy) {
+    if (!cfg.reviveActivo) return 0;
+    const usados = c && c.juegoReviveDia === hoy ? Math.max(0, Math.trunc(num(c.juegoReviveN, 0))) : 0;
+    return Math.max(0, cfg.reviveMaxDia - usados);
+}
 function rachaConEscudo(c, hoy) {
     const r = rachaVigente(c, hoy);
     if (r > 0) return r;
@@ -291,6 +303,8 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             puntosHoy: c.juegoHoyDia === hoy ? Math.max(0, Math.trunc(num(c.juegoHoyPts, 0))) : 0,
             topeDiario: cfg.topeDiario + (hf ? hf.topeExtra : 0),
             horaFeliz: hf ? { mult: hf.mult, hasta: hf.hasta } : null,
+            revivesRestantes: revivesDisponibles(c, cfg, hoy),
+            reviveMaxPartida: cfg.reviveMaxPartida,
             valorPunto: cfg.valorPunto,
             topeCreditoPct: cfg.topeCreditoPct,
             metaSiguiente: metaNivel(Math.max(0, Math.trunc(num(c.nivelMaxJuego, 0))) + 1, cfg),
@@ -384,11 +398,14 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             };
 
             // 1) El puntaje sale de REPETIR la partida (sesiones nuevas, que traen semilla). Las viejas, sin semilla, siguen por la ruta anterior.
-            let puntaje, jugadas, terminada = null, discrepancia = false, stats = { lineas: 0, mejorCombo: 0, tablerosLimpios: 0, dobles: 0 }, conRegistro = false;
+            let revivesUsados = 0, puntaje, jugadas, terminada = null, discrepancia = false, stats = { lineas: 0, mejorCombo: 0, tablerosLimpios: 0, dobles: 0 }, conRegistro = false;
             if (Number.isInteger(ses.semilla)) {
                 if (!Array.isArray(d.movimientos)) return rechazar('sin-registro');
-                const rep = Motor.repetirPartida({ semilla: ses.semilla, jugadas: d.movimientos });
+                // Revive: no vale en el reto del día ni en un desafío (deben ser parejos); en partida libre, hasta el tope por partida y por día.
+                const permitidos = ses.modo === 'reto' || ses.desafioId ? 0 : Math.min(cfg.reviveMaxPartida, revivesDisponibles(cliSnap.data() || {}, cfg, dia));
+                const rep = Motor.repetirPartida({ semilla: ses.semilla, jugadas: d.movimientos, maxRevives: permitidos });
                 if (!rep.ok) return rechazar(rep.error);
+                revivesUsados = rep.revives || 0;
                 puntaje = rep.puntaje; jugadas = rep.jugadas; terminada = rep.terminada; stats = rep.stats; conRegistro = true;
                 discrepancia = Number(d.puntaje) !== rep.puntaje; // si el celular dijo otra cosa se usa el del servidor y queda anotado
                 if (ses.modo === 'reto' && !terminada) return rechazar('reto-incompleto');
@@ -431,6 +448,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
                 if (cofresNuevos > 0) upd.juegoCofres = FieldValue.increment(cofresNuevos);
             }
             if (r.puntosTotales > 0) upd.puntosJuego = FieldValue.increment(r.puntosTotales);
+            if (revivesUsados > 0) { upd.juegoReviveDia = dia; upd.juegoReviveN = (c.juegoReviveDia === dia ? Math.max(0, Math.trunc(num(c.juegoReviveN, 0))) : 0) + revivesUsados; }
             upd.juegoDias = FieldValue.arrayUnion(dia);                  // días en que jugó (retención)
             if (!c.juegoPrimerDia) upd.juegoPrimerDia = dia;
             if (credito > 0) { upd.creditoJuego = expirado ? credito : FieldValue.increment(credito); upd.creditoJuegoVence = nuevoVencimiento(cfg, ahora); }
@@ -639,5 +657,5 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
 
 module.exports = {
     DEFAULTS, normalizarConfig, diaBogota, diaAnterior, metaNivel, rachaVigente,
-    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, MISIONES, misionesDelDia, progresarMisiones, vistaMisiones, premioCofre, PREMIOS_COFRE, rachaConEscudo, mensajeRacha, horaFelizVigente, registrar
+    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, MISIONES, misionesDelDia, progresarMisiones, vistaMisiones, premioCofre, PREMIOS_COFRE, rachaConEscudo, revivesDisponibles, mensajeRacha, horaFelizVigente, registrar
 };

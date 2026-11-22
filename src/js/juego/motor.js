@@ -84,20 +84,35 @@ function nuevasPiezas(grilla, rng) {
 
 // Una jugada = pieza (0-2) + fila + columna, codificada en un solo número 0-191: así el registro de una partida es una lista corta de enteros.
 const codificarJugada = (pieza, fila, col) => pieza * 64 + fila * 8 + col;
+// Revive: una «jugada» especial (código 192) que solo vale cuando ya no cabe ninguna pieza. Borra las 2 filas más llenas (sin dar puntos) y reparte 3 piezas nuevas.
+// Cuántas se permiten lo decide el servidor (maxRevives); el motor solo comprueba que el registro no pase de ese número.
+const REVIVE = 192;
+function aplicarRevive(grilla, rng) {
+    const filas = Array.from({ length: N }, (_, i) => ({ i, n: grilla[i].filter((v) => v !== -1).length })).sort((a, b) => b.n - a.n || a.i - b.i).slice(0, 2).map((f) => f.i).sort((a, b) => a - b);
+    filas.forEach((i) => { for (let j = 0; j < N; j++) grilla[i][j] = -1; });
+    return { filas, piezas: nuevasPiezas(grilla, rng) };
+}
 const decodificarJugada = (cod) => ({ pieza: Math.floor(cod / 64), fila: Math.floor((cod % 64) / 8), col: cod % 8 });
 
 // REPRODUCIR una partida: mismas piezas (por la semilla), jugada por jugada, con las mismas reglas. Devuelve el ESTADO final (tablero, piezas, puntos) y el
 // generador listo para seguir repartiendo piezas, o el motivo del rechazo. El celular lo usa para reanudar una partida guardada; el servidor, para comprobarla.
 // `jugadas` = lista de números de codificarJugada.
-function reproducirHasta({ semilla, jugadas }) {
+function reproducirHasta({ semilla, jugadas, maxRevives }) {
     if (!Number.isInteger(semilla) || !Array.isArray(jugadas) || jugadas.length > 2000) return { ok: false, error: 'registro-invalido' };
     const rng = crearRng(semilla);
     const grilla = nuevaGrilla();
     const reparte = () => nuevasPiezas(grilla, rng).map((p) => ({ ...p, usada: false }));
-    let piezas = reparte(), puntos = 0, combo = 0, hechas = 0;
+    let piezas = reparte(), puntos = 0, combo = 0, hechas = 0, revives = 0;
     const stats = { lineas: 0, mejorCombo: 0, tablerosLimpios: 0, dobles: 0 };   // para las misiones del día
     for (const cod of jugadas) {
-        if (!Number.isInteger(cod) || cod < 0 || cod > 191) return { ok: false, error: 'jugada-invalida' };
+        if (!Number.isInteger(cod) || cod < 0 || cod > REVIVE) return { ok: false, error: 'jugada-invalida' };
+        if (cod === REVIVE) {
+            if (revives >= Math.max(0, Math.trunc(Number(maxRevives) || 0))) return { ok: false, error: 'revive-no-permitido' };
+            if (hayJugada(grilla, piezas.filter((x) => !x.usada).map((x) => x.shape))) return { ok: false, error: 'revive-innecesario' };
+            revives += 1; combo = 0;
+            piezas = aplicarRevive(grilla, rng).piezas.map((x) => ({ ...x, usada: false }));
+            continue;
+        }
         const { pieza, fila, col } = decodificarJugada(cod);
         const p = piezas[pieza];
         if (!p || p.usada) return { ok: false, error: 'pieza-no-disponible' };
@@ -115,17 +130,17 @@ function reproducirHasta({ semilla, jugadas }) {
         p.usada = true; hechas += 1;
         if (piezas.every((x) => x.usada)) piezas = reparte();
     }
-    return { ok: true, grilla, piezas, puntos, combo, hechas, rng, stats };
+    return { ok: true, grilla, piezas, puntos, combo, hechas, revives, rng, stats };
 }
 // REPETIR una partida para comprobarla: devuelve el puntaje REAL y si terminó (ya no cabe ninguna pieza).
 function repetirPartida(args) {
     const e = reproducirHasta(args);
     if (!e.ok) return e;
     const quedan = e.piezas.filter((p) => !p.usada);
-    return { ok: true, puntaje: e.puntos, jugadas: e.hechas, terminada: !hayJugada(e.grilla, quedan.map((p) => p.shape)), stats: e.stats };
+    return { ok: true, puntaje: e.puntos, jugadas: e.hechas, revives: e.revives, terminada: !hayJugada(e.grilla, quedan.map((p) => p.shape)), stats: e.stats };
 }
 
 module.exports = {
     N, SHAPES, INGREDIENTES, MAX_PUNTOS_JUGADA, BONO_TABLERO_LIMPIO, tableroVacio, nuevaGrilla, celdas, puedeColocar, colocar, lineasLlenas, borrarLineas, hayJugada, puntosJugada,
-    nuevasPiezas, crearRng, semillaDeTexto, codificarJugada, decodificarJugada, reproducirHasta, repetirPartida
+    nuevasPiezas, crearRng, semillaDeTexto, codificarJugada, decodificarJugada, REVIVE, aplicarRevive, reproducirHasta, repetirPartida
 };
