@@ -102,3 +102,13 @@ test('los combos simples (Burger Normal/Super, Perro) nunca son el favorito: se 
     assert.equal(rc.esComboSimple('Combo Perro Normal', 'COMBOS CON PAPAS Y BEBIDA'), true);
     assert.equal(rc.esComboSimple('Combo Familiar 4', 'COMBOS MIXTOS'), false);
 });
+
+test('un cliente descartado a mano nunca entra a la cola; y la entrada trae el origen de su último pedido', () => {
+    const pedidos = [{ ...ped('f1', '3005000001', 100, 20000), source: 'web' }, { ...ped('f2', '3005000001', 95, 20000), source: 'web' }, ped('g1', '3006000001', 100, 20000), ped('g2', '3006000001', 95, 20000)];
+    const sin = rc.construirCola({ pedidos, ahora: AHORA, cfg: { controlPct: 0 }, rnd: sinAzar });
+    assert.equal(sin.entradas.find((e) => e.k === '3005000001').origen, 'web');
+    assert.equal(sin.entradas.find((e) => e.k === '3006000001').origen, 'admin');
+    const con = rc.construirCola({ pedidos, ahora: AHORA, cfg: { controlPct: 0, descartados: { 3005000001: { motivo: 'numero' } } }, rnd: sinAzar });
+    assert.ok(!con.entradas.some((e) => e.k === '3005000001'));
+    assert.ok(con.entradas.some((e) => e.k === '3006000001'));
+});

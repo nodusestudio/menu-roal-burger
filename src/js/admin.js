@@ -14439,6 +14439,8 @@ let _fidCola = null;         // fidelizacion_cola/{hoy}: la arma el servidor a l
 let _fidCupEstado = 'todos'; // todos | activo | canjeado | vencido
 let _metasSemana = 0;        // 0 = esta semana, -1 = la pasada, -2 = hace dos…
 let _fidCfgCargada = false;
+let _fidDescartados = {};   // configuracion/fidelizacion.descartados: { [k]: {nombre, telefono, motivo, por, en} } — clientes que el cajero sacó de Reactivar para siempre
+let _fidDescAbierto = false;
 const _fidReactOcupado = new Set(); // clientes cuyo mensaje se está preparando (evita doble clic)
 
 async function _fidCargarCfg() {
@@ -14448,6 +14450,7 @@ async function _fidCargarCfg() {
         const d = await firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').get();
         if (!d.exists) return;
         const x = d.data() || {};
+        _fidDescartados = x.descartados && typeof x.descartados === 'object' ? x.descartados : {};
         const num = (v, def) => (Number.isFinite(Number(v)) && String(v) !== '' ? Number(v) : def);
         _fidCfg = {
             reactivarOferta: String(x.reactivarOferta || FID_CFG_DEF.reactivarOferta),
@@ -15558,6 +15561,52 @@ function _fidColaMarcar(dia, k, estado) {
     }).catch((err) => console.warn('[Reactivar] cola:', err.code || err.message));
 }
 
+// Descartar a un cliente de Reactivar PARA SIEMPRE (el servidor no vuelve a ponerlo en la cola). Queda quién y por qué; se puede restaurar.
+const _FID_MOTIVOS_DESC = [
+    ['numero', '📵 Número malo / sin WhatsApp', 'El número no sirve (mal escrito o no tiene WhatsApp)'],
+    ['regalo', '🎁 El regalo no aplica a lo que pide', 'El producto/regalo no corresponde (ej. combo sin proteína extra)'],
+    ['otro', '🚫 No quiero contactarlo', 'Decisión del cajero: no contactar']
+];
+function _fidPedirMotivoDescarte(nombre) {
+    return new Promise((resolve) => {
+        const fondo = document.createElement('div');
+        fondo.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+        const caja = document.createElement('div');
+        caja.style.cssText = 'width:min(420px,100%);border-radius:12px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
+        const B = 'border:1px solid rgba(255,255,255,.25);border-radius:9px;padding:11px;font-weight:700;font-size:14px;cursor:pointer;color:#fff;width:100%;background:rgba(255,255,255,.08);text-align:left;margin-top:8px;';
+        caja.innerHTML = `<div style="font-weight:800;font-size:17px">🚫 Descartar a ${escapeHtml(nombre)}</div><div style="opacity:.75;font-size:13px;margin:4px 0 6px">No volverá a aparecer en Reactivar. Puedes restaurarlo después. ¿Por qué?</div>`
+            + _FID_MOTIVOS_DESC.map((m) => `<button type="button" data-m="${m[0]}" style="${B}">${m[1]}</button>`).join('')
+            + `<button type="button" data-m="" style="${B}text-align:center;background:transparent">Cancelar</button>`;
+        fondo.appendChild(caja); document.body.appendChild(fondo);
+        const cerrar = (v) => { document.removeEventListener('keydown', tecla, true); fondo.remove(); resolve(v); };
+        const tecla = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(null); } };
+        document.addEventListener('keydown', tecla, true);
+        fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(null); const b = e.target.closest('button[data-m]'); if (b) cerrar(b.dataset.m || null); });
+    });
+}
+async function _fidDescartarCliente(k, nombre, telefono) {
+    const cod = await _fidPedirMotivoDescarte(nombre || 'este cliente');
+    if (!cod) return;
+    const m = _FID_MOTIVOS_DESC.find((x) => x[0] === cod);
+    const u = firebaseAuth && firebaseAuth.currentUser;
+    const reg = { nombre: nombre || '', telefono: telefono || '', motivo: m ? m[2] : cod, por: (u && (u.displayName || u.email)) || '', en: Date.now() };
+    try {
+        await firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').set({ descartados: { [k]: reg } }, { merge: true });
+        _fidDescartados = { ..._fidDescartados, [k]: reg };
+        if (_fidCola && _fidCola.dia) _fidColaMarcar(_fidCola.dia, k, 'descartado');
+        showNotice(`${nombre || 'Cliente'} descartado de Reactivar.`, 'ok');
+        renderMetricasFeedback();
+    } catch (err) { showNotice(`No se pudo descartar: ${err.message || err}`, 'error'); }
+}
+async function _fidRestaurarDescartado(k) {
+    try {
+        await firebaseDb.collection(CONFIG_COLLECTION).doc('fidelizacion').update({ [`descartados.${k}`]: firebase.firestore.FieldValue.delete() });
+        const { [k]: _quitado, ...resto } = _fidDescartados; _fidDescartados = resto;
+        showNotice('Cliente restaurado: volverá a salir en la cola cuando le toque.', 'ok');
+        renderMetricasFeedback();
+    } catch (err) { showNotice(`No se pudo restaurar: ${err.message || err}`, 'error'); }
+}
+
 function _fidHoraTexto(h) { return `${h % 12 || 12}:00 ${h >= 12 ? 'pm' : 'am'}`; }
 
 // Vista «Cola del día»: los clientes que el servidor eligió hoy (ritmo propio, hora ideal, favorito y regalo con tope de costo).
@@ -15573,7 +15622,10 @@ function _fidColaHtml() {
     const horaEnv = (ms) => (ms ? new Date(ms).toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit' }) : '');
     const filasEnv = enviadosHoy.map((e) => `<div class="met-user-row-v2" style="opacity:.8"><div class="met-avatar">✅</div><div class="met-user-info-v2"><div class="met-user-name-v2">${escapeHtml(e.nombre)}${e.enviadoAt ? ` · enviado ${escapeHtml(horaEnv(e.enviadoAt))}` : ''}</div><div class="met-user-meta-v2">🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))}</div></div></div>`).join('');
     const bloqueEnv = enviadosHoy.length ? `<div style="margin-top:10px"><button type="button" class="ghost-button" data-fid-envhoy>✅ Enviados hoy (${enviadosHoy.length}) ${_fidEnvHoyAbierto ? '▴' : '▾'}</button>${_fidEnvHoyAbierto ? `<div class="metrics-users-list" style="margin-top:8px">${filasEnv}</div>` : ''}</div>` : '';
-    const filas = ent.filter((e) => e.estado !== 'omitido' && e.estado !== 'enviado').map((e) => {
+    const descLista = Object.entries(_fidDescartados || {}).sort((a, b) => Number(b[1].en || 0) - Number(a[1].en || 0));
+    const filasDesc = descLista.map(([k, d]) => `<div class="met-user-row-v2" style="opacity:.8"><div class="met-avatar">🚫</div><div class="met-user-info-v2"><div class="met-user-name-v2">${escapeHtml(d.nombre || 'Cliente')} · ${escapeHtml(d.telefono || '')}</div><div class="met-user-meta-v2">${escapeHtml(d.motivo || '')}${d.por ? ` · por ${escapeHtml(d.por)}` : ''}${d.en ? ` · ${escapeHtml(new Date(d.en).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }))}` : ''}</div></div><button type="button" class="ghost-button" data-fid-restaurar="${escapeHtml(k)}">↩ Restaurar</button></div>`).join('');
+    const bloqueDesc = descLista.length ? `<div style="margin-top:10px"><button type="button" class="ghost-button" data-fid-desc-toggle>🚫 Descartados (${descLista.length}) ${_fidDescAbierto ? '▴' : '▾'}</button>${_fidDescAbierto ? `<div class="metrics-users-list" style="margin-top:8px">${filasDesc}</div>` : ''}</div>` : '';
+    const filas = ent.filter((e) => e.estado !== 'omitido' && e.estado !== 'enviado' && e.estado !== 'descartado' && !_fidDescartados[e.k]).map((e) => {
         const tel = String(e.telefono || '').replace(/\D/g, '');
         const hecha = e.estado === 'enviado' || e.estado === 'omitido';
         const hora = `${_fidHoraTexto(e.hora)}${e.horaOrigen === 'cliente' ? ' (su hora)' : ' (hora pico)'}`;
@@ -15581,13 +15633,15 @@ function _fidColaHtml() {
         const acciones = e.estado === 'pendiente'
             ? `<button type="button" class="feedback-pending-btn" data-fid-prev-cola="${escapeHtml(e.k)}" title="Ver la imagen y el texto; copiarlos y confirmar el envío">👁 Vista previa</button><button type="button" class="ghost-button" data-fid-cola-omitir="${escapeHtml(e.k)}" title="Hoy no le escribo">Omitir</button>`
             : (e.estado === 'copiado' ? `<button type="button" class="ghost-button" data-fid-prev-cola="${escapeHtml(e.k)}">👁 Vista previa</button>` : '');
+        const btnDescartar = hecha ? '' : `<button type="button" class="ghost-button" data-fid-cola-descartar="${escapeHtml(e.k)}" data-nombre="${escapeHtml(e.nombre)}" data-tel="${escapeHtml(tel)}" title="Sacarlo de Reactivar para siempre (número malo, regalo que no aplica…)">🚫 Descartar</button>`;
+        const origenTxt = e.origen === 'web' ? ' · 🌐 su último pedido fue por la página' : (e.origen === 'admin' ? ' · 🧾 su último pedido lo digitó el local' : '');
         return `<div class="met-user-row-v2"${hecha ? ' style="opacity:.55"' : ''}>
             <div class="met-avatar">${ICONO[e.estado] || '🔁'}</div>
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2"><button type="button" class="feedback-pending-phone" data-fb-nombre="${escapeHtml(e.nombre)}" title="Tocar para copiar el nombre">${escapeHtml(e.nombre)}</button> · 🕒 ${escapeHtml(hora)}${aviso}</div>
-                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong> <button type="button" class="ghost-button" data-fid-ult-ticket="${escapeHtml(tel)}" title="Ver el ticket de su último pedido" style="padding:1px 7px;font-size:.72rem">🧾 ticket</button>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.vigenciaDias ? ` · vale ${e.vigenciaDias} días` : ''}${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}</div>
+                <div class="met-user-meta-v2"><button type="button" class="feedback-pending-phone" data-fb-phone="${escapeHtml(tel)}" title="Tocar para copiar el número">📋 ${escapeHtml(tel)}</button> · hace <strong>${e.dias} días</strong> <button type="button" class="ghost-button" data-fid-ult-ticket="${escapeHtml(tel)}" title="Ver el ticket de su último pedido" style="padding:1px 7px;font-size:.72rem">🧾 ticket</button>${e.ritmoDias ? ` (suele pedir cada ${e.ritmoDias})` : ''} · ${nf(e.pedidos)} pedido${e.pedidos === 1 ? '' : 's'} · ticket ${escapeHtml(formatMoney(e.ticket))}${e.favorito ? ` · le gusta <strong>${escapeHtml(e.favorito)}</strong>` : ''}<br>🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))} · costo ${escapeHtml(formatMoney(e.costoRegalo))} (tope ${escapeHtml(formatMoney(e.topeCosto))})${e.vigenciaDias ? ` · vale ${e.vigenciaDias} días` : ''}${e.modo === 'explora' ? ' · 🧪 prueba' : (e.modo === 'mejor' ? ' · 🏆 el que mejor canjea' : '')}${origenTxt}</div>
             </div>
-            ${acciones}
+            ${acciones}${btnDescartar}
         </div>`;
     }).join('');
     return `<article class="admin-card">
@@ -15602,7 +15656,7 @@ function _fidColaHtml() {
             <p class="admin-hint" style="margin-top:6px">Cada día a las 6 a. m. el sistema elige a los clientes que llevan más de lo normal sin pedir (según su propio ritmo), los que más valen primero. Les escribes a la hora en que ese cliente más pide, con su producto favorito y un regalo cuyo costo no pasa del tope. Te llega un aviso al celular a cada hora. Un grupo pequeño no recibe mensaje a propósito: sirve para medir si el mensaje de verdad hace volver. El sistema aprende qué regalo canjea más. Se ajusta en «Ajustes».</p>
         </details>
     </article>
-    <article class="admin-card"><div class="metrics-users-list">${filas || '<p class="met-empty-note">Hoy no hay clientes por reactivar.</p>'}</div>${bloqueEnv}</article>`;
+    <article class="admin-card"><div class="metrics-users-list">${filas || '<p class="met-empty-note">Hoy no hay clientes por reactivar.</p>'}</div>${bloqueEnv}${bloqueDesc}</article>`;
 }
 
 // Pestaña ⚙️ Configuración: todos los ajustes de configuracion/fidelizacion juntos (las demás pestañas guardan los mismos campos).
@@ -16140,6 +16194,11 @@ function _fidClick(e) {
     if (minBtn) { _fidReactMin = Number(minBtn.dataset.fidReactMin); renderMetricasFeedback(); return true; }
     const vistaReact = t.closest('[data-fid-vista]');
     if (vistaReact) { _fidReactVista = vistaReact.dataset.fidVista === 'lista' ? 'lista' : 'cola'; renderMetricasFeedback(); return true; }
+    const descCola = t.closest('[data-fid-cola-descartar]');
+    if (descCola) { _fidDescartarCliente(descCola.dataset.fidColaDescartar, descCola.dataset.nombre, descCola.dataset.tel); return true; }
+    const restDesc = t.closest('[data-fid-restaurar]');
+    if (restDesc) { _fidRestaurarDescartado(restDesc.dataset.fidRestaurar); return true; }
+    if (t.closest('[data-fid-desc-toggle]')) { _fidDescAbierto = !_fidDescAbierto; renderMetricasFeedback(); return true; }
     const omitirCola = t.closest('[data-fid-cola-omitir]');
     if (omitirCola) { _fidColaMarcar(_fidCola && _fidCola.dia, omitirCola.dataset.fidColaOmitir, 'omitido'); return true; }
     const subBtn = t.closest('[data-fid-sub]');

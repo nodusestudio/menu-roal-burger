@@ -71,7 +71,7 @@ function agruparClientes(pedidos) {
         c.n += 1; c.fechas.push(t); c.horas.push(horaBogota(t));
         const tk = Number(o.subtotal != null ? o.subtotal : o.total) || 0;
         if (tk > 0) c.tickets.push(tk);
-        if (t >= c.ultimo) { c.ultimo = t; c.telefono = String(o.customerPhoneDigits || o.customerPhone || '').replace(/\D/g, ''); if (o.customerName) c.nombre = String(o.customerName); }
+        if (t >= c.ultimo) { c.ultimo = t; c.origen = /^web/i.test(String(o.source || '')) || o.channel === 'web' ? 'web' : 'admin'; c.telefono = String(o.customerPhoneDigits || o.customerPhone || '').replace(/\D/g, ''); if (o.customerName) c.nombre = String(o.customerName); }
         (o.items || []).forEach((it) => {
             if (!it || it.parentItemKey || it.cortesia) return;
             const nom = String(it.productName || '').trim(); const cat = String(it.categoryName || '');
@@ -197,6 +197,7 @@ function mensajeReactivar(nombre, fav, regaloTexto) {
  */
 function construirCola({ pedidos, envios = [], cupones = [], cfg: cfgRaw = {}, ahora = Date.now(), rnd = Math.random }) {
     const cfg = cfgDe(cfgRaw);
+    const descartados = (cfgRaw && cfgRaw.descartados && typeof cfgRaw.descartados === 'object') ? cfgRaw.descartados : {};
     const dia = diaBogota(ahora);
     const clientes = agruparClientes(pedidos);
     const ultimoPorK = new Map(); clientes.forEach((c, k) => ultimoPorK.set(k, c.ultimo));
@@ -208,7 +209,7 @@ function construirCola({ pedidos, envios = [], cupones = [], cfg: cfgRaw = {}, a
 
     const elegibles = [];
     clientes.forEach((c, k) => {
-        if (fuera.has(k) || conCuponActivo.has(k)) return;
+        if (fuera.has(k) || conCuponActivo.has(k) || descartados[k]) return; // descartados a mano por el cajero: nunca vuelven a la cola
         const dias = Math.floor((ahora - c.ultimo) / DIA_MS);
         const fechas = [...c.fechas].sort((a, b) => a - b);
         const gaps = fechas.slice(1).map((t, i) => (t - fechas[i]) / DIA_MS).filter((g) => g > 0.5);
@@ -239,7 +240,7 @@ function construirCola({ pedidos, envios = [], cupones = [], cfg: cfgRaw = {}, a
         const propias = x.c.n >= 3 ? x.c.horas : [];
         const horaPropia = moda(propias.filter((h) => h >= cfg.horaMin && h <= cfg.horaMax));
         return {
-            k: x.k, telefono: x.c.telefono, nombre: x.c.nombre || 'Cliente', dias: x.dias, pedidos: x.c.n, ticket: x.ticket,
+            k: x.k, telefono: x.c.telefono, nombre: x.c.nombre || 'Cliente', dias: x.dias, pedidos: x.c.n, ticket: x.ticket, origen: x.c.origen || '',
             ritmoDias: x.intervalo ? Math.round(x.intervalo) : null,
             favorito: fav ? fav.nombre : '', favoritoVeces: fav ? fav.veces : 0,
             hora: horaPropia != null ? horaPropia : horaPico, horaOrigen: horaPropia != null ? 'cliente' : 'local',
