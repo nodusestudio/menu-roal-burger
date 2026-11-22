@@ -30950,7 +30950,11 @@ async function _pfApplyPaymentUpdate(order, receiveOrder, paymentUpdate, opts = 
             _cajaDiariaAutoOpened = true;
             _navigateToCajaDiaria();
         }
-        for (const o of _despues) await _promptPrintReceiptAfterCharge(o);
+        for (const o of _despues) {
+            if (opts.imprimirAuto) {
+                try { await openOrderPrintTicket(o.id); } catch (e) { showNotice(`No se pudo imprimir el ticket: ${e.message || 'error inesperado.'}`, 'error'); await _promptPrintReceiptAfterCharge(o); }
+            } else await _promptPrintReceiptAfterCharge(o);
+        }
     } catch (err) {
         showNotice(`No se pudo procesar el pedido: ${err.message || 'error inesperado.'}`, 'error');
     }
@@ -42231,8 +42235,10 @@ function _asistAcciones(msg, acciones) {
         // no guardan nada por sí solos (navegar, abrir TV, abrir la ventana de cobro): sin "Descartar" ni "ya quedó guardado"
         const soloAbre = a.tipo === 'navegar' || a.tipo === 'abrir_tv' || a.tipo === 'cobrar_cuentas';
         const BTN = 'cursor:pointer;border:0;border-radius:10px;padding:10px 16px;min-height:40px;font:700 .9rem system-ui,sans-serif;touch-action:manipulation;';
+        const conTransf = a.tipo === 'crear_pedido' && (a.resumen || {}).entrega !== 'mesa';
         card.innerHTML = `<span style="flex:1 1 100%;min-width:160px">${txt}</span>`
             + `<button type="button" data-acc="ok" style="${BTN}background:#ff6a00;color:#fff">${btn}</button>`
+            + (conTransf ? `<button type="button" data-acc="transf" style="${BTN}background:#1565c0;color:#fff">🏦 Por transferencia</button>` : '')
             + (soloAbre ? '' : `<button type="button" data-acc="no" style="${BTN}background:rgba(255,255,255,.16);color:inherit">Descartar</button>`)
             + `<span data-acc="estado" role="status" style="flex:1 1 100%;font-weight:600"></span>`;
         const estado = card.querySelector('[data-acc="estado"]'), bNo = card.querySelector('[data-acc="no"]');
@@ -42260,6 +42266,27 @@ function _asistAcciones(msg, acciones) {
             }
         };
         card.querySelector('[data-acc="ok"]').addEventListener('click', (e) => ejecutar(e.currentTarget));
+        const bTr = card.querySelector('[data-acc="transf"]');
+        if (bTr) bTr.addEventListener('click', async (e) => {
+            // Crea el pedido igual, pero queda "en espera de pago por Bancolombia": copia los datos para el cliente y, cuando
+            // llega el valor exacto, el sistema cobra e imprime solo (ver _transfEsperarPago / _cqAplicar).
+            const b = e.currentTarget, bOk = card.querySelector('[data-acc="ok"]');
+            if (b.disabled) return;
+            if (_cqEstado().cobro && _cqEstado().cobro.estado === 'abierto' && !(await showConfirmModal({ title: 'Ya hay un cobro esperando', message: `Está esperando ${formatMoney(_cqEstado().cobro.total)}. Solo se puede vigilar un pago a la vez: ¿cancelarlo y vigilar este pedido?`, confirmText: 'Sí, cambiar', cancelText: 'No', danger: false }))) return;
+            if (bOk) bOk.disabled = true;
+            const aT = { ...a, porTransferencia: true };
+            b.disabled = true; if (bNo) bNo.disabled = true; b.textContent = 'Trabajando…'; estado.textContent = '';
+            try {
+                if (_fodiPedidoPend && _fodiPedidoPend.a === a) _fodiPedidoPend = null;
+                await _asistEjecutarAccion(aT);
+                b.textContent = '✓ Esperando el pago'; if (bOk) bOk.textContent = '✓ Pedido creado'; if (bNo) bNo.remove();
+                estado.style.color = '#7ee2a8'; estado.textContent = '✅ Pedido creado. Datos de pago copiados: pégalos al cliente. Cuando llegue la transferencia se cobra e imprime solo.';
+            } catch (err) {
+                b.disabled = false; if (bOk) bOk.disabled = false; if (bNo) bNo.disabled = false; b.textContent = '🏦 Por transferencia';
+                estado.style.color = '#ff9c9c'; estado.textContent = '⚠️ No se pudo: ' + (err.message || err);
+                showNotice('No se pudo: ' + (err.message || err), 'error');
+            }
+        });
         if (bNo) bNo.addEventListener('click', () => {
             if (a.tipo === 'crear_pedido' && _fodiPedidoPend && _fodiPedidoPend.a === a) _fodiPedidoPend = null;
             card.querySelector('[data-acc="ok"]').disabled = true; bNo.remove(); estado.style.color = 'inherit'; estado.textContent = 'Descartado, no se hizo nada.';
@@ -42342,8 +42369,10 @@ async function _asistEjecutarAccion(a) {
     if (a.tipo === 'editar_pedido') return _fodiEditarPedidoEjecutar(a);
     if (a.tipo === 'crear_pedido') {
         if (!firebaseFunctions) throw new Error('No hay conexión con el servidor.');
-        const res = await firebaseFunctions.httpsCallable('createManualWhatsAppOrder')(a.payload);
+        const payload = a.porTransferencia ? { ...a.payload, paymentMethod: 'transferencia', cashChangeRequired: false, cashTenderAmount: null } : a.payload;
+        const res = await firebaseFunctions.httpsCallable('createManualWhatsAppOrder')(payload);
         const code = res?.data?.code || '', total = Number.isFinite(Number(res?.data?.total)) ? ` Total: ${formatMoney(Number(res.data.total))}.` : '';
+        if (a.porTransferencia) { await _transfEsperarPago(res.data, a.resumen || {}); return; }
         showNotice(`Pedido ${code} creado y enviado a recepción.${total}`, 'ok');
         if (typeof renderOrders === 'function') renderOrders();
         return;
@@ -44148,7 +44177,7 @@ function _cqPintar() {
         document.getElementById('cqAceptarBtn')?.addEventListener('click', _cqAceptarPagoSuelto);
         document.getElementById('cqIgnorarBtn')?.addEventListener('click', () => { _cqEstado().pagoSuelto = null; _cqPintar(); });
     } else {
-        c.innerHTML = `<div style="font-weight:800;">📲 Esperando pago · ${reloj}</div><div style="margin:4px 0 10px;">${formatMoney(x.total)}${quien}<br><span style="opacity:.75;font-size:12px;">El cliente escanea el QR de la TV y paga este valor exacto.</span></div><div style="display:flex;gap:8px;">${btn('cqYaPagoBtn', '✓ Ya pagó', '#2e7d32')}${btn('cqCancelarBtn', 'Cancelar', '#c62828')}</div>`;
+        c.innerHTML = `<div style="font-weight:800;">📲 Esperando pago · ${reloj}</div><div style="margin:4px 0 10px;">${formatMoney(x.total)}${quien}<br><span style="opacity:.75;font-size:12px;">${x.origen === 'transferencia' ? 'Pedido por transferencia: cuando llegue este valor exacto de Bancolombia se cobra e imprime solo.' : 'El cliente escanea el QR de la TV y paga este valor exacto.'}</span></div><div style="display:flex;gap:8px;">${btn('cqYaPagoBtn', '✓ Ya pagó', '#2e7d32')}${btn('cqCancelarBtn', 'Cancelar', '#c62828')}</div>`;
         document.getElementById('cqYaPagoBtn')?.addEventListener('click', _cqConfirmarManual);
         document.getElementById('cqCancelarBtn')?.addEventListener('click', () => _cqCancelar('cancelado'));
     }
@@ -44259,7 +44288,8 @@ async function _cqAplicar(x) {
             showNotice(`Llegaron ${formatMoney(x.total)} por QR${x.pagador ? ' de ' + x.pagador : ''}. Elige cómo paga el resto ($${(Number(x.pedidoTotal) - Number(x.total)).toLocaleString('es-CO')}) y confirma.`, 'ok');
         } else {
             const receive = x.receiveOrder === 'mesa' ? 'mesa' : (x.receiveOrder === 'true');
-            await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id }, { despues: true });
+            // Pedido por transferencia (tomado desde FODI): es el ÚNICO caso en que el ticket se imprime solo al llegar el pago.
+            await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id }, { despues: true, imprimirAuto: x.origen === 'transferencia' });
         }
     } catch (e) { showNotice(`No se pudo registrar el pago del QR: ${e.message || e}`, 'error'); }
     // la TV agradece unos segundos y luego vuelve a la publicidad
@@ -44356,6 +44386,27 @@ async function _cqIniciar() {
         _cqEscuchar(ref.id, { ...datos, creadoMs: ahora });
         showNotice('QR en la TV. Esperando el pago…', 'ok');
     } catch (e) { showNotice(`No se pudo abrir el cobro con QR: ${e.message || e}`, 'error'); }
+}
+// Pedido tomado por WhatsApp que el cliente pagará por transferencia (botón "🏦 Por transferencia" de FODI).
+// El pedido ya está creado: copia los datos de pago para pasárselos al cliente y deja un cobro abierto por el valor exacto
+// (domicilio incluido) SIN QR en la TV. Al llegar el pago de Bancolombia, _cqAplicar cobra, recibe e imprime el ticket solo.
+const TRANSFERENCIA_ESPERA_MS = 2 * 60 * 60 * 1000;
+const TRANSFERENCIA_LLAVE = '@roalburger'; // llave Bre-B de ROAL BURGER (la misma del qr-cobro.json)
+async function _transfEsperarPago(r, resumen) {
+    const total = Math.round(Number(r && r.total) || 0);
+    if (!r || !r.id || !(total > 0)) throw new Error('El pedido se creó pero no pude leer su total. Cóbralo desde el POS.');
+    const cliente = String(resumen.cliente || '').trim();
+    const texto = `Para pagar tu pedido por transferencia Bancolombia 💛\n\n🔑 Llave Bre-B: ${TRANSFERENCIA_LLAVE}\n🏪 A nombre de: ROAL BURGER\n💵 Valor exacto: ${formatMoney(total)}${resumen.entrega === 'delivery' ? ' (domicilio incluido)' : ''}\n\nEn cuanto llegue el pago te confirmamos y empezamos a prepararlo 🍔`;
+    let copiado = false; try { copiado = await copyTextToClipboard(texto); } catch (_) { /* sin portapapeles */ }
+    try { await reloadDataAndRender(); } catch (_) { /* se refresca solo */ }
+    const st = _cqEstado();
+    if (st.cobro && st.cobro.estado === 'abierto') await _cqCancelar('cancelado');
+    const ref = firebaseDb.collection('cobros_bancolombia').doc();
+    const ahora = Date.now();
+    const datos = { pedidoId: r.id, total, pedidoTotal: total, parcial: false, cliente, receiveOrder: 'true', estado: 'abierto', origen: 'transferencia', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + TRANSFERENCIA_ESPERA_MS };
+    await ref.set(datos);
+    _cqEscuchar(ref.id, { ...datos, creadoMs: ahora });
+    showNotice(copiado ? `Pedido ${r.code || ''} creado (${formatMoney(total)}). Datos de pago copiados: pégalos al cliente.` : `Pedido ${r.code || ''} creado (${formatMoney(total)}). No pude copiar los datos de pago: llave ${TRANSFERENCIA_LLAVE}, valor ${formatMoney(total)}.`, copiado ? 'ok' : 'info');
 }
 // Si se recarga el panel con un cobro abierto, esta pestaña lo retoma (solo la pestaña que lo abrió).
 async function _cqRestaurar() {
