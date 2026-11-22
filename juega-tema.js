@@ -27,26 +27,19 @@
     const estiloPopup = (grande) => ({ fontFamily: FUENTES.titulo, fontSize: grande ? '40px' : '34px', align: 'center', stroke: '#121214', strokeThickness: 7, padding: { x: 30, y: 24 } });
     const colorMeta = (alcanzada) => (alcanzada ? '#0b6b3a' : '#121214');
 
-    // ── Escenario: 1024x1536 de diseño, escalado para que el marco del tablero siempre entre completo (aunque se recorten los lados del fondo) ──
-    const ESC = { w: 1024, h: 1536, anchoMarco: 720 };
-    function ajustarEscena() {
-        const st = document.getElementById('escena'); if (!st) return;
-        const vw = window.innerWidth, vh = window.innerHeight;
-        const s = Math.min(vh / ESC.h, vw / ESC.anchoMarco);
-        st.style.transform = `translate(${(vw - ESC.w * s) / 2}px, ${Math.max(0, (vh - ESC.h * s) / 2)}px) scale(${s})`;
-    }
+    // El diseño minimalista no usa escenario escalado (se deja el contrato por compatibilidad).
+    function ajustarEscena() { /* nada */ }
 
     // ── Carga de imágenes del tema (la llama Escena.preload): el fondo va en HTML, aquí no hay nada que cargar ──
     function cargar() { /* sin imágenes de Phaser */ }
 
     // ── Baldosas arcade: cara de color con brillo, borde oscuro abajo e ícono del ingrediente ──
     function baldosa(g, S, col) {
-        const oscuro = Phaser.Display.Color.IntegerToColor(col).darken(38).color;
-        g.fillStyle(0x000000, 0.4).fillRoundedRect(1, 2, S - 1, S - 1, 8);
-        g.fillStyle(oscuro, 1).fillRoundedRect(0, 0, S, S, 8);
-        g.fillStyle(col, 1).fillRoundedRect(1.5, 1.5, S - 3, S - 5, 7);
-        g.fillStyle(0xffffff, 0.3).fillRoundedRect(3, 3, S - 6, (S - 5) / 2.1, { tl: 6, tr: 6, bl: 3, br: 3 });
-        g.lineStyle(1.5, 0x000000, 0.55).strokeRoundedRect(0.75, 0.75, S - 1.5, S - 1.5, 8);
+        const oscuro = Phaser.Display.Color.IntegerToColor(col).darken(30).color;
+        g.fillStyle(0x000000, 0.35).fillRoundedRect(0, 2, S, S - 1, 7);
+        g.fillStyle(oscuro, 1).fillRoundedRect(0, 0, S, S, 7);
+        g.fillStyle(col, 1).fillRoundedRect(1, 1, S - 2, S - 4, 6);
+        g.fillStyle(0xffffff, 0.12).fillRoundedRect(2, 2, S - 4, (S - 4) / 2.4, { tl: 5, tr: 5, bl: 2, br: 2 });
     }
     const ICONOS = {
         pan(g, c) { // hamburguesa
@@ -91,42 +84,39 @@
     // ── Fondo: lo pone la imagen (HTML). Phaser va transparente; no dibuja nada aquí ──
     function fondo() { /* el fondo es juega-fondo.webp, debajo del lienzo */ }
 
-    // ── Tablero y bandeja: tapan lo dibujado de ejemplo en la imagen con paneles oscuros y dibujan las casillas reales ──
+    // ── Tablero minimalista: una losa oscura con casillas apenas marcadas. La bandeja no lleva marcos ──
     function tablero(scene, d) {
-        const { GX, GY, N, CELDA, CX_BANDEJA, BANDEJA_Y } = d;
-        scene.add.rectangle(187.5, 174.5, 340, 322, 0x0d0d10, 1).setDepth(1);                     // interior del tablero
-        for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) scene.add.rectangle(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, CELDA - 3, CELDA - 3, 0x17171c, 1).setStrokeStyle(1, 0x2c2c34, 1).setDepth(1);
-        CX_BANDEJA.forEach((cx) => {                                                                // ranuras de las 3 piezas
-            const s = scene.add.graphics().setDepth(1);
-            s.fillStyle(0x110e0c, 1).fillRoundedRect(cx - 54, BANDEJA_Y + 60 - 48, 108, 98, 12);
-            s.fillStyle(0xffffff, 0.04).fillRoundedRect(cx - 50, BANDEJA_Y + 60 - 44, 100, 26, 9);
-        });
+        const { GX, GY, N, CELDA } = d;
+        scene.add.rectangle(GX + (N * CELDA) / 2, GY + (N * CELDA) / 2, N * CELDA + 10, N * CELDA + 10, 0x0b0b0e, 1).setDepth(1);
+        for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) scene.add.rectangle(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, CELDA - 3, CELDA - 3, 0x16161a, 1).setStrokeStyle(1, 0x202026, 1).setDepth(1);
     }
 
-    // ── Marcador: puntaje y cinta de meta son HTML sobre la imagen. Devuelve objetos con la misma interfaz que usaba juega.js ──
+    // ── Marcador: puntaje y barra hacia la meta (HTML). Devuelve objetos con la interfaz que usa juega.js ──
     function cabecera() {
-        const pEl = document.getElementById('uiPuntos'), mEl = document.getElementById('uiMeta');
-        const nada = { setText() {}, setColor() {}, pulso() {} };
-        if (!pEl || !mEl) return { puntos: nada, meta: nada };
+        const pEl = document.getElementById('uiPuntos'), barra = document.getElementById('uiBarra'), mEl = document.getElementById('uiMeta');
+        const nada = { setText() {}, setColor() {}, pulso() {}, progreso() {} };
+        if (!pEl) return { puntos: nada, meta: nada };
+        const fmt = (n) => Number(n || 0).toLocaleString('es-CO');
         return {
-            puntos: {
-                setText(t) { pEl.textContent = t; const n = String(t).length; pEl.style.fontSize = n > 5 ? '54px' : (n > 4 ? '64px' : '80px'); },
-                pulso() { pEl.classList.remove('pulso'); void pEl.offsetWidth; pEl.classList.add('pulso'); }
-            },
-            meta: { setText(t) { mEl.textContent = t; }, setColor(c) { mEl.style.color = c; } }
+            puntos: { setText(t) { pEl.textContent = t; }, pulso() { pEl.classList.remove('pulso'); void pEl.offsetWidth; pEl.classList.add('pulso'); } },
+            meta: {
+                setText() {}, setColor() {},
+                progreso(p, meta, nivel) { if (barra) { barra.style.width = Math.min(100, (p / Math.max(1, meta)) * 100) + '%'; barra.classList.toggle('lleno', p >= meta); } if (mEl) mEl.textContent = `Nivel ${nivel} · ${fmt(p)} / ${fmt(meta)}`; }
+            }
         };
     }
 
-    // ── Marco animado: neón naranja que pulsa y un destello que le da la vuelta al marco dibujado en la imagen ──
+    // ── Marco: línea fina naranja alrededor del tablero con un destello que le da la vuelta ──
     function marco(g, time, d) {
-        const x0 = 2.5, y0 = 2.5, w = d.W - 5, h = 348, per = 2 * (w + h), r = 14;
-        const pulso = 0.8 + 0.2 * Math.sin(time / 260);
+        const { GX, GY, N, CELDA } = d;
+        const x0 = GX - 5, y0 = GY - 5, w = N * CELDA + 10, h = N * CELDA + 10, per = 2 * (w + h), r = 8;
+        const pulso = 0.85 + 0.15 * Math.sin(time / 300);
         g.clear();
-        [[12, 0.10], [7, 0.16], [4, 0.24]].forEach(([ancho, a]) => { g.lineStyle(ancho, C.naranja, a * pulso); g.strokeRoundedRect(x0, y0, w, h, r); });
-        g.lineStyle(1.4, 0xffe2c2, 0.85 * pulso).strokeRoundedRect(x0, y0, w, h, r);
+        g.lineStyle(7, C.naranja, 0.12 * pulso).strokeRoundedRect(x0, y0, w, h, r);
+        g.lineStyle(2, C.naranja, 0.95).strokeRoundedRect(x0, y0, w, h, r);
         const pt = (t) => { let s = (((t % 1) + 1) % 1) * per; if (s < w) return [x0 + s, y0]; s -= w; if (s < h) return [x0 + w, y0 + s]; s -= h; if (s < w) return [x0 + w - s, y0 + h]; s -= w; return [x0, y0 + h - s]; };
-        const cab = (time / 2600) % 1;
-        for (let k = 0; k < 16; k++) { const p = pt(cab - k * 0.006), q = pt(cab - (k + 1) * 0.006); g.lineStyle(4.5, 0xffd34d, 1 - k / 16); g.lineBetween(p[0], p[1], q[0], q[1]); }
+        const cab = (time / 3200) % 1;
+        for (let k = 0; k < 14; k++) { const p = pt(cab - k * 0.005), q = pt(cab - (k + 1) * 0.005); g.lineStyle(3.5, 0xffd9a8, 0.9 * (1 - k / 14)); g.lineBetween(p[0], p[1], q[0], q[1]); }
     }
 
     // ── Intro: el barrio de noche (canvas 2D, liviano: no necesita Phaser ni Firebase) ──

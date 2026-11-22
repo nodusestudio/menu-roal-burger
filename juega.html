@@ -6,7 +6,7 @@
     <title>Juega · Block ROAL</title>
     <meta name="description" content="Juega Block ROAL, acumula puntos y canjéalos por créditos en tu próximo pedido de ROAL BURGER.">
     <meta name="robots" content="noindex">
-    <meta name="theme-color" content="#121214">
+    <meta name="theme-color" content="#0e0e10">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,13 +16,12 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js" crossorigin>
-    <link rel="preload" as="image" href="juega-fondo.webp">
     <link rel="preconnect" href="https://us-central1-roal-burger-menu.cloudfunctions.net" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700;800&family=Permanent+Marker&display=swap" rel="stylesheet">
-    <!-- Diseño: la imagen juega-fondo.webp, juega-tema.css y juega-tema.js. La lógica del juego está en juega.js -->
-    <link rel="stylesheet" href="juega-tema.css?v=20261122j">
+    <!-- Diseño: juega-tema.css y juega-tema.js. La lógica del juego está en juega.js -->
+    <link rel="stylesheet" href="juega-tema.css?v=20261122k">
 </head>
 <body>
     <div id="intro">
@@ -39,29 +38,43 @@
     </div>
 
     <div id="app" hidden>
-        <div id="escena">
-            <img id="fondoImg" src="juega-fondo.webp" alt="" decoding="async">
-            <a class="ctl" id="hotMenu" href="/" aria-label="Volver al menú">←</a>
+        <header>
+            <a class="ctl" id="hotMenu" href="/" data-menu aria-label="Volver al menú">←</a>
+            <h1>BLOCK<span>ROAL</span></h1>
+            <button type="button" class="ctl" id="btnInfo" aria-label="Cómo se juega">i</button>
             <button type="button" class="ctl" id="btnSonido" aria-label="Sonido" aria-pressed="true">🔊</button>
-
-            <div class="panel" id="p1"><b id="stNivel">1</b><span>Nivel</span></div>
-            <div class="panel" id="p2"><b id="stMeta">500</b><span>Meta pts</span></div>
-            <div class="panel" id="p3"><b id="stRacha">0</b><span>Racha 🔥</span></div>
-            <div class="panel" id="p4"><b id="stCredito">$0</b><span>Créditos</span></div>
-            <div id="pillHoy">Hoy:<b id="stHoy">0 / 300</b>· Racha <span id="stBonus"></span></div>
-
-            <div id="marcador"><span id="uiPuntos">0</span></div>
-            <div id="cinta"><span id="uiMeta">Meta nivel 1: 500 pts</span></div>
-            <div id="juegoCanvas"></div>
-        </div>
+        </header>
+        <section id="marcador">
+            <span id="uiPuntos">0</span>
+            <div id="barra"><i id="uiBarra"></i></div>
+            <div id="uiMeta">Nivel 1 · 0 / 500</div>
+        </section>
+        <div id="juegoCanvas"></div>
+        <footer id="chips">
+            <span class="chip">🔥 <b id="stRacha">0</b></span>
+            <span class="chip">💰 <b id="stCredito">$0</b></span>
+        </footer>
         <div class="aviso" id="avisoJuego" hidden></div>
+    </div>
+
+    <div class="overlay" id="info" hidden>
+        <div class="card">
+            <h2>Cómo se juega</h2>
+            <p style="margin-bottom:6px">Arrastra las piezas al tablero. Llena filas o columnas para limpiarlas y sumar puntos.</p>
+            <ul>
+                <li>Nivel <b><span id="stNivel">1</span> · meta <span id="stMeta">500</span> pts</b></li>
+                <li>Puntos de hoy <b id="stHoy">0 / 300</b></li>
+                <li>Bonus de racha <b id="stBonus"></b></li>
+            </ul>
+            <button class="btn" id="btnInfoCerrar" type="button">Entendido</button>
+        </div>
     </div>
 
     <div class="overlay" id="sinSesion" hidden>
         <div class="card">
             <h2>Inicia sesión</h2>
             <p>Para jugar y guardar tus puntos entra a tu cuenta ROAL desde el menú.</p>
-            <a class="btn" href="/">Ir al menú</a>
+            <a class="btn" href="/" data-menu>Ir al menú</a>
         </div>
     </div>
 
@@ -70,7 +83,7 @@
             <h2 id="resTitulo">¡Se acabó, mi pana!</h2>
             <div class="pts" id="resPuntaje">0 pts</div>
             <p id="resDetalle"></p>
-            <button class="btn" id="btnOtra" type="button">¡Otra, vale!</button><a class="btn sec" href="/">Ir al menú</a>
+            <button class="btn" id="btnOtra" type="button">¡Otra, vale!</button><a class="btn sec" href="/" data-menu>Menú</a>
         </div>
     </div>
 
@@ -78,7 +91,7 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="juega-tema.js?v=20261122j"></script>
-    <script defer src="juega.js?v=20261122j"></script>
+    <script defer src="juega-tema.js?v=20261122k"></script>
+    <script defer src="juega.js?v=20261122k"></script>
 </body>
 </html>

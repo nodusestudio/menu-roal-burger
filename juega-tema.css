@@ -1,60 +1,62 @@
-/* Block ROAL — TEMA VISUAL (parte HTML/CSS): "Arcade urbano venezolano" sobre el fondo ilustrado de ROAL (juega-fondo.webp).
- * Solo estilos: la estructura vive en juega.html y la lógica en juega.js. Para rediseñar: cambiar la imagen, este archivo y juega-tema.js.
- * Las medidas del escenario (#escena) están en PÍXELES DE DISEÑO sobre la imagen de 1024x1536; juega-tema.js la escala a la pantalla. */
+/* Block ROAL — TEMA VISUAL (HTML/CSS): "Urbano minimalista". Concreto oscuro, ladrillo apenas insinuado y UN solo acento: el naranja ROAL.
+ * Solo estilos: la estructura está en juega.html y la lógica en juega.js. Para rediseñar se edita este archivo y juega-tema.js. */
 @property --ang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
-:root { --naranja: #fb4b08; --naranja2: #ff7a2b; --amarillo: #ffc400; --azul: #1f6bff; --carbon: #121214; --crema: #f6ebd9; --ok: #7dff9a; --nav: #0b1650; }
+:root { --naranja: #fb4b08; --naranja2: #ff7a2b; --amarillo: #ffc400; --azul: #1f6bff; --carbon: #0e0e10; --crema: #f6ebd9; --tenue: rgba(246, 235, 217, .62); --linea: rgba(255, 255, 255, .14); --nav: #0b1650; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; background: #1a1210; color: var(--crema); font-family: 'Montserrat', system-ui, sans-serif; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; overflow: hidden; }
+html, body { margin: 0; height: 100%; background: var(--carbon); color: var(--crema); font-family: 'Montserrat', system-ui, sans-serif; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; overflow: hidden; }
 @keyframes giro { to { --ang: 360deg; } }
-@keyframes pulsoPanel { 0%, 100% { box-shadow: 0 0 10px rgba(251, 75, 8, .5), inset 0 0 12px rgba(255, 150, 40, .15); } 50% { box-shadow: 0 0 26px rgba(251, 120, 20, .95), inset 0 0 18px rgba(255, 170, 60, .3); } }
-@keyframes golpeNum { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@keyframes golpeNum { 0% { transform: scale(1.25); } 100% { transform: scale(1); } }
 h1, h2, .anton { font-family: 'Anton', Impact, sans-serif; font-weight: 400; letter-spacing: .03em; text-transform: uppercase; }
 
-/* Pantalla: el fondo difuminado rellena los costados si la pantalla es más ancha o más alta que el escenario */
-#app { position: fixed; inset: 0; overflow: hidden; background: #1a1210; }
-#app::before { content: ''; position: absolute; inset: -30px; background: url("juega-fondo.webp") center / cover; filter: blur(22px) brightness(.55) saturate(1.2); }
-#escena { position: absolute; left: 0; top: 0; width: 1024px; height: 1536px; transform-origin: 0 0; }
-#fondoImg { position: absolute; inset: 0; width: 1024px; height: 1536px; display: block; -webkit-user-drag: none; pointer-events: none; }
+/* Pared: ladrillo casi invisible + un resplandor naranja arriba + la marca de ROAL muy tenue */
+body::before { content: ''; position: fixed; inset: 0; z-index: -2; background:
+    radial-gradient(ellipse at 50% -10%, rgba(251, 75, 8, .20), transparent 55%),
+    radial-gradient(ellipse at 50% 115%, rgba(0, 0, 0, .8), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='40'%3E%3Crect width='80' height='40' fill='%2311100f'/%3E%3Cg fill='%23171514'%3E%3Crect x='1.5' y='1.5' width='37' height='17'/%3E%3Crect x='41.5' y='1.5' width='37' height='17'/%3E%3Crect x='21.5' y='21.5' width='37' height='17'/%3E%3Crect x='-18.5' y='21.5' width='37' height='17'/%3E%3Crect x='61.5' y='21.5' width='37' height='17'/%3E%3C/g%3E%3C/svg%3E") #0e0e10; }
+body::after { content: ''; position: fixed; left: 50%; bottom: 6vh; width: 70vmin; height: 70vmin; transform: translateX(-50%); z-index: -1; background: url("isotipo.webp") center / contain no-repeat; opacity: .045; pointer-events: none; }
 
-/* Botones de la máquina (Menú y sonido), dentro de la franja segura de la imagen (x 152..872): el fondo ya no trae botones dibujados */
-.ctl { position: absolute; top: 22px; width: 92px; height: 78px; display: flex; align-items: center; justify-content: center; border: 5px solid #ff8a1f; border-radius: 22px; background: linear-gradient(#2a2118, #120b05); color: #fff; font-family: 'Anton', sans-serif; font-size: 54px; line-height: 1; text-decoration: none; cursor: pointer; padding: 0; box-shadow: 0 0 14px rgba(251, 90, 10, .75), inset 0 3px 0 rgba(255, 255, 255, .18); text-shadow: 0 3px 0 #000; }
-.ctl:active { transform: translateY(3px); filter: brightness(1.25); }
-#hotMenu { left: 152px; }
-#btnSonido { left: 780px; font-size: 44px; }
-#btnSonido.off { filter: grayscale(1) brightness(.7); }
+#app { position: fixed; inset: 0; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom); }
+header { display: flex; align-items: center; gap: 8px; padding: 10px 0 4px; }
+.ctl { width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--linea); border-radius: 12px; background: rgba(255, 255, 255, .05); color: var(--crema); font: 400 1.25rem 'Anton', sans-serif; text-decoration: none; cursor: pointer; padding: 0; }
+.ctl:active { background: rgba(251, 75, 8, .35); border-color: var(--naranja); }
+header h1 { flex: 1; margin: 0; text-align: center; font-size: 1.5rem; line-height: 1; font-style: italic; letter-spacing: .06em; }
+header h1 span { color: var(--naranja); margin-left: .18em; }
+#btnSonido.off { opacity: .45; }
 
-/* Marcadores: paneles que tapan los de ejemplo de la imagen y muestran los datos reales */
-.panel { position: absolute; top: 134px; height: 108px; background: linear-gradient(#1d1308, #120b05); border: 6px solid #ff8a1f; border-radius: 26px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; animation: pulsoPanel 2.6s ease-in-out infinite; overflow: hidden; }
-.panel b { font-family: 'Anton', sans-serif; font-weight: 400; font-size: 58px; line-height: 1; color: #fff; text-shadow: 0 0 14px rgba(255, 196, 0, .7), 0 3px 0 #000; max-width: 100%; white-space: nowrap; }
-.panel span { font-size: 25px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: var(--crema); line-height: 1.1; margin-top: 2px; }
-#p1 { left: 152px; width: 170px; } #p2 { left: 336px; width: 170px; } #p3 { left: 520px; width: 170px; } #p4 { left: 702px; width: 170px; }
-#pillHoy { position: absolute; left: 152px; top: 246px; width: 720px; height: 56px; background: #0b0b0d; border: 3px solid var(--crema); border-radius: 29px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; white-space: nowrap; }
-#pillHoy b { color: var(--amarillo); margin: 0 .25em; }
-#marcador { position: absolute; left: 436px; top: 358px; width: 176px; height: 122px; background: linear-gradient(#17120d, #0b0805); border: 6px solid #ff8a1f; border-radius: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 22px rgba(251, 120, 20, .8), inset 0 0 14px rgba(255, 170, 60, .25); }
-#uiPuntos { font-family: 'Anton', sans-serif; font-size: 80px; line-height: 1; color: var(--amarillo); text-shadow: 0 0 14px rgba(251, 75, 8, .95), 3px 3px 0 #000; transform-origin: center; }
+/* Marcador: el puntaje y una barra fina hacia la meta. Nada más */
+#marcador { text-align: center; padding: 2px 0 8px; }
+#uiPuntos { display: block; font-family: 'Anton', sans-serif; font-size: 64px; line-height: 1; color: #fff; letter-spacing: .02em; }
 #uiPuntos.pulso { animation: golpeNum .22s ease-out; }
-#cinta { position: absolute; left: 322px; top: 470px; width: 400px; height: 52px; background: var(--amarillo); clip-path: polygon(2% 6%, 100% 0, 97% 100%, 0 94%); display: flex; align-items: center; justify-content: center; }
-#uiMeta { font-size: 30px; font-weight: 800; color: #121214; white-space: nowrap; }
-/* El lienzo de Phaser cubre SOLO el tablero y la bandeja, alineado con el marco de la imagen */
-#juegoCanvas { position: absolute; left: 172px; top: 518px; width: 684px; height: 854px; display: flex; align-items: center; justify-content: center; }
-#juegoCanvas canvas { touch-action: none; display: block; }
-.aviso { position: fixed; left: 10px; right: 10px; top: 8px; z-index: 20; padding: 8px 10px; border-radius: 10px; background: rgba(11, 11, 13, .95); font-size: .8rem; text-align: center; border: 2px solid var(--amarillo); }
+#barra { height: 5px; margin: 8px auto 6px; width: min(78%, 300px); border-radius: 5px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+#uiBarra { display: block; height: 100%; width: 0; border-radius: 5px; background: var(--naranja); box-shadow: 0 0 10px rgba(251, 75, 8, .8); transition: width .35s ease; }
+#uiBarra.lleno { background: #36d27a; box-shadow: 0 0 10px rgba(54, 210, 122, .8); }
+#uiMeta { font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue); }
+#juegoCanvas { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+#juegoCanvas canvas { touch-action: none; }
+#chips { display: flex; gap: 8px; justify-content: center; padding: 6px 0 10px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--linea); border-radius: 999px; background: rgba(255, 255, 255, .05); font-size: .85rem; font-weight: 700; color: var(--crema); }
+.chip b { font-family: 'Anton', sans-serif; font-weight: 400; letter-spacing: .03em; font-size: 1rem; }
+.aviso { position: fixed; left: 10px; right: 10px; top: 8px; z-index: 20; padding: 8px 10px; border-radius: 10px; background: rgba(14, 14, 16, .96); font-size: .8rem; text-align: center; border: 1px solid var(--linea); }
 .aviso.err { background: #4a1212; color: #ffd0c4; border-color: #e3212b; }
 
-/* Ventanas (sin sesión / resultado) */
-.overlay { position: fixed; inset: 0; background: rgba(8, 6, 6, .86); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 10; }
+/* Ventanas */
+.overlay { position: fixed; inset: 0; background: rgba(8, 8, 9, .86); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 10; }
 .overlay[hidden], [hidden] { display: none !important; }
-#sinSesion, #resultado { z-index: 60; }
-.card { border: 4px solid transparent; border-radius: 14px; padding: 20px 18px; width: min(100%, 360px); text-align: center; background-image: linear-gradient(#17171b, #17171b), conic-gradient(from var(--ang), #fb4b08, #ffc400, #1f6bff, #fb4b08); background-origin: border-box; background-clip: padding-box, border-box; animation: giro 4s linear infinite; box-shadow: 0 10px 30px rgba(0, 0, 0, .6), 0 0 22px rgba(251, 75, 8, .35); }
-.card h2 { margin: 0 0 6px; font-size: 1.8rem; color: var(--amarillo); text-shadow: 0 2px 0 #000, 0 0 12px rgba(251, 75, 8, .7); }
-.card .pts { font-family: 'Anton', sans-serif; font-size: 2.6rem; color: #fff; text-shadow: 0 0 14px rgba(255, 196, 0, .8); margin: 4px 0; }
-.card p { white-space: pre-line; font-size: .9rem; line-height: 1.5; margin: 8px 0 14px; }
-.btn { display: inline-block; border: 0; border-bottom: 4px solid #8a2400; border-radius: 10px; padding: 12px 20px; font: 800 .95rem 'Montserrat', sans-serif; text-transform: uppercase; background: linear-gradient(var(--naranja2), var(--naranja)); color: #fff; cursor: pointer; text-decoration: none; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); box-shadow: 0 4px 10px rgba(0, 0, 0, .5), 0 0 12px rgba(251, 75, 8, .5); }
-.btn:active { transform: translateY(2px); border-bottom-width: 2px; }
+#sinSesion, #resultado, #info { z-index: 60; }
+.card { border: 1px solid var(--linea); border-radius: 18px; padding: 22px 18px; width: min(100%, 340px); text-align: center; background: #151517; box-shadow: 0 14px 40px rgba(0, 0, 0, .6); position: relative; }
+.card::before { content: ''; position: absolute; left: 24px; right: 24px; top: -1px; height: 2px; background: var(--naranja); box-shadow: 0 0 14px rgba(251, 75, 8, .9); border-radius: 2px; }
+.card h2 { margin: 0 0 6px; font-size: 1.6rem; color: #fff; }
+.card .pts { font-family: 'Anton', sans-serif; font-size: 2.6rem; color: var(--naranja); margin: 2px 0; }
+.card p { white-space: pre-line; font-size: .9rem; line-height: 1.55; margin: 8px 0 16px; color: var(--tenue); }
+.card ul { list-style: none; margin: 10px 0 16px; padding: 0; text-align: left; font-size: .86rem; color: var(--tenue); }
+.card li { padding: 7px 0; border-bottom: 1px solid var(--linea); display: flex; justify-content: space-between; gap: 10px; }
+.card li b { color: #fff; font-weight: 700; text-align: right; }
+.btn { display: inline-block; border: 0; border-radius: 12px; padding: 13px 22px; font: 800 .9rem 'Montserrat', sans-serif; text-transform: uppercase; letter-spacing: .05em; background: var(--naranja); color: #fff; cursor: pointer; text-decoration: none; box-shadow: 0 6px 18px rgba(251, 75, 8, .35); }
+.btn:active { transform: translateY(1px); filter: brightness(1.1); }
 .btn:disabled { opacity: .5; }
-.btn.sec { background: linear-gradient(#3d85ff, var(--azul)); border-bottom-color: #0a3aa6; margin-left: 6px; }
+.btn.sec { background: rgba(255, 255, 255, .08); color: var(--crema); margin-left: 6px; box-shadow: none; border: 1px solid var(--linea); }
 
-/* Intro: el barrio de noche + título estilo cómic */
+/* Intro: el barrio de noche + título */
 #intro { position: fixed; inset: 0; z-index: 50; background: var(--nav); display: flex; align-items: flex-end; justify-content: center; text-align: center; transition: opacity .8s ease, transform .8s ease; }
 #intro.salir { opacity: 0; transform: scale(1.6); pointer-events: none; }
 #warp { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -66,7 +68,7 @@ h1, h2, .anton { font-family: 'Anton', Impact, sans-serif; font-weight: 400; let
 .intro-bandera i { display: block; height: 6px; }
 .intro-bandera i:nth-child(1) { background: var(--amarillo); } .intro-bandera i:nth-child(2) { background: #1f4fff; } .intro-bandera i:nth-child(3) { background: #e3212b; }
 .intro-sub { font-family: 'Permanent Marker', 'Anton', cursive; font-size: 1.45rem; color: #fff; transform: rotate(-2deg); opacity: 0; animation: aparece .6s 1.9s forwards; margin-bottom: 14px; }
-.btn.grande { font-size: 1.1rem; padding: 15px 26px; letter-spacing: .05em; opacity: 0; animation: aparece .6s 2.3s forwards, latido 1.2s 3s ease-in-out infinite; }
+.btn.grande { font-size: 1.05rem; padding: 15px 26px; opacity: 0; animation: aparece .6s 2.3s forwards, latido 1.2s 3s ease-in-out infinite; }
 .intro-estado { font-size: .8rem; color: var(--crema); min-height: 1.2em; opacity: 0; animation: aparece .6s 2.5s forwards; }
 .intro-barra { width: min(70vw, 260px); height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .15); overflow: hidden; margin-top: 6px; }
 .intro-barra span { display: block; height: 100%; width: 40%; background: linear-gradient(90deg, var(--amarillo), var(--naranja), var(--azul)); animation: barra 1.4s ease-in-out infinite; }
@@ -76,5 +78,5 @@ h1, h2, .anton { font-family: 'Anton', Impact, sans-serif; font-weight: 400; let
 @keyframes ancho { from { width: 0; } }
 @keyframes latido { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
 @keyframes barra { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
-@keyframes entrar { from { opacity: 0; transform: scale(.6); filter: blur(8px); } to { opacity: 1; transform: scale(1); filter: none; } }
-#app.entrar { animation: entrar .9s cubic-bezier(.2, .9, .3, 1.15); }
+@keyframes entrar { from { opacity: 0; transform: scale(.7); filter: blur(8px); } to { opacity: 1; transform: scale(1); filter: none; } }
+#app.entrar { animation: entrar .9s cubic-bezier(.2, .9, .3, 1.1); }

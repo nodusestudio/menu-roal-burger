@@ -84,7 +84,7 @@
         const guardar = () => { try { localStorage.setItem('blockroal_snd', JSON.stringify({ m: musicaOn, s: sfxOn })); } catch (_) { /* nada */ } };
         const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
 
-        function init() {
+        function init(sinMusica) {
             if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
             const AC = window.AudioContext || window.webkitAudioContext;
             if (!AC) return;
@@ -94,7 +94,7 @@
             musG = ctx.createGain(); musG.gain.value = musicaOn ? VOL_MUSICA : 0; musG.connect(master);
             an = ctx.createAnalyser(); an.fftSize = 512; master.connect(an);
             armarMezcla();
-            if (musicaOn) iniciarMusica();
+            if (musicaOn && !sinMusica) iniciarMusica();
         }
         function tono(f, t0, dur, tipo, vol, dest, f2) {
             if (!ctx) return;
@@ -208,6 +208,9 @@
 
         const S = {
             init,
+            // ¿Se pudo activar el audio sin un toque dentro de esta página? (sí, si el juego se abrió desde el toque en «Juega» del menú)
+            async desbloquear() { init(true); if (!ctx) return false; try { await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 350))]); } catch (_) { /* sigue suspendido */ } return ctx.state === 'running'; },
+            arrancarMusica() { if (musicaOn) iniciarMusica(); },
             get estadoAudio() { return ctx ? ctx.state : 'sin-iniciar'; }, get pico() { if (!an) return 0; const d = new Uint8Array(an.fftSize); an.getByteTimeDomainData(d); let m = 0; for (const v of d) m = Math.max(m, Math.abs(v - 128)); return m / 128; }, get musicaCorriendo() { return corriendo; },
             get musicaOn() { return musicaOn; }, get sfxOn() { return sfxOn; },
             setMusica(v) { musicaOn = !!v; guardar(); if (musG) musG.gain.value = musicaOn ? VOL_MUSICA : 0; if (musicaOn) iniciarMusica(); else detenerMusica(); },
@@ -233,13 +236,26 @@
             },
             monedas() { if (!ctx) return; const t = ctx.currentTime; tono(hz(88), t, 0.12, 'square', 0.22, sfxG); tono(hz(95), t + 0.1, 0.4, 'square', 0.22, sfxG); },
             clic() { if (!ctx) return; tono(700, ctx.currentTime, 0.06, 'triangle', 0.25, sfxG, 1000); },
-            warp() { // entrada al barrio: tres rociadas de spray + caída de 808 + rasgueo de cuatro
+            warp() { // llegada al barrio: murmullo de calle, carro y moto que pasan, pitos, tres rociadas de spray y caída de 808 con rasgueo de cuatro
                 if (!ctx) return; const t = ctx.currentTime;
-                [0, 0.3, 0.62].forEach((d, i) => ruido(t + d, 0.28, 0.35, sfxG, 3500 + i * 1200));
-                tono(48, t + 1.0, 0.9, 'sine', 0.95, sfxG, 30);
-                ruido(t + 1.0, 0.25, 0.4, sfxG, 600);
-                [0, 3, 7, 12, 15].forEach((s2, i) => tono(hz(57 + s2), t + 1.0 + i * 0.03, 1.2, 'sawtooth', 0.09, sfxG));
-                [0, 7, 12, 19].forEach((s2, i) => tono(hz(69 + s2), t + 1.35 + i * 0.12, 0.5, 'triangle', 0.2, sfxG));
+                const banda = (t0, dur, vol, tipo, f0, f1, q) => {
+                    const n = Math.floor(ctx.sampleRate * dur), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+                    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+                    const s = ctx.createBufferSource(); s.buffer = buf; const f = ctx.createBiquadFilter(); f.type = tipo; f.Q.value = q || 1;
+                    f.frequency.setValueAtTime(f0, t0); f.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+                    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + dur * 0.45); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+                    s.connect(f); f.connect(g); g.connect(sfxG); s.start(t0); s.stop(t0 + dur + 0.02);
+                };
+                banda(t, 3.0, 0.16, 'lowpass', 300, 700, 0.7);                       // murmullo del barrio
+                banda(t + 0.2, 1.7, 0.5, 'bandpass', 250, 1100, 2.5);                // carro que se acerca…
+                banda(t + 1.2, 1.4, 0.4, 'bandpass', 1100, 220, 2.5);                // …y se aleja (efecto Doppler)
+                tono(70, t + 0.2, 2.2, 'sawtooth', 0.12, sfxG, 130); tono(130, t + 1.4, 1.2, 'sawtooth', 0.1, sfxG, 70);   // motor
+                tono(hz(93), t + 0.5, 0.45, 'sawtooth', 0.05, sfxG, hz(100));        // moto a lo lejos
+                [[0.9, 0.14], [1.12, 0.22]].forEach(([d, l]) => { tono(hz(81), t + d, l, 'square', 0.15, sfxG); tono(hz(85), t + d, l, 'square', 0.13, sfxG); }); // pito pi-piii
+                [1.7, 2.0, 2.3].forEach((d, i) => ruido(t + d, 0.28, 0.32, sfxG, 3500 + i * 1200));                    // spray
+                tono(48, t + 2.6, 0.9, 'sine', 0.95, sfxG, 30); ruido(t + 2.6, 0.25, 0.4, sfxG, 600);                  // caída de 808
+                [0, 3, 7, 12, 15].forEach((s2, i) => tono(hz(57 + s2), t + 2.6 + i * 0.03, 1.2, 'sawtooth', 0.09, sfxG));
+                [0, 7, 12, 19].forEach((s2, i) => tono(hz(69 + s2), t + 2.95 + i * 0.12, 0.5, 'triangle', 0.2, sfxG));
             }
         };
         return S;
@@ -311,10 +327,10 @@
 
     function crearJuego() {
         const T = root.BlockRoalTema;                       // tema visual (juega-tema.js): aquí no se dibuja nada propio
-        // GEOMETRÍA del tablero (no cambiar sin autorización): 8x8 casillas de 40 px. El lienzo (374x467) cubre solo el tablero y la bandeja de
-        // piezas, alineado con el marco dibujado en juega-fondo.webp (ver juega-tema.js). CX_BANDEJA = centro de cada una de las 3 ranuras.
-        const W = 374, H = 467, CELDA = 40, GX = 27, GY = 15, BANDEJA_Y = 351;
-        const CX_BANDEJA = [60, 187, 314];
+        // GEOMETRÍA del tablero (no cambiar sin autorización): 8x8 casillas de 40 px. El lienzo (360x468) cubre el tablero y la bandeja de piezas.
+        // CX_BANDEJA = centro de cada una de las 3 ranuras de piezas.
+        const W = 360, H = 468, CELDA = 40, GX = 20, GY = 10, BANDEJA_Y = 340;
+        const CX_BANDEJA = [60, 180, 300];
         const d = { W, H, CELDA, GX, GY, N, BANDEJA_Y, CX_BANDEJA, INGREDIENTES };
         const PAL = T.PAL;
 
@@ -356,8 +372,7 @@
             }
             actualizarMeta() {
                 const meta = estado ? estado.metaSiguiente : 500;
-                this.txtMeta.setText(`Meta nivel ${estado ? estado.nivelMax + 1 : 1}: ${fmt(meta)} pts`);
-                this.txtMeta.setColor(T.colorMeta(this.puntos >= meta));
+                if (this.txtMeta.progreso) this.txtMeta.progreso(this.puntos, meta, estado ? estado.nivelMax + 1 : 1);
             }
             repartir() {
                 const datos = nuevasPiezas(this.grilla);
@@ -484,8 +499,7 @@
 
         juego = new Phaser.Game({
             type: Phaser.AUTO, parent: 'juegoCanvas', width: W, height: H, transparent: true,
-            // Sin FIT: el lienzo vive dentro de un escenario escalado con CSS, y Phaser mediría ese tamaño ya reducido. Zoom fijo = tamaño de diseño (684 px) / lógico (374 px).
-            scale: { mode: Phaser.Scale.NONE, zoom: 684 / 374, autoCenter: Phaser.Scale.NO_CENTER },
+            scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
             input: { touch: { capture: true } }, scene: Escena, render: { antialias: true }
         });
     }
@@ -517,9 +531,6 @@
     }
 
     async function arrancar() {
-        root.BlockRoalTema.ajustarEscena();
-        window.addEventListener('resize', root.BlockRoalTema.ajustarEscena);
-        window.addEventListener('orientationchange', () => setTimeout(root.BlockRoalTema.ajustarEscena, 250));
         const intro = root.BlockRoalTema.iniciarIntro($('warp'));
         const phaserP = cargarPhaser();                       // se baja YA, en paralelo con Firebase y el servidor
         phaserP.catch(() => {});
@@ -530,16 +541,23 @@
         // El navegador solo deja sonar el audio tras un toque del usuario: el toque de «ENTRAR» lo activa y arranca la música de una vez.
         async function entrar() {
             if (entrando) return; entrando = true;
-            Sonido.init(); Sonido.warp(); intro.acelerar();
+            Sonido.init(true); Sonido.warp(); setTimeout(() => Sonido.arrancarMusica(), 2600); intro.acelerar();
             if (navigator.vibrate) try { navigator.vibrate([30, 40, 60]); } catch (_) { /* sin vibración */ }
             $('btnEntrar').hidden = true; $('introEstado').textContent = '¡Entrando al barrio!';
-            await dormir(1250);
+            await dormir(3300);
             if (await Promise.race([listoP.then(() => true), dormir(900).then(() => false)]) === false) $('introEstado').textContent = 'Preparando tu partida…';
             await Promise.race([listoP, dormir(10000)]);
             $('app').classList.add('entrar'); $('intro').classList.add('salir');
             setTimeout(() => { intro.parar(); $('intro').hidden = true; }, 900);
         }
         $('btnEntrar').addEventListener('click', entrar);
+        // Abierto desde el menú (iframe): el toque en «Juega» ya autorizó el audio → entra solo, con el sonido de la calle desde el primer instante.
+        // Si el navegador no lo permite, queda el botón «Toca pa' entrar».
+        if (window.self !== window.top) Sonido.desbloquear().then((ok) => { if (ok) entrar(); });
+        $('btnInfo').addEventListener('click', () => { $('info').hidden = false; });
+        $('btnInfoCerrar').addEventListener('click', () => { $('info').hidden = true; });
+        $('info').addEventListener('click', (e) => { if (e.target === $('info')) $('info').hidden = true; });
+        document.querySelectorAll('[data-menu]').forEach((a) => a.addEventListener('click', (e) => { if (window.self !== window.top) { e.preventDefault(); window.parent.postMessage({ tipo: 'blockroal-cerrar' }, window.location.origin); } }));
         $('btnSonido').addEventListener('click', () => { Sonido.init(); const apagar = Sonido.musicaOn || Sonido.sfxOn; Sonido.setMusica(!apagar); Sonido.setSfx(!apagar); pintarBotonesSonido(); if (!apagar) Sonido.clic(); });
         pintarBotonesSonido();
 
