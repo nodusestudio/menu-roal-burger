@@ -63,6 +63,7 @@ button.chip { font-family: inherit; cursor: pointer; }
 .chip.cofre { border-color: var(--amarillo); animation: latido 1.2s ease-in-out infinite; }
 @keyframes latido { 50% { transform: scale(1.08); } }
 .btn.grande { flex: 1 1 100%; padding: 16px 22px; font-size: 1.05rem; }
+#desafioBanner { margin: 0 auto 6px; padding: 7px 14px; border: 1px solid var(--naranja); border-radius: 10px; background: rgba(251, 75, 8, .14); font-size: .82rem; font-weight: 700; text-align: center; color: var(--crema); }
 #misLista { margin: 4px 0 14px; text-align: left; }
 .mis { padding: 9px 0; border-bottom: 1px solid var(--linea); font-size: .86rem; color: var(--crema); }
 .mis .mis-fila { display: flex; justify-content: space-between; gap: 8px; }

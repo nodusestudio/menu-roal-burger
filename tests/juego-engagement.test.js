@@ -40,7 +40,7 @@ async function partida(uid) {
 
 before(() => { db = getFirestore(); });
 beforeEach(async () => {
-    for (const col of ['clientes', 'juego_sesiones', 'juego_partidas', 'juego_canjes', 'configuracion', 'juego_presupuesto', 'juego_misiones', 'juego_cofres', 'juego_eventos']) {
+    for (const col of ['clientes', 'juego_sesiones', 'juego_partidas', 'juego_canjes', 'configuracion', 'juego_presupuesto', 'juego_misiones', 'juego_cofres', 'juego_eventos', 'juego_desafios']) {
         const snap = await db.collection(col).get();
         await Promise.all(snap.docs.map((d) => d.ref.delete()));
     }
@@ -178,4 +178,36 @@ test('escudo de racha: salva un día perdido y se gasta; sin escudo la racha vue
     ({ r } = await partida(A));
     assert.equal(r.resultado.bonusRacha, 150); assert.equal(r.resultado.escudoGanado, true);
     assert.equal((await db.collection('clientes').doc(A).get()).data().juegoEscudos, 1);
+});
+
+test('reto a un amigo: el desafío usa las mismas piezas, compara puntajes y no se puede falsificar', async () => {
+    const B = 'phone_3005550002';
+    await db.collection('clientes').doc(B).set({ customerName: 'Beto Gómez', customerPhone: '3005550002', customerPhoneDigits: '3005550002' });
+    const a = await partida(A);
+    const sesionA = a.r.resultado.sesionId;
+    await assert.rejects(() => llamar(index.juegoCrearDesafio, B, { sesionId: sesionA }), /no se puede convertir/);   // la partida es de otro jugador
+    await assert.rejects(() => llamar(index.juegoCrearDesafio, A, { sesionId: 'no-existe' }), /no se puede convertir/);
+    const d = await llamar(index.juegoCrearDesafio, A, { sesionId: sesionA });
+    const d2 = await llamar(index.juegoCrearDesafio, A, { sesionId: sesionA });
+    assert.equal(d.id, d2.id);                                                                                      // uno por partida
+    const doc = (await db.collection('juego_desafios').doc(d.id).get()).data();
+    assert.equal(doc.puntaje, a.rep.puntaje); assert.equal(doc.creadorNombre, 'Ana');
+    const info = await llamar(index.juegoDesafio, B, { id: d.id });
+    assert.deepEqual(info, { creador: 'Ana', puntaje: a.rep.puntaje });
+    await assert.rejects(() => llamar(index.juegoDesafio, B, { id: 'nada' }), /Desafío no disponible/);
+    await assert.rejects(() => llamar(index.juegoIniciar, B, { modo: 'libre', desafio: 'nada' }), /Desafío no disponible/);
+    // Beto juega las MISMAS piezas
+    const s = await llamar(index.juegoIniciar, B, { modo: 'libre', desafio: d.id });
+    assert.equal(s.semilla, doc.semilla);
+    await db.collection('juego_sesiones').doc(s.sesionId).update({ inicio: Timestamp.fromMillis(Date.now() - 150 * 1000) });
+    const mov = jugarBot(s.semilla), rep = M.repetirPartida({ semilla: s.semilla, jugadas: mov });
+    const r = await llamar(index.juegoEnviarPuntaje, B, { sesionId: s.sesionId, movimientos: mov, puntaje: rep.puntaje });
+    assert.equal(r.resultado.desafio.creador, 'Ana'); assert.equal(r.resultado.desafio.creadorPuntaje, a.rep.puntaje); assert.equal(r.resultado.desafio.tuPuntaje, rep.puntaje);
+    assert.equal((await db.collection('juego_desafios').doc(d.id).get()).data().intentos, 1);
+    // una partida del reto del día no puede volverse desafío
+    const reto = await llamar(index.juegoIniciar, B, { modo: 'reto' });
+    await db.collection('juego_sesiones').doc(reto.sesionId).update({ inicio: Timestamp.fromMillis(Date.now() - 150 * 1000) });
+    const m2 = jugarBot(reto.semilla);
+    const rr = await llamar(index.juegoEnviarPuntaje, B, { sesionId: reto.sesionId, movimientos: m2, puntaje: M.repetirPartida({ semilla: reto.semilla, jugadas: m2 }).puntaje });
+    await assert.rejects(() => llamar(index.juegoCrearDesafio, B, { sesionId: rr.resultado.sesionId }), /no se puede convertir/);
 });

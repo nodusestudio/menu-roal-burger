@@ -286,12 +286,14 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
     exp.juegoIniciar = onCall(opts, async (request) => {
         const uid = exigirUid(request);
         const modo = request.data?.modo === 'reto' ? 'reto' : 'libre';
+        const desafioId = modo === 'libre' ? String(request.data?.desafio || '').trim().slice(0, 60) : '';
         const db = getFirestore();
         return db.runTransaction(async (tx) => {
             const cliRef = db.collection(CLIENTS).doc(uid);
             const dia = diaBogota(Date.now());
             const retoRef = db.collection('juego_reto').doc(`${dia}_${uid}`);
-            const [cli, cfg, retoSnap] = await Promise.all([tx.get(cliRef), leerConfig(db, tx), modo === 'reto' ? tx.get(retoRef) : Promise.resolve(null)]);
+            const [cli, cfg, retoSnap, desSnap] = await Promise.all([tx.get(cliRef), leerConfig(db, tx), modo === 'reto' ? tx.get(retoRef) : Promise.resolve(null), desafioId ? tx.get(db.collection('juego_desafios').doc(desafioId)) : Promise.resolve(null)]);
+            if (desafioId && !desSnap.exists) throw new HttpsError('failed-precondition', 'Desafío no disponible.');
             if (!cfg.activo) throw new HttpsError('failed-precondition', 'El juego está en pausa.');
             if (!cli.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
             if (modo === 'reto') {
@@ -301,10 +303,10 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             const c = cli.data() || {};
             const hoy = c.juegoSesDia === dia ? Math.max(0, Math.trunc(num(c.juegoSesHoy, 0))) : 0;
             if (hoy >= cfg.maxPartidasDia) throw new HttpsError('resource-exhausted', 'Llegaste al máximo de partidas de hoy. ¡Vuelve mañana!');
-            const semilla = modo === 'reto' ? Motor.semillaDeTexto(`blockroal-reto-${dia}`) : crypto.randomBytes(4).readUInt32BE(0);
+            const semilla = modo === 'reto' ? Motor.semillaDeTexto(`blockroal-reto-${dia}`) : (desafioId ? desSnap.data().semilla : crypto.randomBytes(4).readUInt32BE(0));
             const ref = db.collection('juego_sesiones').doc();
             tx.update(cliRef, { juegoSesDia: dia, juegoSesHoy: hoy + 1 });
-            tx.set(ref, { uid, inicio: FieldValue.serverTimestamp(), usada: false, modo, semilla });
+            tx.set(ref, { uid, inicio: FieldValue.serverTimestamp(), usada: false, modo, semilla, ...(desafioId ? { desafioId } : {}) });
             tx.set(refEvento(db, dia, 'iniciar'), { dia, tipo: 'iniciar', total: FieldValue.increment(1), u: { [uid]: true } }, { merge: true });   // partidas iniciadas (con abandonadas)
             if (modo === 'reto') tx.set(retoRef, { uid, dia, sesionId: ref.id, creadoAt: FieldValue.serverTimestamp() });
             return { sesionId: ref.id, semilla, modo, restantes: cfg.maxPartidasDia - hoy - 1 };
@@ -332,6 +334,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             if (!cliSnap.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
             if (!cfg.activo) throw new HttpsError('failed-precondition', 'El juego está en pausa.');
             const ses = sesSnap.data();
+            const desSnap = ses.desafioId ? await tx.get(db.collection('juego_desafios').doc(String(ses.desafioId))) : null;
 
             const inicioMs = ses.inicio?.toMillis ? ses.inicio.toMillis() : 0;
             const duracionSeg = (ahora - inicioMs) / 1000; // medida por el SERVIDOR, no por el celular
@@ -396,7 +399,13 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             if (credito > 0) { upd.creditoJuego = expirado ? credito : FieldValue.increment(credito); upd.creditoJuegoVence = nuevoVencimiento(cfg, ahora); }
             else if (expirado) { upd.creditoJuego = 0; upd.creditoJuegoVence = 0; }
             tx.update(cliRef, upd);
-            tx.update(sesRef, { usada: true, fin: FieldValue.serverTimestamp() });
+            tx.update(sesRef, { usada: true, fin: FieldValue.serverTimestamp(), puntaje });
+            let desafio = null;
+            if (desSnap && desSnap.exists) {
+                const dd = desSnap.data();
+                desafio = { creador: dd.creadorNombre || 'Tu amigo', creadorPuntaje: dd.puntaje, tuPuntaje: puntaje };
+                tx.update(desSnap.ref, { intentos: FieldValue.increment(1), ...(puntaje > num(dd.puntaje, 0) ? { ganados: FieldValue.increment(1) } : {}) });
+            }
             let avisar = false;
             if (credito > 0 || pres.recortado) {
                 const total = emitidoHoy + credito;
@@ -423,7 +432,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             const nuevo = { ...c, ...upd, juegoRecord: nuevoRecord ? puntaje : recordPrev, juegoEscudos: (escudoUsado || escudoGanado) ? escudosNuevo : num(c.juegoEscudos, 0), juegoCofres: Math.max(0, Math.trunc(num(c.juegoCofres, 0))) + cofresNuevos, puntosJuego: num(c.puntosJuego, 0) + r.puntosTotales, creditoJuego: (expirado ? 0 : vigente) + credito, creditoJuegoVence: credito > 0 ? nuevoVencimiento(cfg, ahora) : (expirado ? 0 : num(c.creditoJuegoVence, 0)) };
             return {
                 ok: true,
-                resultado: { puntaje, record: { anterior: recordPrev, nuevo: nuevoRecord }, escudoUsado, escudoGanado, cofresNuevos, tablerosLimpios: stats.tablerosLimpios, puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, nivelSuperado: r.nivelSuperado, creditoGanado: credito, topeAlcanzado: r.puntosOtorgados < puntaje, presupuestoAgotado: pres.recortado, reto: posicionReto === true },
+                resultado: { sesionId, desafio, puntaje, record: { anterior: recordPrev, nuevo: nuevoRecord }, escudoUsado, escudoGanado, cofresNuevos, tablerosLimpios: stats.tablerosLimpios, puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, nivelSuperado: r.nivelSuperado, creditoGanado: credito, topeAlcanzado: r.puntosOtorgados < puntaje, presupuestoAgotado: pres.recortado, reto: posicionReto === true },
                 estado: { ...vistaEstado(nuevo, cfg, dia, ahora), ...(mis ? { misiones: vistaMisiones(dia, { progreso: mis.progreso, completadas: mis.completadas }) } : {}) },
                 _avisar: avisar ? { presupuesto: cfg.presupuestoDiario } : null
             };
@@ -433,6 +442,30 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             try { if (avisarAdmin) await avisarAdmin('🎮 Block ROAL: se agotó el presupuesto de hoy', `Ya se repartieron los $${aviso.presupuesto.toLocaleString('es-CO')} de créditos del día. Hasta mañana no se entregan más.`); } catch (e) { console.error('juego: no se pudo avisar el agotamiento del presupuesto:', e.message); }
         } else if (res) delete res._avisar;
         return res;
+    });
+
+    // Reto a un amigo: se crea a partir de una partida ya terminada y válida (mismas piezas, mismo puntaje a superar). Un desafío por partida.
+    exp.juegoCrearDesafio = onCall(opts, async (request) => {
+        const uid = exigirUid(request);
+        const sesionId = String(request.data?.sesionId || '').trim();
+        if (!sesionId || sesionId.length > 60) throw new HttpsError('invalid-argument', 'Partida inválida.');
+        const db = getFirestore();
+        const [sesSnap, cliSnap] = await Promise.all([db.collection('juego_sesiones').doc(sesionId).get(), db.collection(CLIENTS).doc(uid).get()]);
+        const ses = sesSnap.exists ? sesSnap.data() : null;
+        if (!ses || ses.uid !== uid || ses.usada !== true || ses.rechazada || ses.modo === 'reto' || !Number.isInteger(ses.semilla) || !(Number(ses.puntaje) >= 0) || ses.puntaje === undefined) throw new HttpsError('failed-precondition', 'Esta partida no se puede convertir en desafío.');
+        const ref = db.collection('juego_desafios').doc(sesionId);
+        const ya = await ref.get();
+        if (!ya.exists) await ref.set({ creadorUid: uid, creadorNombre: nombrePublico((cliSnap.data() || {}).customerName), semilla: ses.semilla, puntaje: Math.trunc(Number(ses.puntaje)), dia: diaBogota(Date.now()), intentos: 0, ganados: 0, creadoAt: FieldValue.serverTimestamp() });
+        return { id: sesionId };
+    });
+    exp.juegoDesafio = onCall(opts, async (request) => {
+        exigirUid(request);
+        const id = String(request.data?.id || '').trim();
+        if (!id || id.length > 60) throw new HttpsError('invalid-argument', 'Desafío inválido.');
+        const snap = await getFirestore().collection('juego_desafios').doc(id).get();
+        if (!snap.exists) throw new HttpsError('failed-precondition', 'Desafío no disponible.');
+        const dd = snap.data();
+        return { creador: dd.creadorNombre || 'Tu amigo', puntaje: dd.puntaje };
     });
 
     // Evento del embudo que solo ve el celular (abrir el juego, entrar, compartir, ver el ranking). Solo cuenta jugadores únicos por día.

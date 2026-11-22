@@ -237,6 +237,8 @@
     let restauro = null;       // partida guardada por restaurar al abrir
     let bloqueado = false;     // llegó al máximo de partidas del día
     let mensajeBloqueo = '';
+    let desafioMalo = false;
+    let desafioPend = (new URLSearchParams(window.location.search).get('d') || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60);   // desafío de un amigo que viene en el enlace (?d=…)
     let ultimoResultado = null; // lo que se muestra en la tarjeta para compartir
 
     function mostrarEstado() {
@@ -277,7 +279,11 @@
         sesionId = null; semilla = null;
         sesionPromesa = (async () => {
             try {
-                const r = await funciones.httpsCallable('juegoIniciar')({ modo: modo === 'reto' ? 'reto' : 'libre' });
+                const conDesafio = modo !== 'reto' && desafioPend ? desafioPend : '';
+                let r;
+                try { r = await funciones.httpsCallable('juegoIniciar')({ modo: modo === 'reto' ? 'reto' : 'libre', ...(conDesafio ? { desafio: conDesafio } : {}) }); }
+                catch (e) { if (conDesafio && /failed-precondition/.test(String(e && e.code || ''))) { desafioPend = ''; desafioMalo = true; $('desafioBanner').hidden = true; r = await funciones.httpsCallable('juegoIniciar')({ modo: 'libre' }); } else throw e; }   // enlace de desafío inválido: juega normal
+                if (conDesafio && desafioPend === conDesafio) desafioPend = '';   // el desafío vale para esta partida; las siguientes son normales
                 sesionId = r.data.sesionId; semilla = r.data.semilla; modoActual = r.data.modo || 'libre'; sesionIni = Date.now(); aviso('');
             } catch (e) {
                 if (/resource-exhausted/.test(String(e && e.code || ''))) { bloqueado = true; mensajeBloqueo = e.message || 'Llegaste al máximo de partidas de hoy. ¡Vuelve mañana!'; aviso(mensajeBloqueo, true); }
@@ -299,8 +305,9 @@
         const x = data.resultado, partes = [];
         $('btnVerRanking').hidden = !x.reto;
         $('btnCompartir').hidden = false;
-        ultimoResultado = { puntaje: x.puntaje, reto: !!x.reto, nivel: estado.nivelMax + 1, racha: estado.racha, puesto: null };
+        ultimoResultado = { sesionId: x.sesionId, puntaje: x.puntaje, reto: !!x.reto, nivel: estado.nivelMax + 1, racha: estado.racha, puesto: null };
         if (x.reto) { estado.retoHecho = true; estado.retoPuntaje = x.puntaje; pintarModos(); partes.push('🏆 Tu puntaje del reto ya está en el ranking de hoy.'); }
+        if (x.desafio) { const d = x.desafio; $('desafioBanner').hidden = true; partes.push(d.tuPuntaje > d.creadorPuntaje ? `🥊 ¡Le ganaste a ${d.creador}! (${fmt(d.tuPuntaje)} vs ${fmt(d.creadorPuntaje)})` : (d.tuPuntaje === d.creadorPuntaje ? `🥊 Empate con ${d.creador} (${fmt(d.tuPuntaje)})` : `🥊 ${d.creador} te ganó (${fmt(d.creadorPuntaje)} vs ${fmt(d.tuPuntaje)}). ¡Pide revancha!`)); if (d.tuPuntaje > d.creadorPuntaje) { Sonido.nivel(); if (escena) escena.confeti(); } }
         const rec = x.record || {};
         if (rec.nuevo && rec.anterior > 0) { $('resTitulo').textContent = '¡NUEVO RÉCORD! 🏅'; partes.push(`Superaste tu récord anterior (${fmt(rec.anterior)} pts)`); Sonido.nivel(); if (escena) escena.confeti(); }
         else if (rec.nuevo) { partes.push('🏅 ¡Tu primer récord!'); }
@@ -631,10 +638,12 @@
             if (ultimoResultado.reto && !ultimoResultado.puesto && funciones) { try { const r = (await funciones.httpsCallable('juegoRanking')({ tipo: 'dia' })).data; if (r.yo) ultimoResultado.puesto = r.yo.pos; } catch (_) { /* sin puesto */ } }
             const blob = await construirTarjeta(ultimoResultado);
             const d = ultimoResultado;
-            const texto = `Hice ${fmt(d.puntaje)} puntos en Block ROAL 🍔🔥${d.puesto ? ` (puesto #${d.puesto} del reto de hoy)` : ''} ¿Me ganas? Juega gratis: ${URL_JUEGO}`;
+            let enlace = URL_JUEGO;
+            if (!d.reto && d.sesionId && funciones) { try { const dz = (await funciones.httpsCallable('juegoCrearDesafio')({ sesionId: d.sesionId })).data; if (dz && dz.id) enlace = `${URL_JUEGO}?d=${encodeURIComponent(dz.id)}`; } catch (_) { /* sin desafío: se comparte el enlace normal */ } }
+            const texto = enlace !== URL_JUEGO ? `🥊 Te reto en Block ROAL: hice ${fmt(d.puntaje)} puntos con estas mismas piezas. ¿Me ganas? ${enlace}` : `Hice ${fmt(d.puntaje)} puntos en Block ROAL 🍔🔥${d.puesto ? ` (puesto #${d.puesto} del reto de hoy)` : ''} ¿Me ganas? Juega gratis: ${URL_JUEGO}`;
             const archivo = blob ? new File([blob], 'block-roal.jpg', { type: 'image/jpeg' }) : null;
             if (archivo && navigator.canShare && navigator.canShare({ files: [archivo] })) { await navigator.share({ files: [archivo], text: texto, title: 'Block ROAL' }); }
-            else if (navigator.share) { await navigator.share({ text: texto, url: URL_JUEGO, title: 'Block ROAL' }); }
+            else if (navigator.share) { await navigator.share({ text: texto, url: enlace, title: 'Block ROAL' }); }
             else {
                 // Sin hoja de compartir (computador): se descarga la imagen y se copia el texto.
                 if (blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'block-roal.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
@@ -803,6 +812,7 @@
             if (uidActual === user.uid) return;        // Firebase puede repetir este aviso (renovación del token): no reiniciar nada
             uidActual = user.uid;
             // Todo en paralelo: estado del jugador, sesión de partida y el motor del juego (antes iba uno detrás de otro).
+            if (desafioPend) funciones.httpsCallable('juegoDesafio')({ id: desafioPend }).then((r) => { if (desafioMalo) return; $('desafioBanner').textContent = `🥊 ${r.data.creador} hizo ${fmt(r.data.puntaje)} pts con estas piezas. ¿Le ganas?`; $('desafioBanner').hidden = false; }).catch(() => { desafioPend = ''; desafioMalo = true; });
             const pEstado = cargarEstado().then(() => { evento('abrir'); if (!estado.activo) aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); return enviarPendiente(true); });
             const guardada = Guardado.leerPartida(user.uid);
             if (guardada) { sesionId = guardada.sesionId; semilla = guardada.semilla; modoActual = guardada.modo === 'reto' ? 'reto' : 'libre'; sesionIni = guardada.ini; sesionPromesa = Promise.resolve(); restauro = guardada; }   // reanuda donde iba
