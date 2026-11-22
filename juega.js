@@ -222,7 +222,7 @@
     async function terminarPartida(puntaje, jugadas) {
         const panel = $('resultado');
         panel.hidden = false;
-        $('resTitulo').textContent = '¡Se acabó, mi pana!';
+        $('resTitulo').textContent = root.BlockRoalTema.FRASES.fin;
         $('resPuntaje').textContent = fmt(puntaje) + ' pts';
         $('resDetalle').textContent = 'Guardando tus puntos…';
         $('btnOtra').disabled = true;
@@ -237,7 +237,7 @@
                 partes.push(x.puntosOtorgados > 0 ? `+${fmt(x.puntosOtorgados)} puntos ROAL` : 'Hoy ya llegaste al tope de puntos');
                 if (x.topeAlcanzado && x.puntosOtorgados > 0) partes.push('(llegaste al tope diario)');
                 if (x.bonusRacha > 0) partes.push(`🔥 Bonus de racha +${x.bonusRacha}`);
-                if (x.nivelSuperado) { $('resTitulo').textContent = '¡Nivel superado, qué fino!'; partes.push(`🏆 Pasaste al nivel ${estado.nivelMax + 1}, ¡burda de bueno!`); Sonido.nivel(); if (escena) escena.confeti(); }
+                if (x.nivelSuperado) { $('resTitulo').textContent = root.BlockRoalTema.FRASES.nivel; partes.push(root.BlockRoalTema.FRASES.nivelDetalle(estado.nivelMax + 1)); Sonido.nivel(); if (escena) escena.confeti(); }
                 else if (x.creditoGanado > 0) Sonido.monedas();
                 if (x.creditoGanado > 0) partes.push(`Ganaste ${peso(x.creditoGanado)} en créditos ROAL`);
                 $('resDetalle').textContent = partes.join('\n');
@@ -247,130 +247,37 @@
     }
 
     function crearJuego() {
+        const T = root.BlockRoalTema;                       // tema visual (juega-tema.js): aquí no se dibuja nada propio
+        // GEOMETRÍA del tablero (no cambiar sin autorización): 8x8 casillas de 40 px, lienzo de 360x640.
         const W = 360, H = 640, CELDA = 40, GX = 20, GY = 96, BANDEJA_Y = 480;
-        // El barrio: pintura de spray vibrante sobre cemento y ladrillo; amarillo, azul y rojo de la bandera en la marquesina.
-        const PAL = { pan: 0xff9a1f, carne: 0xe3212b, queso: 0xffd100, tequeno: 0x2fc46a, arepa: 0x3d7bff };
-        const BANDERA = [0xffd100, 0x3d7bff, 0xe3212b];
-        const NEON = [0xffd100, 0x3d7bff, 0xe3212b, 0xff9a1f, 0xffffff];
-        const FUENTE_SPRAY = '"Rubik Spray Paint", Anton, sans-serif';
-        const FUENTE_MARCADOR = '"Permanent Marker", Anton, cursive';
+        const d = { W, H, CELDA, GX, GY, N, BANDEJA_Y, INGREDIENTES };
+        const PAL = T.PAL;
 
         class Escena extends Phaser.Scene {
+            preload() { T.cargar(this); }
             create() {
                 escena = this;
-                this.texturas();
-                this.fondo();
-                const cx = GX + (N * CELDA) / 2, cy = GY + (N * CELDA) / 2, lado = N * CELDA + 14;
-                this.add.rectangle(cx + 3, cy + 5, lado, lado, 0x000000, 0.45);                                   // sombra de la losa
-                this.add.rectangle(cx, cy, lado, lado, 0x2b2b30, 1).setStrokeStyle(2, 0x111114);                  // losa de cemento
-                this.add.tileSprite(cx, cy, lado - 4, lado - 4, 'concreto').setAlpha(0.55);
-                for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) this.add.rectangle(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, CELDA - 3, CELDA - 3, 0x1a1a1e, 0.9).setStrokeStyle(1, 0x3c3c44, 0.9);
-                this.borde = this.add.graphics().setDepth(4);                      // borde animado (se redibuja en update)
+                T.texturas(this, d);
+                T.fondo(this, d);
+                T.tablero(this, d);
+                this.borde = this.add.graphics().setDepth(4);                      // marco animado (T.marco lo redibuja en update)
                 this.celdasImg = Array.from({ length: N }, () => Array(N).fill(null));
-                this.txtPuntos = this.add.text(W / 2, 30, '0', { fontFamily: 'Anton', fontSize: '46px', color: '#ffd100', stroke: '#0a1a5c', strokeThickness: 7, padding: { x: 24, y: 18 } }).setOrigin(0.5);
-                this.txtPuntos.setShadow(3, 3, '#e3212b', 0, true, true);
-                this.txtMeta = this.add.text(W / 2, 68, '', { fontFamily: 'Montserrat', fontSize: '13px', fontStyle: '800', color: '#f2e6c8', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5);
-                this.fantasma = this.add.graphics().setDepth(5);
+                const cab = T.cabecera(this, d); this.txtPuntos = cab.puntos; this.txtMeta = cab.meta;
+                this.fantasma = this.add.graphics().setDepth(7);
                 this.emisores = INGREDIENTES.map((n) => this.add.particles(0, 0, 'chispa', { speed: { min: 90, max: 300 }, angle: { min: 0, max: 360 }, scale: { start: 1, end: 0 }, lifespan: { min: 350, max: 750 }, gravityY: 380, tint: PAL[n], blendMode: 'ADD', emitting: false }).setDepth(30));
                 this.polvo = this.add.particles(0, 0, 'chispa', { speed: { min: 30, max: 120 }, angle: { min: 0, max: 360 }, scale: { start: 0.9, end: 0 }, alpha: { start: 0.8, end: 0 }, lifespan: { min: 300, max: 600 }, tint: 0xd8d4cc, emitting: false }).setDepth(29);
-                this.arcoiris = this.add.particles(0, 0, 'chispa', { speed: { min: 120, max: 420 }, angle: { min: 200, max: 340 }, scale: { start: 1.4, end: 0 }, lifespan: 1400, gravityY: 500, tint: NEON, blendMode: 'ADD', emitting: false }).setDepth(31);
+                this.arcoiris = this.add.particles(0, 0, 'chispa', { speed: { min: 120, max: 420 }, angle: { min: 200, max: 340 }, scale: { start: 1.4, end: 0 }, lifespan: 1400, gravityY: 500, tint: T.CONFETI, blendMode: 'ADD', emitting: false }).setDepth(31);
                 this.input.on('pointermove', (p) => this.arrastrar(p));
                 this.input.on('pointerup', () => this.soltar());
                 this.input.on('pointerupoutside', () => this.soltar());
                 this.nueva();
-            }
-            fondo() {
-                // Muro de ladrillo de todo el lienzo + luz de farola + manchas de pintura + tags y stickers + acera con cordón amarillo para las piezas.
-                this.add.tileSprite(0, 0, W, H, 'muro').setOrigin(0);
-                const luz = this.add.graphics(); luz.fillGradientStyle(0xffe9a8, 0xffe9a8, 0x000000, 0x000000, 0.32, 0.32, 0, 0); luz.fillRect(0, 0, W, 250);
-                const sombra = this.add.graphics(); sombra.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.55, 0.55); sombra.fillRect(0, H - 220, W, 220);
-                [[0xffd100, 318, 64, 78], [0x3d7bff, 30, 300, 86], [0xe3212b, 330, 440, 70]].forEach(([c, x, y, r]) => this.add.circle(x, y, r, c, 0.3));
-                const tag = (txt, x, y, ang, col, tam, fam) => this.add.text(x, y, txt, { fontFamily: fam, fontSize: tam + 'px', color: col, stroke: '#000000', strokeThickness: 4, padding: { x: 10, y: 8 } }).setOrigin(0.5).setAngle(ang).setAlpha(0.92);
-                tag('ROAL', 64, 452, -9, '#ffd100', 34, FUENTE_SPRAY);
-                tag('PANA', 296, 454, 7, '#ffffff', 30, FUENTE_MARCADOR);
-                tag('¡ÉPALE!', 70, 628, 4, '#ff5a5f', 26, FUENTE_MARCADOR);
-                tag('SABOR DE MI TIERRA', 262, 626, -4, '#3d7bff', 15, FUENTE_MARCADOR);
-                // Stickers en las esquinas de arriba
-                const sticker = (x, y, ang, w, h, fondo, txt, col) => { const r = this.add.rectangle(x, y, w, h, fondo, 1).setStrokeStyle(2, 0xffffff, 1).setAngle(ang); const t = this.add.text(x, y, txt, { fontFamily: FUENTE_MARCADOR, fontSize: '12px', color: col, align: 'center' }).setOrigin(0.5).setAngle(ang); return [r, t]; };
-                sticker(46, 36, -6, 70, 34, 0xffd100, 'ROAL\nBURGER', '#0a1a5c');
-                sticker(314, 36, 5, 70, 34, 0x0a1a5c, 'DEL BARRIO\nPA\' TI', '#ffd100');
-                // Bandera: tres franjas finas arriba del todo
-                [0xffd100, 0x2b5fff, 0xe3212b].forEach((c, i) => this.add.rectangle(W / 2, 1.5 + i * 3, W, 3, c, 1).setDepth(50));
-                // Acera: losa oscura con cordón amarillo y ranuras para las 3 piezas
-                this.add.rectangle(W / 2, BANDEJA_Y + 80, W, 190, 0x17171b, 0.93);
-                const cordon = this.add.graphics(); cordon.fillStyle(0xffd100, 1).fillRect(0, BANDEJA_Y - 12, W, 6); cordon.fillStyle(0x111111, 1); for (let x = 0; x < W; x += 24) cordon.fillRect(x, BANDEJA_Y - 12, 12, 6);
-                for (let k = 0; k < 3; k++) this.add.rectangle(60 + k * 120, BANDEJA_Y + 60, 104, 112, 0x000000, 0.25).setStrokeStyle(2, 0xffd100, 0.35);
-            }
-            texturas() {
-                const g = this.make.graphics({ x: 0, y: 0, add: false });
-                const S = CELDA - 3;
-                const alea = (a, b) => a + Math.random() * (b - a);
-                // Muro de ladrillo (baldosa que se repite)
-                g.fillStyle(0x2e2321, 1).fillRect(0, 0, 96, 48);
-                const LAD = [0x8a4b38, 0x7a4030, 0x9a5a42, 0x6d392c, 0x84483a];
-                for (let f = 0; f < 2; f++) for (let c = -1; c < 3; c++) {
-                    const x = c * 48 + (f % 2 ? 24 : 0), y = f * 24;
-                    g.fillStyle(LAD[Math.floor(Math.random() * LAD.length)], 1).fillRect(x + 2, y + 2, 44, 20);
-                    g.fillStyle(0xffffff, 0.06).fillRect(x + 2, y + 2, 44, 3);
-                    for (let n = 0; n < 6; n++) { g.fillStyle(0x000000, 0.13).fillRect(x + 2 + alea(0, 40), y + 2 + alea(0, 16), 2, 2); }
-                }
-                g.generateTexture('muro', 96, 48);
-                // Cemento (baldosa para la losa)
-                g.clear(); g.fillStyle(0x8c8c92, 1).fillRect(0, 0, 64, 64);
-                for (let n = 0; n < 160; n++) { g.fillStyle(n % 2 ? 0x707076 : 0xa8a8ae, 1).fillRect(alea(0, 63), alea(0, 63), 1 + Math.random() * 2, 1 + Math.random() * 2); }
-                g.generateTexture('concreto', 64, 64);
-                // Bloques: cemento + parche de pintura en spray con el ingrediente + goteos
-                INGREDIENTES.forEach((nombre) => {
-                    g.clear();
-                    const c = PAL[nombre];
-                    g.fillStyle(0x8e8e93, 1).fillRoundedRect(0, 0, S, S, 4);
-                    g.fillStyle(0xbcbcc2, 1).fillRect(2, 2, S - 4, 2); g.fillRect(2, 2, 2, S - 4);          // borde con luz
-                    g.fillStyle(0x58585d, 1).fillRect(2, S - 4, S - 4, 2); g.fillRect(S - 4, 2, 2, S - 4);  // borde en sombra
-                    for (let n = 0; n < 34; n++) { g.fillStyle(n % 2 ? 0x76767b : 0xa6a6ab, 1).fillRect(alea(3, S - 4), alea(3, S - 4), 1 + Math.random() * 1.5, 1 + Math.random() * 1.5); }
-                    g.lineStyle(1, 0x4c4c50, 0.9).lineBetween(alea(6, 14), S - 3, alea(16, 26), alea(S - 12, S - 7)); // fisura
-                    g.fillStyle(c, 0.25).fillCircle(S / 2, S / 2, S / 2 + 1);                              // sobre-rociado
-                    g.fillStyle(c, 1).fillRoundedRect(5, 5, S - 10, S - 10, 7);                            // parche de pintura
-                    g.fillStyle(0xffffff, 0.22).fillRoundedRect(7, 6, S - 14, 5, 3);                       // brillo de pintura fresca
-                    g.save(); g.translateCanvas(5, 5); g.scaleCanvas((S - 10) / S, (S - 10) / S);
-                    if (nombre === 'pan') {                                  // pan: domo con ajonjolí
-                        g.fillStyle(0xffd27a, 1).fillRoundedRect(4, 4, S - 8, S / 2, 10);
-                        g.fillStyle(0xffffff, 1); [[10, 9], [18, 7], [26, 10], [14, 16], [23, 16]].forEach(([x, y]) => g.fillEllipse(x, y, 4, 2.4));
-                    } else if (nombre === 'carne') {                          // carne: parrilla
-                        g.fillStyle(0x4a0a10, 0.85); [10, 19, 28].forEach((y) => g.fillRect(4, y, S - 8, 3));
-                    } else if (nombre === 'queso') {                          // queso: huecos
-                        g.fillStyle(0xb98600, 1); [[10, 10, 4], [25, 14, 3], [16, 25, 4], [28, 28, 2.5]].forEach(([x, y, r]) => g.fillCircle(x, y, r));
-                    } else if (nombre === 'tequeno') {                        // tequeño: rollo dorado con tiras de masa
-                        g.fillStyle(0xf7c35a, 1).fillRoundedRect(3, 10, S - 6, S - 20, 8);
-                        g.lineStyle(2, 0xb87a1c, 1); for (let k = 6; k < S - 6; k += 8) g.lineBetween(k, 11, k + 6, S - 11);
-                    } else {                                                  // arepa: redonda con tostado
-                        g.fillStyle(0xf8ecd0, 1).fillCircle(S / 2, S / 2, S / 2 - 4);
-                        g.fillStyle(0xc99a55, 1); [[12, 14, 3], [24, 20, 3.5], [16, 26, 2.5], [26, 10, 2]].forEach(([x, y, r]) => g.fillCircle(x, y, r));
-                    }
-                    g.restore();
-                    [9, 18, 27].forEach((x) => { const l = 2 + Math.random() * 4; g.fillStyle(c, 1).fillRect(x, S - 8, 2.4, l); g.fillCircle(x + 1.2, S - 8 + l, 1.8); }); // goteos
-                    g.lineStyle(2, 0x2c2c30, 1).strokeRoundedRect(0.5, 0.5, S - 1, S - 1, 4);
-                    g.generateTexture('ing_' + nombre, S, S);
-                });
-                g.clear(); g.fillStyle(0xffffff, 1).fillCircle(5, 5, 5); g.generateTexture('chispa', 10, 10);
-                g.destroy();
             }
             update(time, delta) {
                 if (this.arrastrando && this.objetivo) { // la pieza sigue al dedo con suavidad (pegada, sin saltos)
                     const k = Math.min(1, 0.5 * ((delta || 16.6) / 16.6)), cn = this.arrastrando.cont;
                     cn.x += (this.objetivo.x - cn.x) * k; cn.y += (this.objetivo.y - cn.y) * k;
                 }
-                // Borde del tablero: marquesina de letrero de feria. Bombillos amarillo-azul-rojo que corren alrededor del marco, con resplandor.
-                const x0 = GX - 9, y0 = GY - 9, w = N * CELDA + 18, h = N * CELDA + 18, per = 2 * (w + h), nb = 64;
-                const pt = (t) => { let d = (t % 1) * per; if (d < w) return [x0 + d, y0]; d -= w; if (d < h) return [x0 + w, y0 + d]; d -= h; if (d < w) return [x0 + w - d, y0 + h]; d -= w; return [x0, y0 + h - d]; };
-                const b = this.borde; b.clear();
-                b.lineStyle(5, 0x101014, 1).strokeRect(x0, y0, w, h);
-                const fase = Math.floor(time / 110);
-                for (let k = 0; k < nb; k++) {
-                    const p = pt(k / nb), idx = (((k - fase) % 3) + 3) % 3, col = BANDERA[idx], viva = idx === 0;
-                    b.fillStyle(col, viva ? 0.3 : 0.1).fillCircle(p[0], p[1], 8);
-                    b.fillStyle(col, viva ? 1 : 0.5).fillCircle(p[0], p[1], 3.4);
-                    b.fillStyle(0xffffff, viva ? 0.95 : 0.25).fillCircle(p[0] - 0.9, p[1] - 0.9, 1.1);
-                }
+                T.marco(this.borde, time, d);
             }
             nueva() {
                 this.grilla = nuevaGrilla();
@@ -385,11 +292,11 @@
             actualizarMeta() {
                 const meta = estado ? estado.metaSiguiente : 500;
                 this.txtMeta.setText(`Meta nivel ${estado ? estado.nivelMax + 1 : 1}: ${fmt(meta)} pts`);
-                this.txtMeta.setColor(this.puntos >= meta ? '#ffd100' : '#f2e6c8');
+                this.txtMeta.setColor(T.colorMeta(this.puntos >= meta));
             }
             repartir() {
                 const datos = nuevasPiezas(this.grilla);
-                this.piezas = datos.map((d, i) => this.crearPieza(d, i));
+                this.piezas = datos.map((dd, i) => this.crearPieza(dd, i));
                 this.piezas.forEach((p, i) => { p.cont.setAlpha(0).setScale(0.2); this.tweens.add({ targets: p.cont, alpha: 1, scale: p.home.esc, duration: 320, delay: i * 90, ease: 'Back.Out', onComplete: () => this.flotar(p) }); });
                 if (!hayJugada(this.grilla, this.piezas.map((p) => p.shape))) this.terminar();
             }
@@ -397,16 +304,16 @@
                 if (p.usada || !p.cont.active) return;
                 p.flota = this.tweens.add({ targets: p.cont, y: p.home.y - 5, duration: 900 + Math.random() * 400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
             }
-            crearPieza(d, idx) {
-                const esc = 0.55, ancho = d.shape[0].length * CELDA, alto = d.shape.length * CELDA;
+            crearPieza(dd, idx) {
+                const esc = 0.55, ancho = dd.shape[0].length * CELDA, alto = dd.shape.length * CELDA;
                 const cx = 60 + idx * 120;
-                const cont = this.add.container(cx - (ancho * esc) / 2, BANDEJA_Y + 60 - (alto * esc) / 2).setScale(esc);
-                for (let i = 0; i < d.shape.length; i++) for (let j = 0; j < d.shape[0].length; j++) {
-                    if (d.shape[i][j]) cont.add(this.add.image(j * CELDA + (CELDA - 3) / 2, i * CELDA + (CELDA - 3) / 2, 'ing_' + INGREDIENTES[d.ing]));
+                const cont = this.add.container(cx - (ancho * esc) / 2, BANDEJA_Y + 60 - (alto * esc) / 2).setScale(esc).setDepth(8);
+                for (let i = 0; i < dd.shape.length; i++) for (let j = 0; j < dd.shape[0].length; j++) {
+                    if (dd.shape[i][j]) cont.add(this.add.image(j * CELDA + (CELDA - 3) / 2, i * CELDA + (CELDA - 3) / 2, 'ing_' + INGREDIENTES[dd.ing]));
                 }
                 // Zona de toque propia, centrada en la ranura de la bandeja y generosa (116x136): se agarra desde cualquier parte, sin importar la forma.
                 const zona = this.add.zone(cx, BANDEJA_Y + 60, 116, 136).setInteractive();
-                const pieza = { cont, zona, shape: d.shape, ing: d.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
+                const pieza = { cont, zona, shape: dd.shape, ing: dd.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
                 zona.on('pointerdown', (p) => {
                     if (this.fin || pieza.usada || this.arrastrando) return;
                     Sonido.init(); Sonido.tomar();
@@ -448,12 +355,12 @@
                 if (!puedeColocar(this.grilla, pz.shape, r, c)) {
                     Sonido.invalido();
                     this.tweens.add({ targets: pz.cont, x: pz.home.x, y: pz.home.y, scale: pz.home.esc, duration: 220, ease: 'Back.Out', onComplete: () => this.flotar(pz) });
-                    pz.cont.setDepth(0); return;
+                    pz.cont.setDepth(8); return;
                 }
                 this.aplicar(pz, r, c);
             }
             pintarCelda(i, j, ing) {
-                const im = this.add.image(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, 'ing_' + INGREDIENTES[ing]).setScale(0.4);
+                const im = this.add.image(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, 'ing_' + INGREDIENTES[ing]).setScale(0.4).setDepth(6);
                 this.tweens.add({ targets: im, scale: 1, duration: 230, ease: 'Back.Out' });
                 this.celdasImg[i][j] = im; return im;
             }
@@ -481,10 +388,10 @@
                     });
                     this.cameras.main.shake(140 + nLineas * 40, Math.min(0.012, 0.0035 * nLineas));
                     if (this.combo > 1 || nLineas > 1) this.cameras.main.flash(140, 255, 255, 255, true);
-                    const col = ['#ffd100', '#5b8dff', '#ff4a52', '#ff9a1f'][this.combo % 4];
-                    const frase = this.combo > 1 ? `¡COMBO x${this.combo}!` : (nLineas > 2 ? '¡BURDA DE FINO!' : (nLineas > 1 ? '¡DOBLE, VALE!' : ''));
-                    const t = this.add.text(W / 2, GY + (N * CELDA) / 2, `${frase}${frase ? '\n' : ''}+${gan}`, { fontFamily: FUENTE_SPRAY, fontSize: frase ? '32px' : '38px', color: col, align: 'center', stroke: '#000000', strokeThickness: 7, padding: { x: 30, y: 24 } }).setOrigin(0.5).setDepth(40).setScale(0.3);
-                    t.setShadow(3, 3, '#0a1a5c', 0, true, true);
+                    const col = T.COLORES_POPUP[this.combo % T.COLORES_POPUP.length];
+                    const frase = this.combo > 1 ? T.FRASES.combo(this.combo) : (nLineas > 2 ? T.FRASES.triple : (nLineas > 1 ? T.FRASES.doble : ''));
+                    const t = this.add.text(W / 2, GY + (N * CELDA) / 2, `${frase}${frase ? '\n' : ''}+${gan}`, { ...T.estiloPopup(!!frase), color: col }).setOrigin(0.5).setDepth(40).setScale(0.3);
+                    t.setShadow(3, 3, '#fb4b08', 0, true, true);
                     this.tweens.add({ targets: t, scale: 1.25, duration: 220, ease: 'Back.Out' });
                     this.tweens.add({ targets: t, y: t.y - 70, alpha: 0, duration: 800, delay: 450, onComplete: () => t.destroy() });
                     if (navigator.vibrate) try { navigator.vibrate(30 + nLineas * 10); } catch (_) { /* sin vibración */ }
@@ -542,72 +449,11 @@
         });
     }
 
-    // Intro: el barrio de noche en canvas 2D (cerro de ranchos con ventanas que parpadean, banderines, estrellas, farola). Liviano: no necesita Phaser ni Firebase.
-    function iniciarIntro() {
-        const cv = $('warp'); if (!cv) return { acelerar() {}, parar() {} };
-        const c = cv.getContext('2d'); let w = 0, h = 0, activo = true, vel = 0.4, zoom = 1, desp = 0, entrando = false;
-        const FACHADAS = ['#e3212b', '#ffd100', '#2b5fff', '#ff9a1f', '#2fc46a', '#f2e6c8', '#c24a8a', '#18a0c8'];
-        let capas = [], estrellas = [];
-        const construir = () => {
-            w = cv.width = window.innerWidth; h = cv.height = window.innerHeight;
-            const ancho = w * 2.4;
-            const capa = (par, base, hmin, hmax, colores, oscuro) => { const casas = []; let x = 0; while (x < ancho) { const cw = 46 + Math.random() * 54, ch = hmin + Math.random() * (hmax - hmin); casas.push({ x, w: cw, h: ch, col: colores[Math.floor(Math.random() * colores.length)], tanque: Math.random() < 0.3, ant: Math.random() < 0.2, vent: Array.from({ length: 40 }, () => Math.random()) }); x += cw + 2; } return { par, base, casas, ancho: x, oscuro }; };
-            capas = [capa(0.25, h * 0.64, 70, 170, ['#14246e', '#1b2d80', '#101c5a'], true), capa(0.55, h * 0.78, 80, 190, ['#3a1d6e', '#5a2a7a', '#2c2070', '#7a2a4a'], true), capa(1, h * 1.0, 100, 230, FACHADAS, false)];
-            estrellas = Array.from({ length: 70 }, () => ({ x: Math.random() * w, y: Math.random() * h * 0.5, r: Math.random() * 1.4 + 0.4, f: Math.random() * 6 }));
-        };
-        construir(); window.addEventListener('resize', construir);
-        const t0 = performance.now();
-        function dibujar() {
-            if (!activo) return;
-            const t = (performance.now() - t0) / 1000;
-            if (entrando) { vel = Math.min(16, vel * 1.06 + 0.1); zoom = Math.min(2.4, zoom + 0.012); }
-            desp += vel;
-            c.setTransform(1, 0, 0, 1, 0, 0);
-            const cielo = c.createLinearGradient(0, 0, 0, h); cielo.addColorStop(0, '#0a1a5c'); cielo.addColorStop(0.35, '#3b2a8a'); cielo.addColorStop(0.7, '#e3532b'); cielo.addColorStop(1, '#ffb300');
-            c.fillStyle = cielo; c.fillRect(0, 0, w, h);
-            c.setTransform(zoom, 0, 0, zoom, (w - w * zoom) / 2, (h - h * zoom) * 0.75); // al entrar: acercamiento hacia el barrio
-            for (const e of estrellas) { c.globalAlpha = 0.35 + 0.65 * Math.abs(Math.sin(t * 1.6 + e.f)); c.fillStyle = '#fff'; c.fillRect(e.x, e.y, e.r, e.r); }
-            c.globalAlpha = 1;
-            const sol = c.createRadialGradient(w * 0.5, h * 0.7, 10, w * 0.5, h * 0.7, w * 0.8); sol.addColorStop(0, 'rgba(255,200,80,.55)'); sol.addColorStop(1, 'rgba(255,200,80,0)'); c.fillStyle = sol; c.fillRect(0, 0, w, h);
-            for (const L of capas) {
-                for (const k of L.casas) {
-                    let x = ((k.x - desp * L.par) % L.ancho + L.ancho) % L.ancho - 80;
-                    if (x > w + 80) continue;
-                    const y = L.base - k.h;
-                    c.fillStyle = k.col; c.fillRect(x, y, k.w, k.h + 4);
-                    c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(x, y, k.w, 6);                      // techo / losa
-                    if (k.tanque) { c.fillStyle = L.oscuro ? '#0b1240' : '#444'; c.fillRect(x + k.w * 0.3, y - 14, 16, 14); c.fillStyle = 'rgba(255,255,255,.18)'; c.fillRect(x + k.w * 0.3, y - 14, 16, 3); }
-                    if (k.ant) { c.strokeStyle = '#111'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x + k.w * 0.7, y); c.lineTo(x + k.w * 0.7, y - 22); c.moveTo(x + k.w * 0.7 - 6, y - 16); c.lineTo(x + k.w * 0.7 + 6, y - 16); c.stroke(); }
-                    const cols = Math.max(1, Math.floor(k.w / 16)), filas = Math.max(1, Math.floor((k.h - 14) / 22));
-                    for (let r = 0; r < filas; r++) for (let q = 0; q < cols; q++) {
-                        const id = (r * cols + q) % 40, enc = k.vent[id] > 0.42 && (k.vent[id] > 0.97 ? Math.sin(t * 7 + id) > 0 : true);
-                        c.fillStyle = enc ? (L.oscuro ? '#ffd75e' : '#fff1a8') : 'rgba(0,0,0,.45)';
-                        c.fillRect(x + 6 + q * 16, y + 12 + r * 22, 8, 11);
-                    }
-                }
-            }
-            // Banderines de fiesta: amarillo, azul y rojo colgando de lado a lado
-            c.setTransform(1, 0, 0, 1, 0, 0);
-            [[0.07, 26], [0.16, 34]].forEach(([fy, caida], hilo) => {
-                const y0 = h * fy; c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1.5; c.beginPath();
-                for (let x = 0; x <= w; x += 6) { const y = y0 + Math.sin((x / w) * Math.PI) * caida; x ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke();
-                for (let x = 12, i = 0; x < w; x += 26, i++) {
-                    const y = y0 + Math.sin((x / w) * Math.PI) * caida, bal = Math.sin(t * 2 + i + hilo) * 3;
-                    c.fillStyle = ['#ffd100', '#2b5fff', '#e3212b'][(i + hilo) % 3]; c.beginPath(); c.moveTo(x - 9, y); c.lineTo(x + 9, y); c.lineTo(x + bal, y + 20); c.closePath(); c.fill();
-                }
-            });
-            const vig = c.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, h * 0.85); vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,.45)'); c.fillStyle = vig; c.fillRect(0, 0, w, h);
-            requestAnimationFrame(dibujar);
-        }
-        dibujar();
-        return { acelerar() { entrando = true; }, parar() { activo = false; window.removeEventListener('resize', construir); } };
-    }
-
     async function arrancar() {
-        const intro = iniciarIntro();
+        const intro = root.BlockRoalTema.iniciarIntro($('warp'));
         const phaserP = cargarPhaser();                       // se baja YA, en paralelo con Firebase y el servidor
         phaserP.catch(() => {});
-        const fuentes = Promise.race([Promise.all([document.fonts.load('44px Anton'), document.fonts.load('600 14px Montserrat'), document.fonts.load('32px "Rubik Spray Paint"'), document.fonts.load('20px "Permanent Marker"')]), dormir(2500)]).catch(() => {});
+        const fuentes = Promise.race([Promise.all(root.BlockRoalTema.FUENTES_A_CARGAR.map((f) => document.fonts.load(f))), dormir(2500)]).catch(() => {});
         let listoOk; const listoP = new Promise((r) => { listoOk = r; });
         let entrando = false;
 
