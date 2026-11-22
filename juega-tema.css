@@ -75,6 +75,10 @@ header h1 span { color: var(--naranja); margin-left: .18em; }
 .intro-estado { font-size: .8rem; color: var(--crema); min-height: 1.2em; opacity: 0; animation: aparece .6s 2.5s forwards; }
 .intro-barra { width: min(70vw, 260px); height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .15); overflow: hidden; margin-top: 6px; }
 .intro-barra span { display: block; height: 100%; width: 40%; background: linear-gradient(90deg, var(--amarillo), var(--naranja), var(--azul)); animation: barra 1.4s ease-in-out infinite; }
+.saltar { position: absolute; top: max(14px, env(safe-area-inset-top)); right: 14px; z-index: 2; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .3); color: #fff; border-radius: 999px; padding: 8px 14px; font: 700 .8rem 'Montserrat', sans-serif; cursor: pointer; opacity: 0; animation: aparece .4s .5s forwards; }
+/* Segunda entrada del día: la intro va rápida */
+#intro.corta *, #intro.corta { animation-delay: 0s !important; animation-duration: .3s !important; }
+#intro.corta .btn.grande { animation: aparece .3s 0s forwards, latido 1.2s .4s ease-in-out infinite !important; }
 @keyframes aparece { to { opacity: 1; } }
 @keyframes revelar { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes golpe { 0% { transform: scale(1.5) rotate(-4deg); } 100% { transform: scale(1) rotate(-2deg); } }

@@ -236,8 +236,9 @@
             },
             monedas() { if (!ctx) return; const t = ctx.currentTime; tono(hz(88), t, 0.12, 'square', 0.22, sfxG); tono(hz(95), t + 0.1, 0.4, 'square', 0.22, sfxG); },
             clic() { if (!ctx) return; tono(700, ctx.currentTime, 0.06, 'triangle', 0.25, sfxG, 1000); },
-            warp() { // llegada al barrio: murmullo de calle, carro y moto que pasan, pitos, tres rociadas de spray y caída de 808 con rasgueo de cuatro
-                if (!ctx) return; const t = ctx.currentTime;
+            warp(corta) { // llegada al barrio. corta = ya la oíste hoy: solo spray, caída de 808 y rasgueo (sin la calle)
+                if (!ctx) return; const t = ctx.currentTime, off = corta ? 1.6 : 0;
+                const en = (d, fn) => { if (d >= off - 0.01) fn(t + d - off); };
                 const banda = (t0, dur, vol, tipo, f0, f1, q) => {
                     const n = Math.floor(ctx.sampleRate * dur), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
                     for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
@@ -246,16 +247,15 @@
                     const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + dur * 0.45); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
                     s.connect(f); f.connect(g); g.connect(sfxG); s.start(t0); s.stop(t0 + dur + 0.02);
                 };
-                banda(t, 3.0, 0.16, 'lowpass', 300, 700, 0.7);                       // murmullo del barrio
-                banda(t + 0.2, 1.7, 0.5, 'bandpass', 250, 1100, 2.5);                // carro que se acerca…
-                banda(t + 1.2, 1.4, 0.4, 'bandpass', 1100, 220, 2.5);                // …y se aleja (efecto Doppler)
-                tono(70, t + 0.2, 2.2, 'sawtooth', 0.12, sfxG, 130); tono(130, t + 1.4, 1.2, 'sawtooth', 0.1, sfxG, 70);   // motor
-                tono(hz(93), t + 0.5, 0.45, 'sawtooth', 0.05, sfxG, hz(100));        // moto a lo lejos
-                [[0.9, 0.14], [1.12, 0.22]].forEach(([d, l]) => { tono(hz(81), t + d, l, 'square', 0.15, sfxG); tono(hz(85), t + d, l, 'square', 0.13, sfxG); }); // pito pi-piii
-                [1.7, 2.0, 2.3].forEach((d, i) => ruido(t + d, 0.28, 0.32, sfxG, 3500 + i * 1200));                    // spray
-                tono(48, t + 2.6, 0.9, 'sine', 0.95, sfxG, 30); ruido(t + 2.6, 0.25, 0.4, sfxG, 600);                  // caída de 808
-                [0, 3, 7, 12, 15].forEach((s2, i) => tono(hz(57 + s2), t + 2.6 + i * 0.03, 1.2, 'sawtooth', 0.09, sfxG));
-                [0, 7, 12, 19].forEach((s2, i) => tono(hz(69 + s2), t + 2.95 + i * 0.12, 0.5, 'triangle', 0.2, sfxG));
+                en(0, (x) => banda(x, 3.0, 0.16, 'lowpass', 300, 700, 0.7));                       // murmullo del barrio
+                en(0.2, (x) => banda(x, 1.7, 0.5, 'bandpass', 250, 1100, 2.5));                    // carro que se acerca…
+                en(1.2, (x) => banda(x, 1.4, 0.4, 'bandpass', 1100, 220, 2.5));                    // …y se aleja (efecto Doppler)
+                en(0.2, (x) => tono(70, x, 2.2, 'sawtooth', 0.12, sfxG, 130)); en(1.4, (x) => tono(130, x, 1.2, 'sawtooth', 0.1, sfxG, 70)); // motor
+                en(0.5, (x) => tono(hz(93), x, 0.45, 'sawtooth', 0.05, sfxG, hz(100)));            // moto a lo lejos
+                [[0.9, 0.14], [1.12, 0.22]].forEach(([d, l]) => en(d, (x) => { tono(hz(81), x, l, 'square', 0.15, sfxG); tono(hz(85), x, l, 'square', 0.13, sfxG); })); // pito pi-piii
+                [1.7, 2.0, 2.3].forEach((d, i) => en(d, (x) => ruido(x, 0.28, 0.32, sfxG, 3500 + i * 1200)));                                // spray
+                en(2.6, (x) => { tono(48, x, 0.9, 'sine', 0.95, sfxG, 30); ruido(x, 0.25, 0.4, sfxG, 600); [0, 3, 7, 12, 15].forEach((s2, i) => tono(hz(57 + s2), x + i * 0.03, 1.2, 'sawtooth', 0.09, sfxG)); }); // caída de 808
+                en(2.95, (x) => [0, 7, 12, 19].forEach((s2, i) => tono(hz(69 + s2), x + i * 0.12, 0.5, 'triangle', 0.2, sfxG)));
             }
         };
         return S;
@@ -263,13 +263,38 @@
 
     root.BlockRoalSonido = Sonido; // solo para depurar/probar en el navegador
 
+    // ── Guardado local (localStorage; si no está disponible el juego sigue igual, solo que sin guardar) ──
+    const Guardado = (function () {
+        const K = { partida: 'blockroal_partida', pend: 'blockroal_pendiente', intro: 'blockroal_intro' };
+        const leer = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (_) { return null; } };
+        const poner = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* sin almacenamiento */ } };
+        const quitar = (k) => { try { localStorage.removeItem(k); } catch (_) { /* nada */ } };
+        const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+        const MAX_MS = 100 * 60 * 1000; // la partida del servidor vive 2 h: se deja margen
+        return {
+            partida(v) { poner(K.partida, v); },
+            leerPartida(uid) { const p = leer(K.partida); return p && p.uid === uid && p.sesionId && Date.now() - p.ini < MAX_MS && Array.isArray(p.grilla) && Array.isArray(p.piezas) ? p : null; },
+            borrarPartida() { quitar(K.partida); },
+            pendiente(v) { poner(K.pend, v); },
+            leerPendiente(uid) { const p = leer(K.pend); return p && p.uid === uid && Date.now() - p.ini < MAX_MS ? p : null; },
+            borrarPendiente() { quitar(K.pend); },
+            introVistaHoy() { return leer(K.intro) === hoy(); },
+            marcarIntro() { poner(K.intro, hoy()); }
+        };
+    })();
+
     // ── Estado / servidor ──
     let estado = null;        // lo que devuelve juegoEstado (el servidor manda)
     let funciones = null;
     let juego = null;         // instancia Phaser
     let sesionId = null;
+    let sesionIni = 0;         // cuándo (reloj del celular) empezó la partida actual: sirve para saber si aún se puede reanudar o reenviar
     let sesionPromesa = Promise.resolve();
     let escena = null;
+    let uidActual = '';
+    let restauro = null;       // partida guardada por restaurar al abrir
+    let bloqueado = false;     // llegó al máximo de partidas del día
+    let mensajeBloqueo = '';
 
     function mostrarEstado() {
         if (!estado) return;
@@ -280,6 +305,11 @@
         $('stHoy').textContent = `${fmt(estado.puntosHoy)} / ${fmt(estado.topeDiario)}`;
         $('stBonus').textContent = Object.keys(estado.rachaBonus || {}).map((d) => `${d}d +${estado.rachaBonus[d]}`).join(' · ');
         const cr = $('stCredito'); cr.style.fontSize = cr.textContent.length > 7 ? '34px' : (cr.textContent.length > 5 ? '44px' : '');
+        const vence = $('stVence');
+        if (vence) {
+            vence.textContent = estado.creditoJuego > 0 ? (estado.creditoVence > 0 ? `${peso(estado.creditoJuego)} · vencen el ${new Date(estado.creditoVence).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}` : peso(estado.creditoJuego)) : '—';
+            const av = $('stAviso'); if (av) av.hidden = !(estado.creditoJuego > 0 && estado.creditoActivo === false);
+        }
     }
     async function cargarEstado() {
         const r = await funciones.httpsCallable('juegoEstado')({});
@@ -294,37 +324,77 @@
     function iniciarPartida() {
         sesionId = null;
         sesionPromesa = (async () => {
-            try { const r = await funciones.httpsCallable('juegoIniciar')({}); sesionId = r.data.sesionId; aviso(''); }
-            catch (e) { if (!sinCuenta(e)) aviso(e?.message || 'No se pudo iniciar la partida.', true); }
+            try { const r = await funciones.httpsCallable('juegoIniciar')({}); sesionId = r.data.sesionId; sesionIni = Date.now(); aviso(''); }
+            catch (e) {
+                if (/resource-exhausted/.test(String(e && e.code || ''))) { bloqueado = true; mensajeBloqueo = e.message || 'Llegaste al máximo de partidas de hoy. ¡Vuelve mañana!'; aviso(mensajeBloqueo, true); }
+                else if (!sinCuenta(e)) aviso(e?.message || 'No se pudo iniciar la partida.', true);
+            }
         })();
         return sesionPromesa;
     }
 
+    // ¿El error es de conexión (se puede reintentar) o lo rechazó el servidor (no tiene caso reintentar)?
+    function esErrorDeRed(e) {
+        const c = String(e && e.code || ''), m = String(e && e.message || '');
+        if (/expir/i.test(m)) return false;
+        return /unavailable|internal|unknown|deadline-exceeded/.test(c) || /network|fetch|offline|failed to/i.test(m);
+    }
+    function mostrarResultado(data) {
+        if (!data.ok) { $('resDetalle').textContent = 'Esta partida no se pudo validar, así que no suma puntos.'; return; }
+        estado = { ...estado, ...data.estado }; mostrarEstado();
+        const x = data.resultado, partes = [];
+        partes.push(x.puntosOtorgados > 0 ? `+${fmt(x.puntosOtorgados)} puntos ROAL` : 'Hoy ya llegaste al tope de puntos');
+        if (x.topeAlcanzado && x.puntosOtorgados > 0) partes.push('(llegaste al tope diario)');
+        if (x.bonusRacha > 0) partes.push(`🔥 Bonus de racha +${x.bonusRacha}`);
+        if (x.nivelSuperado) { $('resTitulo').textContent = root.BlockRoalTema.FRASES.nivel; partes.push(root.BlockRoalTema.FRASES.nivelDetalle(estado.nivelMax + 1)); Sonido.nivel(); if (escena) escena.confeti(); }
+        else if (x.creditoGanado > 0) Sonido.monedas();
+        if (x.creditoGanado > 0) partes.push(`Ganaste ${peso(x.creditoGanado)} en créditos ROAL`);
+        if (x.presupuestoAgotado) partes.push('Los créditos de hoy ya se repartieron entre todos los jugadores. Mañana hay más.');
+        $('resDetalle').textContent = partes.join('\n');
+    }
+    // Reenvía un puntaje que no alcanzó a llegar (sin internet, cierre del navegador…).
+    async function enviarPendiente(avisarSiLlega) {
+        const p = Guardado.leerPendiente(uidActual);
+        if (!p || !funciones) return;
+        try {
+            const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId: p.sesionId, puntaje: p.puntaje, jugadas: p.jugadas });
+            Guardado.borrarPendiente();
+            if (r.data.ok) { estado = { ...estado, ...r.data.estado }; mostrarEstado(); if (avisarSiLlega) { aviso(`Se guardó tu partida anterior (+${fmt(r.data.resultado.puntosOtorgados)} puntos).`); setTimeout(() => aviso(''), 4000); } }
+        } catch (e) { if (!esErrorDeRed(e)) Guardado.borrarPendiente(); }
+    }
+
     async function terminarPartida(puntaje, jugadas) {
-        const panel = $('resultado');
-        panel.hidden = false;
+        Guardado.borrarPartida();
+        $('resultado').hidden = false;
         $('resTitulo').textContent = root.BlockRoalTema.FRASES.fin;
         $('resPuntaje').textContent = fmt(puntaje) + ' pts';
         $('resDetalle').textContent = 'Guardando tus puntos…';
-        $('btnOtra').disabled = true;
+        $('btnOtra').disabled = true; $('btnReintentar').hidden = true;
         try {
             if (!sesionId) await sesionPromesa;
             if (!sesionId) throw new Error('La partida no se pudo registrar. Intenta de nuevo.');
+            Guardado.pendiente({ uid: uidActual, sesionId, puntaje, jugadas, ini: sesionIni || Date.now() }); // por si se corta el internet
             const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId, puntaje, jugadas });
-            if (!r.data.ok) { $('resDetalle').textContent = 'Esta partida no se pudo validar, así que no suma puntos.'; }
-            else {
-                estado = r.data.estado; mostrarEstado();
-                const x = r.data.resultado, partes = [];
-                partes.push(x.puntosOtorgados > 0 ? `+${fmt(x.puntosOtorgados)} puntos ROAL` : 'Hoy ya llegaste al tope de puntos');
-                if (x.topeAlcanzado && x.puntosOtorgados > 0) partes.push('(llegaste al tope diario)');
-                if (x.bonusRacha > 0) partes.push(`🔥 Bonus de racha +${x.bonusRacha}`);
-                if (x.nivelSuperado) { $('resTitulo').textContent = root.BlockRoalTema.FRASES.nivel; partes.push(root.BlockRoalTema.FRASES.nivelDetalle(estado.nivelMax + 1)); Sonido.nivel(); if (escena) escena.confeti(); }
-                else if (x.creditoGanado > 0) Sonido.monedas();
-                if (x.creditoGanado > 0) partes.push(`Ganaste ${peso(x.creditoGanado)} en créditos ROAL`);
-                $('resDetalle').textContent = partes.join('\n');
-            }
-        } catch (e) { $('resDetalle').textContent = e?.message || 'No se pudieron guardar tus puntos.'; }
+            Guardado.borrarPendiente();
+            mostrarResultado(r.data);
+        } catch (e) {
+            if (esErrorDeRed(e)) { $('resDetalle').textContent = 'No hay conexión. Guardamos tu puntaje en este celular y se envía solo cuando vuelva el internet.'; $('btnReintentar').hidden = false; }
+            else { Guardado.borrarPendiente(); $('resDetalle').textContent = e?.message || 'No se pudieron guardar tus puntos.'; }
+        }
         $('btnOtra').disabled = false;
+    }
+    async function reintentar() {
+        const p = Guardado.leerPendiente(uidActual);
+        if (!p) { $('btnReintentar').hidden = true; return; }
+        $('btnReintentar').disabled = true; $('resDetalle').textContent = 'Enviando…';
+        try {
+            const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId: p.sesionId, puntaje: p.puntaje, jugadas: p.jugadas });
+            Guardado.borrarPendiente(); $('btnReintentar').hidden = true; mostrarResultado(r.data);
+        } catch (e) {
+            if (esErrorDeRed(e)) $('resDetalle').textContent = 'Sigue sin conexión. Tu puntaje está guardado en este celular; inténtalo de nuevo en un momento.';
+            else { Guardado.borrarPendiente(); $('btnReintentar').hidden = true; $('resDetalle').textContent = e?.message || 'No se pudieron guardar tus puntos.'; }
+        }
+        $('btnReintentar').disabled = false;
     }
 
     function crearJuego() {
@@ -362,6 +432,27 @@
                 }
                 T.marco(this.borde, time, d);
             }
+            // Guarda el tablero tras cada jugada: si se cierra o recarga la página, la partida sigue donde iba.
+            guardarPartida() {
+                if (this.fin || !sesionId || !uidActual) return;
+                const idx = (shape) => SHAPES.findIndex((s) => JSON.stringify(s) === JSON.stringify(shape));
+                Guardado.partida({ uid: uidActual, sesionId, ini: sesionIni || Date.now(), puntos: this.puntos, jugadas: this.jugadas, combo: this.combo, grilla: this.grilla, piezas: this.piezas.map((p) => ({ s: idx(p.shape), ing: p.ing, usada: p.usada })) });
+            }
+            restaurar(g) {
+                this.grilla = g.grilla.map((f) => f.slice());
+                this.puntos = g.puntos || 0; this.jugadas = g.jugadas || 0; this.combo = g.combo || 0; this.fin = false;
+                for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (this.grilla[i][j] !== -1) this.pintarCelda(i, j, this.grilla[i][j]);
+                this.txtPuntos.setText(fmt(this.puntos));
+                this.actualizarMeta();
+                this.piezas = g.piezas.map((p, i) => this.crearPieza({ shape: SHAPES[p.s] || SHAPES[0], ing: p.ing }, i));
+                this.piezas.forEach((p, i) => {
+                    if (g.piezas[i].usada) { p.usada = true; p.cont.destroy(); if (p.zona) p.zona.destroy(); return; }
+                    p.cont.setAlpha(0).setScale(0.2); this.tweens.add({ targets: p.cont, alpha: 1, scale: p.home.esc, duration: 320, delay: i * 90, ease: 'Back.Out', onComplete: () => this.flotar(p) });
+                });
+                const quedan = this.piezas.filter((p) => !p.usada);
+                if (!quedan.length) this.repartir();
+                else if (!hayJugada(this.grilla, quedan.map((p) => p.shape))) this.terminar();
+            }
             nueva() {
                 this.grilla = nuevaGrilla();
                 this.puntos = 0; this.jugadas = 0; this.combo = 0; this.fin = false;
@@ -370,7 +461,10 @@
                 (this.piezas || []).forEach((p) => { if (p) { p.cont.destroy(); if (p.zona) p.zona.destroy(); } });
                 this.txtPuntos.setText('0');
                 this.actualizarMeta();
+                if (restauro) { const g = restauro; restauro = null; this.restaurar(g); return; }
+                Guardado.borrarPartida();
                 this.repartir();
+                this.guardarPartida();
             }
             actualizarMeta() {
                 const meta = estado ? estado.metaSiguiente : 500;
@@ -398,6 +492,7 @@
                 const zona = this.add.zone(cx, BANDEJA_Y + 60, 120, 112).setInteractive();
                 const pieza = { cont, zona, shape: dd.shape, ing: dd.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
                 zona.on('pointerdown', (p) => {
+                    if (bloqueado) { aviso(mensajeBloqueo, true); return; }
                     if (this.fin || pieza.usada || this.arrastrando) return;
                     Sonido.init(); Sonido.tomar();
                     if (navigator.vibrate) try { navigator.vibrate(18); } catch (_) { /* sin vibración */ }
@@ -485,6 +580,7 @@
                 const quedan = this.piezas.filter((p) => !p.usada);
                 if (!quedan.length) this.repartir();
                 else if (!hayJugada(this.grilla, quedan.map((p) => p.shape))) this.terminar();
+                this.guardarPartida();
             }
             confeti() {
                 for (let k = 0; k < 5; k++) this.time.delayedCall(k * 160, () => this.arcoiris.explode(40, Phaser.Math.Between(40, W - 40), H * 0.55));
@@ -509,7 +605,9 @@
     async function jugarOtra() {
         Sonido.clic();
         $('resultado').hidden = true;
+        await enviarPendiente(false);
         await iniciarPartida();
+        if (bloqueado) { $('resTitulo').textContent = 'Hasta mañana'; $('resPuntaje').textContent = ''; $('resDetalle').textContent = mensajeBloqueo; $('btnReintentar').hidden = true; $('resultado').hidden = false; return; }
         if (estado) { try { await cargarEstado(); } catch (_) { /* se queda con el estado anterior */ } }
         if (escena) escena.nueva();
     }
@@ -539,20 +637,25 @@
         const fuentes = Promise.race([Promise.all(root.BlockRoalTema.FUENTES_A_CARGAR.map((f) => document.fonts.load(f))), dormir(2500)]).catch(() => {});
         let listoOk; const listoP = new Promise((r) => { listoOk = r; });
         let entrando = false;
+        const corta = Guardado.introVistaHoy();                // ya viste la intro completa hoy: versión rápida
+        if (corta) $('intro').classList.add('corta');
+        let saltoOk; const saltoP = new Promise((r) => { saltoOk = r; });
+        const esperar = (ms) => Promise.race([dormir(ms), saltoP]);
 
         // El navegador solo deja sonar el audio tras un toque del usuario: el toque de «ENTRAR» lo activa y arranca la música de una vez.
         async function entrar() {
             if (entrando) return; entrando = true;
-            Sonido.init(true); Sonido.warp(); setTimeout(() => Sonido.arrancarMusica(), 2600); intro.acelerar();
+            Sonido.init(true); Sonido.warp(corta); setTimeout(() => Sonido.arrancarMusica(), corta ? 1000 : 2600); intro.acelerar(); Guardado.marcarIntro();
             if (navigator.vibrate) try { navigator.vibrate([30, 40, 60]); } catch (_) { /* sin vibración */ }
             $('btnEntrar').hidden = true; $('introEstado').textContent = '¡Entrando al barrio!';
-            await dormir(3300);
+            await esperar(corta ? 1700 : 3300);
             if (await Promise.race([listoP.then(() => true), dormir(900).then(() => false)]) === false) $('introEstado').textContent = 'Preparando tu partida…';
             await Promise.race([listoP, dormir(10000)]);
             $('app').classList.add('entrar'); $('intro').classList.add('salir');
             setTimeout(() => { intro.parar(); $('intro').hidden = true; }, 900);
         }
         $('btnEntrar').addEventListener('click', entrar);
+        $('btnSaltar').addEventListener('click', () => { Sonido.init(true); Sonido.arrancarMusica(); saltoOk(); if (!entrando) entrar(); });
         // Abierto desde el menú (iframe): el toque en «Juega» ya autorizó el audio → entra solo, con el sonido de la calle desde el primer instante.
         // Si el navegador no lo permite, queda el botón «Toca pa' entrar».
         if (window.self !== window.top) Sonido.desbloquear().then((ok) => { if (ok) entrar(); });
@@ -568,12 +671,18 @@
         if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
         funciones = firebase.app().functions('us-central1');
         $('btnOtra').addEventListener('click', jugarOtra);
+        $('btnReintentar').addEventListener('click', reintentar);
+        window.addEventListener('online', () => enviarPendiente(true));
         firebase.auth().onAuthStateChanged((user) => {
             if (!user) { intro.parar(); $('intro').hidden = true; $('sinSesion').hidden = false; $('app').hidden = true; return; }
             $('sinSesion').hidden = true; $('app').hidden = false;
+            if (uidActual === user.uid) return;        // Firebase puede repetir este aviso (renovación del token): no reiniciar nada
+            uidActual = user.uid;
             // Todo en paralelo: estado del jugador, sesión de partida y el motor del juego (antes iba uno detrás de otro).
-            const pEstado = cargarEstado().then(() => { if (!estado.activo) aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); });
-            iniciarPartida();
+            const pEstado = cargarEstado().then(() => { if (!estado.activo) aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); return enviarPendiente(true); });
+            const guardada = Guardado.leerPartida(user.uid);
+            if (guardada) { sesionId = guardada.sesionId; sesionIni = guardada.ini; sesionPromesa = Promise.resolve(); restauro = guardada; }   // reanuda donde iba
+            else iniciarPartida();
             const pJuego = Promise.all([phaserP, fuentes]).then(() => { if (!juego) crearJuego(); });
             Promise.all([pEstado, pJuego]).then(() => { if (escena) { escena.actualizarMeta(); } }).catch((e) => {
                 if (sinCuenta(e)) return;

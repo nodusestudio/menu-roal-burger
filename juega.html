@@ -21,7 +21,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700;800&family=Permanent+Marker&display=swap" rel="stylesheet">
     <!-- Diseño: juega-tema.css y juega-tema.js. La lógica del juego está en juega.js -->
-    <link rel="stylesheet" href="juega-tema.css?v=20261122o">
+    <link rel="stylesheet" href="juega-tema.css?v=20261122p">
 </head>
 <body>
     <div id="intro">
@@ -35,6 +35,7 @@
             <div class="intro-estado" id="introEstado">Sube el volumen 🔊 y que suene el barrio</div>
             <div class="intro-barra"><span></span></div>
         </div>
+        <button type="button" class="saltar" id="btnSaltar">Saltar ›</button>
     </div>
 
     <div id="app" hidden>
@@ -65,7 +66,9 @@
                 <li>Nivel <b><span id="stNivel">1</span> · meta <span id="stMeta">500</span> pts</b></li>
                 <li>Puntos de hoy <b id="stHoy">0 / 300</b></li>
                 <li>Bonus de racha <b id="stBonus"></b></li>
+                <li>Tus créditos <b id="stVence">—</b></li>
             </ul>
+            <p id="stAviso" hidden style="margin:-6px 0 14px">Tus créditos se activan cuando recibas tu primer pedido de ROAL.</p>
             <button class="btn" id="btnInfoCerrar" type="button">Entendido</button>
         </div>
     </div>
@@ -83,7 +86,7 @@
             <h2 id="resTitulo">¡Se acabó, mi pana!</h2>
             <div class="pts" id="resPuntaje">0 pts</div>
             <p id="resDetalle"></p>
-            <button class="btn" id="btnOtra" type="button">¡Otra, vale!</button><a class="btn sec" href="/" data-menu>Menú</a>
+            <button class="btn" id="btnReintentar" type="button" hidden>Reintentar</button><button class="btn" id="btnOtra" type="button">¡Otra, vale!</button><a class="btn sec" href="/" data-menu>Menú</a>
         </div>
     </div>
 
@@ -91,7 +94,7 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="juega-tema.js?v=20261122o"></script>
-    <script defer src="juega.js?v=20261122o"></script>
+    <script defer src="juega-tema.js?v=20261122p"></script>
+    <script defer src="juega.js?v=20261122p"></script>
 </body>
 </html>
