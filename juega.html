@@ -6,7 +6,7 @@
     <title>Juega · Block ROAL</title>
     <meta name="description" content="Juega Block ROAL, acumula puntos y canjéalos por créditos en tu próximo pedido de ROAL BURGER.">
     <meta name="robots" content="noindex">
-    <meta name="theme-color" content="#1a0640">
+    <meta name="theme-color" content="#0a1a5c">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,70 +19,82 @@
     <link rel="preconnect" href="https://us-central1-roal-burger-menu.cloudfunctions.net" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700;800&family=Permanent+Marker&family=Rubik+Spray+Paint&display=swap" rel="stylesheet">
     <style>
         @property --ang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
-        :root { --naranja: #ff9100; --beige: #e9ddff; --choc: #12062e; --choc2: #24104f; --choc3: #3b1d80; --ok: #22ff8f; --rosa: #ff2e7e; --cian: #1fd8ff; --amar: #ffe600; }
+        /* "El barrio": amarillo, azul y rojo de la bandera, cemento, ladrillo, neón de letrero y atardecer de cerro. */
+        :root { --amar: #ffd100; --azul: #2b5fff; --rojo: #e3212b; --nav: #0a1a5c; --crema: #f2e6c8; --conc: #2a2a2f; --ok: #7dff9a; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html, body { margin: 0; height: 100%; background: radial-gradient(ellipse at 20% 10%, #5b1fb8 0%, transparent 55%), radial-gradient(ellipse at 85% 30%, #0d4fc4 0%, transparent 50%), radial-gradient(ellipse at 50% 100%, #b3166b 0%, transparent 55%), #12062e; background-size: 140% 140%; animation: cosmos 14s ease-in-out infinite alternate; color: var(--beige); font-family: 'Montserrat', system-ui, sans-serif; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
-        @keyframes cosmos { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+        html, body { margin: 0; height: 100%; background: var(--nav); color: var(--crema); font-family: 'Montserrat', system-ui, sans-serif; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+        body::before { content: ''; position: fixed; inset: 0; z-index: -2; background: linear-gradient(#0a1a5c 0%, #3b2a8a 36%, #e3532b 72%, #ffb300 100%); }
+        /* Cerro de ranchos con ventanas prendidas (SVG en línea, sin imágenes externas) */
+        body::after { content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 36vh; z-index: -1; opacity: .95; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 480 160' preserveAspectRatio='none'%3E%3Cg fill='%230b1240'%3E%3Crect x='0' y='92' width='50' height='68'/%3E%3Crect x='46' y='70' width='44' height='90'/%3E%3Crect x='88' y='102' width='56' height='58'/%3E%3Crect x='140' y='58' width='46' height='102'/%3E%3Crect x='184' y='84' width='60' height='76'/%3E%3Crect x='240' y='106' width='46' height='54'/%3E%3Crect x='282' y='64' width='52' height='96'/%3E%3Crect x='332' y='92' width='48' height='68'/%3E%3Crect x='378' y='74' width='56' height='86'/%3E%3Crect x='430' y='94' width='50' height='66'/%3E%3Crect x='60' y='60' width='10' height='12'/%3E%3Crect x='154' y='46' width='12' height='14'/%3E%3Crect x='298' y='52' width='10' height='12'/%3E%3Crect x='398' y='62' width='12' height='12'/%3E%3C/g%3E%3Cg fill='%23ffd75e'%3E%3Crect x='8' y='104' width='6' height='7'/%3E%3Crect x='28' y='122' width='6' height='7'/%3E%3Crect x='54' y='84' width='6' height='7'/%3E%3Crect x='72' y='108' width='6' height='7'/%3E%3Crect x='96' y='116' width='6' height='7'/%3E%3Crect x='120' y='132' width='6' height='7'/%3E%3Crect x='148' y='74' width='6' height='7'/%3E%3Crect x='166' y='96' width='6' height='7'/%3E%3Crect x='150' y='128' width='6' height='7'/%3E%3Crect x='196' y='100' width='6' height='7'/%3E%3Crect x='216' y='124' width='6' height='7'/%3E%3Crect x='250' y='120' width='6' height='7'/%3E%3Crect x='268' y='140' width='6' height='7'/%3E%3Crect x='292' y='82' width='6' height='7'/%3E%3Crect x='312' y='112' width='6' height='7'/%3E%3Crect x='340' y='108' width='6' height='7'/%3E%3Crect x='360' y='134' width='6' height='7'/%3E%3Crect x='388' y='90' width='6' height='7'/%3E%3Crect x='410' y='118' width='6' height='7'/%3E%3Crect x='440' y='108' width='6' height='7'/%3E%3Crect x='460' y='132' width='6' height='7'/%3E%3C/g%3E%3C/svg%3E") repeat-x left bottom / 480px 100%; }
         @keyframes giro { to { --ang: 360deg; } }
         @keyframes brillo { to { background-position: 200% center; } }
-        h1, h2, .anton { font-family: 'Anton', 'Oswald', sans-serif; font-weight: 400; letter-spacing: .03em; text-transform: uppercase; }
+        h1, h2, .anton { font-family: 'Anton', sans-serif; font-weight: 400; letter-spacing: .03em; text-transform: uppercase; }
+        .spray { font-family: 'Rubik Spray Paint', 'Anton', sans-serif; }
+        .marker { font-family: 'Permanent Marker', 'Anton', cursive; }
         #app { display: flex; flex-direction: column; height: 100%; max-width: 520px; margin: 0 auto; padding: env(safe-area-inset-top) 10px env(safe-area-inset-bottom); }
         header { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
-        header a.volver { color: var(--beige); text-decoration: none; font-weight: 700; font-size: .85rem; border: 1px solid #6a3ad8; border-radius: 9px; padding: 8px 11px; background: rgba(36, 16, 79, .85); box-shadow: 0 0 10px rgba(138, 92, 255, .5); }
-        header h1 { flex: 1; margin: 0; font-size: 1.7rem; text-align: center; background: linear-gradient(90deg, #ff2e7e, #ff9100, #ffe600, #22ff8f, #1fd8ff, #8a5cff, #ff2e7e); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: brillo 4s linear infinite; filter: drop-shadow(0 0 8px rgba(255, 46, 126, .55)); }
+        header a.volver { color: var(--crema); text-decoration: none; font-weight: 800; font-size: .85rem; border: 2px solid var(--amar); border-radius: 6px; padding: 7px 11px; background: rgba(20, 20, 26, .88); box-shadow: 3px 3px 0 var(--rojo); }
+        header h1 { flex: 1; margin: 0; text-align: center; font-family: 'Rubik Spray Paint', 'Anton', sans-serif; font-size: 1.15rem; white-space: nowrap; color: var(--amar); text-shadow: 2px 2px 0 var(--rojo), 3px 3px 0 var(--azul); letter-spacing: .02em; }
         .snd { display: flex; gap: 6px; }
-        .snd button { width: 38px; height: 34px; border-radius: 9px; border: 1px solid #6a3ad8; background: rgba(36, 16, 79, .85); font-size: 1rem; cursor: pointer; color: #fff; box-shadow: 0 0 10px rgba(138, 92, 255, .5); }
+        .snd button { width: 38px; height: 34px; border-radius: 6px; border: 2px solid var(--amar); background: rgba(20, 20, 26, .88); font-size: 1rem; cursor: pointer; color: #fff; box-shadow: 3px 3px 0 var(--azul); }
         .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-        .stat { background: rgba(36, 16, 79, .8); border: 1.5px solid transparent; border-radius: 9px; padding: 6px 4px; text-align: center; background-image: linear-gradient(rgba(26, 10, 62, .92), rgba(26, 10, 62, .92)), conic-gradient(from var(--ang), #ff2e7e, #ff9100, #ffe600, #22ff8f, #1fd8ff, #8a5cff, #ff2e7e); background-origin: border-box; background-clip: padding-box, border-box; animation: giro 5s linear infinite; }
-        .stat b { display: block; font-family: 'Anton', sans-serif; font-weight: 400; font-size: 1.25rem; color: #fff; text-shadow: 0 0 10px #ff2e7e, 0 0 18px #8a5cff; line-height: 1.1; }
-        .stat span { font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
-        .sub { font-size: .68rem; opacity: .75; text-align: center; margin: 5px 0 0; }
-        #juegoCanvas { flex: 1; min-height: 0; margin-top: 6px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 0 18px rgba(138, 92, 255, .55)); }
+        .stat { border: 2px solid transparent; border-radius: 6px; padding: 6px 4px; text-align: center; background-image: linear-gradient(rgba(22, 22, 28, .92), rgba(22, 22, 28, .92)), conic-gradient(from var(--ang), #ffd100, #2b5fff, #e3212b, #ffd100); background-origin: border-box; background-clip: padding-box, border-box; animation: giro 6s linear infinite; }
+        .stat b { display: block; font-family: 'Anton', sans-serif; font-weight: 400; font-size: 1.25rem; color: var(--amar); text-shadow: 2px 2px 0 rgba(227, 33, 43, .8); line-height: 1.1; }
+        .stat span { font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; opacity: .9; }
+        .sub { font-size: .68rem; opacity: .9; text-align: center; margin: 5px 0 0; text-shadow: 0 1px 3px #000; }
+        #juegoCanvas { flex: 1; min-height: 0; margin-top: 6px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .55)); }
         #juegoCanvas canvas { touch-action: none; }
-        .aviso { margin: 6px 0; padding: 8px 10px; border-radius: 9px; background: var(--choc3); font-size: .8rem; text-align: center; box-shadow: 0 0 12px rgba(138, 92, 255, .5); }
-        .aviso.err { background: #5a2018; color: #ffd0c4; }
-        .overlay { position: fixed; inset: 0; background: rgba(12, 4, 36, .86); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 10; }
+        .aviso { margin: 6px 0; padding: 8px 10px; border-radius: 6px; background: rgba(20, 20, 26, .92); font-size: .8rem; text-align: center; border: 2px solid var(--amar); }
+        .aviso.err { background: #5a1218; color: #ffd0c4; border-color: var(--rojo); }
+        .overlay { position: fixed; inset: 0; background: rgba(8, 12, 40, .84); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 10; }
         .overlay[hidden], [hidden] { display: none !important; }
         #sinSesion, #resultado { z-index: 60; }
-        /* Intro de entrada: túnel de estrellas + título que aparece con zoom */
-        #intro { position: fixed; inset: 0; z-index: 50; background: #12062e; display: flex; align-items: center; justify-content: center; text-align: center; transition: opacity .8s ease, transform .8s ease; }
-        #intro.salir { opacity: 0; transform: scale(1.8); pointer-events: none; }
+        .card { border: 4px solid transparent; border-radius: 10px; padding: 20px 18px; width: min(100%, 360px); text-align: center; background-image: linear-gradient(#1c1c22, #1c1c22), conic-gradient(from var(--ang), #ffd100, #2b5fff, #e3212b, #ffd100); background-origin: border-box; background-clip: padding-box, border-box; animation: giro 4s linear infinite; box-shadow: 0 10px 30px rgba(0, 0, 0, .6); }
+        .card h2 { margin: 0 0 6px; font-family: 'Rubik Spray Paint', 'Anton', sans-serif; font-size: 1.7rem; color: var(--amar); text-shadow: 2px 2px 0 var(--rojo); }
+        .card .pts { font-family: 'Anton', sans-serif; font-size: 2.6rem; color: #fff; text-shadow: 3px 3px 0 var(--azul); margin: 4px 0; }
+        .card p { white-space: pre-line; font-size: .9rem; line-height: 1.5; margin: 8px 0 14px; }
+        .btn { display: inline-block; border: 2px solid #0a1a5c; border-radius: 6px; padding: 12px 20px; font: 800 .95rem 'Montserrat', sans-serif; text-transform: uppercase; background: var(--amar); color: #0a1a5c; cursor: pointer; text-decoration: none; box-shadow: 4px 4px 0 var(--rojo); }
+        .btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--rojo); }
+        .btn:disabled { opacity: .5; }
+        .btn.sec { background: var(--azul); color: #fff; margin-left: 6px; box-shadow: 4px 4px 0 #0a1a5c; }
+        /* Intro: el barrio de noche, banderines, casas con ventanas prendidas y el título pintado con spray */
+        #intro { position: fixed; inset: 0; z-index: 50; background: #0a1a5c; display: flex; align-items: flex-end; justify-content: center; text-align: center; transition: opacity .8s ease, transform .8s ease; }
+        #intro.salir { opacity: 0; transform: scale(1.6); pointer-events: none; }
         #warp { position: absolute; inset: 0; width: 100%; height: 100%; }
-        .intro-in { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px; }
-        .intro-ola { font-weight: 800; letter-spacing: .35em; font-size: .78rem; color: #c9b8ff; opacity: 0; animation: aparece 1s .2s forwards; text-shadow: 0 0 10px #8a5cff; }
-        .intro-titulo { font-family: 'Anton', sans-serif; font-size: clamp(3rem, 17vw, 5.4rem); line-height: 1; letter-spacing: .04em; background: linear-gradient(90deg, #ff2e7e, #ff9100, #ffe600, #22ff8f, #1fd8ff, #8a5cff, #ff2e7e); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: zoomTitulo 1.4s .4s cubic-bezier(.2, 1.3, .3, 1) both, brillo 3s linear infinite; filter: drop-shadow(0 0 18px rgba(255, 46, 126, .8)) drop-shadow(0 0 40px rgba(31, 216, 255, .5)); }
-        .intro-sub { font-family: 'Anton', sans-serif; font-size: 1.6rem; letter-spacing: .12em; text-transform: uppercase; color: #fff; text-shadow: 0 0 14px #22ff8f, 0 0 30px #1fd8ff; opacity: 0; animation: aparece 1s 1.1s forwards; margin-bottom: 18px; }
-        .btn.grande { font-size: 1.1rem; padding: 16px 28px; letter-spacing: .06em; opacity: 0; animation: aparece .8s 1.6s forwards, latido 1.3s 2.4s ease-in-out infinite; }
-        .intro-estado { font-size: .8rem; color: #c9b8ff; min-height: 1.2em; opacity: 0; animation: aparece .8s 1.8s forwards; }
-        .intro-barra { width: min(70vw, 260px); height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .12); overflow: hidden; margin-top: 6px; }
-        .intro-barra span { display: block; height: 100%; width: 40%; background: linear-gradient(90deg, #ff2e7e, #ffe600, #1fd8ff); animation: barra 1.4s ease-in-out infinite; }
+        .intro-in { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 20px 20px 9vh; text-shadow: 0 2px 6px rgba(0, 0, 0, .7); }
+        .intro-ola { font-family: 'Permanent Marker', 'Anton', cursive; font-size: 1.5rem; color: var(--crema); transform: rotate(-3deg); opacity: 0; animation: aparece .6s .3s forwards; }
+        .intro-titulo { font-family: 'Rubik Spray Paint', 'Anton', sans-serif; font-size: clamp(2.8rem, 15vw, 4.8rem); line-height: 1.05; color: var(--amar); text-shadow: 3px 3px 0 var(--rojo), 6px 6px 0 var(--azul); animation: revelar 1.1s .5s steps(14, end) both, golpe .5s .5s ease-out both; }
+        .intro-bandera { width: min(70vw, 280px); display: flex; flex-direction: column; gap: 3px; margin: 6px 0; opacity: 0; animation: aparece .4s 1.7s forwards, ancho .6s 1.7s ease-out both; }
+        .intro-bandera i { display: block; height: 6px; }
+        .intro-bandera i:nth-child(1) { background: var(--amar); } .intro-bandera i:nth-child(2) { background: var(--azul); } .intro-bandera i:nth-child(3) { background: var(--rojo); }
+        .intro-sub { font-family: 'Permanent Marker', 'Anton', cursive; font-size: 1.45rem; color: #fff; transform: rotate(-2deg); opacity: 0; animation: aparece .6s 1.9s forwards; margin-bottom: 14px; }
+        .btn.grande { font-size: 1.1rem; padding: 15px 26px; letter-spacing: .05em; opacity: 0; animation: aparece .6s 2.3s forwards, latido 1.2s 3s ease-in-out infinite; }
+        .intro-estado { font-size: .8rem; color: var(--crema); min-height: 1.2em; opacity: 0; animation: aparece .6s 2.5s forwards; }
+        .intro-barra { width: min(70vw, 260px); height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .15); overflow: hidden; margin-top: 6px; }
+        .intro-barra span { display: block; height: 100%; width: 40%; background: linear-gradient(90deg, var(--amar), var(--azul), var(--rojo)); animation: barra 1.4s ease-in-out infinite; }
         @keyframes aparece { to { opacity: 1; } }
-        @keyframes zoomTitulo { from { opacity: 0; transform: scale(3.2); filter: blur(14px); } to { opacity: 1; transform: scale(1); } }
+        @keyframes revelar { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+        @keyframes golpe { 0% { transform: scale(1.5) rotate(-4deg); } 100% { transform: scale(1) rotate(-2deg); } }
+        @keyframes ancho { from { width: 0; } }
         @keyframes latido { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
         @keyframes barra { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
-        @keyframes entrar { from { opacity: 0; transform: scale(.55); filter: blur(8px); } to { opacity: 1; transform: scale(1); filter: none; } }
+        @keyframes entrar { from { opacity: 0; transform: scale(.6); filter: blur(8px); } to { opacity: 1; transform: scale(1); filter: none; } }
         #app.entrar { animation: entrar .9s cubic-bezier(.2, .9, .3, 1.15); }
-        .card { border: 3px solid transparent; border-radius: 16px; padding: 20px 18px; width: min(100%, 360px); text-align: center; background-image: linear-gradient(#1a0a42, #1a0a42), conic-gradient(from var(--ang), #ff2e7e, #ff9100, #ffe600, #22ff8f, #1fd8ff, #8a5cff, #ff2e7e); background-origin: border-box; background-clip: padding-box, border-box; animation: giro 4s linear infinite; box-shadow: 0 0 30px rgba(255, 46, 126, .45), 0 0 60px rgba(31, 216, 255, .25); }
-        .card h2 { margin: 0 0 6px; font-size: 1.8rem; color: #ffe600; text-shadow: 0 0 14px #ff9100; }
-        .card .pts { font-family: 'Anton', sans-serif; font-size: 2.6rem; color: #fff; text-shadow: 0 0 14px #22ff8f, 0 0 28px #1fd8ff; margin: 4px 0; }
-        .card p { white-space: pre-line; font-size: .9rem; line-height: 1.5; margin: 8px 0 14px; }
-        .btn { display: inline-block; border: none; border-radius: 10px; padding: 12px 20px; font: 800 .95rem 'Montserrat', sans-serif; background: linear-gradient(135deg, #ff2e7e, #ff9100); color: #fff; cursor: pointer; text-decoration: none; box-shadow: 0 0 16px rgba(255, 46, 126, .7); text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
-        .btn:disabled { opacity: .5; }
-        .btn.sec { background: rgba(59, 29, 128, .9); color: var(--beige); margin-left: 6px; box-shadow: 0 0 12px rgba(138, 92, 255, .6); }
     </style>
 </head>
 <body>
     <div id="intro">
         <canvas id="warp"></canvas>
         <div class="intro-in">
-            <div class="intro-ola">ESTÁS LLEGANDO A</div>
+            <div class="intro-ola">¡Épale, pana!</div>
             <div class="intro-titulo">BLOCK ROAL</div>
-            <div class="intro-sub">otro universo</div>
-            <button type="button" class="btn grande" id="btnEntrar">TOCA PARA ENTRAR</button>
-            <div class="intro-estado" id="introEstado">Sube el volumen 🔊</div>
+            <div class="intro-bandera"><i></i><i></i><i></i></div>
+            <div class="intro-sub">bienvenido al barrio</div>
+            <button type="button" class="btn grande" id="btnEntrar">Toca pa' entrar</button>
+            <div class="intro-estado" id="introEstado">Sube el volumen 🔊 y que suene el barrio</div>
             <div class="intro-barra"><span></span></div>
         </div>
     </div>
@@ -114,10 +126,10 @@
 
     <div class="overlay" id="resultado" hidden>
         <div class="card">
-            <h2 id="resTitulo">Fin de la partida</h2>
+            <h2 id="resTitulo">¡Se acabó, mi pana!</h2>
             <div class="pts" id="resPuntaje">0 pts</div>
             <p id="resDetalle"></p>
-            <button class="btn" id="btnOtra" type="button">Jugar otra</button><a class="btn sec" href="/">Ir al menú</a>
+            <button class="btn" id="btnOtra" type="button">¡Otra, vale!</button><a class="btn sec" href="/">Ir al menú</a>
         </div>
     </div>
 
@@ -125,6 +137,6 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="juega.js?v=20261122d"></script>
+    <script defer src="juega.js?v=20261122e"></script>
 </body>
 </html>
