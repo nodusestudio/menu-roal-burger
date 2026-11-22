@@ -5830,6 +5830,39 @@ function _posFbPreviaFeedback(orderId) {
     });
     pintarImagen();
 }
+// Reactivar enviado: si el cliente ya pidió, muestra su respuesta (qué pidió, cuánto, en cuánto tiempo); si no, abre el mensaje enviado.
+function _posFbRespuestaReact(envioId) {
+    const e = (_fidEnvios || []).find((x) => x.id === envioId);
+    if (!e) { showNotice('No encuentro ese envío: recarga la lista.', 'error'); return; }
+    const enviadoMs = _tsMs(e.enviadoAt) || _tsMs(e.creadoAt);
+    const ped = (_fbPedidosPorTel().get(_sqPhoneKey(e.telefono)) || []).find((x) => x.ts > enviadoMs && x.ts - enviadoMs <= FID_VENTANA_MS) || null;
+    if (!ped) { _fidArchivoVer(envioId); return; }
+    const fh = (t) => new Date(t).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' });
+    const items = Array.isArray(ped.order && ped.order.items) ? ped.order.items : [];
+    const nombres = items.filter((i) => !i.parentItemKey).map((i) => `${i.quantity > 1 ? `${i.quantity}× ` : ''}${i.productName}`).join(', ');
+    const fav = _fidFavoritoDeMensaje(e.mensaje) || '';
+    const mismo = fav ? _fidPidioFavorito(items, fav) : null;
+    const regalo = items.some((i) => i.reactivacionDoble === true);
+    const cupon = e.cuponCodigo ? (_fidCupones || []).find((c) => c.codigo === e.cuponCodigo) : null;
+    document.getElementById('posFbRespOverlay')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'posFbRespOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:1rem';
+    const B = 'border-radius:9px;padding:9px 12px;font-weight:700;font-size:13px;cursor:pointer;';
+    ov.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:16px;width:min(100%,440px);font:14px system-ui,sans-serif">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong>✅ ${escapeHtml(e.nombre || 'Cliente')} ya pidió</strong><button type="button" data-x style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
+        <div style="opacity:.8;font-size:12px">Mensaje enviado: ${escapeHtml(fh(enviadoMs))}</div>
+        <div style="margin:8px 0"><b style="color:#34d399">Pidió: ${escapeHtml(fh(ped.ts))}</b> · ${escapeHtml(_fidDurTxt(ped.ts - enviadoMs))} después</div>
+        <div>🍔 ${escapeHtml(nombres || 'sin detalle')} · <b>${escapeHtml(formatMoney(ped.total))}</b></div>
+        <div style="margin-top:6px;font-size:13px">${mismo === true ? '🎯 Pidió lo mismo de siempre' : (mismo === false ? '🔀 Pidió otra cosa' : '')}${regalo ? ' · 🎁 usó el regalo' : ''}${cupon && cupon.estado === 'canjeado' ? ' · 🎟️ canjeó el cupón' : ''}</div>
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button type="button" data-msg style="${B}border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff">👁 Ver mensaje enviado</button><button type="button" data-met style="${B}border:0;background:#ff6a00;color:#fff">📈 Ir a Métricas</button></div></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', (ev) => {
+        if (ev.target === ov || ev.target.closest('[data-x]')) { ov.remove(); return; }
+        if (ev.target.closest('[data-msg]')) { ov.remove(); _fidArchivoVer(envioId); return; }
+        if (ev.target.closest('[data-met]')) { ov.remove(); const m = document.getElementById('posFbModal'); if (m) m.style.display = 'none'; _fidSub.reactivar = 'metricas'; _posFbIr('reactivar'); }
+    });
+}
 function _posFbIr(tipo) {
     const sec = tipo === 'asistente' ? 'asistente' : 'feedback';
     document.querySelector(`[data-accordion-target="${sec}"]`)?.click();
@@ -5868,6 +5901,23 @@ function _posFbRender() {
         ${linea(`🎁 ${escapeHtml(_fidRegaloEnProducto(e.regaloTexto, e.favorito))}`, 'font-size:12px;margin-top:2px')}
         ${linea(`🕒 ${escapeHtml(_fidHoraTexto(e.hora))}${e.hora <= ahoraH ? ' · <b style="color:#fbbf24">es su hora</b>' : ''}`, 'font-size:11px;margin-top:2px')}</button>`).join('');
 
+    // Mensajes de Reactivar ya enviados (ventana de 14 días): primero los que ya pidieron (clic → su respuesta), abajo los que siguen sin responder.
+    const enviadosReact = (() => {
+        const lim = Date.now() - FID_VENTANA_MS;
+        const lst = (_fidEnvios || []).filter((e) => e.motivo === 'reactivar' && e.pendiente === false && e.descartado !== true && (_tsMs(e.enviadoAt) || _tsMs(e.creadoAt)) > lim);
+        if (!lst.length) return [];
+        const porTel = _fbPedidosPorTel();
+        return lst.map((e) => {
+            const enviadoMs = _tsMs(e.enviadoAt) || _tsMs(e.creadoAt);
+            const ped = (porTel.get(_sqPhoneKey(e.telefono)) || []).find((x) => x.ts > enviadoMs && x.ts - enviadoMs <= FID_VENTANA_MS) || null;
+            return { e, enviadoMs, ped };
+        }).sort((a, b) => ((a.ped ? 0 : 1) - (b.ped ? 0 : 1)) || (b.enviadoMs - a.enviadoMs)).slice(0, 30);
+    })();
+    const cardsEnvReact = enviadosReact.map(({ e, enviadoMs, ped }) => `<button type="button" data-posfb-prev="reactenv" data-posfb-id="${escapeHtml(e.id)}" style="${card}cursor:pointer${ped ? '' : 'opacity:.7;'}">
+        ${linea(`<b>${escapeHtml(e.nombre || 'Cliente')}</b>`, 'font-size:13px')}
+        ${ped ? linea(`<span style="color:#34d399;font-weight:700">✅ Ya pidió · ${escapeHtml(formatMoney(ped.total))}</span>`, 'font-size:12px;margin-top:2px') : linea('<span style="color:#fbbf24;font-weight:700">📨 Enviado, sin respuesta</span>', 'font-size:11px;margin-top:2px')}
+        ${linea(`🕒 enviado ${escapeHtml(new Date(enviadoMs).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))}`, 'font-size:11px;margin-top:2px;opacity:.8')}</button>`).join('');
+
     const cardsCumple = _posPendCumplesLista().map((c) => `<button type="button" data-posfb-prev="cumple" data-posfb-id="${escapeHtml(c.id)}" style="${card}cursor:pointer">
         ${linea(`<b>${escapeHtml(c.customerName || 'Cliente')}</b>`, 'font-size:13px')}
         ${linea(`🎉 Hoy · ${escapeHtml(String(c.customerPhoneDigits || c.customerPhone || ''))}`, 'font-size:12px;margin-top:2px')}</button>`).join('');
@@ -5882,7 +5932,7 @@ function _posFbRender() {
         <div style="flex:1;min-height:0;overflow-y:auto">${cards || vacio}</div></div>`;
     modal.querySelector('.posfb-body').innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:10px;height:100%">
         ${col('⏳', 'Feedback', items.filter((x) => x.estado === 'sin_enviar').length, 'general', cardsFeedback)}
-        ${col('🔁', 'Reactivar', _posPend.cola.length, 'reactivar', cardsReactivar)}
+        ${col('🔁', 'Reactivar', _posPend.cola.length, 'reactivar', cardsReactivar + cardsEnvReact)}
         ${col('🎂', 'Cumpleaños', _posPendCumples(), 'cumple', cardsCumple)}
         ${col('⚠️', 'Atender', _posPend.atender.length, 'atender', cardsAtender)}</div>`;
 }
@@ -5907,6 +5957,7 @@ function openPosFeedbackModal() {
                 const tp = prev.dataset.posfbPrev;
                 if (tp === 'cumple') { _fidAbrirPrevia('cumple', prev.dataset.posfbId); return; }
                 if (tp === 'feedback') { _posFbPreviaFeedback(prev.dataset.posfbId); return; }
+                if (tp === 'reactenv') { _posFbRespuestaReact(prev.dataset.posfbId); return; }
                 prev.disabled = true;
                 try {
                     await _posFbAsegurarFid(tp !== 'atender');
@@ -5930,6 +5981,7 @@ function openPosFeedbackModal() {
     modal.style.display = 'flex';
     _posFbRender();
     _posPendRefrescar().then(() => { if (modal.style.display !== 'none') _posFbRender(); });
+    if (!_fbUnsubs.length) { try { _fbAttach(); } catch (_) { /* sin sesión */ } [1500, 4000].forEach((ms) => setTimeout(() => { if (modal.style.display !== 'none') _posFbRender(); }, ms)); } // los envíos de Reactivar se leen con las escuchas de Feedback
 }
 // Un toque abre la ventana; otro toque (el botón queda por encima de la ventana) la oculta. Mientras está abierta el botón se ve encendido.
 document.getElementById('posFeedbackBtn')?.addEventListener('click', (e) => {
