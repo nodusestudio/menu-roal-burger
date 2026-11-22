@@ -2905,14 +2905,34 @@ function _enVivoLista() {
     const ord = { pagando: 0, carrito: 1, viendo: 2 };
     return [..._enVivo.docs.values()].filter((d) => Number(d.ts) > lim).sort((a, b) => (ord[a.etapa] - ord[b.etapa]) || (b.ts - a.ts));
 }
+// Nombre de los visitantes con cuenta: se lee clientes/{cid} una sola vez por cliente y se guarda aquí.
+const _enVivoNombres = new Map();
+function _enVivoNombre(cid) {
+    if (!cid) return '';
+    if (_enVivoNombres.has(cid)) return _enVivoNombres.get(cid);
+    _enVivoNombres.set(cid, '');
+    try {
+        firebaseDb.collection(CLIENTS_COLLECTION).doc(cid).get().then((s) => {
+            const n = s.exists ? String(s.data().customerName || s.data().name || '').trim() : '';
+            _enVivoNombres.set(cid, n || 'Cliente registrado');
+            _enVivoPintar();
+        }).catch(() => _enVivoNombres.set(cid, 'Cliente registrado'));
+    } catch (_) { /* sin base */ }
+    return '';
+}
 function _enVivoPintar() {
     const w = document.getElementById('enVivoWidget');
     if (!w) return;
     const l = _enVivoLista();
-    const pedidos = l.filter((d) => d.etapa !== 'viendo').length;
+    const jugando = l.filter((d) => d.lugar === 'juego').length;
+    const pedidos = l.filter((d) => d.lugar !== 'juego' && d.etapa !== 'viendo').length;
     const pagando = l.filter((d) => d.etapa === 'pagando').length;
+    const partes = [];
+    if (pedidos) partes.push(`🛒 ${pedidos} con pedido`);
+    if (pagando) partes.push(`💳 ${pagando} pagando`);
+    if (jugando) partes.push(`🎮 ${jugando} jugando`);
     w.querySelector('[data-ev-n]').textContent = l.length;
-    w.querySelector('[data-ev-sub]').textContent = l.length ? `${pedidos ? `🛒 ${pedidos} con pedido` : 'solo mirando'}${pagando ? ` · 💳 ${pagando} pagando` : ''}` : 'nadie en la página';
+    w.querySelector('[data-ev-sub]').textContent = l.length ? (partes.join(' · ') || 'solo mirando') : 'nadie en la página';
     w.classList.toggle('ev-activo', pedidos > 0);
     w.querySelector('[data-ev-punto]').style.background = l.length ? '#34d399' : '#6b7280';
     if (_enVivo.abierto) _enVivoPintarPanel();
@@ -2924,10 +2944,13 @@ function _enVivoPintarPanel() {
     const ETAPA = { pagando: ['💳 Pagando', '#fbbf24'], carrito: ['🛒 Armando pedido', '#ff9a3d'], viendo: ['👀 Mirando el menú', '#9ca3af'] };
     const hace = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s` : `${Math.round(s / 60)} min`; };
     const filas = l.map((d) => {
-        const [txt, col] = ETAPA[d.etapa] || ETAPA.viendo;
+        const [txt, col] = d.lugar === 'juego' ? ['🎮 Jugando Block ROAL', '#a78bfa'] : (ETAPA[d.etapa] || ETAPA.viendo);
+        const nom = _enVivoNombre(d.cid);
+        const quien = d.cid ? `<span style="font-weight:700">👤 ${escapeHtml(nom || 'Cliente registrado')}</span>` : '<span style="opacity:.6">Sin cuenta (anónimo)</span>';
         const items = (d.items || []).map((i) => `<div style="padding-left:${i.h ? 18 : 0}px;opacity:${i.h ? 0.8 : 1}">${i.h ? '↳ ' : ''}${escapeHtml(String(i.q))}× ${escapeHtml(i.n)}${i.p ? ` · ${escapeHtml(formatMoney(i.p * i.q))}` : ''}</div>`).join('');
         return `<div style="border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:9px 11px;margin-bottom:8px;background:rgba(255,255,255,.04)">
             <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px"><b style="color:${col}">${txt}</b><span style="opacity:.7">${d.disp === 'movil' ? '📱' : '💻'} ${escapeHtml(d.fuente || 'directo')} · en la página hace ${escapeHtml(hace(d.inicio))}</span></div>
+            <div style="margin-top:3px;font-size:13px">${quien}</div>
             ${items ? `<div style="margin-top:6px;font-size:13px">${items}<div style="margin-top:4px;font-weight:800">Total: ${escapeHtml(formatMoney(d.total))}</div></div>` : ''}</div>`;
     }).join('');
     cuerpo.innerHTML = filas || '<p style="opacity:.6;text-align:center;margin:20px 0">Nadie en la página en este momento.</p>';

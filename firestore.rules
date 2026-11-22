@@ -375,7 +375,9 @@ service cloud.firestore {
     // Cualquiera puede escribir SU doc (id aleatorio) con forma y tamaños acotados; solo el admin lo lee.
     match /presencia/{sid} {
       allow create, update: if sid.size() >= 8 && sid.size() <= 40
-        && request.resource.data.keys().hasOnly(['sid', 'ts', 'inicio', 'etapa', 'items', 'total', 'disp', 'fuente'])
+        && request.resource.data.keys().hasOnly(['sid', 'ts', 'inicio', 'etapa', 'items', 'total', 'disp', 'fuente', 'cid', 'lugar'])
+        && (!('cid' in request.resource.data) || (request.resource.data.cid is string && request.resource.data.cid.size() <= 40))
+        && (!('lugar' in request.resource.data) || request.resource.data.lugar in ['menu', 'juego'])
         && request.resource.data.sid == sid
         && request.resource.data.etapa in ['viendo', 'carrito', 'pagando']
         && request.resource.data.items is list && request.resource.data.items.size() <= 15

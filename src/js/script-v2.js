@@ -14091,6 +14091,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
         const _vdb = getPublicFirebaseDb();
         if (typeof trackVisita === 'function') trackVisita(_vdb);
+        window.__roalCid = () => activeCustomerProfile?.id || ''; // el admin ve quién es (solo si tiene cuenta)
         if (typeof startPresencia === 'function') startPresencia(_vdb);
     } catch(e) {}
 

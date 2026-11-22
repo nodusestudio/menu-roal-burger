@@ -9,7 +9,9 @@ const ETAPA = { pagando: 'pagando (ya en la ventana de confirmar pedido)', carri
 function resumir(docs, ahora) {
     const vivos = docs.filter((d) => Number(d.ts) > ahora - VIGENCIA_MS);
     const visitantes = vivos.map((d) => ({
-        etapa: ETAPA[d.etapa] || d.etapa,
+        etapa: d.lugar === 'juego' ? 'jugando Block ROAL' : (ETAPA[d.etapa] || d.etapa),
+        registrado: !!d.cid,
+        clienteId: d.cid || null,
         dispositivo: d.disp === 'movil' ? 'celular' : 'computador',
         origen: d.fuente || 'directo',
         minutosEnLaPagina: Math.max(0, Math.round((ahora - Number(d.inicio || d.ts)) / 60000)),
@@ -19,9 +21,11 @@ function resumir(docs, ahora) {
     return {
         enLineaAhora: visitantes.length,
         conPedidoEnCarrito: visitantes.filter((v) => v.carrito.length).length,
+        jugando: vivos.filter((d) => d.lugar === 'juego').length,
+        registrados: vivos.filter((d) => d.cid).length,
         pagando: vivos.filter((d) => d.etapa === 'pagando').length,
         visitantes,
-        nota: 'Es en vivo (últimos 90 segundos). Sin datos personales. El histórico por día y hora está en Informes › Tráfico.'
+        nota: 'Es en vivo (últimos 90 segundos). Si registrado=true, clienteId es phone_<celular> (nombre en la colección clientes). El histórico por día y hora está en Informes › Tráfico.'
     };
 }
 

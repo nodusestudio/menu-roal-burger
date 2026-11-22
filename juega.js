@@ -878,6 +878,7 @@
             $('sinSesion').hidden = true; $('app').hidden = false;
             if (uidActual === user.uid) return;        // Firebase puede repetir este aviso (renovación del token): no reiniciar nada
             uidActual = user.uid;
+            presenciaJuego(user.uid);
             // Todo en paralelo: estado del jugador, sesión de partida y el motor del juego (antes iba uno detrás de otro).
             if (desafioPend) funciones.httpsCallable('juegoDesafio')({ id: desafioPend }).then((r) => { if (desafioMalo) return; $('desafioBanner').textContent = `🥊 ${r.data.creador} hizo ${fmt(r.data.puntaje)} pts con estas piezas. ¿Le ganas?`; $('desafioBanner').hidden = false; }).catch(() => { desafioPend = ''; desafioMalo = true; });
             const pEstado = cargarEstado().then(() => { evento('abrir'); if (!estado.activo) aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); return enviarPendiente(true); });
@@ -890,6 +891,28 @@
                 aviso(e?.code === 'functions/not-found' ? 'Para jugar necesitas una cuenta ROAL. Crea una al hacer tu primer pedido.' : (e?.message || 'No se pudo cargar el juego.'), true);
             }).finally(() => listoOk());
         });
+    }
+    // Presencia «En vivo» del admin: marca que este cliente (con cuenta) está jugando. Esta página no carga Firestore,
+    // así que se escribe por REST (las reglas de presencia/{sid} permiten escribir el propio doc). Latido cada 60 s con la página visible.
+    let presenciaOn = false;
+    function presenciaJuego(uid) {
+        if (presenciaOn) return; presenciaOn = true;
+        try {
+            let sid = ''; try { sid = sessionStorage.getItem('roal_sid') || ''; } catch (_) { /* sin storage */ }
+            if (!sid) { sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('roal_sid', sid); } catch (_) { /* sin storage */ } }
+            const url = `https://firestore.googleapis.com/v1/projects/${window.FIREBASE_CONFIG.projectId}/databases/(default)/documents/presencia/${sid}`;
+            const inicio = Date.now(), disp = /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 'movil' : 'pc';
+            const enviar = () => {
+                if (document.visibilityState !== 'visible') return;
+                const s = (v) => ({ stringValue: v }), n = (v) => ({ integerValue: String(Math.round(v)) });
+                const fields = { sid: s(sid), ts: n(Date.now()), inicio: n(inicio), etapa: s('viendo'), items: { arrayValue: {} }, total: n(0), disp: s(disp), fuente: s('juego'), cid: s(String(uid).slice(0, 40)), lugar: s('juego') };
+                fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }), keepalive: true }).catch(() => {});
+            };
+            enviar();
+            setInterval(enviar, 60000);
+            document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') enviar(); });
+            window.addEventListener('pagehide', () => { try { fetch(url, { method: 'DELETE', keepalive: true }).catch(() => {}); } catch (_) { /* mejor esfuerzo */ } });
+        } catch (_) { /* la presencia nunca debe romper el juego */ }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arrancar); else arrancar();
 })(typeof window !== 'undefined' ? window : globalThis);

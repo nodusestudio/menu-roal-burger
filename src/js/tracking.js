@@ -118,11 +118,12 @@ function startPresencia(db) {
             const total = Math.round(cart.reduce((t, i) => t + (Number(i.unitPrice) || 0) * (Number(i.quantity) || 1), 0));
             const pagando = !!document.getElementById('checkout-info-modal');
             const etapa = pagando ? 'pagando' : (items.length ? 'carrito' : 'viendo');
-            const firma = `${etapa}|${total}|${items.map((i) => i.n + i.q).join(',')}`;
+            const firma = `${etapa}|${(window.__roalCid && window.__roalCid()) || ''}|${total}|${items.map((i) => i.n + i.q).join(',')}`;
             const ahora = Date.now();
             if (!forzar && firma === ultimaFirma && ahora - ultimoEnvio < 60000) return;
             ultimaFirma = firma; ultimoEnvio = ahora;
-            ref.set({ sid, ts: ahora, inicio, etapa, items, total, disp, fuente }).catch(() => {});
+            let cid = ''; try { cid = String((window.__roalCid && window.__roalCid()) || '').slice(0, 40); } catch (_) { /* sin sesión */ }
+            ref.set({ sid, ts: ahora, inicio, etapa, items, total, disp, fuente, cid, lugar: 'menu' }).catch(() => {});
         };
         enviar(true);
         setInterval(() => enviar(false), 5000); // revisa cambios (barato: solo lee localStorage); escribe únicamente si algo cambió o pasó 1 min
