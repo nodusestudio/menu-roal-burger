@@ -39,6 +39,9 @@ header h1 span { color: var(--naranja); margin-left: .18em; }
 .modo { border: 1px solid var(--linea); background: rgba(255, 255, 255, .05); color: var(--tenue); border-radius: 999px; padding: 7px 14px; font: 700 .78rem 'Montserrat', sans-serif; cursor: pointer; }
 .modo.on { background: var(--naranja); border-color: var(--naranja); color: #fff; }
 .modo[hidden] { display: none; }
+.acciones { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.acciones .btn { margin: 0 !important; }
+.acciones [hidden] { display: none; }
 /* Ranking */
 #ranking { z-index: 70; }
 #rankTabs { display: flex; gap: 6px; justify-content: center; margin: 6px 0 4px; }

@@ -27,7 +27,7 @@
         const marco = document.createElement('iframe');
         marco.src = '/juega';
         marco.title = 'Block ROAL';
-        marco.setAttribute('allow', 'autoplay; fullscreen');
+        marco.setAttribute('allow', 'autoplay; fullscreen; web-share; clipboard-write');
         marco.style.cssText = 'border:0;width:100%;height:100%;display:block;background:#0e0e10';
         capa.appendChild(marco);
         document.body.appendChild(capa);

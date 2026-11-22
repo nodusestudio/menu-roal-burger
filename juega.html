@@ -21,7 +21,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700;800&family=Permanent+Marker&display=swap" rel="stylesheet">
     <!-- Diseño: juega-tema.css y juega-tema.js. La lógica del juego está en juega.js -->
-    <link rel="stylesheet" href="juega-tema.css?v=20261122r">
+    <link rel="stylesheet" href="juega-tema.css?v=20261122t">
 </head>
 <body>
     <div id="intro">
@@ -98,7 +98,13 @@
             <h2 id="resTitulo">¡Se acabó, mi pana!</h2>
             <div class="pts" id="resPuntaje">0 pts</div>
             <p id="resDetalle"></p>
-            <button class="btn" id="btnReintentar" type="button" hidden>Reintentar</button><button class="btn sec" id="btnVerRanking" type="button" hidden style="margin:0 6px 0 0">🏆 Ranking</button><button class="btn" id="btnOtra" type="button">¡Otra, vale!</button><a class="btn sec" href="/" data-menu>Menú</a>
+            <div class="acciones">
+                <button class="btn" id="btnCompartir" type="button" hidden>📤 Compartir</button>
+                <button class="btn sec" id="btnVerRanking" type="button" hidden>🏆 Ranking</button>
+                <button class="btn" id="btnReintentar" type="button" hidden>Reintentar</button>
+                <button class="btn" id="btnOtra" type="button">¡Otra, vale!</button>
+                <a class="btn sec" href="/" data-menu>Menú</a>
+            </div>
         </div>
     </div>
 
@@ -106,8 +112,8 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="juega-motor.js?v=20261122r"></script>
-    <script defer src="juega-tema.js?v=20261122r"></script>
-    <script defer src="juega.js?v=20261122r"></script>
+    <script defer src="juega-motor.js?v=20261122t"></script>
+    <script defer src="juega-tema.js?v=20261122t"></script>
+    <script defer src="juega.js?v=20261122t"></script>
 </body>
 </html>

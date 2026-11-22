@@ -237,6 +237,7 @@
     let restauro = null;       // partida guardada por restaurar al abrir
     let bloqueado = false;     // llegó al máximo de partidas del día
     let mensajeBloqueo = '';
+    let ultimoResultado = null; // lo que se muestra en la tarjeta para compartir
 
     function mostrarEstado() {
         if (!estado) return;
@@ -288,6 +289,8 @@
         estado = { ...estado, ...data.estado }; mostrarEstado();
         const x = data.resultado, partes = [];
         $('btnVerRanking').hidden = !x.reto;
+        $('btnCompartir').hidden = false;
+        ultimoResultado = { puntaje: x.puntaje, reto: !!x.reto, nivel: estado.nivelMax + 1, racha: estado.racha, puesto: null };
         if (x.reto) { estado.retoHecho = true; estado.retoPuntaje = x.puntaje; pintarModos(); partes.push('🏆 Tu puntaje del reto ya está en el ranking de hoy.'); }
         partes.push(x.puntosOtorgados > 0 ? `+${fmt(x.puntosOtorgados)} puntos ROAL` : 'Hoy ya llegaste al tope de puntos');
         if (x.topeAlcanzado && x.puntosOtorgados > 0) partes.push('(llegaste al tope diario)');
@@ -315,7 +318,7 @@
         $('resTitulo').textContent = root.BlockRoalTema.FRASES.fin;
         $('resPuntaje').textContent = fmt(puntaje) + ' pts';
         $('resDetalle').textContent = 'Guardando tus puntos…';
-        $('btnOtra').disabled = true; $('btnReintentar').hidden = true;
+        $('btnOtra').disabled = true; $('btnReintentar').hidden = true; $('btnCompartir').hidden = true;
         try {
             if (!sesionId) await sesionPromesa;
             if (!sesionId) throw new Error('La partida no se pudo registrar. Intenta de nuevo.');
@@ -553,6 +556,62 @@
         });
     }
 
+    // ── Compartir el puntaje: tarjeta en imagen (formato historia 1080x1920) + hoja de compartir del celular ──
+    const URL_JUEGO = 'https://roalburger.com/juega';
+    function cargarImagen(src) { return new Promise((ok) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = src; }); }
+    async function construirTarjeta(d) {
+        const W = 1080, H = 1920, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        const c = cv.getContext('2d');
+        try { await Promise.all([document.fonts.load('200px Anton'), document.fonts.load('800 40px Montserrat')]); } catch (_) { /* usa la fuente que haya */ }
+        const [foto, logo] = await Promise.all([cargarImagen('juega-fondo.webp'), cargarImagen('isotipo.webp')]);
+        // fondo: carbón, foto del local tenue, resplandor naranja y viñeta
+        c.fillStyle = '#0e0e10'; c.fillRect(0, 0, W, H);
+        if (foto) { const k = Math.max(W / foto.width, H / foto.height), w = foto.width * k, h = foto.height * k; c.globalAlpha = 0.28; c.drawImage(foto, (W - w) / 2, (H - h) / 2, w, h); c.globalAlpha = 1; }
+        let g = c.createRadialGradient(W / 2, 140, 40, W / 2, 140, 900); g.addColorStop(0, 'rgba(251,75,8,.42)'); g.addColorStop(1, 'rgba(251,75,8,0)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+        g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(14,14,16,.2)'); g.addColorStop(0.55, 'rgba(14,14,16,.55)'); g.addColorStop(1, 'rgba(14,14,16,.92)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+        c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+        const pastilla = (txt, cx, cy, fondo, color, tam) => { c.font = `800 ${tam}px Montserrat, sans-serif`; const w = c.measureText(txt).width + 80, h = tam + 44; c.fillStyle = fondo; c.beginPath(); c.roundRect(cx - w / 2, cy - h / 2, w, h, h / 2); c.fill(); c.fillStyle = color; c.fillText(txt, cx, cy + tam * 0.35); };
+        if (logo) c.drawImage(logo, W / 2 - 90, 130, 180, 180 * logo.height / logo.width);
+        // título «BLOCK ROAL» inclinado
+        c.save(); c.translate(W / 2, 470); c.transform(1, 0, -0.1, 1, 0, 0); c.font = '400 150px Anton, Impact, sans-serif'; c.lineJoin = 'round'; c.lineWidth = 14; c.strokeStyle = '#0e0e10';
+        const a1 = c.measureText('BLOCK ').width, a2 = c.measureText('ROAL').width, x0 = -(a1 + a2) / 2; c.textAlign = 'left';
+        c.strokeText('BLOCK ', x0, 0); c.fillStyle = '#fff'; c.fillText('BLOCK ', x0, 0); c.strokeText('ROAL', x0 + a1, 0); c.fillStyle = '#fb4b08'; c.fillText('ROAL', x0 + a1, 0); c.restore();
+        pastilla(d.reto ? 'RETO DEL DÍA' : 'MI PARTIDA', W / 2, 600, d.reto ? '#fb4b08' : 'rgba(255,255,255,.14)', '#fff', 46);
+        // puntaje enorme
+        c.textAlign = 'center'; c.font = '400 430px Anton, Impact, sans-serif'; c.shadowColor = 'rgba(251,75,8,.85)'; c.shadowBlur = 70; c.fillStyle = '#fff'; c.fillText(String(d.puntaje), W / 2, 1020); c.shadowBlur = 0;
+        c.font = '800 64px Montserrat, sans-serif'; c.fillStyle = 'rgba(246,235,217,.8)'; c.fillText('P U N T O S', W / 2, 1110);
+        if (d.puesto) { c.font = '400 120px Anton, Impact, sans-serif'; c.fillStyle = '#ffc400'; c.fillText(`PUESTO #${d.puesto} DE HOY`, W / 2, 1290); }
+        pastilla(`NIVEL ${d.nivel}`, W / 2 - 190, d.puesto ? 1420 : 1330, 'rgba(255,255,255,.14)', '#fff', 46);
+        pastilla(`RACHA ${d.racha}`, W / 2 + 190, d.puesto ? 1420 : 1330, 'rgba(255,255,255,.14)', '#fff', 46);
+        // llamado a la acción
+        c.fillStyle = '#fff'; c.font = '400 150px Anton, Impact, sans-serif'; c.fillText('¿ME GANAS?', W / 2, 1640);
+        c.font = '600 46px Montserrat, sans-serif'; c.fillStyle = 'rgba(246,235,217,.9)'; c.fillText('Juega gratis y gana créditos para tu pedido', W / 2, 1720);
+        pastilla('roalburger.com/juega', W / 2, 1810, '#fb4b08', '#fff', 54);
+        return new Promise((ok) => cv.toBlob((b) => ok(b), 'image/jpeg', 0.92));
+    }
+    async function compartirPuntaje() {
+        if (!ultimoResultado) return;
+        const btn = $('btnCompartir'); btn.disabled = true; const txtOriginal = btn.textContent; btn.textContent = 'Preparando…';
+        try {
+            // En el reto se muestra el puesto de hoy (se consulta al servidor; si falla, la tarjeta sale sin puesto).
+            if (ultimoResultado.reto && !ultimoResultado.puesto && funciones) { try { const r = (await funciones.httpsCallable('juegoRanking')({ tipo: 'dia' })).data; if (r.yo) ultimoResultado.puesto = r.yo.pos; } catch (_) { /* sin puesto */ } }
+            const blob = await construirTarjeta(ultimoResultado);
+            const d = ultimoResultado;
+            const texto = `Hice ${fmt(d.puntaje)} puntos en Block ROAL 🍔🔥${d.puesto ? ` (puesto #${d.puesto} del reto de hoy)` : ''} ¿Me ganas? Juega gratis: ${URL_JUEGO}`;
+            const archivo = blob ? new File([blob], 'block-roal.jpg', { type: 'image/jpeg' }) : null;
+            if (archivo && navigator.canShare && navigator.canShare({ files: [archivo] })) { await navigator.share({ files: [archivo], text: texto, title: 'Block ROAL' }); }
+            else if (navigator.share) { await navigator.share({ text: texto, url: URL_JUEGO, title: 'Block ROAL' }); }
+            else {
+                // Sin hoja de compartir (computador): se descarga la imagen y se copia el texto.
+                if (blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'block-roal.jpg'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+                try { await navigator.clipboard.writeText(texto); } catch (_) { /* sin portapapeles */ }
+                aviso('Descargamos tu tarjeta y copiamos el texto. ¡Pégalos donde quieras!'); setTimeout(() => aviso(''), 4500);
+            }
+        } catch (e) { if (!e || e.name !== 'AbortError') { aviso('No se pudo compartir. Inténtalo de nuevo.', true); setTimeout(() => aviso(''), 3500); } }
+        btn.disabled = false; btn.textContent = txtOriginal;
+    }
+    root.BlockRoalTarjeta = construirTarjeta; // solo para probar
+
     // ── Modos: libre (práctica) o reto del día (mismas piezas para todos, una sola oportunidad, ranking) ──
     function pintarModos() {
         const reto = $('modoReto'), libre = $('modoLibre');
@@ -595,7 +654,7 @@
 
     async function jugarOtra() {
         Sonido.clic();
-        $('resultado').hidden = true; $('btnVerRanking').hidden = true;
+        $('resultado').hidden = true; $('btnVerRanking').hidden = true; $('btnCompartir').hidden = true;
         await enviarPendiente(false);
         await iniciarPartida('libre');
         if (bloqueado) { $('resTitulo').textContent = 'Hasta mañana'; $('resPuntaje').textContent = ''; $('resDetalle').textContent = mensajeBloqueo; $('btnReintentar').hidden = true; $('resultado').hidden = false; return; }
@@ -664,6 +723,7 @@
         funciones = firebase.app().functions('us-central1');
         $('btnOtra').addEventListener('click', jugarOtra);
         $('btnReintentar').addEventListener('click', reintentar);
+        $('btnCompartir').addEventListener('click', compartirPuntaje);
         $('modoReto').addEventListener('click', () => cambiarModo('reto'));
         $('modoLibre').addEventListener('click', () => cambiarModo('libre'));
         $('btnRanking').addEventListener('click', () => abrirRanking('dia'));
