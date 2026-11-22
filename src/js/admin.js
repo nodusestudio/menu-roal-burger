@@ -31735,7 +31735,7 @@ async function _pmSaveAndRefresh(methods, successMsg) {
 // ── Juego (Block ROAL): configuración y métricas ────────────────────────────
 // configuracion/juego lo lee el servidor (functions/juego.js) en cada partida y en cada canje: valor del punto, tope diario,
 // metas por nivel, tope del crédito en el pedido y bonus de racha. Las métricas salen de juego_partidas y juego_canjes (solo el servidor escribe).
-const JUEGO_DEF = { activo: true, valorPunto: 1, topeDiario: 300, metaBase: 500, metasNivel: {}, topeCreditoPct: 7, rachaBonus: { 3: 50, 7: 150, 14: 400 }, presupuestoDiario: 150000, creditoVigenciaDias: 30, requierePedidoPrevio: true, maxPartidasDia: 40 };
+const JUEGO_DEF = { activo: true, valorPunto: 1, topeDiario: 300, metaBase: 500, metasNivel: {}, topeCreditoPct: 7, rachaBonus: { 3: 50, 7: 150, 14: 400 }, presupuestoDiario: 150000, creditoVigenciaDias: 30, requierePedidoPrevio: true, maxPartidasDia: 40, retoActivo: true, retoPremio: '' };
 let _juegoCfg = { ...JUEGO_DEF };
 let _juegoPeriodo = 'hoy';
 
@@ -31758,6 +31758,39 @@ async function cargarJuegoAdmin() {
     } catch (e) { showNotice('No se pudo leer la configuración del juego: ' + (e.message || 'error'), 'error'); }
     renderJuegoAdmin();
     cargarJuegoMetricas();
+    cargarJuegoRanking();
+    cargarJuegoRachas();
+}
+function _juegoLunes(dia) { const [y, m, d] = String(dia).split('-').map(Number); const f = new Date(Date.UTC(y, m - 1, d)); f.setUTCDate(f.getUTCDate() - ((f.getUTCDay() + 6) % 7)); return f.toISOString().slice(0, 10); }
+function _juegoWa(tel, texto) { return `https://wa.me/57${String(tel || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(texto)}`; }
+async function cargarJuegoRanking() {
+    const box = document.getElementById('juegoRanking');
+    if (!box) return;
+    try {
+        const hoy = _sqDayKey(Date.now()), lunes = _juegoLunes(hoy), pasada = _juegoLunes(_sqDayKey(Date.now() - 7 * 86400000));
+        const leer = async (sem, n) => (await firebaseDb.collection('juego_ranking_semana').doc(sem).collection('jugadores').orderBy('puntos', 'desc').limit(n).get()).docs.map((d) => d.data());
+        const [esta, anterior] = await Promise.all([leer(lunes, 10), leer(pasada, 3)]);
+        const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+        const fila = (p, i, premio) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.nombre || '—')}</td><td style="text-align:right"><b>${nf(p.puntos)}</b> pts · ${nf(p.dias)} d</td><td>${p.telefono ? `<a href="${_juegoWa(p.telefono, premio ? '¡Felicidades! Quedaste en el top de la semana en Block ROAL 🏆 Escríbenos para entregarte tu premio.' : '¡Hola! Vas de los primeros en el ranking de Block ROAL esta semana 🏆')}" target="_blank" rel="noopener">WhatsApp</a>` : ''}</td></tr>`;
+        const tabla = (arr, premio) => arr.length ? `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><tbody>${arr.map((p, i) => fila(p, i, premio)).join('')}</tbody></table>` : '<p class="admin-hint">Todavía no hay jugadores.</p>';
+        box.innerHTML = `<div class="admin-hint"><b>Esta semana</b> (desde el ${escapeHtml(lunes)})</div>${tabla(esta, false)}<div class="admin-hint" style="margin-top:10px"><b>Semana pasada: ganadores</b> (desde el ${escapeHtml(pasada)})</div>${tabla(anterior, true)}`;
+    } catch (e) { box.innerHTML = `<p class="admin-hint">No se pudo leer el ranking: ${escapeHtml(e.message || 'error')}</p>`; }
+}
+async function cargarJuegoRachas() {
+    const box = document.getElementById('juegoRachas');
+    if (!box) return;
+    try {
+        const hoy = _sqDayKey(Date.now()), ayer = _sqDayKey(Date.now() - 86400000);
+        const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc('juego').get();
+        const bonus = { ...JUEGO_DEF.rachaBonus, ...((snap.exists && snap.data().rachaBonus) || {}) };
+        const lista = (await firebaseDb.collection('clientes').where('ultimoDiaJuego', '==', ayer).get()).docs.map((d) => d.data()).filter((c) => Number(c.rachaJuego) >= 2 && c.ultimoDiaJuego !== hoy).sort((x, y) => Number(y.rachaJuego) - Number(x.rachaJuego));
+        if (!lista.length) { box.innerHTML = '<p class="admin-hint">Nadie con racha en riesgo ahora mismo.</p>'; return; }
+        box.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><tbody>${lista.slice(0, 40).map((c) => {
+            const nombre = String(c.customerName || 'Jugador').split(' ')[0], r = Number(c.rachaJuego), sig = bonus[r + 1];
+            const msg = `¡Hola ${nombre}! 🔥 Llevas ${r} días de racha en Block ROAL. No la pierdas: juega hoy en roalburger.com/juega${sig ? ` y ganas un bonus de ${sig} puntos` : ''}.`;
+            return `<tr><td>${escapeHtml(nombre)}</td><td>🔥 ${r}</td><td>${sig ? `mañana +${sig} pts` : ''}</td><td><a href="${_juegoWa(c.customerPhoneDigits || c.customerPhone, msg)}" target="_blank" rel="noopener">WhatsApp</a></td></tr>`;
+        }).join('')}</tbody></table>`;
+    } catch (e) { box.innerHTML = `<p class="admin-hint">No se pudo leer: ${escapeHtml(e.message || 'error')}</p>`; }
 }
 function renderJuegoAdmin() {
     const panel = document.getElementById('juegoAdminPanel');
@@ -31767,11 +31800,22 @@ function renderJuegoAdmin() {
     const metas = Object.keys(c.metasNivel || {}).sort((a, b) => a - b).map((k) => `${k}:${c.metasNivel[k]}`).join(', ');
     const pbtn = (id, txt) => `<button type="button" class="${_juegoPeriodo === id ? 'section-action-btn' : 'ghost-button'}" data-juego-periodo="${id}">${txt}</button>`;
     panel.innerHTML = `
+        <style>#juegoRanking td, #juegoRachas td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.08); } #juegoRanking a, #juegoRachas a { color: #7dff9a; font-weight: 700; }</style>
         <article class="admin-card">
             <div class="met-section-title">📈 Métricas del juego</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${pbtn('hoy', 'Hoy')}${pbtn('ayer', 'Ayer')}${pbtn('7d', 'Últimos 7 días')}${pbtn('mes', 'Este mes')}</div>
             <div id="juegoMetricas"><p class="admin-hint">Cargando…</p></div>
             <p class="admin-hint">Jugadores = personas distintas que terminaron al menos una partida válida. Créditos canjeados = lo que ya se descontó en pedidos (si un pedido se anula, el crédito vuelve al cliente pero este número no baja).</p>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">🏆 Ranking del reto</div>
+            <div id="juegoRanking"><p class="admin-hint">Cargando…</p></div>
+            <p class="admin-hint">Gana quien más puntos junta en la semana jugando el reto del día (lunes a domingo, hora de Colombia). El premio se entrega a mano: aquí tienes el teléfono de cada ganador.</p>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">🔥 Rachas en riesgo</div>
+            <div id="juegoRachas"><p class="admin-hint">Cargando…</p></div>
+            <p class="admin-hint">Jugadores con racha que jugaron ayer y todavía no han jugado hoy: si no juegan hoy, la pierden. Escríbeles por WhatsApp para recordárselo.</p>
         </article>
         <article class="admin-card">
             <div class="met-section-title">⚙️ Reglas del juego</div>
@@ -31798,6 +31842,9 @@ function renderJuegoAdmin() {
                     ${num('juegoVigencia', 'Los créditos vencen tras (días sin ganar, 0 = nunca)', c.creditoVigenciaDias, 0, 365)}
                     ${num('juegoMaxPartidas', 'Partidas máximas por jugador al día', c.maxPartidasDia, 1, 500)}
                 </div>
+                <div class="met-section-title" style="margin-top:4px">🏆 Reto del día</div>
+                <label class="admin-hint" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="juegoRetoActivo" ${c.retoActivo !== false ? 'checked' : ''}> Reto activo (mismas piezas para todos, una sola oportunidad al día, con ranking)</label>
+                <label class="admin-hint">Premio de la semana que se muestra en el ranking (opcional)<input type="text" id="juegoRetoPremio" class="admin-input" maxlength="160" placeholder="Ej.: Top 3 de la semana: hamburguesa gratis" value="${escapeHtml(c.retoPremio || '')}"></label>
                 <label class="admin-hint" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="juegoPedidoPrevio" ${c.requierePedidoPrevio !== false ? 'checked' : ''}> Para canjear créditos hay que tener al menos un pedido entregado (frena las cuentas falsas)</label>
                 <p class="admin-hint">1.000 puntos = $1.000 cuando el valor del punto es 1. Los créditos solo se usan con una compra, nunca en el domicilio, y hasta el porcentaje máximo del pedido. Los bonus de racha no cuentan para el tope diario. Cada cambio aplica desde la siguiente partida o pedido.</p>
                 <div><button type="button" class="section-action-btn" data-juego-guardar>Guardar reglas</button></div>
@@ -31854,7 +31901,8 @@ async function guardarJuegoAdmin() {
         metasNivel: metas,
         rachaBonus: { 3: Math.round(n('juegoBonus3', 50, 0, 2000)), 7: Math.round(n('juegoBonus7', 150, 0, 2000)), 14: Math.round(n('juegoBonus14', 400, 0, 5000)) },
         presupuestoDiario: Math.round(n('juegoPresupuesto', 150000, 0, 5000000)), creditoVigenciaDias: Math.round(n('juegoVigencia', 30, 0, 365)),
-        maxPartidasDia: Math.round(n('juegoMaxPartidas', 40, 1, 500)), requierePedidoPrevio: document.getElementById('juegoPedidoPrevio')?.checked !== false
+        maxPartidasDia: Math.round(n('juegoMaxPartidas', 40, 1, 500)), requierePedidoPrevio: document.getElementById('juegoPedidoPrevio')?.checked !== false,
+        retoActivo: document.getElementById('juegoRetoActivo')?.checked !== false, retoPremio: String(document.getElementById('juegoRetoPremio')?.value || '').trim().slice(0, 160)
     };
     try {
         await firebaseDb.collection(CONFIG_COLLECTION).doc('juego').set({ ...cfg, actualizadoAt: firestoreNow() });
@@ -45948,7 +45996,7 @@ function _cnRender() {
     const datalist = `<datalist id="cnMenuLista"><option value="${_CN_SIN_PAR}"></option>${_cnMenu.map(m => `<option value="${escapeHtml(m.label)}"></option>`).join('')}</datalist>`;
     body.innerHTML = datalist + Object.keys(grupos).map(cat => `
         <h3 style="margin:14px 0 6px">${escapeHtml(cat)}</h3>
-        <div style="overflow-x:auto"><table class="admin-table" style="width:100%">
+        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.85rem">
             <thead><tr><th>Producto</th><th>Costo</th><th>Precio</th><th>% costo</th><th>Actualizado</th><th>Producto del menú</th></tr></thead>
             <tbody>${grupos[cat].map(p => `<tr${p.activo ? '' : ' style="opacity:.55"'}>
                 <td>${escapeHtml(p.nombre)}</td><td>${_cnFmt(p.costoCalculado)}</td><td>${_cnFmt(p.precioVenta)}</td>
