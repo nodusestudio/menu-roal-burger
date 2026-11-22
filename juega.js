@@ -1,72 +1,10 @@
 /* Block ROAL — minijuego estilo Block Blast (Phaser 3). Archivo estático: no pasa por el build.
- * Dos partes:
- *   1) MOTOR puro (cuadrícula, piezas, líneas, puntaje): se prueba en tests/juego-motor.test.js.
- *   2) ESCENA Phaser + conexión con las Cloud Functions (juegoEstado / juegoIniciar / juegoEnviarPuntaje).
- * El navegador solo JUEGA: puntos, rachas, niveles y créditos los decide y guarda el servidor (functions/juego.js).
- */
+ * El reglamento (tablero, piezas, puntaje, semilla) vive en el MOTOR compartido (src/js/juego/motor.js → juega-motor.js), el mismo que usa el servidor para
+ * REPETIR cada partida jugada por jugada. Aquí: sonido, escena Phaser y conexión con las Cloud Functions (juegoEstado / juegoIniciar / juegoEnviarPuntaje /
+ * juegoRanking). El navegador solo JUEGA: puntos, rachas, niveles, créditos y ranking los decide y guarda el servidor (functions/juego.js). */
 (function (root) {
     'use strict';
-
-    // ───────────────────────── 1) MOTOR ─────────────────────────
-    const N = 8;
-    const MAX_PUNTOS_JUGADA = 150; // el servidor rechaza partidas por encima de esto por jugada (config.maxPuntosPorJugada)
-    const SHAPES = [
-        [[1]], [[1, 1]], [[1], [1]], [[1, 1, 1]], [[1], [1], [1]], [[1, 1, 1, 1]], [[1], [1], [1], [1]],
-        [[1, 1], [1, 1]], [[1, 1, 1], [1, 1, 1], [1, 1, 1]], [[1, 1, 1], [1, 1, 1]], [[1, 1], [1, 1], [1, 1]],
-        [[1, 0], [1, 1]], [[0, 1], [1, 1]], [[1, 1], [1, 0]], [[1, 1], [0, 1]],
-        [[1, 0, 0], [1, 0, 0], [1, 1, 1]], [[0, 0, 1], [0, 0, 1], [1, 1, 1]], [[1, 1, 1], [1, 0, 0], [1, 0, 0]], [[1, 1, 1], [0, 0, 1], [0, 0, 1]],
-        [[0, 1, 0], [1, 1, 1]], [[1, 1, 1], [0, 1, 0]], [[1, 1, 1, 1, 1]], [[1], [1], [1], [1], [1]]
-    ];
-    const INGREDIENTES = ['pan', 'carne', 'queso', 'tequeno', 'arepa'];
-
-    const nuevaGrilla = () => Array.from({ length: N }, () => Array(N).fill(-1));
-    const celdas = (shape) => shape.reduce((s, f) => s + f.reduce((a, v) => a + (v ? 1 : 0), 0), 0);
-
-    function puedeColocar(grilla, shape, r, c) {
-        if (r < 0 || c < 0 || r + shape.length > N || c + shape[0].length > N) return false;
-        for (let i = 0; i < shape.length; i++) for (let j = 0; j < shape[0].length; j++) {
-            if (shape[i][j] && grilla[r + i][c + j] !== -1) return false;
-        }
-        return true;
-    }
-    function colocar(grilla, shape, r, c, ing) {
-        for (let i = 0; i < shape.length; i++) for (let j = 0; j < shape[0].length; j++) if (shape[i][j]) grilla[r + i][c + j] = ing;
-    }
-    // Filas y columnas completas (se calculan antes de borrar, así una fila y una columna que se cruzan se borran juntas).
-    function lineasLlenas(grilla) {
-        const filas = [], cols = [];
-        for (let i = 0; i < N; i++) if (grilla[i].every((v) => v !== -1)) filas.push(i);
-        for (let j = 0; j < N; j++) { let ok = true; for (let i = 0; i < N; i++) if (grilla[i][j] === -1) { ok = false; break; } if (ok) cols.push(j); }
-        return { filas, cols };
-    }
-    function borrarLineas(grilla, l) {
-        const borradas = [];
-        l.filas.forEach((i) => { for (let j = 0; j < N; j++) borradas.push([i, j]); });
-        l.cols.forEach((j) => { for (let i = 0; i < N; i++) borradas.push([i, j]); });
-        borradas.forEach(([i, j]) => { grilla[i][j] = -1; });
-        return borradas;
-    }
-    function hayJugada(grilla, shapes) {
-        return shapes.some((s) => { for (let r = 0; r <= N - s.length; r++) for (let c = 0; c <= N - s[0].length; c++) if (puedeColocar(grilla, s, r, c)) return true; return false; });
-    }
-    // Puntos de una jugada: 1 por casilla colocada + bonus por líneas (10, 30, 60, 100, 150…) + combo (5 por cada jugada seguida que borra). Tope por jugada.
-    function puntosJugada({ casillas, lineas, combo }) {
-        const bonusLineas = lineas > 0 ? Math.round(10 * lineas * (1 + 0.5 * (lineas - 1))) : 0;
-        const bonusCombo = lineas > 0 ? 5 * Math.max(0, combo) : 0;
-        return Math.min(MAX_PUNTOS_JUGADA, casillas + bonusLineas + bonusCombo);
-    }
-    // 3 piezas por turno. Intenta que al menos una quepa (evita un "game over" injusto con el tablero a medio llenar).
-    function nuevasPiezas(grilla, rng) {
-        const r = rng || Math.random;
-        const arma = () => Array.from({ length: 3 }, () => ({ shape: SHAPES[Math.floor(r() * SHAPES.length)], ing: Math.floor(r() * INGREDIENTES.length) }));
-        let piezas = arma();
-        for (let k = 0; k < 40 && !hayJugada(grilla, piezas.map((p) => p.shape)); k++) piezas = arma();
-        return piezas;
-    }
-
-    const Motor = { N, SHAPES, INGREDIENTES, MAX_PUNTOS_JUGADA, nuevaGrilla, celdas, puedeColocar, colocar, lineasLlenas, borrarLineas, hayJugada, puntosJugada, nuevasPiezas };
-    if (typeof module !== 'undefined' && module.exports) { module.exports = Motor; return; }
-    root.BlockRoalMotor = Motor;
+    const { N, SHAPES, INGREDIENTES, nuevaGrilla, celdas, puedeColocar, colocar, lineasLlenas, borrarLineas, hayJugada, puntosJugada, nuevasPiezas, crearRng, codificarJugada, reproducirHasta } = root.BlockRoalMotor;
     root.BlockRoalEscena = () => escena; // solo para depurar/probar en el navegador
 
     // ───────────────────────── 2) SONIDO + ESCENA + SERVIDOR ─────────────────────────
@@ -273,7 +211,7 @@
         const MAX_MS = 100 * 60 * 1000; // la partida del servidor vive 2 h: se deja margen
         return {
             partida(v) { poner(K.partida, v); },
-            leerPartida(uid) { const p = leer(K.partida); return p && p.uid === uid && p.sesionId && Date.now() - p.ini < MAX_MS && Array.isArray(p.grilla) && Array.isArray(p.piezas) ? p : null; },
+            leerPartida(uid) { const p = leer(K.partida); return p && p.uid === uid && p.sesionId && Number.isInteger(p.semilla) && Date.now() - p.ini < MAX_MS && Array.isArray(p.movs) ? p : null; },
             borrarPartida() { quitar(K.partida); },
             pendiente(v) { poner(K.pend, v); },
             leerPendiente(uid) { const p = leer(K.pend); return p && p.uid === uid && Date.now() - p.ini < MAX_MS ? p : null; },
@@ -288,9 +226,13 @@
     let funciones = null;
     let juego = null;         // instancia Phaser
     let sesionId = null;
+    let semilla = null;        // semilla de las piezas de esta partida (la da el servidor)
+    let modoActual = 'libre';  // 'libre' | 'reto'
     let sesionIni = 0;         // cuándo (reloj del celular) empezó la partida actual: sirve para saber si aún se puede reanudar o reenviar
     let sesionPromesa = Promise.resolve();
     let escena = null;
+    let escenaOk = () => {};
+    const escenaP = new Promise((r) => { escenaOk = r; });   // se cumple cuando Phaser ya creó la escena (create() corre un instante DESPUÉS de crear el juego)
     let uidActual = '';
     let restauro = null;       // partida guardada por restaurar al abrir
     let bloqueado = false;     // llegó al máximo de partidas del día
@@ -321,13 +263,15 @@
     function sinCuenta(e) { if (/not-found/.test(String(e && e.code || ''))) { $('sinSesion').hidden = false; aviso(''); return true; } return false; }
     function aviso(msg, esError) { const e = $('avisoJuego'); e.textContent = msg || ''; e.className = 'aviso' + (esError ? ' err' : ''); e.hidden = !msg; }
 
-    function iniciarPartida() {
-        sesionId = null;
+    function iniciarPartida(modo) {
+        sesionId = null; semilla = null;
         sesionPromesa = (async () => {
-            try { const r = await funciones.httpsCallable('juegoIniciar')({}); sesionId = r.data.sesionId; sesionIni = Date.now(); aviso(''); }
-            catch (e) {
+            try {
+                const r = await funciones.httpsCallable('juegoIniciar')({ modo: modo === 'reto' ? 'reto' : 'libre' });
+                sesionId = r.data.sesionId; semilla = r.data.semilla; modoActual = r.data.modo || 'libre'; sesionIni = Date.now(); aviso('');
+            } catch (e) {
                 if (/resource-exhausted/.test(String(e && e.code || ''))) { bloqueado = true; mensajeBloqueo = e.message || 'Llegaste al máximo de partidas de hoy. ¡Vuelve mañana!'; aviso(mensajeBloqueo, true); }
-                else if (!sinCuenta(e)) aviso(e?.message || 'No se pudo iniciar la partida.', true);
+                else if (!sinCuenta(e)) { aviso(e?.message || 'No se pudo iniciar la partida.', true); if (modo === 'reto') setTimeout(() => aviso(''), 3500); }
             }
         })();
         return sesionPromesa;
@@ -343,6 +287,8 @@
         if (!data.ok) { $('resDetalle').textContent = 'Esta partida no se pudo validar, así que no suma puntos.'; return; }
         estado = { ...estado, ...data.estado }; mostrarEstado();
         const x = data.resultado, partes = [];
+        $('btnVerRanking').hidden = !x.reto;
+        if (x.reto) { estado.retoHecho = true; estado.retoPuntaje = x.puntaje; pintarModos(); partes.push('🏆 Tu puntaje del reto ya está en el ranking de hoy.'); }
         partes.push(x.puntosOtorgados > 0 ? `+${fmt(x.puntosOtorgados)} puntos ROAL` : 'Hoy ya llegaste al tope de puntos');
         if (x.topeAlcanzado && x.puntosOtorgados > 0) partes.push('(llegaste al tope diario)');
         if (x.bonusRacha > 0) partes.push(`🔥 Bonus de racha +${x.bonusRacha}`);
@@ -357,7 +303,7 @@
         const p = Guardado.leerPendiente(uidActual);
         if (!p || !funciones) return;
         try {
-            const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId: p.sesionId, puntaje: p.puntaje, jugadas: p.jugadas });
+            const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId: p.sesionId, puntaje: p.puntaje, movimientos: p.movimientos });
             Guardado.borrarPendiente();
             if (r.data.ok) { estado = { ...estado, ...r.data.estado }; mostrarEstado(); if (avisarSiLlega) { aviso(`Se guardó tu partida anterior (+${fmt(r.data.resultado.puntosOtorgados)} puntos).`); setTimeout(() => aviso(''), 4000); } }
         } catch (e) { if (!esErrorDeRed(e)) Guardado.borrarPendiente(); }
@@ -373,8 +319,8 @@
         try {
             if (!sesionId) await sesionPromesa;
             if (!sesionId) throw new Error('La partida no se pudo registrar. Intenta de nuevo.');
-            Guardado.pendiente({ uid: uidActual, sesionId, puntaje, jugadas, ini: sesionIni || Date.now() }); // por si se corta el internet
-            const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId, puntaje, jugadas });
+            Guardado.pendiente({ uid: uidActual, sesionId, puntaje, movimientos: jugadas, ini: sesionIni || Date.now() }); // por si se corta el internet
+            const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId, puntaje, movimientos: jugadas });
             Guardado.borrarPendiente();
             mostrarResultado(r.data);
         } catch (e) {
@@ -388,7 +334,7 @@
         if (!p) { $('btnReintentar').hidden = true; return; }
         $('btnReintentar').disabled = true; $('resDetalle').textContent = 'Enviando…';
         try {
-            const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId: p.sesionId, puntaje: p.puntaje, jugadas: p.jugadas });
+            const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId: p.sesionId, puntaje: p.puntaje, movimientos: p.movimientos });
             Guardado.borrarPendiente(); $('btnReintentar').hidden = true; mostrarResultado(r.data);
         } catch (e) {
             if (esErrorDeRed(e)) $('resDetalle').textContent = 'Sigue sin conexión. Tu puntaje está guardado en este celular; inténtalo de nuevo en un momento.';
@@ -423,8 +369,10 @@
                 this.input.on('pointermove', (p) => this.arrastrar(p));
                 this.input.on('pointerup', () => this.soltar());
                 this.input.on('pointerupoutside', () => this.soltar());
-                this.nueva();
+                // La primera partida arranca con comenzar(): hay que esperar a que el servidor entregue la semilla de las piezas.
+                escenaOk(this);
             }
+            comenzar() { this.nueva(); }
             update(time, delta) {
                 if (this.arrastrando && this.objetivo) { // la pieza sigue al dedo con suavidad (pegada, sin saltos)
                     const k = Math.min(1, 0.5 * ((delta || 16.6) / 16.6)), cn = this.arrastrando.cont;
@@ -432,21 +380,22 @@
                 }
                 T.marco(this.borde, time, d);
             }
-            // Guarda el tablero tras cada jugada: si se cierra o recarga la página, la partida sigue donde iba.
+            // Guarda la partida tras cada jugada (solo la semilla y la lista de jugadas: con eso se reconstruye todo): si se cierra o recarga, sigue donde iba.
             guardarPartida() {
-                if (this.fin || !sesionId || !uidActual) return;
-                const idx = (shape) => SHAPES.findIndex((s) => JSON.stringify(s) === JSON.stringify(shape));
-                Guardado.partida({ uid: uidActual, sesionId, ini: sesionIni || Date.now(), puntos: this.puntos, jugadas: this.jugadas, combo: this.combo, grilla: this.grilla, piezas: this.piezas.map((p) => ({ s: idx(p.shape), ing: p.ing, usada: p.usada })) });
+                if (this.fin || !sesionId || !uidActual || !Number.isInteger(semilla)) return;
+                Guardado.partida({ uid: uidActual, sesionId, semilla, modo: modoActual, ini: sesionIni || Date.now(), movs: this.movs });
             }
             restaurar(g) {
-                this.grilla = g.grilla.map((f) => f.slice());
-                this.puntos = g.puntos || 0; this.jugadas = g.jugadas || 0; this.combo = g.combo || 0; this.fin = false;
+                const e = reproducirHasta({ semilla: g.semilla, jugadas: g.movs });
+                if (!e.ok) { Guardado.borrarPartida(); iniciarPartida('libre').then(() => this.nueva()); return; }
+                this.grilla = e.grilla; this.rng = e.rng; this.movs = g.movs.slice();
+                this.puntos = e.puntos; this.jugadas = e.hechas; this.combo = e.combo; this.fin = false;
                 for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (this.grilla[i][j] !== -1) this.pintarCelda(i, j, this.grilla[i][j]);
                 this.txtPuntos.setText(fmt(this.puntos));
                 this.actualizarMeta();
-                this.piezas = g.piezas.map((p, i) => this.crearPieza({ shape: SHAPES[p.s] || SHAPES[0], ing: p.ing }, i));
+                this.piezas = e.piezas.map((p, i) => this.crearPieza({ shape: p.shape, ing: p.ing }, i));
                 this.piezas.forEach((p, i) => {
-                    if (g.piezas[i].usada) { p.usada = true; p.cont.destroy(); if (p.zona) p.zona.destroy(); return; }
+                    if (e.piezas[i].usada) { p.usada = true; p.cont.destroy(); if (p.zona) p.zona.destroy(); return; }
                     p.cont.setAlpha(0).setScale(0.2); this.tweens.add({ targets: p.cont, alpha: 1, scale: p.home.esc, duration: 320, delay: i * 90, ease: 'Back.Out', onComplete: () => this.flotar(p) });
                 });
                 const quedan = this.piezas.filter((p) => !p.usada);
@@ -454,7 +403,8 @@
                 else if (!hayJugada(this.grilla, quedan.map((p) => p.shape))) this.terminar();
             }
             nueva() {
-                this.grilla = nuevaGrilla();
+                this.grilla = nuevaGrilla(); this.movs = [];
+                this.rng = crearRng(Number.isInteger(semilla) ? semilla : Math.floor(Math.random() * 4294967296)); // la semilla del servidor: así la partida se puede repetir y comprobar
                 this.puntos = 0; this.jugadas = 0; this.combo = 0; this.fin = false;
                 this.celdasImg.forEach((f) => f.forEach((im) => im && im.destroy()));
                 this.celdasImg = Array.from({ length: N }, () => Array(N).fill(null));
@@ -471,7 +421,7 @@
                 if (this.txtMeta.progreso) this.txtMeta.progreso(this.puntos, meta, estado ? estado.nivelMax + 1 : 1);
             }
             repartir() {
-                const datos = nuevasPiezas(this.grilla);
+                const datos = nuevasPiezas(this.grilla, this.rng);
                 this.piezas = datos.map((dd, i) => this.crearPieza(dd, i));
                 this.piezas.forEach((p, i) => { p.cont.setAlpha(0).setScale(0.2); this.tweens.add({ targets: p.cont, alpha: 1, scale: p.home.esc, duration: 320, delay: i * 90, ease: 'Back.Out', onComplete: () => this.flotar(p) }); });
                 if (!hayJugada(this.grilla, this.piezas.map((p) => p.shape))) this.terminar();
@@ -490,7 +440,7 @@
                 }
                 // Zona de toque propia, centrada en la ranura de la bandeja y generosa (116x136): se agarra desde cualquier parte, sin importar la forma.
                 const zona = this.add.zone(cx, BANDEJA_Y + 60, 120, 112).setInteractive();
-                const pieza = { cont, zona, shape: dd.shape, ing: dd.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
+                const pieza = { cont, zona, idx, shape: dd.shape, ing: dd.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
                 zona.on('pointerdown', (p) => {
                     if (bloqueado) { aviso(mensajeBloqueo, true); return; }
                     if (this.fin || pieza.usada || this.arrastrando) return;
@@ -543,6 +493,7 @@
                 this.celdasImg[i][j] = im; return im;
             }
             aplicar(pz, r, c) {
+                this.movs.push(codificarJugada(pz.idx, r, c));      // registro de la partida: es lo que el servidor repite para comprobar el puntaje
                 colocar(this.grilla, pz.shape, r, c, pz.ing);
                 for (let i = 0; i < pz.shape.length; i++) for (let j = 0; j < pz.shape[0].length; j++) if (pz.shape[i][j]) {
                     this.pintarCelda(r + i, c + j, pz.ing);
@@ -591,7 +542,7 @@
                 Sonido.fin();
                 this.cameras.main.shake(350, 0.008);
                 this.tweens.add({ targets: this.celdasImg.flat().filter(Boolean), alpha: 0.35, duration: 500 });
-                terminarPartida(this.puntos, this.jugadas);
+                terminarPartida(this.puntos, this.movs.slice());
             }
         }
 
@@ -602,13 +553,54 @@
         });
     }
 
+    // ── Modos: libre (práctica) o reto del día (mismas piezas para todos, una sola oportunidad, ranking) ──
+    function pintarModos() {
+        const reto = $('modoReto'), libre = $('modoLibre');
+        if (!reto || !libre) return;
+        reto.classList.toggle('on', modoActual === 'reto'); libre.classList.toggle('on', modoActual !== 'reto');
+        reto.textContent = estado && estado.retoHecho ? `🏆 Reto ✓ ${fmt(estado.retoPuntaje || 0)}` : '🏆 Reto del día';
+        reto.hidden = !!(estado && estado.retoActivo === false);
+    }
+    async function cambiarModo(modo) {
+        if (modo === modoActual) return;
+        const enCurso = !!(escena && escena.movs && escena.movs.length > 0 && !escena.fin);
+        if (modo === 'reto') {
+            if (estado && estado.retoHecho) { aviso('Ya jugaste el reto de hoy. ¡Mañana hay otro!'); setTimeout(() => aviso(''), 3000); abrirRanking('dia'); return; }
+            if (!window.confirm((enCurso ? 'Vas a dejar esta partida libre. ' : '') + 'El reto del día tiene UNA sola oportunidad y las mismas piezas para todos. ¿Empezar ahora?')) return;
+        } else if (modoActual === 'reto' && enCurso && !window.confirm('Si dejas el reto ahora pierdes tu oportunidad de hoy. ¿Salir?')) return;
+        Sonido.clic();
+        await enviarPendiente(false);
+        await iniciarPartida(modo);
+        if (!sesionId && !bloqueado) await iniciarPartida('libre');   // el servidor no dejó empezar el reto: se sigue en libre
+        if (estado) { try { await cargarEstado(); } catch (_) { /* se queda con el estado anterior */ } }
+        pintarModos();
+        if (bloqueado) { aviso(mensajeBloqueo, true); return; }
+        if (escena) escena.nueva();
+    }
+    async function abrirRanking(tipo) {
+        const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const quedoEn = tipo === 'semana' ? 'semana' : 'dia';
+        $('ranking').hidden = false;
+        document.querySelectorAll('[data-rank]').forEach((b) => b.classList.toggle('on', b.dataset.rank === quedoEn));
+        $('rankTitulo').textContent = quedoEn === 'semana' ? 'Ranking de la semana' : 'Ranking de hoy';
+        $('rankLista').innerHTML = '<li class="rk-vacio">Cargando…</li>'; $('rankPremio').hidden = true;
+        try {
+            const r = (await funciones.httpsCallable('juegoRanking')({ tipo: quedoEn })).data;
+            const unidad = quedoEn === 'semana' ? 'pts' : '';
+            $('rankLista').innerHTML = r.top.length ? r.top.map((x) => `<li class="${x.yo ? 'yo' : ''}"><span>${x.pos}</span><em>${esc(x.nombre)}</em><b>${fmt(x.valor)} ${unidad}</b></li>`).join('') : '<li class="rk-vacio">Aún no hay nadie. ¡Sé el primero con el reto del día!</li>';
+            if (r.yo && !r.top.some((x) => x.yo)) $('rankLista').insertAdjacentHTML('beforeend', `<li class="yo"><span>${r.yo.pos}</span><em>Tú</em><b>${fmt(r.yo.valor)} ${unidad}</b></li>`);
+            if (r.premio) { $('rankPremio').textContent = '🎁 ' + r.premio; $('rankPremio').hidden = false; }
+        } catch (e) { $('rankLista').innerHTML = `<li class="rk-vacio">${esc(e && e.message || 'No se pudo cargar el ranking.')}</li>`; }
+    }
+
     async function jugarOtra() {
         Sonido.clic();
-        $('resultado').hidden = true;
+        $('resultado').hidden = true; $('btnVerRanking').hidden = true;
         await enviarPendiente(false);
-        await iniciarPartida();
+        await iniciarPartida('libre');
         if (bloqueado) { $('resTitulo').textContent = 'Hasta mañana'; $('resPuntaje').textContent = ''; $('resDetalle').textContent = mensajeBloqueo; $('btnReintentar').hidden = true; $('resultado').hidden = false; return; }
         if (estado) { try { await cargarEstado(); } catch (_) { /* se queda con el estado anterior */ } }
+        pintarModos();
         if (escena) escena.nueva();
     }
 
@@ -672,6 +664,13 @@
         funciones = firebase.app().functions('us-central1');
         $('btnOtra').addEventListener('click', jugarOtra);
         $('btnReintentar').addEventListener('click', reintentar);
+        $('modoReto').addEventListener('click', () => cambiarModo('reto'));
+        $('modoLibre').addEventListener('click', () => cambiarModo('libre'));
+        $('btnRanking').addEventListener('click', () => abrirRanking('dia'));
+        $('btnVerRanking').addEventListener('click', () => abrirRanking('dia'));
+        document.querySelectorAll('[data-rank]').forEach((b) => b.addEventListener('click', () => abrirRanking(b.dataset.rank)));
+        $('btnRankingCerrar').addEventListener('click', () => { $('ranking').hidden = true; });
+        $('ranking').addEventListener('click', (e) => { if (e.target === $('ranking')) $('ranking').hidden = true; });
         window.addEventListener('online', () => enviarPendiente(true));
         firebase.auth().onAuthStateChanged((user) => {
             if (!user) { intro.parar(); $('intro').hidden = true; $('sinSesion').hidden = false; $('app').hidden = true; return; }
@@ -681,10 +680,10 @@
             // Todo en paralelo: estado del jugador, sesión de partida y el motor del juego (antes iba uno detrás de otro).
             const pEstado = cargarEstado().then(() => { if (!estado.activo) aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); return enviarPendiente(true); });
             const guardada = Guardado.leerPartida(user.uid);
-            if (guardada) { sesionId = guardada.sesionId; sesionIni = guardada.ini; sesionPromesa = Promise.resolve(); restauro = guardada; }   // reanuda donde iba
-            else iniciarPartida();
+            if (guardada) { sesionId = guardada.sesionId; semilla = guardada.semilla; modoActual = guardada.modo === 'reto' ? 'reto' : 'libre'; sesionIni = guardada.ini; sesionPromesa = Promise.resolve(); restauro = guardada; }   // reanuda donde iba
+            else iniciarPartida('libre');
             const pJuego = Promise.all([phaserP, fuentes]).then(() => { if (!juego) crearJuego(); });
-            Promise.all([pEstado, pJuego]).then(() => { if (escena) { escena.actualizarMeta(); } }).catch((e) => {
+            Promise.all([pEstado, pJuego, sesionPromesa, escenaP]).then(() => { pintarModos(); if (escena) escena.comenzar(); }).catch((e) => {
                 if (sinCuenta(e)) return;
                 aviso(e?.code === 'functions/not-found' ? 'Para jugar necesitas una cuenta ROAL. Crea una al hacer tu primer pedido.' : (e?.message || 'No se pudo cargar el juego.'), true);
             }).finally(() => listoOk());

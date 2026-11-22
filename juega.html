@@ -21,7 +21,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700;800&family=Permanent+Marker&display=swap" rel="stylesheet">
     <!-- Diseño: juega-tema.css y juega-tema.js. La lógica del juego está en juega.js -->
-    <link rel="stylesheet" href="juega-tema.css?v=20261122p">
+    <link rel="stylesheet" href="juega-tema.css?v=20261122r">
 </head>
 <body>
     <div id="intro">
@@ -42,6 +42,7 @@
         <header>
             <a class="ctl" id="hotMenu" href="/" data-menu aria-label="Volver al menú">←</a>
             <h1>BLOCK<span>ROAL</span></h1>
+            <button type="button" class="ctl" id="btnRanking" aria-label="Ranking">🏆</button>
             <button type="button" class="ctl" id="btnInfo" aria-label="Cómo se juega">i</button>
             <button type="button" class="ctl" id="btnSonido" aria-label="Sonido" aria-pressed="true">🔊</button>
         </header>
@@ -50,6 +51,7 @@
             <div id="barra"><i id="uiBarra"></i></div>
             <div id="uiMeta">Nivel 1 · 0 / 500</div>
         </section>
+        <div id="modos"><button type="button" class="modo" id="modoReto">🏆 Reto del día</button><button type="button" class="modo on" id="modoLibre">Libre</button></div>
         <div id="juegoCanvas"></div>
         <footer id="chips">
             <span class="chip">🔥 <b id="stRacha">0</b></span>
@@ -73,6 +75,16 @@
         </div>
     </div>
 
+    <div class="overlay" id="ranking" hidden>
+        <div class="card">
+            <h2 id="rankTitulo">Ranking de hoy</h2>
+            <div id="rankTabs"><button type="button" class="modo on" data-rank="dia">Hoy</button><button type="button" class="modo" data-rank="semana">Semana</button></div>
+            <p id="rankPremio" hidden style="margin:8px 0"></p>
+            <ol id="rankLista"></ol>
+            <button class="btn" id="btnRankingCerrar" type="button">Cerrar</button>
+        </div>
+    </div>
+
     <div class="overlay" id="sinSesion" hidden>
         <div class="card">
             <h2>Inicia sesión</h2>
@@ -86,7 +98,7 @@
             <h2 id="resTitulo">¡Se acabó, mi pana!</h2>
             <div class="pts" id="resPuntaje">0 pts</div>
             <p id="resDetalle"></p>
-            <button class="btn" id="btnReintentar" type="button" hidden>Reintentar</button><button class="btn" id="btnOtra" type="button">¡Otra, vale!</button><a class="btn sec" href="/" data-menu>Menú</a>
+            <button class="btn" id="btnReintentar" type="button" hidden>Reintentar</button><button class="btn sec" id="btnVerRanking" type="button" hidden style="margin:0 6px 0 0">🏆 Ranking</button><button class="btn" id="btnOtra" type="button">¡Otra, vale!</button><a class="btn sec" href="/" data-menu>Menú</a>
         </div>
     </div>
 
@@ -94,7 +106,8 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="juega-tema.js?v=20261122p"></script>
-    <script defer src="juega.js?v=20261122p"></script>
+    <script defer src="juega-motor.js?v=20261122r"></script>
+    <script defer src="juega-tema.js?v=20261122r"></script>
+    <script defer src="juega.js?v=20261122r"></script>
 </body>
 </html>
