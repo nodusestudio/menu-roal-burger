@@ -3159,6 +3159,7 @@ const NAV2_GRUPOS = [
         { id: 'config.negocio', etiqueta: 'Negocio', target: 'configuracion', seccion: 'negocio' },
         { id: 'config.horario', etiqueta: 'Horario y cierres', target: 'configuracion', seccion: 'horario' },
         { id: 'config.barrios', etiqueta: 'Barrios especiales', target: 'configuracion', seccion: 'barrios_especiales' },
+        { id: 'config.juego', etiqueta: 'Juego (Block ROAL)', target: 'configuracion', seccion: 'juego' },
         { id: 'config.pagos', etiqueta: 'Formas de pago', target: 'configuracion', seccion: 'metodos_pago' },
         { id: 'config.meseros', etiqueta: 'Meseros', target: 'configuracion', seccion: 'meseros' },
         { id: 'config.impresora', etiqueta: 'Impresora', target: 'configuracion', seccion: 'impresora' },
@@ -28552,6 +28553,7 @@ document.querySelectorAll('[data-section-tab]').forEach((tab) => {
         if (scope === 'configuracion') {
             if (target === 'categorias_gastos') loadCategoriasGastos().then(renderCategoriasGastosPanel);
             if (target === 'barrios_especiales') loadBarriosEspeciales().then(renderBarriosEspecialesPanel);
+            if (target === 'juego') cargarJuegoAdmin();
             if (target === 'horario') fetchHorarioConfig().then(() => { renderHorarioForm(); renderCierresProgramados(); renderAlmuerzoPromoAdmin(); hcCargar(); heCargar('abrir'); heCargar('cerrar'); });
             if (target === 'seguridad') loadSupervisorPin().then(renderSupervisorPinField);
         }
@@ -31729,6 +31731,130 @@ async function _pmSaveAndRefresh(methods, successMsg) {
         showNotice('Error al guardar: ' + (e.message || 'error'), 'error');
     }
 }
+
+// ── Juego (Block ROAL): configuración y métricas ────────────────────────────
+// configuracion/juego lo lee el servidor (functions/juego.js) en cada partida y en cada canje: valor del punto, tope diario,
+// metas por nivel, tope del crédito en el pedido y bonus de racha. Las métricas salen de juego_partidas y juego_canjes (solo el servidor escribe).
+const JUEGO_DEF = { activo: true, valorPunto: 1, topeDiario: 300, metaBase: 500, metasNivel: {}, topeCreditoPct: 7, rachaBonus: { 3: 50, 7: 150, 14: 400 } };
+let _juegoCfg = { ...JUEGO_DEF };
+let _juegoPeriodo = 'hoy';
+
+function _juegoRango(periodo) {
+    const hoy = _sqDayKey(Date.now());
+    const dias = (n) => _sqDayKey(Date.now() - n * 86400000);
+    if (periodo === 'ayer') return [dias(1), dias(1)];
+    if (periodo === '7d') return [dias(6), hoy];
+    if (periodo === 'mes') return [hoy.slice(0, 8) + '01', hoy];
+    return [hoy, hoy];
+}
+async function cargarJuegoAdmin() {
+    const panel = document.getElementById('juegoAdminPanel');
+    if (!panel) return;
+    panel.innerHTML = '<p class="admin-hint">Cargando…</p>';
+    try {
+        const snap = await firebaseDb.collection(CONFIG_COLLECTION).doc('juego').get();
+        const d = snap.exists ? snap.data() : {};
+        _juegoCfg = { ...JUEGO_DEF, ...d, rachaBonus: { ...JUEGO_DEF.rachaBonus, ...(d.rachaBonus || {}) }, metasNivel: d.metasNivel || {} };
+    } catch (e) { showNotice('No se pudo leer la configuración del juego: ' + (e.message || 'error'), 'error'); }
+    renderJuegoAdmin();
+    cargarJuegoMetricas();
+}
+function renderJuegoAdmin() {
+    const panel = document.getElementById('juegoAdminPanel');
+    if (!panel) return;
+    const c = _juegoCfg;
+    const num = (id, etiqueta, v, min, max, step = 1) => `<label class="admin-hint">${etiqueta}<input type="number" id="${id}" class="admin-input" min="${min}" max="${max}" step="${step}" value="${escapeHtml(String(v))}"></label>`;
+    const metas = Object.keys(c.metasNivel || {}).sort((a, b) => a - b).map((k) => `${k}:${c.metasNivel[k]}`).join(', ');
+    const pbtn = (id, txt) => `<button type="button" class="${_juegoPeriodo === id ? 'section-action-btn' : 'ghost-button'}" data-juego-periodo="${id}">${txt}</button>`;
+    panel.innerHTML = `
+        <article class="admin-card">
+            <div class="met-section-title">📈 Métricas del juego</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${pbtn('hoy', 'Hoy')}${pbtn('ayer', 'Ayer')}${pbtn('7d', 'Últimos 7 días')}${pbtn('mes', 'Este mes')}</div>
+            <div id="juegoMetricas"><p class="admin-hint">Cargando…</p></div>
+            <p class="admin-hint">Jugadores = personas distintas que terminaron al menos una partida válida. Créditos canjeados = lo que ya se descontó en pedidos (si un pedido se anula, el crédito vuelve al cliente pero este número no baja).</p>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">⚙️ Reglas del juego</div>
+            <div style="display:grid;gap:8px;max-width:520px">
+                <label class="admin-hint" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="juegoActivo" ${c.activo !== false ? 'checked' : ''}> Juego activo (si lo apagas, nadie puede jugar ni usar créditos nuevos)</label>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    ${num('juegoValorPunto', 'Valor del punto (COP por punto)', c.valorPunto, 0, 100, 0.1)}
+                    ${num('juegoTopeDiario', 'Tope de puntos por día', c.topeDiario, 0, 5000)}
+                    ${num('juegoTopeCredito', 'Máximo del pedido pagable con créditos (%)', c.topeCreditoPct, 0, 30)}
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    ${num('juegoMetaBase', 'Meta por nivel: base × nivel (pts)', c.metaBase, 50, 10000)}
+                    <label class="admin-hint">Metas por nivel (opcional) — «1:500, 2:900»<input type="text" id="juegoMetas" class="admin-input" maxlength="200" value="${escapeHtml(metas)}"></label>
+                </div>
+                <div class="met-section-title" style="margin-top:4px">🔥 Bonus de racha (puntos)</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    ${num('juegoBonus3', '3 días seguidos', c.rachaBonus[3] ?? 0, 0, 2000)}
+                    ${num('juegoBonus7', '7 días seguidos', c.rachaBonus[7] ?? 0, 0, 2000)}
+                    ${num('juegoBonus14', '14 días seguidos', c.rachaBonus[14] ?? 0, 0, 5000)}
+                </div>
+                <p class="admin-hint">1.000 puntos = $1.000 cuando el valor del punto es 1. Los créditos solo se usan con una compra, nunca en el domicilio, y hasta el porcentaje máximo del pedido. Los bonus de racha no cuentan para el tope diario. Cada cambio aplica desde la siguiente partida o pedido.</p>
+                <div><button type="button" class="section-action-btn" data-juego-guardar>Guardar reglas</button></div>
+            </div>
+        </article>`;
+}
+async function cargarJuegoMetricas() {
+    const box = document.getElementById('juegoMetricas');
+    if (!box) return;
+    const [d1, d2] = _juegoRango(_juegoPeriodo);
+    try {
+        const [pSnap, cSnap] = await Promise.all([
+            firebaseDb.collection('juego_partidas').where('dia', '>=', d1).where('dia', '<=', d2).get(),
+            firebaseDb.collection('juego_canjes').where('dia', '>=', d1).where('dia', '<=', d2).get()
+        ]);
+        const partidas = pSnap.docs.map((d) => d.data());
+        const ok = partidas.filter((p) => p.aceptada === true);
+        const jugadores = new Set(ok.map((p) => p.uid)).size;
+        const rechazadas = partidas.length - ok.length;
+        const pts = ok.reduce((s, p) => s + (Number(p.puntosOtorgados) || 0) + (Number(p.bonusRacha) || 0), 0);
+        const emitido = ok.reduce((s, p) => s + (Number(p.creditoGanado) || 0), 0);
+        const canjes = cSnap.docs.map((d) => d.data());
+        const canjeado = canjes.reduce((s, x) => s + (Number(x.monto) || 0), 0);
+        const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+        box.innerHTML = `<div class="met-kpi-row">
+            ${_fidKpi('met-kpi-card--hi', nf(jugadores), 'Jugadores')}
+            ${_fidKpi('', nf(ok.length), 'Partidas válidas')}
+            ${_fidKpi('', nf(rechazadas), 'Partidas rechazadas')}
+            ${_fidKpi('', nf(pts), 'Puntos entregados')}
+            ${_fidKpi('', escapeHtml(formatMoney(emitido)), 'Créditos entregados')}
+            ${_fidKpi('', escapeHtml(formatMoney(canjeado)) + ` <small>(${nf(canjes.length)} pedidos)</small>`, 'Créditos canjeados')}
+        </div>`;
+    } catch (e) { box.innerHTML = `<p class="admin-hint">No se pudieron leer las métricas: ${escapeHtml(e.message || 'error')}</p>`; }
+}
+async function guardarJuegoAdmin() {
+    const n = (id, def, min, max) => { const x = Number(document.getElementById(id)?.value); return Number.isFinite(x) ? Math.min(max, Math.max(min, x)) : def; };
+    const metas = {};
+    const txt = String(document.getElementById('juegoMetas')?.value || '').trim();
+    if (txt) {
+        for (const parte of txt.split(',')) {
+            const m = parte.trim().match(/^(\d{1,3})\s*:\s*(\d{2,6})$/);
+            if (!m || Number(m[1]) < 1) { showNotice(`Meta inválida: «${parte.trim()}». Usa el formato 1:500, 2:900`, 'error'); return; }
+            metas[Number(m[1])] = Number(m[2]);
+        }
+    }
+    const cfg = {
+        activo: document.getElementById('juegoActivo')?.checked !== false,
+        valorPunto: n('juegoValorPunto', 1, 0, 100), topeDiario: Math.round(n('juegoTopeDiario', 300, 0, 5000)),
+        topeCreditoPct: n('juegoTopeCredito', 7, 0, 30), metaBase: Math.round(n('juegoMetaBase', 500, 50, 10000)),
+        metasNivel: metas,
+        rachaBonus: { 3: Math.round(n('juegoBonus3', 50, 0, 2000)), 7: Math.round(n('juegoBonus7', 150, 0, 2000)), 14: Math.round(n('juegoBonus14', 400, 0, 5000)) }
+    };
+    try {
+        await firebaseDb.collection(CONFIG_COLLECTION).doc('juego').set({ ...cfg, actualizadoAt: firestoreNow() });
+        _juegoCfg = cfg;
+        showNotice('Reglas del juego guardadas.', 'ok');
+        renderJuegoAdmin(); cargarJuegoMetricas();
+    } catch (e) { showNotice('No se pudo guardar: ' + (e.message || 'error'), 'error'); }
+}
+document.addEventListener('click', (e) => {
+    const per = e.target.closest && e.target.closest('[data-juego-periodo]');
+    if (per) { _juegoPeriodo = per.dataset.juegoPeriodo; renderJuegoAdmin(); cargarJuegoMetricas(); return; }
+    if (e.target.closest && e.target.closest('[data-juego-guardar]')) guardarJuegoAdmin();
+});
 
 // ── Barrios especiales (domiciliario no entra) ───────────────────────────────
 // Lista editable: nombre + tarifa fija de domicilio. El menú público y el agente la leen de

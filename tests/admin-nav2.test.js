@@ -57,8 +57,8 @@ test('las 5 pestañas internas de Informes están cubiertas, una sola vez cada u
     assert.equal(new Set(usadas).size, usadas.length);
 });
 
-test('las 9 pestañas internas de Configuración están cubiertas, una sola vez cada una (Categorías de gastos vive en Caja)', () => {
-    assert.equal(seccionesConfig.length, 9);
+test('las 10 pestañas internas de Configuración están cubiertas, una sola vez cada una (Categorías de gastos vive en Caja)', () => {
+    assert.equal(seccionesConfig.length, 10);
     const usadas = itemsTodos.filter((i) => i.seccion && ambitoDe(i) === 'configuracion').map((i) => i.seccion);
     assert.deepEqual([...usadas].sort(), [...seccionesConfig].sort(), 'cada pestaña de Configuración debe tener un elemento y solo uno');
     assert.equal(new Set(usadas).size, usadas.length);
@@ -66,9 +66,9 @@ test('las 9 pestañas internas de Configuración están cubiertas, una sola vez 
     assert.equal(cat.g, 'caja', 'Categorías de gastos debe estar en Caja, junto a Gastos');
 });
 
-test('Configuración queda con 8 elementos con nombre claro y Caja con 6', () => {
+test('Configuración queda con 9 elementos con nombre claro y Caja con 6', () => {
     assert.deepEqual(GRUPOS.find((g) => g.id === 'config').items.map((i) => i.etiqueta),
-        ['Negocio', 'Horario y cierres', 'Barrios especiales', 'Formas de pago', 'Meseros', 'Impresora', 'Menú público', 'Seguridad']);
+        ['Negocio', 'Horario y cierres', 'Barrios especiales', 'Juego (Block ROAL)', 'Formas de pago', 'Meseros', 'Impresora', 'Menú público', 'Seguridad']);
     assert.equal(GRUPOS.find((g) => g.id === 'caja').items.length, 6);
 });
 
