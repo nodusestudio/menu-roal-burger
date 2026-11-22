@@ -11,6 +11,9 @@
 // Colecciones: juego_sesiones (una por partida iniciada), juego_partidas (registro/métricas), juego_canjes (créditos usados en pedidos).
 // Configuración editable desde el admin: configuracion/juego.
 
+const Motor = require('./juegoMotor');   // el MISMO reglamento que corre en el celular (generado desde src/js/juego/motor.js)
+const crypto = require('crypto');
+
 const DEFAULTS = Object.freeze({
     activo: true,
     valorPunto: 1,            // COP por punto de juego (1.000 pts = $1.000)
@@ -26,7 +29,9 @@ const DEFAULTS = Object.freeze({
     presupuestoDiario: 150000, // tope TOTAL de créditos (COP) que se reparten entre todos los jugadores por día; 0 = sin tope
     creditoVigenciaDias: 30,   // el saldo vence si pasan tantos días sin ganar créditos; 0 = no vence
     requierePedidoPrevio: true, // para CANJEAR hay que tener al menos un pedido entregado (frena las cuentas falsas)
-    maxPartidasDia: 40         // partidas que un jugador puede iniciar por día
+    maxPartidasDia: 40,        // partidas que un jugador puede iniciar por día
+    retoActivo: true,          // reto del día (mismas piezas para todos, una sola oportunidad, ranking)
+    retoPremio: ''             // texto del premio semanal que se muestra en el ranking (ej. «Top 3 de la semana: hamburguesa gratis»)
 });
 const PUNTAJE_MAX_ABSOLUTO = 20000;
 const SESION_MAX_MS = 2 * 60 * 60 * 1000;
@@ -56,7 +61,9 @@ function normalizarConfig(raw) {
         presupuestoDiario: Math.min(5000000, Math.max(0, Math.trunc(num(r.presupuestoDiario, DEFAULTS.presupuestoDiario)))),
         creditoVigenciaDias: Math.min(365, Math.max(0, Math.trunc(num(r.creditoVigenciaDias, DEFAULTS.creditoVigenciaDias)))),
         requierePedidoPrevio: r.requierePedidoPrevio !== false,
-        maxPartidasDia: Math.min(500, Math.max(1, Math.trunc(num(r.maxPartidasDia, DEFAULTS.maxPartidasDia))))
+        maxPartidasDia: Math.min(500, Math.max(1, Math.trunc(num(r.maxPartidasDia, DEFAULTS.maxPartidasDia)))),
+        retoActivo: r.retoActivo !== false,
+        retoPremio: String(r.retoPremio || '').slice(0, 160)
     };
 }
 
@@ -120,6 +127,20 @@ function clampCreditoJuego({ solicitado, saldo, baseProductos, topePct }) {
     return Math.max(0, Math.min(pedido, Math.max(0, Math.floor(num(saldo, 0))), tope));
 }
 
+// Lunes de la semana (hora de Bogotá) de un día 'YYYY-MM-DD': clave del ranking semanal.
+function lunesDe(dia) {
+    const [y, m, d] = String(dia).split('-').map(Number);
+    const f = new Date(Date.UTC(y, m - 1, d));
+    f.setUTCDate(f.getUTCDate() - ((f.getUTCDay() + 6) % 7));
+    return f.toISOString().slice(0, 10);
+}
+// Nombre que se muestra en el ranking: primer nombre + inicial del siguiente («Juan P.»). Nunca el apellido completo ni el teléfono.
+function nombrePublico(nombre) {
+    const t = String(nombre || '').trim().split(/\s+/).filter(Boolean);
+    if (!t.length) return 'Jugador';
+    const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1).toLowerCase();
+    return (cap(t[0]).slice(0, 14) + (t[1] ? ' ' + t[1].charAt(0).toUpperCase() + '.' : '')).slice(0, 18);
+}
 // Saldo de créditos que SIGUE vigente (si venció, vale 0). El vencimiento corre desde el último crédito ganado.
 function creditoVigente(c, ahoraMs) {
     const saldo = Math.max(0, Math.trunc(num(c && c.creditoJuego, 0)));
@@ -182,40 +203,56 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
     exp.juegoEstado = onCall(opts, async (request) => {
         const uid = exigirUid(request);
         const db = getFirestore();
-        const [snap, cfg] = await Promise.all([db.collection(CLIENTS).doc(uid).get(), leerConfig(db)]);
+        const ahora = Date.now(), dia = diaBogota(ahora);
+        const [snap, cfg, retoSnap, rankSnap] = await Promise.all([
+            db.collection(CLIENTS).doc(uid).get(), leerConfig(db),
+            db.collection('juego_reto').doc(`${dia}_${uid}`).get(),
+            db.collection('juego_ranking').doc(dia).collection('jugadores').doc(uid).get()
+        ]);
         if (!snap.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
-        const ahora = Date.now();
-        const v = vistaEstado(snap.data() || {}, cfg, diaBogota(ahora), ahora);
+        const v = vistaEstado(snap.data() || {}, cfg, dia, ahora);
         v.creditoActivo = (!cfg.requierePedidoPrevio || v.creditoJuego <= 0) ? true : await tienePedidoPrevio(db, uid);
+        v.retoActivo = cfg.retoActivo;
+        v.retoHecho = retoSnap.exists;
+        v.retoPuntaje = rankSnap.exists ? Math.max(0, Math.trunc(num(rankSnap.data().puntaje, 0))) : null;
         return v;
     });
 
+    // Inicia una partida. modo 'libre' = piezas al azar (semilla secreta del servidor); modo 'reto' = las piezas del día, iguales para todos, UNA sola oportunidad.
+    // Devuelve la semilla: con ella el celular genera las piezas y el servidor puede REPETIR la partida jugada por jugada para comprobar el puntaje.
     exp.juegoIniciar = onCall(opts, async (request) => {
         const uid = exigirUid(request);
+        const modo = request.data?.modo === 'reto' ? 'reto' : 'libre';
         const db = getFirestore();
         return db.runTransaction(async (tx) => {
             const cliRef = db.collection(CLIENTS).doc(uid);
-            const [cli, cfg] = await Promise.all([tx.get(cliRef), leerConfig(db, tx)]);
+            const dia = diaBogota(Date.now());
+            const retoRef = db.collection('juego_reto').doc(`${dia}_${uid}`);
+            const [cli, cfg, retoSnap] = await Promise.all([tx.get(cliRef), leerConfig(db, tx), modo === 'reto' ? tx.get(retoRef) : Promise.resolve(null)]);
             if (!cfg.activo) throw new HttpsError('failed-precondition', 'El juego está en pausa.');
             if (!cli.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
-            const dia = diaBogota(Date.now());
+            if (modo === 'reto') {
+                if (!cfg.retoActivo) throw new HttpsError('failed-precondition', 'El reto del día está en pausa.');
+                if (retoSnap.exists) throw new HttpsError('already-exists', 'Ya jugaste el reto de hoy. ¡Mañana hay otro!');
+            }
             const c = cli.data() || {};
             const hoy = c.juegoSesDia === dia ? Math.max(0, Math.trunc(num(c.juegoSesHoy, 0))) : 0;
             if (hoy >= cfg.maxPartidasDia) throw new HttpsError('resource-exhausted', 'Llegaste al máximo de partidas de hoy. ¡Vuelve mañana!');
+            const semilla = modo === 'reto' ? Motor.semillaDeTexto(`blockroal-reto-${dia}`) : crypto.randomBytes(4).readUInt32BE(0);
             const ref = db.collection('juego_sesiones').doc();
             tx.update(cliRef, { juegoSesDia: dia, juegoSesHoy: hoy + 1 });
-            tx.set(ref, { uid, inicio: FieldValue.serverTimestamp(), usada: false });
-            return { sesionId: ref.id, restantes: cfg.maxPartidasDia - hoy - 1 };
+            tx.set(ref, { uid, inicio: FieldValue.serverTimestamp(), usada: false, modo, semilla });
+            if (modo === 'reto') tx.set(retoRef, { uid, dia, sesionId: ref.id, creadoAt: FieldValue.serverTimestamp() });
+            return { sesionId: ref.id, semilla, modo, restantes: cfg.maxPartidasDia - hoy - 1 };
         });
     });
 
+    // Recibe el REGISTRO de la partida (lista de jugadas), la repite con el mismo motor y usa el puntaje que sale de ahí, no el que diga el celular.
     exp.juegoEnviarPuntaje = onCall(opts, async (request) => {
         const uid = exigirUid(request);
         const d = request.data || {};
         const sesionId = String(d.sesionId || '').trim();
         if (!sesionId || sesionId.length > 60) throw new HttpsError('invalid-argument', 'Partida inválida.');
-        const puntaje = Number(d.puntaje);
-        const jugadas = Number(d.jugadas);
         const db = getFirestore();
 
         const res = await db.runTransaction(async (tx) => {
@@ -229,18 +266,31 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             if (sesSnap.data().usada) throw new HttpsError('already-exists', 'Esta partida ya se registró.');
             if (!cliSnap.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
             if (!cfg.activo) throw new HttpsError('failed-precondition', 'El juego está en pausa.');
+            const ses = sesSnap.data();
 
-            const inicioMs = sesSnap.data().inicio?.toMillis ? sesSnap.data().inicio.toMillis() : 0;
-            const duracionSeg = (ahora - inicioMs) / 1000; // medida por el SERVIDOR, no por el cliente
+            const inicioMs = ses.inicio?.toMillis ? ses.inicio.toMillis() : 0;
+            const duracionSeg = (ahora - inicioMs) / 1000; // medida por el SERVIDOR, no por el celular
             if (!inicioMs || ahora - inicioMs > SESION_MAX_MS) throw new HttpsError('deadline-exceeded', 'La partida expiró.');
 
-            const motivo = motivoImplausible({ puntaje, duracionSeg, jugadas }, cfg);
-            if (motivo) {
-                // Se cierra la sesión y se deja rastro, sin acreditar nada.
+            const rechazar = (motivo, extra = {}) => {
                 tx.update(sesRef, { usada: true, rechazada: motivo, fin: FieldValue.serverTimestamp() });
-                tx.set(db.collection('juego_partidas').doc(), { uid, dia, puntaje: Number.isFinite(puntaje) ? puntaje : null, duracionSeg: Math.round(duracionSeg), aceptada: false, motivo, creadoAt: FieldValue.serverTimestamp() });
+                tx.set(db.collection('juego_partidas').doc(), { uid, dia, puntaje: null, duracionSeg: Math.round(duracionSeg), aceptada: false, motivo, modo: ses.modo || 'libre', creadoAt: FieldValue.serverTimestamp(), ...extra });
                 return { ok: false, motivo };
-            }
+            };
+
+            // 1) El puntaje sale de REPETIR la partida (sesiones nuevas, que traen semilla). Las viejas, sin semilla, siguen por la ruta anterior.
+            let puntaje, jugadas, terminada = null, discrepancia = false;
+            if (Number.isInteger(ses.semilla)) {
+                if (!Array.isArray(d.movimientos)) return rechazar('sin-registro');
+                const rep = Motor.repetirPartida({ semilla: ses.semilla, jugadas: d.movimientos });
+                if (!rep.ok) return rechazar(rep.error);
+                puntaje = rep.puntaje; jugadas = rep.jugadas; terminada = rep.terminada;
+                discrepancia = Number(d.puntaje) !== rep.puntaje; // si el celular dijo otra cosa se usa el del servidor y queda anotado
+                if (ses.modo === 'reto' && !terminada) return rechazar('reto-incompleto');
+            } else { puntaje = Number(d.puntaje); jugadas = Number(d.jugadas); }
+
+            const motivo = motivoImplausible({ puntaje, duracionSeg, jugadas }, cfg);
+            if (motivo) return rechazar(motivo, { puntaje: Number.isFinite(puntaje) ? puntaje : null });
 
             const c = cliSnap.data() || {};
             const r = calcularResultado({ estado: c, cfg, puntaje, dia });
@@ -271,8 +321,17 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
                 avisar = agotado && !yaAgotado;
                 tx.set(presRef, { dia, emitido: FieldValue.increment(credito), agotado, presupuesto: cfg.presupuestoDiario, actualizadoAt: FieldValue.serverTimestamp() }, { merge: true });
             }
+            // Reto del día: entra al ranking diario y suma al semanal (el teléfono queda solo para que el admin contacte a los ganadores).
+            let posicionReto = null;
+            if (ses.modo === 'reto') {
+                const nombre = nombrePublico(c.customerName);
+                const telefono = String(c.customerPhoneDigits || uid.replace(/^phone_/, '')).replace(/\D/g, '').slice(-10);
+                tx.set(db.collection('juego_ranking').doc(dia).collection('jugadores').doc(uid), { uid, nombre, telefono, puntaje, jugadas, duracionSeg: Math.round(duracionSeg), creadoAt: FieldValue.serverTimestamp() });
+                tx.set(db.collection('juego_ranking_semana').doc(lunesDe(dia)).collection('jugadores').doc(uid), { uid, nombre, telefono, puntos: FieldValue.increment(puntaje), dias: FieldValue.increment(1), actualizadoAt: FieldValue.serverTimestamp() }, { merge: true });
+                posicionReto = true;
+            }
             tx.set(db.collection('juego_partidas').doc(), {
-                uid, dia, puntaje, jugadas, duracionSeg: Math.round(duracionSeg), aceptada: true,
+                uid, dia, puntaje, jugadas, duracionSeg: Math.round(duracionSeg), aceptada: true, modo: ses.modo || 'libre', terminada, discrepancia,
                 puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, racha: r.racha,
                 nivelSuperado: r.nivelSuperado, nivelMax: r.nuevoNivelMax, creditoGanado: credito, creditoRecortado: r.creditoGanado - credito,
                 creadoAt: FieldValue.serverTimestamp()
@@ -280,7 +339,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             const nuevo = { ...c, ...upd, puntosJuego: num(c.puntosJuego, 0) + r.puntosTotales, creditoJuego: (expirado ? 0 : vigente) + credito, creditoJuegoVence: credito > 0 ? nuevoVencimiento(cfg, ahora) : (expirado ? 0 : num(c.creditoJuegoVence, 0)) };
             return {
                 ok: true,
-                resultado: { puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, nivelSuperado: r.nivelSuperado, creditoGanado: credito, topeAlcanzado: r.puntosOtorgados < puntaje, presupuestoAgotado: pres.recortado },
+                resultado: { puntaje, puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, nivelSuperado: r.nivelSuperado, creditoGanado: credito, topeAlcanzado: r.puntosOtorgados < puntaje, presupuestoAgotado: pres.recortado, reto: posicionReto === true },
                 estado: vistaEstado(nuevo, cfg, dia, ahora),
                 _avisar: avisar ? { presupuesto: cfg.presupuestoDiario } : null
             };
@@ -290,6 +349,29 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             try { if (avisarAdmin) await avisarAdmin('🎮 Block ROAL: se agotó el presupuesto de hoy', `Ya se repartieron los $${aviso.presupuesto.toLocaleString('es-CO')} de créditos del día. Hasta mañana no se entregan más.`); } catch (e) { console.error('juego: no se pudo avisar el agotamiento del presupuesto:', e.message); }
         } else if (res) delete res._avisar;
         return res;
+    });
+
+    // Ranking del reto: tipo 'dia' (puntaje de hoy) o 'semana' (suma de la semana). Devuelve los 10 primeros y la posición del jugador.
+    exp.juegoRanking = onCall(opts, async (request) => {
+        const uid = exigirUid(request);
+        const tipo = request.data?.tipo === 'semana' ? 'semana' : 'dia';
+        const db = getFirestore();
+        const dia = diaBogota(Date.now());
+        const clave = tipo === 'semana' ? lunesDe(dia) : dia;
+        const ruta = db.collection(tipo === 'semana' ? 'juego_ranking_semana' : 'juego_ranking').doc(clave).collection('jugadores');
+        const campo = tipo === 'semana' ? 'puntos' : 'puntaje';
+        const [top, yo, cfg] = await Promise.all([ruta.orderBy(campo, 'desc').limit(10).get(), ruta.doc(uid).get(), leerConfig(db)]);
+        let miPuesto = null;
+        if (yo.exists) {
+            const mejores = await ruta.where(campo, '>', num(yo.data()[campo], 0)).count().get();
+            miPuesto = { pos: mejores.data().count + 1, valor: num(yo.data()[campo], 0) };
+        }
+        return {
+            tipo, clave, campo,
+            top: top.docs.map((x, i) => ({ pos: i + 1, nombre: x.data().nombre || 'Jugador', valor: num(x.data()[campo], 0), yo: x.id === uid })),
+            yo: miPuesto,
+            premio: cfg.retoPremio
+        };
     });
 
     // Limpieza diaria: las sesiones de partida (una por partida iniciada) no sirven pasadas 2 días.
@@ -311,5 +393,5 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
 
 module.exports = {
     DEFAULTS, normalizarConfig, diaBogota, diaAnterior, metaNivel, rachaVigente,
-    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, registrar
+    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, registrar
 };

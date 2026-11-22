@@ -507,6 +507,9 @@ service cloud.firestore {
     match /juego_partidas/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /juego_canjes/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /juego_presupuesto/{doc} { allow read: if isAdmin(); allow write: if false; }
+    match /juego_reto/{doc} { allow read: if isAdmin(); allow write: if false; }
+    match /juego_ranking/{dia}/jugadores/{u} { allow read: if isAdmin(); allow write: if false; }
+    match /juego_ranking_semana/{sem}/jugadores/{u} { allow read: if isAdmin(); allow write: if false; }
     match /ajustes_puntos_lealtad/{doc} {
       allow read: if isAdmin();
       allow write: if false;

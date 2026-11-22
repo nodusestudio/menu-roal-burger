@@ -476,7 +476,7 @@ test('juego) sesiones, partidas y canjes: el navegador no escribe; el admin solo
     });
     const userDb = testEnv.authenticatedContext('u').firestore();
     const adminDb = testEnv.authenticatedContext('admin-juego2').firestore();
-    for (const col of ['juego_sesiones', 'juego_partidas', 'juego_canjes', 'juego_presupuesto']) {
+    for (const col of ['juego_sesiones', 'juego_partidas', 'juego_canjes', 'juego_presupuesto', 'juego_reto']) {
         await assertFails(userDb.collection(col).doc('nuevo').set({ uid: 'u', puntaje: 999999 }));
         await assertFails(adminDb.collection(col).doc('nuevo').set({ uid: 'u', puntaje: 999999 }));
     }
@@ -491,4 +491,21 @@ test('juego) la configuración la escribe solo el admin', async () => {
     const adminDb = testEnv.authenticatedContext('admin-juego3').firestore();
     await assertFails(userDb.collection('configuracion').doc('juego').set({ topeDiario: 999999 }));
     await assertSucceeds(adminDb.collection('configuracion').doc('juego').set({ topeDiario: 300 }));
+});
+
+test('juego) rankings: solo el admin los lee y nadie los escribe desde el navegador', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-rank').set({ seeded: true });
+        await context.firestore().collection('juego_ranking').doc('2026-11-22').collection('jugadores').doc('u').set({ nombre: 'X', telefono: '3001112222', puntaje: 10 });
+        await context.firestore().collection('juego_ranking_semana').doc('2026-11-16').collection('jugadores').doc('u').set({ nombre: 'X', telefono: '3001112222', puntos: 10 });
+    });
+    const userDb = testEnv.authenticatedContext('u').firestore();
+    const adminDb = testEnv.authenticatedContext('admin-rank').firestore();
+    await assertFails(userDb.collection('juego_ranking').doc('2026-11-22').collection('jugadores').doc('u').get());      // el teléfono no se puede leer
+    await assertFails(userDb.collection('juego_ranking_semana').doc('2026-11-16').collection('jugadores').doc('u').get());
+    await assertFails(userDb.collection('juego_ranking').doc('2026-11-22').collection('jugadores').doc('u').set({ puntaje: 999999 }));
+    await assertFails(adminDb.collection('juego_ranking').doc('2026-11-22').collection('jugadores').doc('u').set({ puntaje: 999999 }));
+    await assertSucceeds(adminDb.collection('juego_ranking').doc('2026-11-22').collection('jugadores').doc('u').get());
+    await assertSucceeds(adminDb.collection('juego_ranking_semana').doc('2026-11-16').collection('jugadores').get());
+    await assertFails(userDb.collection('juego_reto').doc('2026-11-22_u').set({ uid: 'u' }));
 });

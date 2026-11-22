@@ -7,11 +7,13 @@ async function juegoMetricas(db, args = {}) {
     const valido = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
     const desde = valido(args.desde) ? args.desde : hoy;
     const hasta = valido(args.hasta) ? args.hasta : desde;
-    const [pSnap, cSnap, cfgSnap, presSnap] = await Promise.all([
+    const semana = J.lunesDe(hoy);
+    const [pSnap, cSnap, cfgSnap, presSnap, rankSnap] = await Promise.all([
         db.collection('juego_partidas').where('dia', '>=', desde).where('dia', '<=', hasta).get(),
         db.collection('juego_canjes').where('dia', '>=', desde).where('dia', '<=', hasta).get(),
         db.collection('configuracion').doc('juego').get(),
-        db.collection('juego_presupuesto').doc(J.diaBogota(Date.now())).get()
+        db.collection('juego_presupuesto').doc(J.diaBogota(Date.now())).get(),
+        db.collection('juego_ranking_semana').doc(semana).collection('jugadores').orderBy('puntos', 'desc').limit(5).get()
     ]);
     const partidas = pSnap.docs.map((d) => d.data());
     const ok = partidas.filter((p) => p.aceptada === true);
@@ -29,6 +31,7 @@ async function juegoMetricas(db, args = {}) {
         creditos_canjeados_cop: canjes.reduce((s, c) => s + (Number(c.monto) || 0), 0),
         pedidos_con_credito: canjes.length,
         por_dia: Object.keys(porDia).sort().map((d) => ({ dia: d, jugadores: porDia[d].jugadores.size, partidas: porDia[d].partidas })),
+        reto_ranking_semana: { desde: semana, top5: rankSnap.docs.map((d, i) => ({ pos: i + 1, nombre: d.data().nombre, puntos: Number(d.data().puntos) || 0, dias: Number(d.data().dias) || 0 })), premio: cfg.retoPremio },
         presupuesto_hoy: { emitido_cop: presSnap.exists ? Number(presSnap.data().emitido) || 0 : 0, presupuesto_cop: cfg.presupuestoDiario, agotado: presSnap.exists && presSnap.data().agotado === true },
         reglas_actuales: { vencimiento_creditos_dias: cfg.creditoVigenciaDias, requiere_pedido_previo: cfg.requierePedidoPrevio, partidas_max_por_dia: cfg.maxPartidasDia, activo: cfg.activo, valor_punto_cop: cfg.valorPunto, tope_diario_pts: cfg.topeDiario, tope_credito_pct_del_pedido: cfg.topeCreditoPct, meta_base: cfg.metaBase, bonus_racha: cfg.rachaBonus },
         nota: 'Créditos canjeados = lo descontado en pedidos; si un pedido se anula el crédito vuelve al cliente pero este número no baja. Las reglas se cambian en Configuración → Juego.'

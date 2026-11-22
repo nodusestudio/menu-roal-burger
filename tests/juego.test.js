@@ -149,3 +149,15 @@ test('presupuesto diario: recorta al saldo del día; 0 = sin tope', () => {
     assert.deepEqual(J.aplicarPresupuesto({ creditoGanado: 300, emitidoHoy: 1000, presupuesto: 1000 }), { credito: 0, recortado: true });
     assert.deepEqual(J.aplicarPresupuesto({ creditoGanado: 300, emitidoHoy: 99999, presupuesto: 0 }), { credito: 300, recortado: false });
 });
+
+test('nombre público: primer nombre + inicial, nunca el apellido; lunes de la semana', () => {
+    assert.equal(J.nombrePublico('Juan Pablo Pinzón'), 'Juan P.');
+    assert.equal(J.nombrePublico('maria'), 'Maria');
+    assert.equal(J.nombrePublico('   '), 'Jugador');
+    assert.equal(J.nombrePublico(null), 'Jugador');
+    assert.ok(J.nombrePublico('Supercalifragilisticoespialidoso Gómez').length <= 18);
+    assert.equal(J.lunesDe('2026-11-22'), '2026-11-16');   // domingo → lunes anterior
+    assert.equal(J.lunesDe('2026-11-16'), '2026-11-16');   // el lunes es su propio lunes
+    assert.equal(J.lunesDe('2026-11-18'), '2026-11-16');
+    assert.equal(J.lunesDe('2026-03-01'), '2026-02-23');
+});

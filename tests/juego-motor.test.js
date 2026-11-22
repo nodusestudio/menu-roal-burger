@@ -2,7 +2,7 @@
 //   node --test tests/juego-motor.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const M = require('../juega.js');
+const M = require('../functions/juegoMotor.js'); // el motor compartido (se genera desde src/js/juego/motor.js)
 
 test('tablero 8x8 vacío; una pieza cabe dentro y no se sale de los bordes', () => {
     const g = M.nuevaGrilla();
@@ -68,4 +68,37 @@ test('3 piezas por turno, con al menos una jugable cuando el tablero lo permite'
 
 test('cinco ingredientes ROAL', () => {
     assert.deepEqual(M.INGREDIENTES, ['pan', 'carne', 'queso', 'tequeno', 'arepa']);
+});
+
+test('semilla: la misma semilla da siempre las mismas piezas; otra semilla da otras', () => {
+    const pz = (sem) => { const g = M.nuevaGrilla(); const r = M.crearRng(sem); return JSON.stringify([M.nuevasPiezas(g, r), M.nuevasPiezas(g, r)]); };
+    assert.equal(pz(7), pz(7));
+    assert.notEqual(pz(7), pz(8));
+    assert.equal(M.semillaDeTexto('blockroal-reto-2026-11-22'), M.semillaDeTexto('blockroal-reto-2026-11-22'));
+    assert.notEqual(M.semillaDeTexto('blockroal-reto-2026-11-22'), M.semillaDeTexto('blockroal-reto-2026-11-23'));
+});
+
+test('codificar/decodificar jugada es reversible para toda la cuadrícula', () => {
+    for (let p = 0; p < 3; p++) for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) assert.deepEqual(M.decodificarJugada(M.codificarJugada(p, r, c)), { pieza: p, fila: r, col: c });
+});
+
+test('repetir una partida: mismo puntaje que el del juego; rechaza jugadas imposibles, repetidas o fuera de rango', () => {
+    const rng = M.crearRng(4242), g = M.nuevaGrilla();
+    let piezas = M.nuevasPiezas(g, rng).map((p) => ({ ...p, usada: false })); const js = []; let pts = 0, combo = 0;
+    for (let k = 0; k < 500; k++) {
+        let hecho = false;
+        for (let i = 0; i < 3 && !hecho; i++) { const p = piezas[i]; if (p.usada) continue;
+            for (let r = 0; r <= 8 - p.shape.length && !hecho; r++) for (let c = 0; c <= 8 - p.shape[0].length && !hecho; c++) if (M.puedeColocar(g, p.shape, r, c)) {
+                M.colocar(g, p.shape, r, c, p.ing); const l = M.lineasLlenas(g), n = l.filas.length + l.cols.length; combo = n > 0 ? combo + 1 : 0;
+                pts += M.puntosJugada({ casillas: M.celdas(p.shape), lineas: n, combo: combo - 1 }); if (n > 0) M.borrarLineas(g, l);
+                p.usada = true; js.push(M.codificarJugada(i, r, c)); hecho = true; } }
+        if (!hecho) break; if (piezas.every((x) => x.usada)) piezas = M.nuevasPiezas(g, rng).map((x) => ({ ...x, usada: false }));
+    }
+    const rep = M.repetirPartida({ semilla: 4242, jugadas: js });
+    assert.deepEqual(rep, { ok: true, puntaje: pts, jugadas: js.length, terminada: true });
+    assert.equal(M.repetirPartida({ semilla: 4243, jugadas: js }).ok === true && M.repetirPartida({ semilla: 4243, jugadas: js }).puntaje === pts, false); // otra semilla, otra partida
+    assert.equal(M.repetirPartida({ semilla: 4242, jugadas: [js[0], js[0]] }).ok, false);
+    assert.equal(M.repetirPartida({ semilla: 4242, jugadas: [500] }).error, 'jugada-invalida');
+    assert.equal(M.repetirPartida({ semilla: 4242, jugadas: 'x' }).error, 'registro-invalido');
+    assert.equal(M.repetirPartida({ semilla: 4242, jugadas: js.slice(0, 3) }).terminada, false);
 });
