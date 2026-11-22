@@ -1,15 +1,18 @@
-/* Block ROAL — TEMA VISUAL "Arcade urbano venezolano".
- * TODO lo que se ve del juego vive aquí (paleta, bloques, fondo, tablero, bandeja, marco animado, frases, intro).
- * La lógica (tablero, piezas, puntos, créditos, rachas, servidor) está en juega.js y NO depende de cómo se vea:
- * para cambiar el diseño se edita este archivo y juega-tema.css, sin tocar el juego.
- * Contrato que usa juega.js: PAL, CONFETI, FRASES, FUENTES, estiloPopup(), colorMeta(), cargar(), texturas(), fondo(), tablero(),
- * cabecera(), marco(), iniciarIntro(). La geometría (d = {W,H,CELDA,GX,GY,N,BANDEJA_Y}) la define juega.js y aquí solo se lee.
+/* Block ROAL — TEMA VISUAL "Arcade urbano venezolano" (versión con el fondo ilustrado de ROAL).
+ * TODO lo que se ve del juego vive aquí y en juega-tema.css: el fondo (juega-fondo.webp, la caricatura del local), los marcadores sobre esa imagen,
+ * las baldosas, el marco animado, las frases y la intro. La lógica (tablero, piezas, puntos, créditos, rachas, servidor) está en juega.js y NO depende
+ * de cómo se vea: para rediseñar se cambia la imagen / este archivo / el CSS, sin tocar el juego.
+ *
+ * Cómo está armada la escena: un "escenario" de 1024x1536 px de diseño (el tamaño de la imagen), escalado para caber en la pantalla. Sobre la imagen van
+ * los marcadores (HTML) y un lienzo de Phaser que cubre SOLO el tablero y la bandeja de piezas, alineado con el marco dibujado en la imagen.
+ * Contrato con juega.js: PAL, CONFETI, FRASES, FUENTES, FUENTES_A_CARGAR, estiloPopup(), colorMeta(), cargar(), texturas(), fondo(), tablero(), cabecera(),
+ * marco(), ajustarEscena(), iniciarIntro(). La geometría (d = {W,H,CELDA,GX,GY,N,BANDEJA_Y,CX_BANDEJA}) la define juega.js y aquí solo se lee.
  */
 (function (root) {
     'use strict';
 
     // ── Paleta ROAL ──
-    const C = { naranja: 0xfb4b08, amarillo: 0xffc400, azul: 0x1f6bff, carbon: 0x121214, metal: 0x8a8f98, metalClaro: 0xc9ced6, crema: 0xf6ebd9 };
+    const C = { naranja: 0xfb4b08, amarillo: 0xffc400, azul: 0x1f6bff, carbon: 0x121214, metal: 0x8a8f98, crema: 0xf6ebd9 };
     const PAL = { pan: 0xfb4b08, carne: 0xc1272d, queso: 0xffc400, tequeno: 0x19b36b, arepa: 0x1f6bff }; // color de cada baldosa (también de partículas y sombra de arrastre)
     const CONFETI = [C.naranja, C.amarillo, C.azul, C.crema, 0xffffff];
     const FUENTES = { titulo: 'Anton, Impact, sans-serif', marcador: '"Permanent Marker", Anton, cursive', texto: 'Montserrat, system-ui, sans-serif' };
@@ -24,8 +27,17 @@
     const estiloPopup = (grande) => ({ fontFamily: FUENTES.titulo, fontSize: grande ? '40px' : '34px', align: 'center', stroke: '#121214', strokeThickness: 7, padding: { x: 30, y: 24 } });
     const colorMeta = (alcanzada) => (alcanzada ? '#0b6b3a' : '#121214');
 
-    // ── Carga de imágenes del tema (la llama Escena.preload) ──
-    function cargar(scene) { scene.load.image('isotipo', 'isotipo.webp'); }
+    // ── Escenario: 1024x1536 de diseño, escalado para que el marco del tablero siempre entre completo (aunque se recorten los lados del fondo) ──
+    const ESC = { w: 1024, h: 1536, anchoMarco: 720 };
+    function ajustarEscena() {
+        const st = document.getElementById('escena'); if (!st) return;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const s = Math.min(vh / ESC.h, vw / ESC.anchoMarco);
+        st.style.transform = `translate(${(vw - ESC.w * s) / 2}px, ${Math.max(0, (vh - ESC.h * s) / 2)}px) scale(${s})`;
+    }
+
+    // ── Carga de imágenes del tema (la llama Escena.preload): el fondo va en HTML, aquí no hay nada que cargar ──
+    function cargar() { /* sin imágenes de Phaser */ }
 
     // ── Baldosas arcade: cara de color con brillo, borde oscuro abajo e ícono del ingrediente ──
     function baldosa(g, S, col) {
@@ -72,98 +84,46 @@
         const g = scene.make.graphics({ x: 0, y: 0, add: false });
         const S = d.CELDA - 3;
         d.INGREDIENTES.forEach((n) => { g.clear(); baldosa(g, S, PAL[n]); ICONOS[n](g, S / 2); g.generateTexture('ing_' + n, S, S); });
-        // Ladrillo de barrio (baldosa que se repite): oscuro y cálido para no competir con el juego
-        g.clear(); g.fillStyle(0x2a1c17, 1).fillRect(0, 0, 80, 40);
-        const LAD = [0x6f3420, 0x7d3d27, 0x663020, 0x73381f];
-        for (let f = 0; f < 2; f++) for (let c = -1; c < 3; c++) {
-            const x = c * 40 + (f % 2 ? 20 : 0), y = f * 20;
-            g.fillStyle(LAD[(f * 3 + c + 4) % LAD.length], 1).fillRect(x + 1.5, y + 1.5, 37, 17);
-            g.fillStyle(0xffffff, 0.05).fillRect(x + 1.5, y + 1.5, 37, 2);
-        }
-        g.generateTexture('ladrillo', 80, 40);
         g.clear(); g.fillStyle(0xffffff, 1).fillCircle(5, 5, 5); g.generateTexture('chispa', 10, 10);
         g.destroy();
     }
 
-    // ── Fondo: ladrillo de barrio + fachada de la hamburguesería arriba (toldo, bombillos, letrero, insignia) + calle y banner abajo ──
-    function fondo(scene, d) {
-        const { W, H, BANDEJA_Y } = d;
-        scene.add.tileSprite(0, 0, W, H, 'ladrillo').setOrigin(0);
-        const v = scene.add.graphics(); // viñeta cálida arriba y sombra abajo
-        v.fillGradientStyle(0xffb347, 0xffb347, 0x000000, 0x000000, 0.28, 0.28, 0, 0); v.fillRect(0, 0, W, 230);
-        v.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.7, 0.7); v.fillRect(0, H - 230, W, 230);
-        // Toldo naranja y crema con festón
-        const t = scene.add.graphics().setDepth(2);
-        for (let x = 0; x < W; x += 24) { t.fillStyle((x / 24) % 2 ? 0xf6ebd9 : C.naranja, 1).fillRect(x, 0, 24, 15); t.fillCircle(x + 12, 15, 12); }
-        t.fillStyle(0x000000, 0.28).fillRect(0, 15, W, 3);
-        // Cable de bombillos
-        const cab = scene.add.graphics().setDepth(2);
-        cab.lineStyle(1.5, 0x000000, 0.7); cab.beginPath();
-        for (let x = 0; x <= W; x += 6) { const y = 32 + Math.sin((x / W) * Math.PI) * 6; x ? cab.lineTo(x, y) : cab.moveTo(x, y); } cab.strokePath();
-        for (let x = 14; x < W; x += 28) {
-            const y = 32 + Math.sin((x / W) * Math.PI) * 6 + 4;
-            scene.add.circle(x, y, 9, 0xffd34d, 0.22).setDepth(2).setBlendMode('ADD');
-            const b = scene.add.circle(x, y, 3.4, 0xfff2b0, 1).setDepth(3);
-            scene.tweens.add({ targets: b, alpha: { from: 0.55, to: 1 }, duration: 600 + (x % 5) * 140, yoyo: true, repeat: -1 });
-        }
-        // Letrero ROAL BURGER (izquierda) e insignia redonda (derecha)
-        const L = scene.add.graphics().setDepth(3);
-        L.fillStyle(0x000000, 0.45).fillRoundedRect(11, 48, 112, 34, 6);
-        L.fillStyle(C.carbon, 1).fillRoundedRect(8, 44, 112, 34, 6); L.lineStyle(2, C.naranja, 1).strokeRoundedRect(8, 44, 112, 34, 6);
-        scene.add.text(64, 58, 'ROAL BURGER', { fontFamily: FUENTES.titulo, fontSize: '17px', color: hex(C.naranja), stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(4).setAngle(-2);
-        L.fillStyle(C.amarillo, 1).fillRoundedRect(22, 69, 84, 3, 2);
-        scene.add.circle(326, 56, 31, 0x000000, 0.4).setDepth(3);
-        scene.add.circle(324, 54, 30, C.carbon, 1).setStrokeStyle(3, C.naranja, 1).setDepth(3);
-        if (scene.textures.exists('isotipo')) { const im = scene.add.image(324, 54, 'isotipo').setDepth(4); im.setScale(40 / Math.max(im.width, im.height)); }
-        // Acera con cordón amarillo y negro, ranuras de las piezas y banner de abajo
-        scene.add.rectangle(W / 2, BANDEJA_Y + 80, W, 190, 0x0f0f12, 0.92).setDepth(1);
-        const cor = scene.add.graphics().setDepth(2); cor.fillStyle(C.amarillo, 1).fillRect(0, BANDEJA_Y - 12, W, 6); cor.fillStyle(0x111111, 1); for (let x = 0; x < W; x += 24) cor.fillRect(x, BANDEJA_Y - 12, 12, 6);
-        for (let k = 0; k < 3; k++) {
-            const s = scene.add.graphics().setDepth(2), x = 60 + k * 120 - 52, y = BANDEJA_Y + 60 - 56;
-            s.fillStyle(0x16161a, 1).fillRoundedRect(x, y, 104, 112, 12); s.lineStyle(2, C.naranja, 0.85).strokeRoundedRect(x, y, 104, 112, 12);
-            s.lineStyle(6, C.naranja, 0.12).strokeRoundedRect(x, y, 104, 112, 12); s.fillStyle(0xffffff, 0.05).fillRoundedRect(x + 4, y + 4, 96, 30, 9);
-        }
-        const B = scene.add.graphics().setDepth(2); B.fillStyle(0x0b0b0d, 1).fillRect(0, H - 42, W, 42); B.fillStyle(C.naranja, 1).fillRect(0, H - 42, W, 3);
-        scene.add.text(52, H - 20, '¡ÉPALE!', { fontFamily: FUENTES.marcador, fontSize: '22px', color: hex(C.amarillo), stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setAngle(-5).setDepth(3);
-        scene.add.text(305, H - 20, 'SABOR\nVENEZOLANO', { fontFamily: FUENTES.titulo, fontSize: '13px', color: hex(C.crema), align: 'center', stroke: '#000', strokeThickness: 3, lineSpacing: -2 }).setOrigin(0.5).setAngle(-3).setDepth(3);
-        // Bandera ondeando: franjas amarillo-azul-rojo y 8 estrellas
-        const f = scene.add.graphics().setDepth(3);
-        [[C.amarillo, -8], [0x1f4fff, -2], [0xe3212b, 4]].forEach(([col, off]) => { f.lineStyle(7, col, 1); f.beginPath(); for (let x = 128; x <= 232; x += 4) { const y = H - 21 + off + Math.sin((x - 128) / 104 * Math.PI * 1.4) * -5; x === 128 ? f.moveTo(x, y) : f.lineTo(x, y); } f.strokePath(); });
-        f.fillStyle(0xffffff, 1); for (let i = 0; i < 8; i++) { const a = Math.PI * (1.1 + 0.8 * (i / 7)), px = 180 + Math.cos(a) * 40, py = H - 4 + Math.sin(a) * 18; f.fillCircle(px, py - 15, 1.4); }
-    }
+    // ── Fondo: lo pone la imagen (HTML). Phaser va transparente; no dibuja nada aquí ──
+    function fondo() { /* el fondo es juega-fondo.webp, debajo del lienzo */ }
 
-    // ── Tablero como máquina arcade: bisel metálico con tornillos, pantalla oscura y casillas ──
+    // ── Tablero y bandeja: tapan lo dibujado de ejemplo en la imagen con paneles oscuros y dibujan las casillas reales ──
     function tablero(scene, d) {
-        const { GX, GY, N, CELDA } = d;
-        const cx = GX + (N * CELDA) / 2, cy = GY + (N * CELDA) / 2, lado = N * CELDA + 14;
-        scene.add.rectangle(cx + 2, cy + 6, lado + 18, lado + 18, 0x000000, 0.5).setDepth(1);
-        const m = scene.add.graphics().setDepth(1);
-        m.fillGradientStyle(0xdde1e8, 0xdde1e8, 0x666b75, 0x666b75, 1); m.fillRect(cx - (lado + 18) / 2, cy - (lado + 18) / 2, lado + 18, lado + 18);
-        m.lineStyle(2, 0x2a2d33, 1).strokeRect(cx - (lado + 18) / 2, cy - (lado + 18) / 2, lado + 18, lado + 18);
-        [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => { const bx = cx + sx * (lado / 2 + 4), by = cy + sy * (lado / 2 + 4); m.fillStyle(0x3a3d44, 1).fillCircle(bx, by, 2.6); m.fillStyle(0xcfd3da, 1).fillCircle(bx - 0.5, by - 0.5, 1.2); });
-        scene.add.rectangle(cx, cy, lado - 6, lado - 6, 0x0b0b0e, 1).setStrokeStyle(2, 0x000000).setDepth(1);
+        const { GX, GY, N, CELDA, CX_BANDEJA, BANDEJA_Y } = d;
+        scene.add.rectangle(187.5, 174.5, 340, 322, 0x0d0d10, 1).setDepth(1);                     // interior del tablero
         for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) scene.add.rectangle(GX + j * CELDA + CELDA / 2, GY + i * CELDA + CELDA / 2, CELDA - 3, CELDA - 3, 0x17171c, 1).setStrokeStyle(1, 0x2c2c34, 1).setDepth(1);
+        CX_BANDEJA.forEach((cx) => {                                                                // ranuras de las 3 piezas
+            const s = scene.add.graphics().setDepth(1);
+            s.fillStyle(0x110e0c, 1).fillRoundedRect(cx - 54, BANDEJA_Y + 60 - 48, 108, 98, 12);
+            s.fillStyle(0xffffff, 0.04).fillRoundedRect(cx - 50, BANDEJA_Y + 60 - 44, 100, 26, 9);
+        });
     }
 
-    // ── Marcador: puntaje grande y cinta amarilla con la meta. Devuelve los dos textos ──
-    function cabecera(scene, d) {
-        const { W } = d;
-        const cinta = scene.add.graphics().setDepth(3); cinta.fillStyle(C.amarillo, 1).fillPoints([{ x: 100, y: 64 }, { x: 266, y: 62 }, { x: 260, y: 82 }, { x: 94, y: 84 }], true);
-        const puntos = scene.add.text(W / 2, 34, '0', { fontFamily: FUENTES.titulo, fontSize: '44px', color: hex(C.amarillo), stroke: '#121214', strokeThickness: 7, padding: { x: 24, y: 16 } }).setOrigin(0.5).setDepth(4);
-        puntos.setShadow(0, 3, '#fb4b08', 8, true, true);
-        const meta = scene.add.text(W / 2, 73, '', { fontFamily: FUENTES.texto, fontSize: '12px', fontStyle: '800', color: colorMeta(false) }).setOrigin(0.5).setDepth(4);
-        return { puntos, meta };
+    // ── Marcador: puntaje y cinta de meta son HTML sobre la imagen. Devuelve objetos con la misma interfaz que usaba juega.js ──
+    function cabecera() {
+        const pEl = document.getElementById('uiPuntos'), mEl = document.getElementById('uiMeta');
+        const nada = { setText() {}, setColor() {}, pulso() {} };
+        if (!pEl || !mEl) return { puntos: nada, meta: nada };
+        return {
+            puntos: {
+                setText(t) { pEl.textContent = t; const n = String(t).length; pEl.style.fontSize = n > 5 ? '54px' : (n > 4 ? '64px' : '80px'); },
+                pulso() { pEl.classList.remove('pulso'); void pEl.offsetWidth; pEl.classList.add('pulso'); }
+            },
+            meta: { setText(t) { mEl.textContent = t; }, setColor(c) { mEl.style.color = c; } }
+        };
     }
 
-    // ── Marco animado: tubo de neón naranja que pulsa y un destello que le da la vuelta al tablero ──
+    // ── Marco animado: neón naranja que pulsa y un destello que le da la vuelta al marco dibujado en la imagen ──
     function marco(g, time, d) {
-        const { GX, GY, N, CELDA } = d;
-        const x0 = GX - 4, y0 = GY - 4, w = N * CELDA + 8, h = N * CELDA + 8, per = 2 * (w + h);
-        const pulso = 0.85 + 0.15 * Math.sin(time / 260);
+        const x0 = 2.5, y0 = 2.5, w = d.W - 5, h = 348, per = 2 * (w + h), r = 14;
+        const pulso = 0.8 + 0.2 * Math.sin(time / 260);
         g.clear();
-        [[14, 0.10], [9, 0.16], [5, 0.26]].forEach(([ancho, a]) => { g.lineStyle(ancho, C.naranja, a * pulso); g.strokeRoundedRect(x0, y0, w, h, 6); });
-        g.lineStyle(3.2, C.naranja, 1).strokeRoundedRect(x0, y0, w, h, 6);
-        g.lineStyle(1.2, 0xffe2c2, 0.95 * pulso).strokeRoundedRect(x0, y0, w, h, 6);
+        [[12, 0.10], [7, 0.16], [4, 0.24]].forEach(([ancho, a]) => { g.lineStyle(ancho, C.naranja, a * pulso); g.strokeRoundedRect(x0, y0, w, h, r); });
+        g.lineStyle(1.4, 0xffe2c2, 0.85 * pulso).strokeRoundedRect(x0, y0, w, h, r);
         const pt = (t) => { let s = (((t % 1) + 1) % 1) * per; if (s < w) return [x0 + s, y0]; s -= w; if (s < h) return [x0 + w, y0 + s]; s -= h; if (s < w) return [x0 + w - s, y0 + h]; s -= w; return [x0, y0 + h - s]; };
         const cab = (time / 2600) % 1;
         for (let k = 0; k < 16; k++) { const p = pt(cab - k * 0.006), q = pt(cab - (k + 1) * 0.006); g.lineStyle(4.5, 0xffd34d, 1 - k / 16); g.lineBetween(p[0], p[1], q[0], q[1]); }
@@ -227,5 +187,5 @@
         return { acelerar() { entrando = true; }, parar() { activo = false; window.removeEventListener('resize', construir); } };
     }
 
-    root.BlockRoalTema = { nombre: 'arcade-urbano-venezolano', C, PAL, CONFETI, FUENTES, FUENTES_A_CARGAR, FRASES, COLORES_POPUP, estiloPopup, colorMeta, cargar, texturas, fondo, tablero, cabecera, marco, iniciarIntro };
+    root.BlockRoalTema = { nombre: 'arcade-urbano-venezolano', C, PAL, CONFETI, FUENTES, FUENTES_A_CARGAR, FRASES, COLORES_POPUP, estiloPopup, colorMeta, cargar, texturas, fondo, tablero, cabecera, marco, ajustarEscena, iniciarIntro };
 })(typeof window !== 'undefined' ? window : globalThis);

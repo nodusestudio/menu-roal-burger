@@ -16,12 +16,13 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js" crossorigin>
+    <link rel="preload" as="image" href="juega-fondo.webp">
     <link rel="preconnect" href="https://us-central1-roal-burger-menu.cloudfunctions.net" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700;800&family=Permanent+Marker&display=swap" rel="stylesheet">
-    <!-- Diseño: todo lo visual está en juega-tema.css y juega-tema.js; la lógica del juego en juega.js -->
-    <link rel="stylesheet" href="juega-tema.css?v=20261122f">
+    <!-- Diseño: la imagen juega-fondo.webp, juega-tema.css y juega-tema.js. La lógica del juego está en juega.js -->
+    <link rel="stylesheet" href="juega-tema.css?v=20261122i">
 </head>
 <body>
     <div id="intro">
@@ -38,20 +39,22 @@
     </div>
 
     <div id="app" hidden>
-        <header>
-            <a class="volver" href="/">← Menú</a>
-            <h1><span class="l1">BLOCK</span><span class="l2">ROAL</span></h1>
-            <div class="snd"><button type="button" id="btnMusica" aria-label="Música" aria-pressed="true">🎵</button><button type="button" id="btnSfx" aria-label="Efectos de sonido" aria-pressed="true">🔊</button></div>
-        </header>
-        <div class="stats" aria-live="polite">
-            <div class="stat"><b id="stNivel">1</b><span>Nivel</span></div>
-            <div class="stat"><b id="stMeta">500</b><span>Meta pts</span></div>
-            <div class="stat"><b id="stRacha">0</b><span>Racha 🔥</span></div>
-            <div class="stat"><b id="stCredito">$0</b><span>Créditos</span></div>
+        <div id="escena">
+            <img id="fondoImg" src="juega-fondo.webp" alt="" decoding="async">
+            <a class="ctl" id="hotMenu" href="/" aria-label="Volver al menú">←</a>
+            <button type="button" class="ctl" id="btnSonido" aria-label="Sonido" aria-pressed="true">🔊</button>
+
+            <div class="panel" id="p1"><b id="stNivel">1</b><span>Nivel</span></div>
+            <div class="panel" id="p2"><b id="stMeta">500</b><span>Meta pts</span></div>
+            <div class="panel" id="p3"><b id="stRacha">0</b><span>Racha 🔥</span></div>
+            <div class="panel" id="p4"><b id="stCredito">$0</b><span>Créditos</span></div>
+            <div id="pillHoy">Hoy:<b id="stHoy">0 / 300</b>· Racha <span id="stBonus"></span></div>
+
+            <div id="marcador"><span id="uiPuntos">0</span></div>
+            <div id="cinta"><span id="uiMeta">Meta nivel 1: 500 pts</span></div>
+            <div id="juegoCanvas"></div>
         </div>
-        <p class="sub">Puntos de hoy: <b id="stHoy">0 / 300</b> · Racha: <span id="stBonus"></span></p>
         <div class="aviso" id="avisoJuego" hidden></div>
-        <div id="juegoCanvas"></div>
     </div>
 
     <div class="overlay" id="sinSesion" hidden>
@@ -75,7 +78,7 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="juega-tema.js?v=20261122f"></script>
-    <script defer src="juega.js?v=20261122f"></script>
+    <script defer src="juega-tema.js?v=20261122i"></script>
+    <script defer src="juega.js?v=20261122i"></script>
 </body>
 </html>

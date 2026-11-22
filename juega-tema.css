@@ -1,45 +1,44 @@
-/* Block ROAL — TEMA VISUAL (parte HTML/CSS): "Arcade urbano venezolano".
- * Solo estilos: la estructura vive en juega.html y la lógica en juega.js. Para rediseñar se edita este archivo y juega-tema.js. */
+/* Block ROAL — TEMA VISUAL (parte HTML/CSS): "Arcade urbano venezolano" sobre el fondo ilustrado de ROAL (juega-fondo.webp).
+ * Solo estilos: la estructura vive en juega.html y la lógica en juega.js. Para rediseñar: cambiar la imagen, este archivo y juega-tema.js.
+ * Las medidas del escenario (#escena) están en PÍXELES DE DISEÑO sobre la imagen de 1024x1536; juega-tema.js la escala a la pantalla. */
 @property --ang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
-:root {
-    --naranja: #fb4b08; --naranja2: #ff7a2b; --amarillo: #ffc400; --azul: #1f6bff; --carbon: #121214; --carbon2: #1b1b20;
-    --metal: #8a8f98; --metal-claro: #c9ced6; --crema: #f6ebd9; --ok: #7dff9a; --nav: #0b1650;
-}
+:root { --naranja: #fb4b08; --naranja2: #ff7a2b; --amarillo: #ffc400; --azul: #1f6bff; --carbon: #121214; --crema: #f6ebd9; --ok: #7dff9a; --nav: #0b1650; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; background: #1a1210; color: var(--crema); font-family: 'Montserrat', system-ui, sans-serif; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
-/* Pared de ladrillo de barrio con luz cálida arriba y viñeta */
-body::before { content: ''; position: fixed; inset: 0; z-index: -1; background:
-    radial-gradient(ellipse at 50% 0%, rgba(255, 196, 0, .22), transparent 58%),
-    radial-gradient(ellipse at 50% 120%, rgba(0, 0, 0, .75), transparent 60%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='40'%3E%3Crect width='80' height='40' fill='%232a1c17'/%3E%3Cg%3E%3Crect x='1.5' y='1.5' width='37' height='17' fill='%236f3420'/%3E%3Crect x='41.5' y='1.5' width='37' height='17' fill='%237d3d27'/%3E%3Crect x='21.5' y='21.5' width='37' height='17' fill='%23663020'/%3E%3Crect x='-18.5' y='21.5' width='37' height='17' fill='%2373381f'/%3E%3Crect x='61.5' y='21.5' width='37' height='17' fill='%2373381f'/%3E%3C/g%3E%3C/svg%3E") #2a1c17; }
+html, body { margin: 0; height: 100%; background: #1a1210; color: var(--crema); font-family: 'Montserrat', system-ui, sans-serif; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; overflow: hidden; }
 @keyframes giro { to { --ang: 360deg; } }
-@keyframes pulso { 0%, 100% { box-shadow: 0 0 6px rgba(251, 75, 8, .5), inset 0 0 8px rgba(251, 75, 8, .15); } 50% { box-shadow: 0 0 14px rgba(251, 75, 8, .9), inset 0 0 12px rgba(251, 75, 8, .3); } }
+@keyframes pulsoPanel { 0%, 100% { box-shadow: 0 0 10px rgba(251, 75, 8, .5), inset 0 0 12px rgba(255, 150, 40, .15); } 50% { box-shadow: 0 0 26px rgba(251, 120, 20, .95), inset 0 0 18px rgba(255, 170, 60, .3); } }
+@keyframes golpeNum { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
 h1, h2, .anton { font-family: 'Anton', Impact, sans-serif; font-weight: 400; letter-spacing: .03em; text-transform: uppercase; }
 
-#app { display: flex; flex-direction: column; height: 100%; max-width: 520px; margin: 0 auto; padding: env(safe-area-inset-top) 10px env(safe-area-inset-bottom); }
-header { display: flex; align-items: center; gap: 8px; padding: 8px 0 6px; }
-/* Botones de la máquina: negro con borde naranja luminoso */
-header a.volver, .snd button { background: linear-gradient(#26262c, #121214); color: var(--crema); border: 2px solid var(--naranja); border-radius: 10px; box-shadow: 0 0 8px rgba(251, 75, 8, .6), inset 0 1px 0 rgba(255, 255, 255, .15); text-decoration: none; font-weight: 800; }
-header a.volver { font-size: .78rem; padding: 8px 10px; text-transform: uppercase; line-height: 1.1; }
-.snd { display: flex; gap: 6px; }
-.snd button { width: 38px; height: 36px; font-size: 1rem; cursor: pointer; padding: 0; }
-.snd button:active, header a.volver:active { transform: translateY(1px); }
-/* Logo estilo cómic: BLOCK en blanco, ROAL en naranja, contorno negro, inclinado */
-header h1 { flex: 1; margin: 0; text-align: center; font-size: 1.9rem; line-height: 1; font-style: italic; transform: skewX(-6deg); white-space: nowrap; filter: drop-shadow(0 2px 0 #000) drop-shadow(0 0 10px rgba(255, 196, 0, .45)); }
-header h1 .l1, header h1 .l2 { -webkit-text-stroke: 3px #121214; paint-order: stroke fill; }
-header h1 .l1 { color: #fff; } header h1 .l2 { color: var(--naranja); margin-left: .12em; }
+/* Pantalla: el fondo difuminado rellena los costados si la pantalla es más ancha o más alta que el escenario */
+#app { position: fixed; inset: 0; overflow: hidden; background: #1a1210; }
+#app::before { content: ''; position: absolute; inset: -30px; background: url("juega-fondo.webp") center / cover; filter: blur(22px) brightness(.55) saturate(1.2); }
+#escena { position: absolute; left: 0; top: 0; width: 1024px; height: 1536px; transform-origin: 0 0; }
+#fondoImg { position: absolute; inset: 0; width: 1024px; height: 1536px; display: block; -webkit-user-drag: none; pointer-events: none; }
 
-/* Marcadores como paneles de máquina arcade */
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.stat { background: linear-gradient(#0e0e10, #1b1b20); border: 2px solid var(--naranja); border-radius: 10px; padding: 6px 4px 5px; text-align: center; animation: pulso 2.6s ease-in-out infinite; }
-.stat b { display: block; font-family: 'Anton', sans-serif; font-weight: 400; font-size: 1.4rem; line-height: 1.05; color: #fff; text-shadow: 0 0 10px rgba(255, 196, 0, .7); }
-.stat span { font-size: .6rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 800; color: var(--crema); }
-.sub { font-size: .66rem; text-align: center; margin: 6px 0 0; padding: 6px 10px; background: #0b0b0d; border: 1.5px solid var(--crema); border-radius: 999px; font-weight: 600; }
-.sub b { color: var(--amarillo); }
-/* La pantalla de la máquina */
-#juegoCanvas { flex: 1; min-height: 0; margin-top: 8px; display: flex; align-items: center; justify-content: center; }
-#juegoCanvas canvas { touch-action: none; border-radius: 12px; border: 3px solid #0a0a0c; box-shadow: 0 0 0 2px var(--metal), 0 0 18px rgba(251, 75, 8, .55), 0 10px 24px rgba(0, 0, 0, .6); }
-.aviso { margin: 6px 0; padding: 8px 10px; border-radius: 10px; background: #0b0b0d; font-size: .8rem; text-align: center; border: 2px solid var(--amarillo); }
+/* Botones de la máquina (Menú y sonido), dentro de la franja segura de la imagen (x 152..872): el fondo ya no trae botones dibujados */
+.ctl { position: absolute; top: 22px; width: 92px; height: 78px; display: flex; align-items: center; justify-content: center; border: 5px solid #ff8a1f; border-radius: 22px; background: linear-gradient(#2a2118, #120b05); color: #fff; font-family: 'Anton', sans-serif; font-size: 54px; line-height: 1; text-decoration: none; cursor: pointer; padding: 0; box-shadow: 0 0 14px rgba(251, 90, 10, .75), inset 0 3px 0 rgba(255, 255, 255, .18); text-shadow: 0 3px 0 #000; }
+.ctl:active { transform: translateY(3px); filter: brightness(1.25); }
+#hotMenu { left: 152px; }
+#btnSonido { left: 780px; font-size: 44px; }
+#btnSonido.off { filter: grayscale(1) brightness(.7); }
+
+/* Marcadores: paneles que tapan los de ejemplo de la imagen y muestran los datos reales */
+.panel { position: absolute; top: 134px; height: 108px; background: linear-gradient(#1d1308, #120b05); border: 6px solid #ff8a1f; border-radius: 26px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; animation: pulsoPanel 2.6s ease-in-out infinite; overflow: hidden; }
+.panel b { font-family: 'Anton', sans-serif; font-weight: 400; font-size: 58px; line-height: 1; color: #fff; text-shadow: 0 0 14px rgba(255, 196, 0, .7), 0 3px 0 #000; max-width: 100%; white-space: nowrap; }
+.panel span { font-size: 25px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: var(--crema); line-height: 1.1; margin-top: 2px; }
+#p1 { left: 152px; width: 170px; } #p2 { left: 336px; width: 170px; } #p3 { left: 520px; width: 170px; } #p4 { left: 702px; width: 170px; }
+#pillHoy { position: absolute; left: 152px; top: 246px; width: 720px; height: 56px; background: #0b0b0d; border: 3px solid var(--crema); border-radius: 29px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; white-space: nowrap; }
+#pillHoy b { color: var(--amarillo); margin: 0 .25em; }
+#marcador { position: absolute; left: 436px; top: 358px; width: 176px; height: 122px; background: linear-gradient(#17120d, #0b0805); border: 6px solid #ff8a1f; border-radius: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 22px rgba(251, 120, 20, .8), inset 0 0 14px rgba(255, 170, 60, .25); }
+#uiPuntos { font-family: 'Anton', sans-serif; font-size: 80px; line-height: 1; color: var(--amarillo); text-shadow: 0 0 14px rgba(251, 75, 8, .95), 3px 3px 0 #000; transform-origin: center; }
+#uiPuntos.pulso { animation: golpeNum .22s ease-out; }
+#cinta { position: absolute; left: 322px; top: 470px; width: 400px; height: 52px; background: var(--amarillo); clip-path: polygon(2% 6%, 100% 0, 97% 100%, 0 94%); display: flex; align-items: center; justify-content: center; }
+#uiMeta { font-size: 30px; font-weight: 800; color: #121214; white-space: nowrap; }
+/* El lienzo de Phaser cubre SOLO el tablero y la bandeja, alineado con el marco de la imagen */
+#juegoCanvas { position: absolute; left: 172px; top: 518px; width: 684px; height: 854px; display: flex; align-items: center; justify-content: center; }
+#juegoCanvas canvas { touch-action: none; display: block; }
+.aviso { position: fixed; left: 10px; right: 10px; top: 8px; z-index: 20; padding: 8px 10px; border-radius: 10px; background: rgba(11, 11, 13, .95); font-size: .8rem; text-align: center; border: 2px solid var(--amarillo); }
 .aviso.err { background: #4a1212; color: #ffd0c4; border-color: #e3212b; }
 
 /* Ventanas (sin sesión / resultado) */

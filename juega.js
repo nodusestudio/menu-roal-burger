@@ -200,7 +200,8 @@
         $('stRacha').textContent = estado.racha;
         $('stCredito').textContent = peso(estado.creditoJuego);
         $('stHoy').textContent = `${fmt(estado.puntosHoy)} / ${fmt(estado.topeDiario)}`;
-        $('stBonus').textContent = Object.keys(estado.rachaBonus || {}).map((d) => `${d} días +${estado.rachaBonus[d]}`).join(' · ');
+        $('stBonus').textContent = Object.keys(estado.rachaBonus || {}).map((d) => `${d}d +${estado.rachaBonus[d]}`).join(' · ');
+        const cr = $('stCredito'); cr.style.fontSize = cr.textContent.length > 7 ? '34px' : (cr.textContent.length > 5 ? '44px' : '');
     }
     async function cargarEstado() {
         const r = await funciones.httpsCallable('juegoEstado')({});
@@ -248,9 +249,11 @@
 
     function crearJuego() {
         const T = root.BlockRoalTema;                       // tema visual (juega-tema.js): aquí no se dibuja nada propio
-        // GEOMETRÍA del tablero (no cambiar sin autorización): 8x8 casillas de 40 px, lienzo de 360x640.
-        const W = 360, H = 640, CELDA = 40, GX = 20, GY = 96, BANDEJA_Y = 480;
-        const d = { W, H, CELDA, GX, GY, N, BANDEJA_Y, INGREDIENTES };
+        // GEOMETRÍA del tablero (no cambiar sin autorización): 8x8 casillas de 40 px. El lienzo (374x467) cubre solo el tablero y la bandeja de
+        // piezas, alineado con el marco dibujado en juega-fondo.webp (ver juega-tema.js). CX_BANDEJA = centro de cada una de las 3 ranuras.
+        const W = 374, H = 467, CELDA = 40, GX = 27, GY = 15, BANDEJA_Y = 351;
+        const CX_BANDEJA = [60, 187, 314];
+        const d = { W, H, CELDA, GX, GY, N, BANDEJA_Y, CX_BANDEJA, INGREDIENTES };
         const PAL = T.PAL;
 
         class Escena extends Phaser.Scene {
@@ -305,14 +308,15 @@
                 p.flota = this.tweens.add({ targets: p.cont, y: p.home.y - 5, duration: 900 + Math.random() * 400, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
             }
             crearPieza(dd, idx) {
-                const esc = 0.55, ancho = dd.shape[0].length * CELDA, alto = dd.shape.length * CELDA;
-                const cx = 60 + idx * 120;
+                const ancho = dd.shape[0].length * CELDA, alto = dd.shape.length * CELDA;
+                const esc = Math.min(0.75, 100 / ancho, 90 / alto); // lo más grande que cabe en la ranura
+                const cx = CX_BANDEJA[idx];
                 const cont = this.add.container(cx - (ancho * esc) / 2, BANDEJA_Y + 60 - (alto * esc) / 2).setScale(esc).setDepth(8);
                 for (let i = 0; i < dd.shape.length; i++) for (let j = 0; j < dd.shape[0].length; j++) {
                     if (dd.shape[i][j]) cont.add(this.add.image(j * CELDA + (CELDA - 3) / 2, i * CELDA + (CELDA - 3) / 2, 'ing_' + INGREDIENTES[dd.ing]));
                 }
                 // Zona de toque propia, centrada en la ranura de la bandeja y generosa (116x136): se agarra desde cualquier parte, sin importar la forma.
-                const zona = this.add.zone(cx, BANDEJA_Y + 60, 116, 136).setInteractive();
+                const zona = this.add.zone(cx, BANDEJA_Y + 60, 120, 112).setInteractive();
                 const pieza = { cont, zona, shape: dd.shape, ing: dd.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
                 zona.on('pointerdown', (p) => {
                     if (this.fin || pieza.usada || this.arrastrando) return;
@@ -397,7 +401,7 @@
                     if (navigator.vibrate) try { navigator.vibrate(30 + nLineas * 10); } catch (_) { /* sin vibración */ }
                 } else Sonido.colocar();
                 this.txtPuntos.setText(fmt(this.puntos));
-                this.tweens.add({ targets: this.txtPuntos, scale: { from: 1.3, to: 1 }, duration: 200, ease: 'Back.Out' });
+                if (this.txtPuntos.pulso) this.txtPuntos.pulso();
                 this.actualizarMeta();
                 const quedan = this.piezas.filter((p) => !p.usada);
                 if (!quedan.length) this.repartir();
@@ -418,7 +422,8 @@
 
         juego = new Phaser.Game({
             type: Phaser.AUTO, parent: 'juegoCanvas', width: W, height: H, transparent: true,
-            scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+            // Sin FIT: el lienzo vive dentro de un escenario escalado con CSS, y Phaser mediría ese tamaño ya reducido. Zoom fijo = tamaño de diseño (684 px) / lógico (374 px).
+            scale: { mode: Phaser.Scale.NONE, zoom: 684 / 374, autoCenter: Phaser.Scale.NO_CENTER },
             input: { touch: { capture: true } }, scene: Escena, render: { antialias: true }
         });
     }
@@ -432,10 +437,10 @@
     }
 
     function pintarBotonesSonido() {
-        $('btnMusica').textContent = Sonido.musicaOn ? '🎵' : '🔇';
-        $('btnMusica').setAttribute('aria-pressed', String(Sonido.musicaOn));
-        $('btnSfx').textContent = Sonido.sfxOn ? '🔊' : '🔈';
-        $('btnSfx').setAttribute('aria-pressed', String(Sonido.sfxOn));
+        const on = Sonido.musicaOn || Sonido.sfxOn;
+        $('btnSonido').classList.toggle('off', !on);
+        $('btnSonido').textContent = on ? '🔊' : '🔇';
+        $('btnSonido').setAttribute('aria-pressed', String(on));
     }
 
     const PHASER_URL = 'https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js';
@@ -450,6 +455,9 @@
     }
 
     async function arrancar() {
+        root.BlockRoalTema.ajustarEscena();
+        window.addEventListener('resize', root.BlockRoalTema.ajustarEscena);
+        window.addEventListener('orientationchange', () => setTimeout(root.BlockRoalTema.ajustarEscena, 250));
         const intro = root.BlockRoalTema.iniciarIntro($('warp'));
         const phaserP = cargarPhaser();                       // se baja YA, en paralelo con Firebase y el servidor
         phaserP.catch(() => {});
@@ -470,8 +478,7 @@
             setTimeout(() => { intro.parar(); $('intro').hidden = true; }, 900);
         }
         $('btnEntrar').addEventListener('click', entrar);
-        $('btnMusica').addEventListener('click', () => { Sonido.init(); Sonido.setMusica(!Sonido.musicaOn); pintarBotonesSonido(); });
-        $('btnSfx').addEventListener('click', () => { Sonido.init(); Sonido.setSfx(!Sonido.sfxOn); pintarBotonesSonido(); Sonido.clic(); });
+        $('btnSonido').addEventListener('click', () => { Sonido.init(); const apagar = Sonido.musicaOn || Sonido.sfxOn; Sonido.setMusica(!apagar); Sonido.setSfx(!apagar); pintarBotonesSonido(); if (!apagar) Sonido.clic(); });
         pintarBotonesSonido();
 
         if (!window.firebase || !window.FIREBASE_CONFIG) { aviso('No se pudo cargar el servicio. Recarga la página.', true); $('intro').hidden = true; $('app').hidden = false; return; }
