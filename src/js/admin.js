@@ -16109,6 +16109,69 @@ function _fidColaCrearEnvio(entrada) {
     return _fidEnvios.find((x) => x.id === id);
 }
 
+// Cambiar el producto de una tarjeta de la cola (solo hoy): reescribe favorito, regalo y mensaje, y lo guarda en la cola del día.
+function _fidRegaloParaProducto(tipo, nombre) {
+    const n = String(nombre || '').trim();
+    const prod = `tu ${n}`;
+    const qs = tipo === 'carne_queso' ? ' y doble queso' : '';
+    if (tipo === 'queso') return `un queso extra en ${prod}`;
+    if (/perro|hot\s?dog|salchicha/i.test(n)) return `una salchicha extra${qs} gratis en ${prod}`;
+    if (/salchi/i.test(n)) return `doble proteína${qs} gratis en ${prod}`;
+    if (/\b(2|dos)\s*carnes?\b|doble/i.test(n) && !/pepito/i.test(n)) return `una carne extra${qs} gratis en ${prod}, para que te quede triple 🍔`;
+    return `una adición de carne${qs} gratis en ${prod}`;
+}
+function _fidColaActualizar(dia, k, campos) {
+    if (!firebaseDb || !dia || !k) return;
+    const ref = firebaseDb.collection('fidelizacion_cola').doc(dia);
+    firebaseDb.runTransaction(async (tx) => {
+        const s = await tx.get(ref);
+        if (!s.exists) return;
+        tx.update(ref, { entradas: (s.data().entradas || []).map((x) => (x.k === k ? { ...x, ...campos } : x)) });
+    }).catch((err) => console.warn('[Reactivar] cola:', err.code || err.message));
+}
+async function _fidCambiarProductoCola(entrada, alCambiar) {
+    const tel = String(entrada.telefono || '').replace(/\D/g, '');
+    const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === entrada.k) || { customerPhoneDigits: tel, customerPhone: tel };
+    let opciones = [];
+    try {
+        const cuenta = new Map();
+        (await _fidPedidosCliente(cliente) || []).filter((o) => o && o.anulado !== true && o.voided !== true).forEach((o) => (o.items || []).forEach((it) => {
+            if (!it || it.parentItemKey || it.cortesia) return;
+            const nom = String(it.productName || '').trim(); const cat = String(it.categoryName || '');
+            if (!nom || nom === 'Producto' || /combo|bebida|gaseosa|jugo|adicion|extra|salsa|ajuste|papas\s*y\s*bebida/i.test(`${nom} ${cat}`)) return;
+            cuenta.set(nom, (cuenta.get(nom) || 0) + (Number(it.quantity) || 1));
+        }));
+        opciones = [...cuenta.entries()].sort((a, b) => b[1] - a[1]);
+    } catch (_) { /* sin historial: queda el campo libre */ }
+    const fondo = document.createElement('div');
+    fondo.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+    const caja = document.createElement('div');
+    caja.style.cssText = 'width:min(440px,100%);border-radius:12px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
+    const B = 'border:1px solid rgba(255,255,255,.25);border-radius:9px;padding:10px;font-weight:700;font-size:14px;cursor:pointer;color:#fff;width:100%;background:rgba(255,255,255,.08);text-align:left;margin-top:8px;';
+    caja.innerHTML = `<div style="font-weight:800;font-size:17px">🔄 Cambiar producto de ${escapeHtml(entrada.nombre)}</div><div style="opacity:.75;font-size:13px;margin:4px 0 6px">Solo para este mensaje. Cambia el producto y el regalo del texto.</div>`
+        + (opciones.length ? opciones.slice(0, 8).map(([n, v]) => `<button type="button" data-p="${escapeHtml(n)}" style="${B}">${escapeHtml(n)} <span style="opacity:.6;font-weight:400">· ${v} ${v === 1 ? 'vez' : 'veces'}</span></button>`).join('') : '<div style="opacity:.7;font-size:13px">No encontré otros productos en su historial.</div>')
+        + `<input type="text" data-libre maxlength="80" placeholder="O escribe otro (ej. Salchipapa Súper)" style="${B}text-align:left;cursor:text">`
+        + `<button type="button" data-usar style="${B}text-align:center">Usar el que escribí</button><button type="button" data-cerrar style="${B}text-align:center;background:transparent">Cancelar</button>`;
+    fondo.appendChild(caja); document.body.appendChild(fondo);
+    const cerrar = (v) => { document.removeEventListener('keydown', tecla, true); fondo.remove(); if (v) alCambiar(v); };
+    const tecla = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(null); } };
+    document.addEventListener('keydown', tecla, true);
+    fondo.addEventListener('click', (e) => {
+        if (e.target === fondo || e.target.closest('[data-cerrar]')) { cerrar(null); return; }
+        const b = e.target.closest('button[data-p]'); if (b) { cerrar(b.dataset.p); return; }
+        if (e.target.closest('[data-usar]')) { const v = String(caja.querySelector('[data-libre]').value || '').trim(); if (v) cerrar(v); }
+    });
+}
+function _fidAplicarProductoCola(entrada, nuevo) {
+    const viejoRegalo = entrada.regaloTexto || '';
+    const nuevoRegalo = _fidRegaloParaProducto(entrada.regalo, nuevo);
+    let msg = String(entrada.mensaje || '');
+    msg = msg.replace(/favorito, [^:\n]+:/, () => `favorito, ${nuevo}:`).replace(/tu pedido: [^\n]+?\./, () => `tu pedido: ${nuevo}.`);
+    if (viejoRegalo && msg.includes(viejoRegalo)) msg = msg.replace(viejoRegalo, () => nuevoRegalo);
+    entrada.favorito = nuevo; entrada.regaloTexto = nuevoRegalo; entrada.mensaje = msg;
+    _fidColaActualizar(_fidCola && _fidCola.dia, entrada.k, { favorito: nuevo, regaloTexto: nuevoRegalo, mensaje: msg });
+}
+
 // Vista previa de Reactivar (cola del día o «Copiados, falta enviar»): imagen + texto, con Copiar imagen, Copiar texto y Ya lo envié.
 async function _fidPreviaReactivar({ k = '', envioId = '', postalInicial = null }) {
     let envio = envioId ? _fidEnvios.find((x) => x.id === envioId) : null;
@@ -16122,7 +16185,7 @@ async function _fidPreviaReactivar({ k = '', envioId = '', postalInicial = null 
     ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
     document.body.appendChild(ov);
     _bindOverlayClose(ov, _fidCerrarPrevia);
-    const favorito = (entrada && entrada.favorito) || _fidFavoritoDeMensaje(envio && envio.mensaje);
+    let favorito = (entrada && entrada.favorito) || _fidFavoritoDeMensaje(envio && envio.mensaje);
     // Mensajes ya guardados con el texto viejo («una doble carne gratis en tu hamburguesa») se corrigen al mostrarlos y al copiarlos.
     const textoActual = () => (envio && envio.mensaje) ? _fidRegaloEnProducto(envio.mensaje, favorito) : _fidRegaloEnProducto(String(entrada.mensaje || '').replace('{VENCE}', _fidVenceTexto(Number(entrada.vigenciaDias) || Number(_fidCfg.vigenciaDias) || 3)), favorito);
     const clave = k || (envio && envio.colaK) || nombre;
@@ -16139,12 +16202,17 @@ async function _fidPreviaReactivar({ k = '', envioId = '', postalInicial = null 
     const telU = (entrada && entrada.telefono) || (envio && envio.telefono);
     const clienteU = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === _sqPhoneKey(telU));
     const diasU = entrada && Number.isFinite(Number(entrada.dias)) ? Number(entrada.dias) : (clienteU && _tsMs(clienteU.lastOrderAt) ? Math.floor((Date.now() - _tsMs(clienteU.lastOrderAt)) / 86400000) : null);
-    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: telU, extraDer: _fidUltimoPedidoHtml(telU, diasU), texto: textoActual(), idTexto: 'fidPreviaTexto', botones: `<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button>${enviado ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Ya marcado como enviado</span>' : '<button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>'}`, hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, telefono: telU, extraDer: _fidUltimoPedidoHtml(telU, diasU), texto: textoActual(), idTexto: 'fidPreviaTexto', botones: `<button type="button" class="section-action-btn" data-fid-prev-txtcopiar>Copiar texto</button>${enviado ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">📨 Ya marcado como enviado</span>' : '<button type="button" class="feedback-pending-btn" data-fid-prev-enviado>✅ Ya lo envié</button>'}${(!envio && entrada && entrada.estado === 'pendiente') ? '<button type="button" class="ghost-button" data-fid-prev-cambiar title="Elegir otro producto para este mensaje">🔄 Cambiar producto</button><button type="button" class="ghost-button" data-fid-prev-omitir title="Hoy no le escribo a este cliente">🚫 Descartar hoy</button>' : ''}`, hint: 'Pega primero la imagen en el chat y luego el texto. Al copiar el texto queda en «Copiados, falta enviar»; cuando lo envíes toca «Ya lo envié» y se archiva en «Enviados hoy».' });
     ov.addEventListener('click', (ev) => {
         const t = ev.target;
         if (t.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (t.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
         if (t.closest('[data-fid-prev-otra]')) { fijo = null; pintarImagen(); return; }
+        if (t.closest('[data-fid-prev-omitir]')) { _fidColaMarcar(_fidCola && _fidCola.dia, k, 'omitido'); if (entrada) entrada.estado = 'omitido'; showNotice(`${nombre} descartado por hoy.`, 'ok'); _fidCerrarPrevia(); renderMetricasFeedback(); return; }
+        if (t.closest('[data-fid-prev-cambiar]')) {
+            _fidCambiarProductoCola(entrada, (nuevo) => { _fidAplicarProductoCola(entrada, nuevo); _fidPreviaReactivar({ k }); renderMetricasFeedback(); });
+            return;
+        }
         if (t.closest('[data-fid-prev-txtcopiar]')) {
             let primera = false;
             if (!envio) { if (_fidReactOcupado.has(k)) return; envio = _fidColaCrearEnvio(entrada); primera = true; renderMetricasFeedback(); }

@@ -53,7 +53,8 @@ const cfgDe = (raw = {}) => {
 const regaloConCosto = (tipo, cfg) => { const r = REGALOS[tipo]; const c = Number(cfg.costosRegalo && cfg.costosRegalo[tipo]); return { ...r, costo: Number.isFinite(c) && c > 0 ? c : r.costo }; };
 
 // Combos simples (Burger Normal/Papuda/Super, Perro… por 1, 2, 3 o 4 personas): el dueño pidió NO usarlos nunca como favorito ni para el regalo.
-const esComboSimple = (nom, cat) => /papas\s*y\s*bebida/i.test(String(cat || '')) || /combo\s*(de\s*)?(burger|burguer|hamburguesa|perro|hot\s*dog)/i.test(String(nom || ''));
+// También son "mejoras" y no platos: «Combo mediano/pequeño/grande (manzana)» = papas + bebida que se le suma a una burger (el sabor es de la bebida).
+const esComboSimple = (nom, cat) => /papas\s*y\s*bebida/i.test(String(cat || '')) || /combo\s*(de\s*)?(burger|burguer|hamburguesa|perro|hot\s*dog)/i.test(String(nom || '')) || /^\s*combo\s+(peque\w*|mediano|grande|xl|manzana|colombiana|uva|naranja|cola)\b/i.test(String(nom || ''));
 const esAnulado = (o) => !o || o.anulado === true || o.voided === true || /cancel/i.test(String(o.status || o.estado || ''));
 
 // Agrupa los pedidos por cliente (llave = últimos 10 dígitos del teléfono). Sirve el favorito con la misma regla del panel:
@@ -77,7 +78,7 @@ function agruparClientes(pedidos) {
             const nom = String(it.productName || '').trim(); const cat = String(it.categoryName || '');
             const combo = /combo/i.test(`${nom} ${cat}`);
             if (!nom || nom === 'Producto' || (!combo && /bebida|gaseosa|jugo|adicion|extra|salsa|ajuste/i.test(cat))) return;
-            if (combo && esComboSimple(nom, cat)) return; // nunca se usa como favorito: queda el siguiente que más pide
+            if (combo || esComboSimple(nom, cat)) return; // regla del dueño 2026-11-22: ningún combo es favorito; solo Burger premium, Pepitos, Salchipapas y Perros. Queda el siguiente que más pide
             const p = c.prod.get(nom) || { veces: 0, combo };
             p.veces += Number(it.quantity) || 1; c.prod.set(nom, p);
         });
