@@ -4231,11 +4231,41 @@ function feedbackDisponibleDesde(order, sentMs) {
 }
 function feedbackFueraDeDia(order, sentMs, now) { return feedbackTipoOrden(order) === 'general' && _sqDayKey(sentMs) !== _sqDayKey(now); }
 
+// Un mismo cliente no recibe más de una encuesta cada 7 días (el que pide a diario no se satura).
+// Se mira el historial de pedidos con encuesta enviada: los activos (ordersState) y los archivados de los últimos 7 días (consulta liviana, se refresca cada 10 min).
+const FEEDBACK_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+let _fbCooldownArch = []; // [{ id, phoneKey, ts }]
+let _fbCooldownLoadedAt = 0;
+function _feedbackCargarCooldown() {
+    if (!firebaseDb || Date.now() - _fbCooldownLoadedAt < 10 * 60 * 1000) return;
+    _fbCooldownLoadedAt = Date.now();
+    const desde = firebase.firestore.Timestamp.fromMillis(Date.now() - FEEDBACK_COOLDOWN_MS);
+    firebaseDb.collection(ORDERS_ARCHIVE_COLLECTION).where('feedbackRequestedAt', '>=', desde).get().then((snap) => {
+        _fbCooldownArch = snap.docs.map((d) => { const x = d.data(); return { id: d.id, phoneKey: _sqPhoneKey(x.customerPhoneDigits || x.customerPhone), ts: _tsMs(x.feedbackRequestedAt) }; });
+        _feedbackPendingSig = null;
+        renderFeedbackPending();
+    }).catch(() => { _fbCooldownLoadedAt = 0; });
+}
+// true si el cliente de este pedido ya recibió una encuesta (en otro pedido) en los últimos 7 días.
+function feedbackClienteReciente(order) {
+    const key = _sqPhoneKey(order.customerPhoneDigits || order.customerPhone);
+    if (!key) return false;
+    const limite = Date.now() - FEEDBACK_COOLDOWN_MS;
+    if (_fbCooldownArch.some((a) => a.id !== order.id && a.phoneKey === key && a.ts >= limite)) return true;
+    return ordersState.some((o) => {
+        if (o.id === order.id || _sqPhoneKey(o.customerPhoneDigits || o.customerPhone) !== key) return false;
+        const ts = _tsMs(o.feedbackRequestedAt);
+        return (ts && ts >= limite) || _feedbackMarcadosLocal.has(o.id);
+    });
+}
+
 function getPendingFeedbackOrders() {
     const now = Date.now();
+    _feedbackCargarCooldown();
     return ordersState.filter((order) => {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
+        if (feedbackClienteReciente(order)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
         return sentMs > 0 && now >= feedbackDisponibleDesde(order, sentMs) && now - sentMs <= FEEDBACK_MAX_AGE_TIPO[feedbackTipoOrden(order)] && !feedbackFueraDeDia(order, sentMs, now);
@@ -34698,6 +34728,7 @@ function _getFeedbackPendingForClose() {
         if (!isOrderClosed(order) || order.anulado === true || order.voided === true) return false;
         // Al cerrar caja se recuerdan TODOS los feedback pendientes: Sabe a Quindío (2×1) y Fidelización (el resto).
         if (order.feedbackRequestedAt || order.feedbackAnsweredAt || _feedbackMarcadosLocal.has(order.id)) return false;
+        if (feedbackClienteReciente(order)) return false;
         if (String(order.customerPhoneDigits || order.customerPhone || '').replace(/\D/g, '').length < 10) return false;
         const sentMs = _tsMs(order.enviadoAt) || _tsMs(order.entregadoAt) || _tsMs(order.deliveredAt);
         return sentMs > 0 && now - sentMs <= FEEDBACK_MAX_AGE_MS;
