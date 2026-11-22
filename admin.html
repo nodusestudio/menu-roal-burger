@@ -16573,7 +16573,7 @@
                     <span class="pos-drawer-title">Pedido actual</span>
                     <!-- El botón Info ya no se muestra: se toca el recuadro «Mesa 1 · cliente» del carrito (misma ventana). Queda oculto porque ese recuadro lo dispara. -->
                     <button type="button" id="posCartCustomizeBtn" hidden aria-hidden="true" tabindex="-1" title="Editar tipo de pedido y cliente"></button>
-                    <button type="button" class="pos-drawer-clear-btn" id="posClearCartBtn" title="Vaciar pedido" aria-label="Vaciar pedido">&times;</button>
+                    <button type="button" class="pos-drawer-clear-btn" id="posClearCartBtn" title="Vaciar pedido" aria-label="Vaciar pedido">🗑</button>
                     <button type="button" class="pos-drawer-close" id="posCartDrawerCloseBtn">&#215;</button>
                 </div>
                 <div id="posCartTicketInfo" class="pos-cart-ticket-info" hidden></div>
@@ -17088,14 +17088,16 @@
     /* ✎ de la cuponera / cupón exclusivo: mismo aspecto que el ✎ de los productos, debajo del precio y a la derecha */
     html body .pos-item-combo-edit { grid-column: 3; grid-row: 2; justify-self: end; width: 22px; height: 22px; padding: 0; border: none; background: transparent; color: rgba(200,220,255,.55); font-size: .9rem; line-height: 1; cursor: pointer; border-radius: 6px; }
     html body .pos-item-combo-edit:hover { color: rgba(200,220,255,.95); background: rgba(255,255,255,.08); }
-    /* Cuponera / cupón exclusivo: el detalle puede ser largo, así que la fila 2 absorbe la altura y el ✎ queda pegado justo debajo del precio
-       (antes se iba al fondo de la tarjeta). La pastilla va con la esquina común (sin forma de píldora) y el detalle alineado a la izquierda. */
-    html body .pos-item-row-combo { grid-template-rows: auto 1fr; align-items: start; }
-    html body .pos-item-row-combo .pos-item-name { min-height: 0; }
-    html body .pos-item-row-combo .pos-item-price { align-self: start; }
-    html body .pos-item-row-combo .pos-item-combo-edit { grid-column: 3; grid-row: 2; align-self: start; justify-self: end; }
-    html body .pos-item-row-combo .pos-item-combo-badge { display: block; width: fit-content; margin-bottom: 4px; border-radius: var(--ui-radius, 9px); }
+    /* Cuponera / cupón exclusivo: la pastilla va SOLA en la 1.ª línea; el nombre (con su detalle) a la izquierda y el PRECIO en la línea del nombre,
+       a la derecha (misma regla que los productos). El ✎ va pegado a la papelera, arriba a la derecha. */
+    html body .pos-item-row-combo { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: start; }
+    html body .pos-item-row-combo .pos-item-combo-badge { grid-column: 1 / -1; grid-row: 1; display: block; width: fit-content; margin: 0 0 3px; border-radius: var(--ui-radius, 9px); }
+    html body .pos-item-row-combo .pos-item-name { grid-column: 1; grid-row: 2; min-height: 0; }
+    html body .pos-item-row-combo .pos-item-price { grid-column: 2; grid-row: 2; justify-self: end; align-self: start; }
+    html body .pos-item-row-combo .pos-item-combo-edit { position: absolute; top: 1px; right: 30px; grid-column: auto; grid-row: auto; width: 20px; height: 20px; }
     html body .pos-item-row-combo .pos-item-combo-list { margin-top: 4px; line-height: 1.35; text-align: left; overflow-wrap: anywhere; }
+    /* papelera (eliminar) en lugar de la × */
+    html body .pos-item-row .pos-item-remove, html body .pos-extra-chip .pos-extra-chip-del { font-size: .72rem; }
     /* táctil: el gesto horizontal lo maneja el carrito (deslizar = borrar / editar); el vertical sigue siendo scroll */
     html body .pos-item-row, html body .pos-extra-chip { touch-action: pan-y; }
     html body .pos-item-row .pos-item-name { letter-spacing: 0; }

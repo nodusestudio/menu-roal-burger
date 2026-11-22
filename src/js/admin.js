@@ -1114,7 +1114,7 @@ function renderClientAddrChips(addresses) {
     list.innerHTML = addresses.filter(Boolean).map((addr) =>
         `<div class="client-addr-chip" data-addr="${escapeHtml(addr)}">
             <span class="client-addr-text">${escapeHtml(addr)}</span>
-            <button type="button" class="client-addr-del" aria-label="Eliminar direccion">&times;</button>
+            <button type="button" class="client-addr-del" aria-label="Eliminar direccion">🗑</button>
         </div>`
     ).join('');
 }
@@ -8552,7 +8552,7 @@ function openBebidaModal(bebida = null) {
             const delBtn2 = document.createElement('button');
             delBtn2.type = 'button';
             delBtn2.className = 'bebida-pres-del';
-            delBtn2.textContent = '×';
+            delBtn2.textContent = '🗑';
             delBtn2.addEventListener('click', () => {
                 if (presentaciones.length === 1) return;
                 presentaciones.splice(idx, 1);
@@ -8576,7 +8576,7 @@ function openBebidaModal(bebida = null) {
                     const chipDel = document.createElement('button');
                     chipDel.type = 'button';
                     chipDel.className = 'bebida-sabor-chip-del';
-                    chipDel.textContent = '×';
+                    chipDel.textContent = '🗑';
                     chipDel.title = 'Quitar sabor';
                     chipDel.addEventListener('click', () => {
                         presentaciones[idx].sabores.splice(si, 1);
@@ -9408,15 +9408,15 @@ function renderPosOrderItems() {
                 ? `<span class="pos-item-combo-list">${item.comboLineas ? item.comboItems.map((l) => escapeHtml(l)).join('<br>') : escapeHtml(item.comboItems.join(' + '))}</span>`
                 : '';
             return `<div class="pos-item-row pos-item-row-combo" data-item-key="${escapeHtml(item.itemKey)}">
+                <span class="pos-item-combo-badge">${item.comboLineas ? '🎟️ Cuponera' : '⭐ Cupón Exclusivo'}</span>
                 <div class="pos-item-name">
-                    <span class="pos-item-combo-badge">${item.comboLineas ? '🎟️ Cuponera' : '⭐ Cupón Exclusivo'}</span>
                     ${escapeHtml(item.productName)}
                     ${listHTML}
                 </div>
                 <div class="pos-item-qty-price">
                     ${priceHTML}
                     <button type="button" class="pos-item-combo-edit" data-item-key="${escapeHtml(item.itemKey)}" title="Cambiar el sabor de la bebida o agregar una especificación del cliente">✎</button>
-                    <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
+                    <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}" aria-label="Quitar">🗑</button>
                 </div>
             </div>`;
         }
@@ -9433,7 +9433,7 @@ function renderPosOrderItems() {
                 </div>
                 <div class="pos-item-qty-price">
                     <div class="pos-item-price pos-item-price-ajuste">${esDesc ? '−' : '+'}${formatMoney(monto)}</div>
-                    <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}" aria-label="Quitar">&times;</button>
+                    <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}" aria-label="Quitar">🗑</button>
                 </div>
             </div>`;
         }
@@ -9464,7 +9464,7 @@ function renderPosOrderItems() {
                     <button type="button" class="pos-qty-plus" data-item-key="${escapeHtml(item.itemKey)}">+</button>
                 </div>
                 ${priceHTML}
-                <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}">&times;</button>
+                <button type="button" class="pos-item-remove" data-item-key="${escapeHtml(item.itemKey)}" aria-label="Quitar">🗑</button>
             </div>
         </div>`;
     };
@@ -9475,7 +9475,7 @@ function renderPosOrderItems() {
             ${item.unitPrice > 0
                 ? `<span class="pos-extra-chip-price">+${formatMoney(item.unitPrice * Number(item.quantity || 1))}</span>`
                 : `<span class="pos-extra-chip-incl">incl.</span>`}
-            <button type="button" class="pos-item-remove pos-extra-chip-del" data-item-key="${escapeHtml(item.itemKey)}" aria-label="Quitar">&times;</button>
+            <button type="button" class="pos-item-remove pos-extra-chip-del" data-item-key="${escapeHtml(item.itemKey)}" aria-label="Quitar">🗑</button>
         </div>`;
 
     const renderGroup = (item) => {
@@ -9803,7 +9803,7 @@ function renderPosUpgradeStep1() {
             <div class="pus-extra-row">
                 <span class="pus-extra-name">${escapeHtml(e.name)}</span>
                 <span class="pus-extra-price">${e.price > 0 ? '+' + formatMoney(e.price) : 'incluido'}</span>
-                <button type="button" class="pus-extra-del" data-extra-idx="${i}">×</button>
+                <button type="button" class="pus-extra-del" data-extra-idx="${i}">🗑</button>
             </div>`).join('')}
         </div>` : '';
 
@@ -31114,7 +31114,7 @@ function _pfRenderSplitParts() {
                     ${methods.map((m) => `<button type="button" class="dpm-part-method-chip${part.method === m.id ? ' selected' : ''}"
                         data-part-method="${m.id}" data-part-idx="${idx}" title="${escapeHtml(m.label)}">${m.icon}</button>`).join('')}
                 </div>
-                ${canRemove ? `<button type="button" class="dpm-part-remove-btn" data-part-remove="${idx}">×</button>` : ''}
+                ${canRemove ? `<button type="button" class="dpm-part-remove-btn" data-part-remove="${idx}">🗑</button>` : ''}
             </div>
             <div class="dpm-part-bottom">
                 ${labelHtml}
@@ -36535,7 +36535,7 @@ function renderCategoriasGastosPanel() {
                 ${(cat.subs || []).map((s, i) => `
                     <span class="cat-sub-chip">
                         ${escapeHtml(s)}
-                        <button type="button" data-cat-del-sub="${escapeHtml(cat.id)}" data-sub-idx="${i}" title="Quitar">×</button>
+                        <button type="button" data-cat-del-sub="${escapeHtml(cat.id)}" data-sub-idx="${i}" title="Quitar">🗑</button>
                     </span>`).join('')}
                 <div class="cat-sub-add-wrap">
                     <input type="text" class="cat-sub-input" data-cat-sub-input="${escapeHtml(cat.id)}" placeholder="Nueva subcategoría…" maxlength="40">
