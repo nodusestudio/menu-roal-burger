@@ -78,6 +78,8 @@
     const Sonido = (function () {
         let ctx = null, master = null, sfxG = null, musG = null, timer = null, paso = 0, proxT = 0, corriendo = false;
         let musicaOn = true, sfxOn = true;
+        const VOL_MUSICA = 0.4;
+        let an = null, drum = null, mus = null, duck = null, comp = null, snareBus = null, leadBus = null, curvaSat = null;
         try { const o = JSON.parse(localStorage.getItem('blockroal_snd') || '{}'); musicaOn = o.m !== false; sfxOn = o.s !== false; } catch (_) { /* sin almacenamiento */ }
         const guardar = () => { try { localStorage.setItem('blockroal_snd', JSON.stringify({ m: musicaOn, s: sfxOn })); } catch (_) { /* nada */ } };
         const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -89,7 +91,9 @@
             ctx = new AC();
             master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
             sfxG = ctx.createGain(); sfxG.gain.value = sfxOn ? 0.85 : 0; sfxG.connect(master);
-            musG = ctx.createGain(); musG.gain.value = musicaOn ? 0.3 : 0; musG.connect(master);
+            musG = ctx.createGain(); musG.gain.value = musicaOn ? VOL_MUSICA : 0; musG.connect(master);
+            an = ctx.createAnalyser(); an.fftSize = 512; master.connect(an);
+            armarMezcla();
             if (musicaOn) iniciarMusica();
         }
         function tono(f, t0, dur, tipo, vol, dest, f2) {
@@ -111,25 +115,83 @@
             const g = ctx.createGain(); g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
             s.connect(f); f.connect(g); g.connect(dest); s.start(t0); s.stop(t0 + dur + 0.02);
         }
-        // Música ORIGINAL (no es ninguna canción existente): dembow de barrio a 96 bpm. El ritmo dembow (bombo cuadrado + caja "tun-ka-tun-ka") es del género,
-        // no de nadie; la melodía, el bajo y el rasgueo de cuatro los compuse aquí. Maracas de 16avos al estilo llanero.
-        const RAICES = [57, 55, 53, 55];                       // La menor – Sol – Fa – Sol (un acorde por compás)
-        const TERCERA = [3, 4, 4, 4];
-        const BAJO_PASOS = [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0];
-        const RIFF_A = [0, -1, -1, 3, -1, 5, -1, -1, 7, -1, 5, -1, 3, -1, 0, -1];
-        const RIFF_B = [0, -1, -1, 3, -1, 5, -1, -1, 10, -1, 7, -1, 5, -1, 3, -1];
+        // ── Música ORIGINAL: reggaetón urbano a 94 bpm (no es ninguna canción existente). El ritmo dembow es del género, no de nadie; el bajo, los acordes y la melodía son
+        // de aquí. Mezcla con bombo de 808, caja con clap y eco, hi-hats con redobles, congas, bajo 808 saturado que se desliza, acordes de sintetizador tipo "stab"
+        // (cadencia andaluza La–Sol–Fa–Mi), melodía de campana con eco, compresor y "sidechain" (la mezcla se aparta cuando pega el bombo). Ciclo de 8 compases con
+        // arreglo por secciones: base → +acordes → +melodía → redoble y subida antes de volver a empezar.
+        const BPM = 94;
+        const RAICES = [57, 57, 55, 55, 53, 53, 52, 52];       // La, La, Sol, Sol, Fa, Fa, Mi, Mi
+        const TERCERA = [3, 3, 4, 4, 4, 4, 4, 4];               // La menor; Sol, Fa y Mi mayores
+        const BAJO_A = [[0, 5, 0], [3, 2, 0], [6, 3, 0], [10, 2, 0], [12, 3, 2]];      // [paso, largo en pasos, subida en semitonos]
+        const BAJO_B = [[0, 5, 0], [3, 2, 0], [6, 2, 0], [8, 2, 0], [11, 2, 0], [14, 2, 3]];
+        const LEAD_1 = [0, -1, -1, 0, -1, 3, -1, -1, 5, -1, 3, -1, 0, -1, -1, -1];
+        const LEAD_2 = [7, -1, -1, 5, -1, 3, -1, -1, 5, -1, 3, -1, 0, -1, -1, -1];
+        const LEAD_3 = [7, -1, 5, -1, 3, -1, 0, -1, 3, -1, 0, -1, -1, -1, -1, -1];
+        function armarMezcla() {
+            comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.2; comp.connect(musG);
+            drum = ctx.createGain(); drum.connect(comp);
+            duck = ctx.createGain(); duck.connect(comp);                     // todo lo melódico pasa por aquí: baja cuando pega el bombo
+            mus = ctx.createGain(); mus.connect(duck);
+            const len = Math.floor(ctx.sampleRate * 1.1), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+            for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.4); }
+            const rev = ctx.createConvolver(); rev.buffer = ir; const revG = ctx.createGain(); revG.gain.value = 0.55; rev.connect(revG); revG.connect(comp);
+            const dly = ctx.createDelay(1); dly.delayTime.value = (60 / BPM) * 0.75; const fb = ctx.createGain(); fb.gain.value = 0.34; dly.connect(fb); fb.connect(dly); const dg = ctx.createGain(); dg.gain.value = 0.3; dly.connect(dg); dg.connect(comp);
+            snareBus = ctx.createGain(); snareBus.connect(drum); const sr = ctx.createGain(); sr.gain.value = 0.4; snareBus.connect(sr); sr.connect(rev);
+            leadBus = ctx.createGain(); leadBus.connect(duck); const ld = ctx.createGain(); ld.gain.value = 0.7; leadBus.connect(ld); ld.connect(dly); const lr = ctx.createGain(); lr.gain.value = 0.3; leadBus.connect(lr); lr.connect(rev);
+            curvaSat = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; curvaSat[i] = Math.tanh(2.4 * x); }
+        }
+        function bombo(t) {
+            tono(150, t, 0.24, 'sine', 1.0, drum, 40); ruido(t, 0.012, 0.35, drum, 2500);
+            duck.gain.cancelScheduledValues(t); duck.gain.setValueAtTime(0.28, t); duck.gain.linearRampToValueAtTime(1, t + 0.2);
+        }
+        function caja(t, fuerte) { [0, 0.011, 0.022].forEach((o) => ruido(t + o, 0.08, fuerte ? 0.5 : 0.3, snareBus, 1400)); tono(210, t, 0.1, 'triangle', fuerte ? 0.4 : 0.22, snareBus, 150); }
+        function bajo808(t, f, dur, subida) {
+            const o = ctx.createOscillator(), ws = ctx.createWaveShaper(), g = ctx.createGain();
+            ws.curve = curvaSat; o.type = 'sine';
+            o.frequency.setValueAtTime(f * 1.7, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.035);
+            if (subida) o.frequency.setValueAtTime(f, t + dur * 0.62), o.frequency.exponentialRampToValueAtTime(f * Math.pow(2, subida / 12), t + dur);
+            g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 0.01); g.gain.setValueAtTime(0.9, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+            o.connect(ws); ws.connect(g); g.connect(mus); o.start(t); o.stop(t + dur + 0.05);
+        }
+        function acorde(t, notas, dur) {
+            notas.forEach((m) => {
+                const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+                o.type = 'sawtooth'; o.frequency.value = hz(m); f.type = 'lowpass'; f.Q.value = 3; f.frequency.setValueAtTime(3400, t); f.frequency.exponentialRampToValueAtTime(520, t + dur);
+                g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                o.connect(f); f.connect(g); g.connect(mus); o.start(t); o.stop(t + dur + 0.03);
+            });
+        }
+        function campana(t, f, dur) {
+            [['triangle', f, 0.2], ['sine', f * 2.005, 0.1]].forEach(([tipo, fr, v]) => {
+                const o = ctx.createOscillator(), g = ctx.createGain(); o.type = tipo; o.frequency.value = fr;
+                g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                o.connect(g); g.connect(leadBus); o.start(t); o.stop(t + dur + 0.03);
+            });
+        }
+        function subida(t, dur) { // ruido que sube antes de volver a empezar
+            const n = Math.floor(ctx.sampleRate * dur), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+            for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+            const s2 = ctx.createBufferSource(); s2.buffer = buf; const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.setValueAtTime(600, t); f.frequency.exponentialRampToValueAtTime(9000, t + dur);
+            const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + dur * 0.95); g.gain.linearRampToValueAtTime(0, t + dur);
+            s2.connect(f); f.connect(g); g.connect(drum); s2.start(t); s2.stop(t + dur + 0.02);
+        }
         function agendar() {
-            if (!ctx || !corriendo) return;
-            const tp = 60 / 96 / 4;
+            if (!ctx || !corriendo || !drum) return;
+            const tp = 60 / BPM / 4;
             while (proxT < ctx.currentTime + 0.25) {
-                const comp = Math.floor(paso / 16) % 4, k = paso % 16, raiz = RAICES[comp], t = proxT;
-                if (k % 4 === 0) tono(130, t, 0.16, 'sine', 0.95, musG, 42);                                                  // bombo
-                if (k === 3 || k === 6 || k === 11 || k === 14) { ruido(t, 0.09, 0.3, musG, 1800); tono(190, t, 0.07, 'triangle', 0.25, musG, 120); } // caja dembow
-                ruido(t, 0.035, k % 4 === 0 ? 0.05 : (k % 2 ? 0.2 : 0.11), musG, 8000);                                       // maracas con acento
-                if (BAJO_PASOS[k]) tono(hz(raiz - 24), t, tp * 2.6, 'sine', 0.85, musG, hz(raiz - 24) * 0.97);                 // bajo 808
-                const riff = (comp % 2 ? RIFF_B : RIFF_A)[k];
-                if (riff >= 0) tono(hz(raiz + 12 + riff), t, tp * 1.6, 'triangle', 0.16, musG);                                // riff
-                if (k === 2 || k === 5 || k === 8 || k === 10 || k === 13) [0, TERCERA[comp], 7].forEach((s2, i) => tono(hz(raiz + 12 + s2), t + i * 0.012, tp * 0.9, 'sawtooth', 0.045, musG)); // rasgueo de cuatro
+                const compas = Math.floor(paso / 16) % 8, k = paso % 16, raiz = RAICES[compas], t = proxT;
+                const ultimo = compas === 7, relleno = (compas === 3 || ultimo) && k >= 12;
+                if (ultimo && k === 0) subida(t, tp * 16);
+                if (!(ultimo && k === 15)) {                                                               // el último paso del ciclo queda en silencio (el "respiro")
+                    if (k % 4 === 0 && !(ultimo && k >= 12)) bombo(t);                                     // bombo en cada tiempo
+                    if (relleno) caja(t, k >= 14); else if (k === 3 || k === 6 || k === 11 || k === 14) caja(t, k === 6 || k === 14); // dembow 3-3-2 (y redoble en los rellenos)
+                    if (k === 14 && compas % 2 === 1 && !ultimo) ruido(t, 0.2, 0.15, drum, 7000);          // hi-hat abierto
+                    else if (k % 2 === 0 || (k % 4 === 3)) ruido(t, 0.03, k % 4 === 2 ? 0.2 : 0.11, drum, 8500); // hi-hats en 8vos + contratiempos
+                    if (k === 5 || k === 9 || k === 13) tono(k === 9 ? 280 : 190, t, 0.12, 'sine', 0.3, drum, k === 9 ? 205 : 130);       // congas
+                    (compas % 2 ? BAJO_B : BAJO_A).forEach(([p, l, sub]) => { if (p === k) bajo808(t, hz(raiz - 24), tp * l * 0.95, sub); }); // bajo 808
+                    if (compas >= 2 && (k === 0 || k === 3 || k === 6 || k === 10)) acorde(t, [raiz + 12, raiz + 12 + TERCERA[compas], raiz + 19], tp * 1.6);  // acordes "stab"
+                    if (compas >= 4) { const m = [LEAD_1, LEAD_2, LEAD_1, LEAD_3][compas - 4][k]; if (m >= 0) campana(t, hz(69 + m), tp * 3.2); } // melodía de campana
+                }
                 proxT += tp; paso++;
             }
         }
@@ -146,9 +208,9 @@
 
         const S = {
             init,
-            get estadoAudio() { return ctx ? ctx.state : 'sin-iniciar'; }, get musicaCorriendo() { return corriendo; },
+            get estadoAudio() { return ctx ? ctx.state : 'sin-iniciar'; }, get pico() { if (!an) return 0; const d = new Uint8Array(an.fftSize); an.getByteTimeDomainData(d); let m = 0; for (const v of d) m = Math.max(m, Math.abs(v - 128)); return m / 128; }, get musicaCorriendo() { return corriendo; },
             get musicaOn() { return musicaOn; }, get sfxOn() { return sfxOn; },
-            setMusica(v) { musicaOn = !!v; guardar(); if (musG) musG.gain.value = musicaOn ? 0.3 : 0; if (musicaOn) iniciarMusica(); else detenerMusica(); },
+            setMusica(v) { musicaOn = !!v; guardar(); if (musG) musG.gain.value = musicaOn ? VOL_MUSICA : 0; if (musicaOn) iniciarMusica(); else detenerMusica(); },
             setSfx(v) { sfxOn = !!v; guardar(); if (sfxG) sfxG.gain.value = sfxOn ? 0.85 : 0; },
             tomar() { if (!ctx) return; const t = ctx.currentTime; tono(520, t, 0.09, 'square', 0.22, sfxG, 880); },
             invalido() { if (!ctx) return; const t = ctx.currentTime; tono(180, t, 0.2, 'sawtooth', 0.28, sfxG, 70); },
