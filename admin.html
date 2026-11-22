@@ -17088,6 +17088,14 @@
     /* ✎ de la cuponera / cupón exclusivo: mismo aspecto que el ✎ de los productos, debajo del precio y a la derecha */
     html body .pos-item-combo-edit { grid-column: 3; grid-row: 2; justify-self: end; width: 22px; height: 22px; padding: 0; border: none; background: transparent; color: rgba(200,220,255,.55); font-size: .9rem; line-height: 1; cursor: pointer; border-radius: 6px; }
     html body .pos-item-combo-edit:hover { color: rgba(200,220,255,.95); background: rgba(255,255,255,.08); }
+    /* Cuponera / cupón exclusivo: el detalle puede ser largo, así que la fila 2 absorbe la altura y el ✎ queda pegado justo debajo del precio
+       (antes se iba al fondo de la tarjeta). La pastilla va con la esquina común (sin forma de píldora) y el detalle alineado a la izquierda. */
+    html body .pos-item-row-combo { grid-template-rows: auto 1fr; align-items: start; }
+    html body .pos-item-row-combo .pos-item-name { min-height: 0; }
+    html body .pos-item-row-combo .pos-item-price { align-self: start; }
+    html body .pos-item-row-combo .pos-item-combo-edit { grid-column: 3; grid-row: 2; align-self: start; justify-self: end; }
+    html body .pos-item-row-combo .pos-item-combo-badge { display: block; width: fit-content; margin-bottom: 4px; border-radius: var(--ui-radius, 9px); }
+    html body .pos-item-row-combo .pos-item-combo-list { margin-top: 4px; line-height: 1.35; text-align: left; overflow-wrap: anywhere; }
     /* táctil: el gesto horizontal lo maneja el carrito (deslizar = borrar / editar); el vertical sigue siendo scroll */
     html body .pos-item-row, html body .pos-extra-chip { touch-action: pan-y; }
     html body .pos-item-row .pos-item-name { letter-spacing: 0; }
