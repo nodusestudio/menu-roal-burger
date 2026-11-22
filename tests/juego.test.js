@@ -119,3 +119,33 @@ test('tope de crédito en el pedido: mín(solicitado, saldo, 7 % de los producto
     assert.equal(f('abc', 5000, 50000), 0);
     assert.equal(f(1000.9, 5000, 50000), 1000);     // siempre entero
 });
+
+test('config nueva: presupuesto 150.000, vigencia 30 días, pedido previo sí, 40 partidas; valores locos se acotan', () => {
+    assert.equal(cfg.presupuestoDiario, 150000);
+    assert.equal(cfg.creditoVigenciaDias, 30);
+    assert.equal(cfg.requierePedidoPrevio, true);
+    assert.equal(cfg.maxPartidasDia, 40);
+    const c = J.normalizarConfig({ presupuestoDiario: -5, creditoVigenciaDias: 9999, requierePedidoPrevio: false, maxPartidasDia: 0 });
+    assert.equal(c.presupuestoDiario, 0);
+    assert.equal(c.creditoVigenciaDias, 365);
+    assert.equal(c.requierePedidoPrevio, false);
+    assert.equal(c.maxPartidasDia, 1);
+});
+
+test('créditos vencidos valen 0; vigentes o sin vencimiento valen su saldo', () => {
+    const ahora = Date.UTC(2026, 10, 22);
+    assert.equal(J.creditoVigente({ creditoJuego: 500, creditoJuegoVence: ahora + 1000 }, ahora), 500);
+    assert.equal(J.creditoVigente({ creditoJuego: 500, creditoJuegoVence: ahora - 1 }, ahora), 0);
+    assert.equal(J.creditoVigente({ creditoJuego: 500 }, ahora), 500);            // sin vencimiento guardado
+    assert.equal(J.creditoVigente({ creditoJuego: -20 }, ahora), 0);
+    assert.equal(J.creditoVigente(null, ahora), 0);
+    assert.equal(J.nuevoVencimiento(cfg, ahora), ahora + 30 * 86400000);
+    assert.equal(J.nuevoVencimiento(J.normalizarConfig({ creditoVigenciaDias: 0 }), ahora), 0);
+});
+
+test('presupuesto diario: recorta al saldo del día; 0 = sin tope', () => {
+    assert.deepEqual(J.aplicarPresupuesto({ creditoGanado: 300, emitidoHoy: 0, presupuesto: 1000 }), { credito: 300, recortado: false });
+    assert.deepEqual(J.aplicarPresupuesto({ creditoGanado: 300, emitidoHoy: 900, presupuesto: 1000 }), { credito: 100, recortado: true });
+    assert.deepEqual(J.aplicarPresupuesto({ creditoGanado: 300, emitidoHoy: 1000, presupuesto: 1000 }), { credito: 0, recortado: true });
+    assert.deepEqual(J.aplicarPresupuesto({ creditoGanado: 300, emitidoHoy: 99999, presupuesto: 0 }), { credito: 300, recortado: false });
+});

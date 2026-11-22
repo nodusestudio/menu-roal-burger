@@ -20,7 +20,7 @@ const llamar = (fn, uid, data) => (fn.run || fn)({ auth: uid ? { uid, token: {} 
 
 before(() => { db = getFirestore(); });
 beforeEach(async () => {
-    for (const col of ['clientes', 'juego_sesiones', 'juego_partidas', 'juego_canjes', 'pedidos', 'puntos_reversiones', 'configuracion', 'productos']) {
+    for (const col of ['clientes', 'juego_sesiones', 'juego_partidas', 'juego_canjes', 'pedidos', 'puntos_reversiones', 'configuracion', 'productos', 'juego_presupuesto', 'pedidos_archivados']) {
         const snap = await db.collection(col).get();
         await Promise.all(snap.docs.map((d) => d.ref.delete()));
     }
@@ -105,6 +105,7 @@ const itemsPerro = (qty = 1) => [{ productId: 'p1', productName: 'Perro Prueba C
 test('pricing: el crédito se limita al 7 % de los productos y al saldo; el domicilio no se paga con crédito', async () => {
     await sembrarProducto();
     await db.collection('clientes').doc(UID).update({ creditoJuego: 50000 });
+    await db.collection('configuracion').doc('juego').set({ requierePedidoPrevio: false });
     const priced = await pricing.computeServerPricedOrder(db, { items: itemsPerro(2), fulfillmentType: 'pickup', clientId: UID, pointsToRedeemRequested: 0, gameCreditRequested: 99999 });
     assert.equal(priced.subtotal, 20000);
     assert.equal(priced.gameCreditAmount, 1400);           // 7 % de 20.000
@@ -116,6 +117,7 @@ test('pricing: sin saldo, sin sesión o con el juego apagado no hay crédito', a
     let p = await pricing.computeServerPricedOrder(db, { items: itemsPerro(), fulfillmentType: 'pickup', clientId: UID, pointsToRedeemRequested: 0, gameCreditRequested: 500 });
     assert.equal(p.gameCreditAmount, 0);
     await db.collection('clientes').doc(UID).update({ creditoJuego: 5000 });
+    await db.collection('configuracion').doc('juego').set({ requierePedidoPrevio: false });
     p = await pricing.computeServerPricedOrder(db, { items: itemsPerro(), fulfillmentType: 'pickup', clientId: null, pointsToRedeemRequested: 0, gameCreditRequested: 500 });
     assert.equal(p.gameCreditAmount, 0);
     await db.collection('configuracion').doc('juego').set({ activo: false });
@@ -142,4 +144,54 @@ test('anular el pedido devuelve el crédito una sola vez', async () => {
     assert.equal((await db.collection('clientes').doc(UID).get()).data().creditoJuego, 1400);
     await index._reverseLoyaltyPointsTransaction(db, 'o2', pedido); // idempotente
     assert.equal((await db.collection('clientes').doc(UID).get()).data().creditoJuego, 1400);
+});
+
+// ── Paquete de protección del dinero ──
+test('presupuesto diario global: recorta el crédito, marca agotado y el siguiente jugador no gana crédito', async () => {
+    await db.collection('configuracion').doc('juego').set({ presupuestoDiario: 200 });
+    await db.collection('clientes').doc(OTRO).set({ customerName: 'Otro', customerPhone: '3005550002' });
+    const r1 = await llamar(index.juegoEnviarPuntaje, UID, { sesionId: await sesion(UID, 120), puntaje: 600, jugadas: 20 });
+    assert.equal(r1.resultado.creditoGanado, 200);            // pedía 300, el presupuesto del día solo deja 200
+    assert.equal(r1.resultado.presupuestoAgotado, true);
+    const r2 = await llamar(index.juegoEnviarPuntaje, OTRO, { sesionId: await sesion(OTRO, 120), puntaje: 600, jugadas: 20 });
+    assert.equal(r2.resultado.creditoGanado, 0);
+    assert.equal((await db.collection('clientes').doc(OTRO).get()).data().creditoJuego || 0, 0);
+    const pres = (await db.collection('juego_presupuesto').doc(J.diaBogota(Date.now())).get()).data();
+    assert.equal(pres.emitido, 200);
+    assert.equal(pres.agotado, true);
+});
+
+test('vencimiento: el saldo vencido vale 0, la partida nueva lo reinicia (no se suma) y el canje no lo ve', async () => {
+    await db.collection('configuracion').doc('juego').set({ requierePedidoPrevio: false });
+    await db.collection('clientes').doc(UID).update({ creditoJuego: 500, creditoJuegoVence: Date.now() - 1000 });
+    assert.equal((await llamar(index.juegoEstado, UID, {})).creditoJuego, 0);
+    await sembrarProducto();
+    const p = await pricing.computeServerPricedOrder(db, { items: itemsPerro(2), fulfillmentType: 'pickup', clientId: UID, pointsToRedeemRequested: 0, gameCreditRequested: 1000 });
+    assert.equal(p.gameCreditAmount, 0);
+    const r = await llamar(index.juegoEnviarPuntaje, UID, { sesionId: await sesion(UID, 120), puntaje: 100, jugadas: 10 });
+    assert.equal(r.ok, true);
+    const c = (await db.collection('clientes').doc(UID).get()).data();
+    assert.equal(c.creditoJuego, 100);                         // no 600
+    assert.ok(c.creditoJuegoVence > Date.now() + 29 * 86400000);
+});
+
+test('pedido previo: sin pedido entregado el saldo no se canjea; con uno sí; uno anulado no cuenta', async () => {
+    await sembrarProducto();
+    await db.collection('clientes').doc(UID).update({ creditoJuego: 5000 });
+    const pedir = () => pricing.computeServerPricedOrder(db, { items: itemsPerro(2), fulfillmentType: 'pickup', clientId: UID, pointsToRedeemRequested: 0, gameCreditRequested: 5000 });
+    assert.equal((await pedir()).gameCreditAmount, 0);
+    assert.equal((await llamar(index.juegoEstado, UID, {})).creditoActivo, false);
+    await db.collection('pedidos').doc('a1').set({ customerPhoneDigits: '3005550001', status: 'entregado', anulado: true });
+    assert.equal((await pedir()).gameCreditAmount, 0);
+    await db.collection('pedidos_archivados').doc('a2').set({ customerPhoneDigits: '3005550001', status: 'entregado' });
+    assert.equal((await pedir()).gameCreditAmount, 1400);
+    assert.equal((await llamar(index.juegoEstado, UID, {})).creditoActivo, true);
+});
+
+test('tope de partidas por día: la que pasa el máximo se rechaza', async () => {
+    await db.collection('configuracion').doc('juego').set({ maxPartidasDia: 2 });
+    await llamar(index.juegoIniciar, UID, {});
+    const r = await llamar(index.juegoIniciar, UID, {});
+    assert.equal(r.restantes, 0);
+    await assert.rejects(() => llamar(index.juegoIniciar, UID, {}), /máximo de partidas/);
 });

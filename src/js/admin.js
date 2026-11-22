@@ -31735,7 +31735,7 @@ async function _pmSaveAndRefresh(methods, successMsg) {
 // ── Juego (Block ROAL): configuración y métricas ────────────────────────────
 // configuracion/juego lo lee el servidor (functions/juego.js) en cada partida y en cada canje: valor del punto, tope diario,
 // metas por nivel, tope del crédito en el pedido y bonus de racha. Las métricas salen de juego_partidas y juego_canjes (solo el servidor escribe).
-const JUEGO_DEF = { activo: true, valorPunto: 1, topeDiario: 300, metaBase: 500, metasNivel: {}, topeCreditoPct: 7, rachaBonus: { 3: 50, 7: 150, 14: 400 } };
+const JUEGO_DEF = { activo: true, valorPunto: 1, topeDiario: 300, metaBase: 500, metasNivel: {}, topeCreditoPct: 7, rachaBonus: { 3: 50, 7: 150, 14: 400 }, presupuestoDiario: 150000, creditoVigenciaDias: 30, requierePedidoPrevio: true, maxPartidasDia: 40 };
 let _juegoCfg = { ...JUEGO_DEF };
 let _juegoPeriodo = 'hoy';
 
@@ -31792,6 +31792,13 @@ function renderJuegoAdmin() {
                     ${num('juegoBonus7', '7 días seguidos', c.rachaBonus[7] ?? 0, 0, 2000)}
                     ${num('juegoBonus14', '14 días seguidos', c.rachaBonus[14] ?? 0, 0, 5000)}
                 </div>
+                <div class="met-section-title" style="margin-top:4px">🛡️ Protección del dinero</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    ${num('juegoPresupuesto', 'Presupuesto diario TOTAL de créditos (COP, 0 = sin tope)', c.presupuestoDiario, 0, 5000000, 1000)}
+                    ${num('juegoVigencia', 'Los créditos vencen tras (días sin ganar, 0 = nunca)', c.creditoVigenciaDias, 0, 365)}
+                    ${num('juegoMaxPartidas', 'Partidas máximas por jugador al día', c.maxPartidasDia, 1, 500)}
+                </div>
+                <label class="admin-hint" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="juegoPedidoPrevio" ${c.requierePedidoPrevio !== false ? 'checked' : ''}> Para canjear créditos hay que tener al menos un pedido entregado (frena las cuentas falsas)</label>
                 <p class="admin-hint">1.000 puntos = $1.000 cuando el valor del punto es 1. Los créditos solo se usan con una compra, nunca en el domicilio, y hasta el porcentaje máximo del pedido. Los bonus de racha no cuentan para el tope diario. Cada cambio aplica desde la siguiente partida o pedido.</p>
                 <div><button type="button" class="section-action-btn" data-juego-guardar>Guardar reglas</button></div>
             </div>
@@ -31802,10 +31809,13 @@ async function cargarJuegoMetricas() {
     if (!box) return;
     const [d1, d2] = _juegoRango(_juegoPeriodo);
     try {
-        const [pSnap, cSnap] = await Promise.all([
+        const [pSnap, cSnap, presSnap] = await Promise.all([
             firebaseDb.collection('juego_partidas').where('dia', '>=', d1).where('dia', '<=', d2).get(),
-            firebaseDb.collection('juego_canjes').where('dia', '>=', d1).where('dia', '<=', d2).get()
+            firebaseDb.collection('juego_canjes').where('dia', '>=', d1).where('dia', '<=', d2).get(),
+            firebaseDb.collection('juego_presupuesto').doc(_sqDayKey(Date.now())).get()
         ]);
+        const pres = presSnap.exists ? presSnap.data() : {};
+        const presupuesto = Number(_juegoCfg.presupuestoDiario) || 0;
         const partidas = pSnap.docs.map((d) => d.data());
         const ok = partidas.filter((p) => p.aceptada === true);
         const jugadores = new Set(ok.map((p) => p.uid)).size;
@@ -31822,6 +31832,7 @@ async function cargarJuegoMetricas() {
             ${_fidKpi('', nf(pts), 'Puntos entregados')}
             ${_fidKpi('', escapeHtml(formatMoney(emitido)), 'Créditos entregados')}
             ${_fidKpi('', escapeHtml(formatMoney(canjeado)) + ` <small>(${nf(canjes.length)} pedidos)</small>`, 'Créditos canjeados')}
+            ${_fidKpi(pres.agotado ? 'met-kpi-card--hi' : '', escapeHtml(formatMoney(Number(pres.emitido) || 0)) + (presupuesto ? ` <small>/ ${escapeHtml(formatMoney(presupuesto))}</small>` : ''), pres.agotado ? '⛔ Presupuesto de hoy AGOTADO' : 'Presupuesto de hoy')}
         </div>`;
     } catch (e) { box.innerHTML = `<p class="admin-hint">No se pudieron leer las métricas: ${escapeHtml(e.message || 'error')}</p>`; }
 }
@@ -31841,7 +31852,9 @@ async function guardarJuegoAdmin() {
         valorPunto: n('juegoValorPunto', 1, 0, 100), topeDiario: Math.round(n('juegoTopeDiario', 300, 0, 5000)),
         topeCreditoPct: n('juegoTopeCredito', 7, 0, 30), metaBase: Math.round(n('juegoMetaBase', 500, 50, 10000)),
         metasNivel: metas,
-        rachaBonus: { 3: Math.round(n('juegoBonus3', 50, 0, 2000)), 7: Math.round(n('juegoBonus7', 150, 0, 2000)), 14: Math.round(n('juegoBonus14', 400, 0, 5000)) }
+        rachaBonus: { 3: Math.round(n('juegoBonus3', 50, 0, 2000)), 7: Math.round(n('juegoBonus7', 150, 0, 2000)), 14: Math.round(n('juegoBonus14', 400, 0, 5000)) },
+        presupuestoDiario: Math.round(n('juegoPresupuesto', 150000, 0, 5000000)), creditoVigenciaDias: Math.round(n('juegoVigencia', 30, 0, 365)),
+        maxPartidasDia: Math.round(n('juegoMaxPartidas', 40, 1, 500)), requierePedidoPrevio: document.getElementById('juegoPedidoPrevio')?.checked !== false
     };
     try {
         await firebaseDb.collection(CONFIG_COLLECTION).doc('juego').set({ ...cfg, actualizadoAt: firestoreNow() });

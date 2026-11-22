@@ -254,7 +254,7 @@ service cloud.firestore {
         return request.resource.data.diff(resource.data).affectedKeys()
           .hasAny(['puntosDisponibles', 'puntosAcumuladosTotal',
             // Block ROAL (minijuego, functions/juego.js): puntos, créditos ROAL, nivel y racha SOLO con Admin SDK.
-            'puntosJuego', 'creditoJuego', 'nivelMaxJuego', 'rachaJuego', 'ultimoDiaJuego', 'juegoHoyDia', 'juegoHoyPts']);
+            'puntosJuego', 'creditoJuego', 'creditoJuegoVence', 'nivelMaxJuego', 'rachaJuego', 'ultimoDiaJuego', 'juegoHoyDia', 'juegoHoyPts', 'juegoSesDia', 'juegoSesHoy']);
       }
 
       allow update: if !touchesLoyaltyPoints()
@@ -506,6 +506,7 @@ service cloud.firestore {
     match /juego_sesiones/{doc} { allow read, write: if false; }
     match /juego_partidas/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /juego_canjes/{doc} { allow read: if isAdmin(); allow write: if false; }
+    match /juego_presupuesto/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /ajustes_puntos_lealtad/{doc} {
       allow read: if isAdmin();
       allow write: if false;

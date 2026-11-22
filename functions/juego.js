@@ -22,7 +22,11 @@ const DEFAULTS = Object.freeze({
     maxPuntosPorSeg: 15,      // plausibilidad: puntaje <= duración * esto
     maxPuntosPorJugada: 150,  // plausibilidad: puntaje <= jugadas * esto
     minSegPorJugada: 0.6,     // plausibilidad: jugadas <= duración / esto
-    rachaBonus: { 3: 50, 7: 150, 14: 400 }
+    rachaBonus: { 3: 50, 7: 150, 14: 400 },
+    presupuestoDiario: 150000, // tope TOTAL de créditos (COP) que se reparten entre todos los jugadores por día; 0 = sin tope
+    creditoVigenciaDias: 30,   // el saldo vence si pasan tantos días sin ganar créditos; 0 = no vence
+    requierePedidoPrevio: true, // para CANJEAR hay que tener al menos un pedido entregado (frena las cuentas falsas)
+    maxPartidasDia: 40         // partidas que un jugador puede iniciar por día
 });
 const PUNTAJE_MAX_ABSOLUTO = 20000;
 const SESION_MAX_MS = 2 * 60 * 60 * 1000;
@@ -48,7 +52,11 @@ function normalizarConfig(raw) {
         maxPuntosPorSeg: Math.max(1, num(r.maxPuntosPorSeg, DEFAULTS.maxPuntosPorSeg)),
         maxPuntosPorJugada: Math.max(1, num(r.maxPuntosPorJugada, DEFAULTS.maxPuntosPorJugada)),
         minSegPorJugada: Math.max(0.1, num(r.minSegPorJugada, DEFAULTS.minSegPorJugada)),
-        rachaBonus: Object.keys(bonus).length ? bonus : { ...DEFAULTS.rachaBonus }
+        rachaBonus: Object.keys(bonus).length ? bonus : { ...DEFAULTS.rachaBonus },
+        presupuestoDiario: Math.min(5000000, Math.max(0, Math.trunc(num(r.presupuestoDiario, DEFAULTS.presupuestoDiario)))),
+        creditoVigenciaDias: Math.min(365, Math.max(0, Math.trunc(num(r.creditoVigenciaDias, DEFAULTS.creditoVigenciaDias)))),
+        requierePedidoPrevio: r.requierePedidoPrevio !== false,
+        maxPartidasDia: Math.min(500, Math.max(1, Math.trunc(num(r.maxPartidasDia, DEFAULTS.maxPartidasDia))))
     };
 }
 
@@ -112,7 +120,32 @@ function clampCreditoJuego({ solicitado, saldo, baseProductos, topePct }) {
     return Math.max(0, Math.min(pedido, Math.max(0, Math.floor(num(saldo, 0))), tope));
 }
 
-function registrar(exp, { onCall, HttpsError, ALLOWED_ORIGINS, getFirestore, FieldValue }) {
+// Saldo de créditos que SIGUE vigente (si venció, vale 0). El vencimiento corre desde el último crédito ganado.
+function creditoVigente(c, ahoraMs) {
+    const saldo = Math.max(0, Math.trunc(num(c && c.creditoJuego, 0)));
+    const vence = num(c && c.creditoJuegoVence, 0);
+    return saldo > 0 && vence > 0 && ahoraMs > vence ? 0 : saldo;
+}
+function nuevoVencimiento(cfg, ahoraMs) { return cfg.creditoVigenciaDias > 0 ? ahoraMs + cfg.creditoVigenciaDias * 86400000 : 0; }
+// Presupuesto diario global: recorta el crédito de esta partida a lo que queda del día. presupuesto 0 = sin tope.
+function aplicarPresupuesto({ creditoGanado, emitidoHoy, presupuesto }) {
+    if (!presupuesto) return { credito: creditoGanado, recortado: false };
+    const queda = Math.max(0, presupuesto - Math.max(0, emitidoHoy));
+    const credito = Math.min(creditoGanado, queda);
+    return { credito, recortado: credito < creditoGanado };
+}
+// ¿Tiene el jugador al menos un pedido entregado? (el interruptor de puntos de lealtad está apagado, así que se mira el pedido real)
+async function tienePedidoPrevio(db, uid) {
+    const digitos = String(uid || '').replace(/^phone_/, '').replace(/\D/g, '');
+    if (digitos.length < 10) return false;
+    for (const col of ['pedidos', 'pedidos_archivados']) {
+        const snap = await db.collection(col).where('customerPhoneDigits', '==', digitos).limit(25).get();
+        if (snap.docs.some((d) => { const o = d.data(); return o.anulado !== true && o.voided !== true && (o.status === 'entregado' || o.status === 'enviado' || o.pointsAwarded === true); })) return true;
+    }
+    return false;
+}
+
+function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFirestore, FieldValue, avisarAdmin }) {
     const opts = { region: 'us-central1', cors: ALLOWED_ORIGINS, cpu: 0.5, maxInstances: 5 };
     const CLIENTS = 'clientes';
     const leerConfig = async (db, tx) => {
@@ -125,39 +158,55 @@ function registrar(exp, { onCall, HttpsError, ALLOWED_ORIGINS, getFirestore, Fie
         if (!uid || request.auth?.token?.mesero) throw new HttpsError('unauthenticated', 'Inicia sesión para jugar.');
         return uid;
     };
-    const vistaEstado = (c, cfg, hoy) => ({
-        activo: cfg.activo,
-        puntosJuego: Math.max(0, Math.trunc(num(c.puntosJuego, 0))),
-        creditoJuego: Math.max(0, Math.trunc(num(c.creditoJuego, 0))),
-        nivelMax: Math.max(0, Math.trunc(num(c.nivelMaxJuego, 0))),
-        racha: rachaVigente(c, hoy),
-        jugoHoy: c.ultimoDiaJuego === hoy,
-        puntosHoy: c.juegoHoyDia === hoy ? Math.max(0, Math.trunc(num(c.juegoHoyPts, 0))) : 0,
-        topeDiario: cfg.topeDiario,
-        valorPunto: cfg.valorPunto,
-        topeCreditoPct: cfg.topeCreditoPct,
-        metaSiguiente: metaNivel(Math.max(0, Math.trunc(num(c.nivelMaxJuego, 0))) + 1, cfg),
-        rachaBonus: cfg.rachaBonus
-    });
+    const vistaEstado = (c, cfg, hoy, ahora) => {
+        const vig = creditoVigente(c, ahora);
+        return {
+            activo: cfg.activo,
+            puntosJuego: Math.max(0, Math.trunc(num(c.puntosJuego, 0))),
+            creditoJuego: vig,
+            creditoVence: vig > 0 ? num(c.creditoJuegoVence, 0) : 0,
+            vigenciaDias: cfg.creditoVigenciaDias,
+            requierePedidoPrevio: cfg.requierePedidoPrevio,
+            nivelMax: Math.max(0, Math.trunc(num(c.nivelMaxJuego, 0))),
+            racha: rachaVigente(c, hoy),
+            jugoHoy: c.ultimoDiaJuego === hoy,
+            puntosHoy: c.juegoHoyDia === hoy ? Math.max(0, Math.trunc(num(c.juegoHoyPts, 0))) : 0,
+            topeDiario: cfg.topeDiario,
+            valorPunto: cfg.valorPunto,
+            topeCreditoPct: cfg.topeCreditoPct,
+            metaSiguiente: metaNivel(Math.max(0, Math.trunc(num(c.nivelMaxJuego, 0))) + 1, cfg),
+            rachaBonus: cfg.rachaBonus
+        };
+    };
 
     exp.juegoEstado = onCall(opts, async (request) => {
         const uid = exigirUid(request);
         const db = getFirestore();
         const [snap, cfg] = await Promise.all([db.collection(CLIENTS).doc(uid).get(), leerConfig(db)]);
         if (!snap.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
-        return vistaEstado(snap.data() || {}, cfg, diaBogota(Date.now()));
+        const ahora = Date.now();
+        const v = vistaEstado(snap.data() || {}, cfg, diaBogota(ahora), ahora);
+        v.creditoActivo = (!cfg.requierePedidoPrevio || v.creditoJuego <= 0) ? true : await tienePedidoPrevio(db, uid);
+        return v;
     });
 
     exp.juegoIniciar = onCall(opts, async (request) => {
         const uid = exigirUid(request);
         const db = getFirestore();
-        const cfg = await leerConfig(db);
-        if (!cfg.activo) throw new HttpsError('failed-precondition', 'El juego está en pausa.');
-        const cli = await db.collection(CLIENTS).doc(uid).get();
-        if (!cli.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
-        const ref = db.collection('juego_sesiones').doc();
-        await ref.set({ uid, inicio: FieldValue.serverTimestamp(), usada: false });
-        return { sesionId: ref.id };
+        return db.runTransaction(async (tx) => {
+            const cliRef = db.collection(CLIENTS).doc(uid);
+            const [cli, cfg] = await Promise.all([tx.get(cliRef), leerConfig(db, tx)]);
+            if (!cfg.activo) throw new HttpsError('failed-precondition', 'El juego está en pausa.');
+            if (!cli.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
+            const dia = diaBogota(Date.now());
+            const c = cli.data() || {};
+            const hoy = c.juegoSesDia === dia ? Math.max(0, Math.trunc(num(c.juegoSesHoy, 0))) : 0;
+            if (hoy >= cfg.maxPartidasDia) throw new HttpsError('resource-exhausted', 'Llegaste al máximo de partidas de hoy. ¡Vuelve mañana!');
+            const ref = db.collection('juego_sesiones').doc();
+            tx.update(cliRef, { juegoSesDia: dia, juegoSesHoy: hoy + 1 });
+            tx.set(ref, { uid, inicio: FieldValue.serverTimestamp(), usada: false });
+            return { sesionId: ref.id, restantes: cfg.maxPartidasDia - hoy - 1 };
+        });
     });
 
     exp.juegoEnviarPuntaje = onCall(opts, async (request) => {
@@ -169,22 +218,23 @@ function registrar(exp, { onCall, HttpsError, ALLOWED_ORIGINS, getFirestore, Fie
         const jugadas = Number(d.jugadas);
         const db = getFirestore();
 
-        return db.runTransaction(async (tx) => {
+        const res = await db.runTransaction(async (tx) => {
+            const ahora = Date.now();
+            const dia = diaBogota(ahora);
             const sesRef = db.collection('juego_sesiones').doc(sesionId);
             const cliRef = db.collection(CLIENTS).doc(uid);
-            const [sesSnap, cliSnap, cfg] = await Promise.all([tx.get(sesRef), tx.get(cliRef), leerConfig(db, tx)]);
+            const presRef = db.collection('juego_presupuesto').doc(dia);
+            const [sesSnap, cliSnap, presSnap, cfg] = await Promise.all([tx.get(sesRef), tx.get(cliRef), tx.get(presRef), leerConfig(db, tx)]);
             if (!sesSnap.exists || sesSnap.data().uid !== uid) throw new HttpsError('permission-denied', 'Partida no encontrada.');
             if (sesSnap.data().usada) throw new HttpsError('already-exists', 'Esta partida ya se registró.');
             if (!cliSnap.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
             if (!cfg.activo) throw new HttpsError('failed-precondition', 'El juego está en pausa.');
 
-            const ahora = Date.now();
             const inicioMs = sesSnap.data().inicio?.toMillis ? sesSnap.data().inicio.toMillis() : 0;
             const duracionSeg = (ahora - inicioMs) / 1000; // medida por el SERVIDOR, no por el cliente
             if (!inicioMs || ahora - inicioMs > SESION_MAX_MS) throw new HttpsError('deadline-exceeded', 'La partida expiró.');
 
             const motivo = motivoImplausible({ puntaje, duracionSeg, jugadas }, cfg);
-            const dia = diaBogota(ahora);
             if (motivo) {
                 // Se cierra la sesión y se deja rastro, sin acreditar nada.
                 tx.update(sesRef, { usada: true, rechazada: motivo, fin: FieldValue.serverTimestamp() });
@@ -194,6 +244,13 @@ function registrar(exp, { onCall, HttpsError, ALLOWED_ORIGINS, getFirestore, Fie
 
             const c = cliSnap.data() || {};
             const r = calcularResultado({ estado: c, cfg, puntaje, dia });
+            // Presupuesto diario global + vencimiento del saldo
+            const emitidoHoy = presSnap.exists ? Math.max(0, num(presSnap.data().emitido, 0)) : 0;
+            const pres = aplicarPresupuesto({ creditoGanado: r.creditoGanado, emitidoHoy, presupuesto: cfg.presupuestoDiario });
+            const credito = pres.credito;
+            const saldoPrevio = Math.max(0, Math.trunc(num(c.creditoJuego, 0)));
+            const vigente = creditoVigente(c, ahora);
+            const expirado = saldoPrevio > 0 && vigente === 0;
             const upd = {
                 juegoHoyDia: dia,
                 juegoHoyPts: r.puntosHoy,
@@ -202,22 +259,57 @@ function registrar(exp, { onCall, HttpsError, ALLOWED_ORIGINS, getFirestore, Fie
                 nivelMaxJuego: r.nuevoNivelMax
             };
             if (r.puntosTotales > 0) upd.puntosJuego = FieldValue.increment(r.puntosTotales);
-            if (r.creditoGanado > 0) upd.creditoJuego = FieldValue.increment(r.creditoGanado);
+            if (credito > 0) { upd.creditoJuego = expirado ? credito : FieldValue.increment(credito); upd.creditoJuegoVence = nuevoVencimiento(cfg, ahora); }
+            else if (expirado) { upd.creditoJuego = 0; upd.creditoJuegoVence = 0; }
             tx.update(cliRef, upd);
             tx.update(sesRef, { usada: true, fin: FieldValue.serverTimestamp() });
+            let avisar = false;
+            if (credito > 0 || pres.recortado) {
+                const total = emitidoHoy + credito;
+                const yaAgotado = presSnap.exists && presSnap.data().agotado === true;
+                const agotado = yaAgotado || (cfg.presupuestoDiario > 0 && total >= cfg.presupuestoDiario);
+                avisar = agotado && !yaAgotado;
+                tx.set(presRef, { dia, emitido: FieldValue.increment(credito), agotado, presupuesto: cfg.presupuestoDiario, actualizadoAt: FieldValue.serverTimestamp() }, { merge: true });
+            }
             tx.set(db.collection('juego_partidas').doc(), {
                 uid, dia, puntaje, jugadas, duracionSeg: Math.round(duracionSeg), aceptada: true,
                 puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, racha: r.racha,
-                nivelSuperado: r.nivelSuperado, nivelMax: r.nuevoNivelMax, creditoGanado: r.creditoGanado,
+                nivelSuperado: r.nivelSuperado, nivelMax: r.nuevoNivelMax, creditoGanado: credito, creditoRecortado: r.creditoGanado - credito,
                 creadoAt: FieldValue.serverTimestamp()
             });
-            const nuevo = { ...c, ...upd, puntosJuego: num(c.puntosJuego, 0) + r.puntosTotales, creditoJuego: num(c.creditoJuego, 0) + r.creditoGanado };
-            return { ok: true, resultado: { puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, nivelSuperado: r.nivelSuperado, creditoGanado: r.creditoGanado, topeAlcanzado: r.puntosOtorgados < puntaje }, estado: vistaEstado(nuevo, cfg, dia) };
+            const nuevo = { ...c, ...upd, puntosJuego: num(c.puntosJuego, 0) + r.puntosTotales, creditoJuego: (expirado ? 0 : vigente) + credito, creditoJuegoVence: credito > 0 ? nuevoVencimiento(cfg, ahora) : (expirado ? 0 : num(c.creditoJuegoVence, 0)) };
+            return {
+                ok: true,
+                resultado: { puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, nivelSuperado: r.nivelSuperado, creditoGanado: credito, topeAlcanzado: r.puntosOtorgados < puntaje, presupuestoAgotado: pres.recortado },
+                estado: vistaEstado(nuevo, cfg, dia, ahora),
+                _avisar: avisar ? { presupuesto: cfg.presupuestoDiario } : null
+            };
         });
+        if (res && res._avisar) {
+            const aviso = res._avisar; delete res._avisar;
+            try { if (avisarAdmin) await avisarAdmin('🎮 Block ROAL: se agotó el presupuesto de hoy', `Ya se repartieron los $${aviso.presupuesto.toLocaleString('es-CO')} de créditos del día. Hasta mañana no se entregan más.`); } catch (e) { console.error('juego: no se pudo avisar el agotamiento del presupuesto:', e.message); }
+        } else if (res) delete res._avisar;
+        return res;
     });
+
+    // Limpieza diaria: las sesiones de partida (una por partida iniciada) no sirven pasadas 2 días.
+    if (onSchedule) {
+        exp.juegoLimpieza = onSchedule({ schedule: 'every day 04:30', timeZone: 'America/Bogota', region: 'us-central1', cpu: 0.5 }, async () => {
+            const db = getFirestore();
+            const limite = new Date(Date.now() - 2 * 86400000);
+            let borradas = 0;
+            for (let i = 0; i < 10; i++) {
+                const snap = await db.collection('juego_sesiones').where('inicio', '<', limite).limit(400).get();
+                if (snap.empty) break;
+                const lote = db.batch(); snap.docs.forEach((d) => lote.delete(d.ref)); await lote.commit();
+                borradas += snap.size;
+            }
+            console.log('juegoLimpieza: sesiones borradas', borradas);
+        });
+    }
 }
 
 module.exports = {
     DEFAULTS, normalizarConfig, diaBogota, diaAnterior, metaNivel, rachaVigente,
-    motivoImplausible, calcularResultado, clampCreditoJuego, registrar
+    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, registrar
 };

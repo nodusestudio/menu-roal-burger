@@ -741,7 +741,7 @@ async function redeemGameCreditTransaction(db, orderId, clientId, amount) {
     const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
     return db.runTransaction(async (transaction) => {
         const [orderSnap, clientSnap] = await Promise.all([transaction.get(orderRef), transaction.get(clientRef)]);
-        const saldo = clientSnap.exists ? Math.max(0, Math.trunc(Number(clientSnap.data()?.creditoJuego) || 0)) : 0;
+        const saldo = clientSnap.exists ? juego.creditoVigente(clientSnap.data() || {}, Date.now()) : 0;
         const actual = Math.max(0, Math.min(amount, saldo));
         if (actual > 0) {
             transaction.update(clientRef, { creditoJuego: FieldValue.increment(-actual) });
@@ -4347,4 +4347,4 @@ exports.obtenerCostosRoal = onCall(
 );
 
 // Block ROAL (minijuego): juegoEstado / juegoIniciar / juegoEnviarPuntaje. Validación, rachas y créditos en functions/juego.js.
-juego.registrar(exports, { onCall, HttpsError, ALLOWED_ORIGINS, getFirestore, FieldValue });
+juego.registrar(exports, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFirestore, FieldValue, avisarAdmin: (title, body) => require('./pushAdmin').enviarPush(getFirestore(), { title, body, tag: 'juego-presupuesto', tipo: 'juego', url: '/fodexa' }) });

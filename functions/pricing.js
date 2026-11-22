@@ -280,7 +280,10 @@ async function fetchGameCredit(db, clientId) {
     const cfg = juego.normalizarConfig(cfgSnap.exists ? cfgSnap.data() : {});
     if (!clientId || !cfg.activo) return { saldo: 0, topePct: cfg.topeCreditoPct };
     const snap = await db.collection('clientes').doc(clientId).get();
-    return { saldo: snap.exists ? Math.max(0, Math.trunc(Number(snap.data()?.creditoJuego) || 0)) : 0, topePct: cfg.topeCreditoPct };
+    let saldo = snap.exists ? juego.creditoVigente(snap.data() || {}, Date.now()) : 0; // vencido = 0
+    // Anti cuentas falsas: solo se canjea si el jugador ya tiene un pedido entregado.
+    if (saldo > 0 && cfg.requierePedidoPrevio && !(await juego.tienePedidoPrevio(db, clientId))) saldo = 0;
+    return { saldo, topePct: cfg.topeCreditoPct };
 }
 
 async function fetchLoyaltyPointsBalance(db, clientId) {
