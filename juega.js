@@ -260,6 +260,9 @@
         mostrarEstado();
         return estado;
     }
+    // Eventos del embudo (jugadores únicos por día): una vez por carga de página, sin molestar al jugador si falla.
+    const eventosEnviados = new Set();
+    function evento(tipo) { if (eventosEnviados.has(tipo) || !funciones || !uidActual) return; eventosEnviados.add(tipo); try { funciones.httpsCallable('juegoEvento')({ tipo }).catch(() => {}); } catch (_) { /* nada */ } }
     // Invitado sin cuenta ROAL (el servidor responde not-found): se pide entrar desde el menú en vez de mostrar un error técnico.
     function sinCuenta(e) { if (/not-found/.test(String(e && e.code || ''))) { $('sinSesion').hidden = false; aviso(''); return true; } return false; }
     function aviso(msg, esError) { const e = $('avisoJuego'); e.textContent = msg || ''; e.className = 'aviso' + (esError ? ' err' : ''); e.hidden = !msg; }
@@ -591,6 +594,7 @@
     }
     async function compartirPuntaje() {
         if (!ultimoResultado) return;
+        evento('compartir');
         const btn = $('btnCompartir'); btn.disabled = true; const txtOriginal = btn.textContent; btn.textContent = 'Preparando…';
         try {
             // En el reto se muestra el puesto de hoy (se consulta al servidor; si falla, la tarjeta sale sin puesto).
@@ -639,6 +643,7 @@
     async function abrirRanking(tipo) {
         const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
         const quedoEn = tipo === 'semana' ? 'semana' : 'dia';
+        evento('ranking');
         $('ranking').hidden = false;
         document.querySelectorAll('[data-rank]').forEach((b) => b.classList.toggle('on', b.dataset.rank === quedoEn));
         $('rankTitulo').textContent = quedoEn === 'semana' ? 'Ranking de la semana' : 'Ranking de hoy';
@@ -702,7 +707,7 @@
             await esperar(corta ? 1700 : 3300);
             if (await Promise.race([listoP.then(() => true), dormir(900).then(() => false)]) === false) $('introEstado').textContent = 'Preparando tu partida…';
             await Promise.race([listoP, dormir(10000)]);
-            $('app').classList.add('entrar'); $('intro').classList.add('salir');
+            $('app').classList.add('entrar'); $('intro').classList.add('salir'); evento('entrar');
             setTimeout(() => { intro.parar(); $('intro').hidden = true; }, 900);
         }
         $('btnEntrar').addEventListener('click', entrar);
@@ -738,7 +743,7 @@
             if (uidActual === user.uid) return;        // Firebase puede repetir este aviso (renovación del token): no reiniciar nada
             uidActual = user.uid;
             // Todo en paralelo: estado del jugador, sesión de partida y el motor del juego (antes iba uno detrás de otro).
-            const pEstado = cargarEstado().then(() => { if (!estado.activo) aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); return enviarPendiente(true); });
+            const pEstado = cargarEstado().then(() => { evento('abrir'); if (!estado.activo) aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); return enviarPendiente(true); });
             const guardada = Guardado.leerPartida(user.uid);
             if (guardada) { sesionId = guardada.sesionId; semilla = guardada.semilla; modoActual = guardada.modo === 'reto' ? 'reto' : 'libre'; sesionIni = guardada.ini; sesionPromesa = Promise.resolve(); restauro = guardada; }   // reanuda donde iba
             else iniciarPartida('libre');
