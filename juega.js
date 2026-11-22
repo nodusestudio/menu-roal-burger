@@ -248,6 +248,9 @@
         $('stRacha').textContent = estado.racha;
         $('stCredito').textContent = peso(estado.creditoJuego);
         $('stHoy').textContent = `${fmt(estado.puntosHoy)} / ${fmt(estado.topeDiario)}`;
+        const hf = estado.horaFeliz;
+        $('horaFeliz').hidden = !hf;
+        if (hf) { const h = Number(hf.hasta) || 0, h12 = h % 12 || 12; $('horaFeliz').textContent = `⚡ Hora feliz: tus puntos valen x${String(hf.mult).replace('.', ',')} hasta las ${h12} ${h >= 12 ? 'p. m.' : 'a. m.'}`; }
         $('stBonus').textContent = Object.keys(estado.rachaBonus || {}).map((d) => `${d}d +${estado.rachaBonus[d]}`).join(' · ');
         const esc = Math.max(0, Number(estado.escudos) || 0), cof = Math.max(0, Number(estado.cofres) || 0);
         $('stEscudos').textContent = esc; $('chipEscudo').hidden = esc === 0; $('stEscudosInfo').textContent = esc;

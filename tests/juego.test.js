@@ -161,3 +161,21 @@ test('nombre público: primer nombre + inicial, nunca el apellido; lunes de la s
     assert.equal(J.lunesDe('2026-11-18'), '2026-11-16');
     assert.equal(J.lunesDe('2026-03-01'), '2026-02-23');
 });
+
+test('hora feliz: franja en hora de Bogotá, cruce de medianoche y tope extra', () => {
+    const J2 = require('../functions/juego.js');
+    const cfg = J2.normalizarConfig({ horaFelizActiva: true, horaFelizDesde: 15, horaFelizHasta: 17, horaFelizMult: 2, horaFelizTopeExtra: 150 });
+    const bog = (h) => Date.UTC(2026, 10, 22, h + 5, 30);   // h:30 en Bogotá
+    assert.equal(J2.horaFelizVigente(cfg, bog(14)), null);
+    assert.equal(J2.horaFelizVigente(cfg, bog(15)).mult, 2);
+    assert.equal(J2.horaFelizVigente(cfg, bog(17)), null);
+    assert.equal(J2.horaFelizVigente({ ...cfg, horaFelizActiva: false }, bog(15)), null);
+    const noche = { ...cfg, horaFelizDesde: 22, horaFelizHasta: 2 };
+    assert.ok(J2.horaFelizVigente(noche, bog(23)) && J2.horaFelizVigente(noche, bog(1)) && !J2.horaFelizVigente(noche, bog(12)));
+    const hf = J2.horaFelizVigente(cfg, bog(16));
+    const base = J2.calcularResultado({ estado: {}, cfg, puntaje: 100, dia: '2026-11-22' });
+    const feliz = J2.calcularResultado({ estado: {}, cfg, puntaje: 100, dia: '2026-11-22', horaFeliz: hf });
+    assert.equal(base.puntosOtorgados, 100); assert.equal(feliz.puntosOtorgados, 200);
+    const tope = J2.calcularResultado({ estado: { juegoHoyDia: '2026-11-22', juegoHoyPts: 400 }, cfg, puntaje: 500, dia: '2026-11-22', horaFeliz: hf });
+    assert.equal(tope.puntosOtorgados, 50);   // tope 300 + 150 extra - 400 ya acreditados
+});

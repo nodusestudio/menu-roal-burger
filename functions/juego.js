@@ -33,6 +33,11 @@ const DEFAULTS = Object.freeze({
     maxPartidasDia: 40,        // partidas que un jugador puede iniciar por día
     cofresActivos: true,       // los cofres de las misiones diarias (premios sorpresa)
     retoActivo: true,          // reto del día (mismas piezas para todos, una sola oportunidad, ranking)
+    horaFelizActiva: false,    // hora feliz: en una franja del día los puntos valen más (apagada hasta que el dueño la encienda)
+    horaFelizDesde: 15,        // hora de inicio (0-23, Bogotá)
+    horaFelizHasta: 17,        // hora de fin (1-24, Bogotá; si es menor que «desde» cruza la medianoche)
+    horaFelizMult: 2,          // multiplicador de puntos en la franja (1.5 a 3)
+    horaFelizTopeExtra: 150,   // puntos extra que se pueden acreditar ese día mientras dura la franja (limita el costo)
     avisoRachaActivo: true,    // push de las 7 p. m. a quien tiene racha y hoy no ha jugado (solo a quien lo aceptó)
     avisoRachaMin: 2,          // racha mínima (días seguidos) para recibir el aviso
     retoPremio: ''             // texto del premio semanal que se muestra en el ranking (ej. «Top 3 de la semana: hamburguesa gratis»)
@@ -68,6 +73,11 @@ function normalizarConfig(raw) {
         maxPartidasDia: Math.min(500, Math.max(1, Math.trunc(num(r.maxPartidasDia, DEFAULTS.maxPartidasDia)))),
         retoActivo: r.retoActivo !== false,
         cofresActivos: r.cofresActivos !== false,
+        horaFelizActiva: r.horaFelizActiva === true,
+        horaFelizDesde: Math.min(23, Math.max(0, Math.trunc(num(r.horaFelizDesde, DEFAULTS.horaFelizDesde)))),
+        horaFelizHasta: Math.min(24, Math.max(1, Math.trunc(num(r.horaFelizHasta, DEFAULTS.horaFelizHasta)))),
+        horaFelizMult: Math.min(3, Math.max(1.5, num(r.horaFelizMult, DEFAULTS.horaFelizMult))),
+        horaFelizTopeExtra: Math.min(2000, Math.max(0, Math.trunc(num(r.horaFelizTopeExtra, DEFAULTS.horaFelizTopeExtra)))),
         avisoRachaActivo: r.avisoRachaActivo !== false,
         avisoRachaMin: Math.min(30, Math.max(1, Math.trunc(num(r.avisoRachaMin, DEFAULTS.avisoRachaMin)))),
         retoPremio: String(r.retoPremio || '').slice(0, 160)
@@ -103,11 +113,22 @@ function motivoImplausible({ puntaje, duracionSeg, jugadas }, cfg) {
     return null;
 }
 
+// Hora feliz: devuelve { mult, topeExtra, hasta } si la franja está activa en este instante (hora de Bogotá, UTC-5 sin horario de verano); si no, null.
+function horaFelizVigente(cfg, ahoraMs) {
+    if (!cfg || !cfg.horaFelizActiva || cfg.horaFelizDesde === cfg.horaFelizHasta) return null;
+    const h = new Date(ahoraMs - 5 * 3600000).getUTCHours();
+    const d = cfg.horaFelizDesde, a = cfg.horaFelizHasta;
+    const dentro = d < a ? (h >= d && h < a) : (h >= d || h < a);
+    return dentro ? { mult: cfg.horaFelizMult, topeExtra: cfg.horaFelizTopeExtra, hasta: a % 24 } : null;
+}
+
 // Resultado de una partida ya validada. estado = campos actuales del cliente. Puro: no toca Firestore.
-function calcularResultado({ estado, cfg, puntaje, dia }) {
+// horaFeliz (opcional, de horaFelizVigente): multiplica los puntos y sube el tope del día solo mientras dura la franja.
+function calcularResultado({ estado, cfg, puntaje, dia, horaFeliz }) {
     const e = estado || {};
     const puntosHoy = e.juegoHoyDia === dia ? Math.max(0, Math.trunc(num(e.juegoHoyPts, 0))) : 0;
-    const puntosOtorgados = Math.max(0, Math.min(puntaje, cfg.topeDiario - puntosHoy));
+    const mult = horaFeliz ? horaFeliz.mult : 1, tope = cfg.topeDiario + (horaFeliz ? horaFeliz.topeExtra : 0);
+    const puntosOtorgados = Math.max(0, Math.min(Math.round(puntaje * mult), tope - puntosHoy));
 
     let racha = Math.max(0, Math.trunc(num(e.rachaJuego, 0)));
     const ult = String(e.ultimoDiaJuego || '');
@@ -251,7 +272,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
         return uid;
     };
     const vistaEstado = (c, cfg, hoy, ahora) => {
-        const vig = creditoVigente(c, ahora);
+        const vig = creditoVigente(c, ahora), hf = horaFelizVigente(cfg, ahora);
         return {
             activo: cfg.activo,
             puntosJuego: Math.max(0, Math.trunc(num(c.puntosJuego, 0))),
@@ -268,7 +289,8 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             record: Math.max(0, Math.trunc(num(c.juegoRecord, 0))),
             jugoHoy: c.ultimoDiaJuego === hoy,
             puntosHoy: c.juegoHoyDia === hoy ? Math.max(0, Math.trunc(num(c.juegoHoyPts, 0))) : 0,
-            topeDiario: cfg.topeDiario,
+            topeDiario: cfg.topeDiario + (hf ? hf.topeExtra : 0),
+            horaFeliz: hf ? { mult: hf.mult, hasta: hf.hasta } : null,
             valorPunto: cfg.valorPunto,
             topeCreditoPct: cfg.topeCreditoPct,
             metaSiguiente: metaNivel(Math.max(0, Math.trunc(num(c.nivelMaxJuego, 0))) + 1, cfg),
@@ -379,7 +401,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             // Escudo de racha: si faltó exactamente un día y tiene escudo, la racha sigue como si hubiera jugado ayer.
             const ayerDia = diaAnterior(dia);
             const escudoUsado = c.ultimoDiaJuego === diaAnterior(ayerDia) && num(c.juegoEscudos, 0) > 0 && num(c.rachaJuego, 0) > 0;
-            const r = calcularResultado({ estado: escudoUsado ? { ...c, ultimoDiaJuego: ayerDia } : c, cfg, puntaje, dia });
+            const r = calcularResultado({ estado: escudoUsado ? { ...c, ultimoDiaJuego: ayerDia } : c, cfg, puntaje, dia, horaFeliz: horaFelizVigente(cfg, ahora) });
             // Presupuesto diario global + vencimiento del saldo
             const emitidoHoy = presSnap.exists ? Math.max(0, num(presSnap.data().emitido, 0)) : 0;
             const pres = aplicarPresupuesto({ creditoGanado: r.creditoGanado, emitidoHoy, presupuesto: cfg.presupuestoDiario });
@@ -617,5 +639,5 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
 
 module.exports = {
     DEFAULTS, normalizarConfig, diaBogota, diaAnterior, metaNivel, rachaVigente,
-    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, MISIONES, misionesDelDia, progresarMisiones, vistaMisiones, premioCofre, PREMIOS_COFRE, rachaConEscudo, mensajeRacha, registrar
+    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, MISIONES, misionesDelDia, progresarMisiones, vistaMisiones, premioCofre, PREMIOS_COFRE, rachaConEscudo, mensajeRacha, horaFelizVigente, registrar
 };
