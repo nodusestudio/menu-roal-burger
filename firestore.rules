@@ -510,6 +510,8 @@ service cloud.firestore {
     match /juego_reto/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /juego_eventos/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /juego_misiones/{doc} { allow read: if isAdmin(); allow write: if false; }
+    match /juego_push/{doc} { allow read, write: if false; }
+    match /juego_avisos/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /juego_cofres/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /juego_desafios/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /juego_ranking/{dia}/jugadores/{u} { allow read: if isAdmin(); allow write: if false; }

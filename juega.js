@@ -703,6 +703,28 @@
         $('misLista').innerHTML = mis.length ? mis.map((m) => `<div class="mis ${m.hecha ? 'hecha' : ''}"><div class="mis-fila"><span>${m.hecha ? '✅' : '🎯'} ${textoSeguro(m.texto)}</span><b>${m.progreso}/${m.meta}</b></div><div class="mis-barra"><i style="width:${Math.round((m.progreso / m.meta) * 100)}%"></i></div></div>`).join('') : '<p>Hoy no hay misiones.</p>';
         const cof = Math.max(0, Number(estado && estado.cofres) || 0);
         $('btnAbrirCofre').hidden = !(cof > 0 && estado.cofresActivos !== false); $('btnAbrirCofre').textContent = `🎁 Abrir cofre (${cof})`;
+        pintarAviso();
+    }
+    // Aviso por push de la racha: solo si el jugador lo pide. Usa un service worker propio (scope aparte) para no pisar el del menú.
+    const VAPID_AVISOS = 'BEmwEIZ8fBu_-EkBGGyJcna1PEBymg21_HVDbjgaF5Wp0MAcqdpUTfv3-uOT-b3qt3fT0_viBMmLi83FfxXqGT8';
+    function avisoSoportado() { try { return !!(window.firebase && firebase.messaging && firebase.messaging.isSupported() && 'serviceWorker' in navigator && typeof Notification !== 'undefined'); } catch (_) { return false; } }
+    function pintarAviso() {
+        let ya = false; try { ya = localStorage.getItem('roalAvisoRacha') === '1'; } catch (_) { /* sin almacenamiento */ }
+        $('btnAviso').hidden = ya || !avisoSoportado() || Notification.permission === 'denied' || (estado && estado.avisoRachaActivo === false);
+    }
+    async function activarAviso() {
+        const b = $('btnAviso'); b.disabled = true;
+        try {
+            if (await Notification.requestPermission() !== 'granted') throw new Error('Sin permiso no podemos avisarte. Puedes activarlo en los ajustes del navegador.');
+            const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/juega-aviso/' });
+            if (!reg.active) await new Promise((ok) => { const sw = reg.installing || reg.waiting; if (!sw) return ok(); sw.addEventListener('statechange', () => { if (sw.state === 'activated') ok(); }); setTimeout(ok, 8000); });
+            const token = await firebase.messaging().getToken({ vapidKey: VAPID_AVISOS, serviceWorkerRegistration: reg });
+            if (!token) throw new Error('No se pudo activar el aviso en este celular.');
+            await funciones.httpsCallable('juegoPush')({ accion: 'registrar', token });
+            try { localStorage.setItem('roalAvisoRacha', '1'); } catch (_) { /* sin almacenamiento */ }
+            b.hidden = true; $('cofrePremio').textContent = '🔔 Listo: te avisamos si tu racha está en riesgo.'; $('cofrePremio').hidden = false;
+        } catch (e) { $('cofrePremio').textContent = e && e.message ? e.message : 'No se pudo activar el aviso.'; $('cofrePremio').hidden = false; }
+        b.disabled = false;
     }
     function abrirMisiones() { Sonido.clic(); $('cofrePremio').hidden = true; pintarMisiones(); $('misiones').hidden = false; }
     async function abrirCofre() {
@@ -794,6 +816,7 @@
         $('chipMisiones').addEventListener('click', abrirMisiones);
         $('chipCofre').addEventListener('click', abrirMisiones);
         $('btnAbrirCofre').addEventListener('click', abrirCofre);
+        $('btnAviso').addEventListener('click', activarAviso);
         $('btnMisionesCerrar').addEventListener('click', () => { $('misiones').hidden = true; });
         $('misiones').addEventListener('click', (e) => { if (e.target === $('misiones')) $('misiones').hidden = true; });
         $('btnReintentar').addEventListener('click', reintentar);

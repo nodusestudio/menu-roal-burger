@@ -13,6 +13,7 @@
 
 const Motor = require('./juegoMotor');   // el MISMO reglamento que corre en el celular (generado desde src/js/juego/motor.js)
 const crypto = require('crypto');
+const { getMessaging } = require('firebase-admin/messaging');
 
 const DEFAULTS = Object.freeze({
     activo: true,
@@ -32,6 +33,8 @@ const DEFAULTS = Object.freeze({
     maxPartidasDia: 40,        // partidas que un jugador puede iniciar por día
     cofresActivos: true,       // los cofres de las misiones diarias (premios sorpresa)
     retoActivo: true,          // reto del día (mismas piezas para todos, una sola oportunidad, ranking)
+    avisoRachaActivo: true,    // push de las 7 p. m. a quien tiene racha y hoy no ha jugado (solo a quien lo aceptó)
+    avisoRachaMin: 2,          // racha mínima (días seguidos) para recibir el aviso
     retoPremio: ''             // texto del premio semanal que se muestra en el ranking (ej. «Top 3 de la semana: hamburguesa gratis»)
 });
 const PUNTAJE_MAX_ABSOLUTO = 20000;
@@ -65,6 +68,8 @@ function normalizarConfig(raw) {
         maxPartidasDia: Math.min(500, Math.max(1, Math.trunc(num(r.maxPartidasDia, DEFAULTS.maxPartidasDia)))),
         retoActivo: r.retoActivo !== false,
         cofresActivos: r.cofresActivos !== false,
+        avisoRachaActivo: r.avisoRachaActivo !== false,
+        avisoRachaMin: Math.min(30, Math.max(1, Math.trunc(num(r.avisoRachaMin, DEFAULTS.avisoRachaMin)))),
         retoPremio: String(r.retoPremio || '').slice(0, 160)
     };
 }
@@ -219,6 +224,15 @@ async function tienePedidoPrevio(db, uid) {
     return false;
 }
 
+const MAX_DISPOSITIVOS = 3;
+// Texto del aviso de racha (sin promesas de dinero: solo la racha y, si hay, el escudo).
+function mensajeRacha(racha, escudos) {
+    const n = Math.max(1, Math.trunc(racha));
+    return {
+        title: `🔥 Tu racha de ${n} días está en juego`,
+        body: escudos > 0 ? 'Juega una partida hoy y no gastes tu escudo. ¡Te toma 1 minuto!' : 'Juega una partida antes de medianoche y no la pierdas. ¡Te toma 1 minuto!'
+    };
+}
 // Eventos del embudo: un documento por día y tipo con los jugadores ÚNICOS (mapa u: {uid: true}). Idempotente: repetir el evento no cambia nada.
 const EVENTOS_CLIENTE = ['abrir', 'entrar', 'compartir', 'ranking'];
 function refEvento(db, dia, tipo) { return db.collection('juego_eventos').doc(`${dia}_${tipo}`); }
@@ -250,6 +264,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             escudos: Math.min(ESCUDOS_MAX, Math.max(0, Math.trunc(num(c.juegoEscudos, 0)))),
             cofres: Math.max(0, Math.trunc(num(c.juegoCofres, 0))),
             cofresActivos: cfg.cofresActivos,
+            avisoRachaActivo: cfg.avisoRachaActivo,
             record: Math.max(0, Math.trunc(num(c.juegoRecord, 0))),
             jugoHoy: c.ultimoDiaJuego === hoy,
             puntosHoy: c.juegoHoyDia === hoy ? Math.max(0, Math.trunc(num(c.juegoHoyPts, 0))) : 0,
@@ -537,6 +552,52 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
         });
     });
 
+    // Aviso por push (solo a quien lo aceptó en el juego). Los tokens viven en juego_push/{uid}; el cliente nunca los lee ni escribe directo.
+    exp.juegoPush = onCall(opts, async (request) => {
+        const uid = exigirUid(request);
+        const accion = request.data?.accion === 'quitar' ? 'quitar' : 'registrar';
+        const token = String(request.data?.token || '').trim();
+        if (token.length < 20 || token.length > 4096) throw new HttpsError('invalid-argument', 'Dispositivo inválido.');
+        const ref = getFirestore().collection('juego_push').doc(uid);
+        const snap = await ref.get();
+        const actuales = snap.exists && Array.isArray(snap.data().tokens) ? snap.data().tokens.filter((t) => typeof t === 'string') : [];
+        const tokens = accion === 'quitar' ? actuales.filter((t) => t !== token) : [...actuales.filter((t) => t !== token), token].slice(-MAX_DISPOSITIVOS);
+        await ref.set({ uid, tokens, actualizadoAt: FieldValue.serverTimestamp(), ...(snap.exists ? {} : { creadoAt: FieldValue.serverTimestamp() }) }, { merge: true });
+        return { ok: true, dispositivos: tokens.length };
+    });
+
+    // 7 p. m. (Bogotá): a quien jugó ayer, tiene racha y hoy aún no ha jugado, se le avisa que la racha está en juego. Máximo 1 aviso al día por jugador.
+    if (onSchedule) {
+        exp.juegoAvisoRacha = onSchedule({ schedule: 'every day 19:00', timeZone: 'America/Bogota', region: 'us-central1', cpu: 0.5, timeoutSeconds: 300 }, async () => {
+            const db = getFirestore();
+            const cfg = await leerConfig(db);
+            if (!cfg.activo || !cfg.avisoRachaActivo) { console.log('juegoAvisoRacha: apagado en la configuración'); return; }
+            const hoy = diaBogota(Date.now()), ayer = diaAnterior(hoy);
+            const snap = await db.collection(CLIENTS).where('ultimoDiaJuego', '==', ayer).select('rachaJuego', 'juegoEscudos').limit(3000).get();
+            const candidatos = snap.docs.map((d) => ({ uid: d.id, racha: Math.trunc(num(d.data().rachaJuego, 0)), escudos: Math.trunc(num(d.data().juegoEscudos, 0)) })).filter((c) => c.racha >= cfg.avisoRachaMin);
+            const messaging = getMessaging();
+            let enviados = 0, fallidos = 0, sinPush = 0, yaAvisados = 0;
+            for (let i = 0; i < candidatos.length; i += 200) {
+                const lote = candidatos.slice(i, i + 200);
+                const docs = await db.getAll(...lote.map((c) => db.collection('juego_push').doc(c.uid)));
+                for (let j = 0; j < lote.length; j++) {
+                    const d = docs[j], c = lote[j];
+                    const tokens = d.exists && Array.isArray(d.data().tokens) ? d.data().tokens : [];
+                    if (!tokens.length) { sinPush++; continue; }
+                    if (d.data().avisoDia === hoy) { yaAvisados++; continue; }
+                    try {
+                        const resp = await messaging.sendEachForMulticast({ tokens, data: { ...mensajeRacha(c.racha, c.escudos), tag: 'juego-racha', url: '/juega', tipo: 'juego_racha' }, webpush: { headers: { TTL: '14400', Urgency: 'high' } } });
+                        const muertos = tokens.filter((_, k) => !resp.responses[k].success && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(resp.responses[k].error?.code || ''));
+                        await d.ref.update({ avisoDia: hoy, ...(muertos.length ? { tokens: tokens.filter((t) => !muertos.includes(t)) } : {}) });
+                        if (resp.successCount > 0) enviados++; else fallidos++;
+                    } catch (e) { fallidos++; console.error('juegoAvisoRacha: fallo con un jugador:', e.message); }
+                }
+            }
+            await db.collection('juego_avisos').doc(hoy).set({ dia: hoy, candidatos: candidatos.length, enviados, fallidos, sinPush, yaAvisados, creadoAt: FieldValue.serverTimestamp() }, { merge: true });
+            console.log('juegoAvisoRacha', JSON.stringify({ candidatos: candidatos.length, enviados, fallidos, sinPush, yaAvisados }));
+        });
+    }
+
     // Limpieza diaria: las sesiones de partida (una por partida iniciada) no sirven pasadas 2 días.
     if (onSchedule) {
         exp.juegoLimpieza = onSchedule({ schedule: 'every day 04:30', timeZone: 'America/Bogota', region: 'us-central1', cpu: 0.5 }, async () => {
@@ -556,5 +617,5 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
 
 module.exports = {
     DEFAULTS, normalizarConfig, diaBogota, diaAnterior, metaNivel, rachaVigente,
-    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, MISIONES, misionesDelDia, progresarMisiones, vistaMisiones, premioCofre, PREMIOS_COFRE, rachaConEscudo, registrar
+    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, MISIONES, misionesDelDia, progresarMisiones, vistaMisiones, premioCofre, PREMIOS_COFRE, rachaConEscudo, mensajeRacha, registrar
 };
