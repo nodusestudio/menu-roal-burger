@@ -14030,6 +14030,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
         const _vdb = getPublicFirebaseDb();
         if (typeof trackVisita === 'function') trackVisita(_vdb);
+        if (typeof startPresencia === 'function') startPresencia(_vdb);
     } catch(e) {}
 
 

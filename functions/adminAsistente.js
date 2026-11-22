@@ -860,6 +860,11 @@ const TOOLS = [
         input_schema: { type: 'object', properties: { pagador: { type: 'string', description: 'Parte del nombre de quien debe (ej. "cámara").' }, desde: { type: 'string', description: 'YYYY-MM-DD: desde cuándo mirar lo ya cobrado.' }, hasta: { type: 'string', description: 'YYYY-MM-DD.' } } }
     },
     {
+        name: 'visitantes_en_vivo',
+        description: 'Quién está AHORA en el menú público (la página): cuántos hay en línea, cuántos tienen pedido en el carrito, cuántos están pagando y, de cada uno, qué productos tiene y el total, desde qué dispositivo y de dónde llegó (Instagram, directo…). Sin datos personales. Úsala para "¿hay alguien pidiendo por la página?", "¿qué están pidiendo ahora?".',
+        input_schema: { type: 'object', properties: {} }
+    },
+    {
         name: 'gastos_pendientes',
         description: 'Gastos pendientes por registrar: recordatorios que dejó el cajero al intentar registrar un gasto con la caja cerrada (los gastos solo se registran con la caja abierta). Dice cuántos hay, de qué y por cuánto. Son recordatorios: no cuentan en ningún saldo hasta que se registran.',
         input_schema: { type: 'object', properties: {} }
@@ -1229,6 +1234,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'cobros_qr') return await require('./fodiCobrosQr').cobrosQr(db, args);
         if (nombre === 'conciliacion_bancolombia') return await require('./fodiConciliacion').conciliacionBancolombia(db, args);
         if (nombre === 'cuentas_por_cobrar') return await require('./fodiCuentasPorCobrar').cuentasPorCobrar(db, args);
+        if (nombre === 'visitantes_en_vivo') return await require('./fodiVisitantes').visitantesEnVivo(db);
         if (nombre === 'gastos_pendientes') return await require('./fodiGastosPendientes').gastosPendientes(db);
         if (nombre === 'clientes_duplicados') return await require('./clientesUnir').clientesDuplicados(db);
         if (nombre === 'velocidad_pedidos') return await require('./fodiVelocidad').velocidadPedidos(db, args);

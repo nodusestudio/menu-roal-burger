@@ -369,6 +369,21 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // Presencia en vivo del menú público (tracking.js → startPresencia): un doc por visitante, sin datos personales.
+    // Cualquiera puede escribir SU doc (id aleatorio) con forma y tamaños acotados; solo el admin lo lee.
+    match /presencia/{sid} {
+      allow create, update: if sid.size() >= 8 && sid.size() <= 40
+        && request.resource.data.keys().hasOnly(['sid', 'ts', 'inicio', 'etapa', 'items', 'total', 'disp', 'fuente'])
+        && request.resource.data.sid == sid
+        && request.resource.data.etapa in ['viendo', 'carrito', 'pagando']
+        && request.resource.data.items is list && request.resource.data.items.size() <= 15
+        && request.resource.data.total is number
+        && request.resource.data.disp in ['movil', 'pc']
+        && request.resource.data.fuente is string && request.resource.data.fuente.size() <= 20;
+      allow delete: if true;
+      allow read: if isAdmin();
+    }
+
     match /codigos_cupon/{code} {
       allow create: if true
         && request.resource.data.code is string

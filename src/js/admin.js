@@ -2895,6 +2895,79 @@ function _tickerActualizar(forzar) {
 }
 window.addEventListener('resize', () => { try { _tickerActualizar(true); } catch (_) { /* aún sin letrero */ } });
 
+// ── «En vivo» (barra lateral): visitantes del menú público ahora mismo y lo que tienen en el carrito ───────────────
+// Lee presencia/{sid} (la escribe tracking.js → startPresencia). Un visitante cuenta como «en línea» si su último latido tiene < 90 s.
+// Cuesta una lectura por cada cambio de un visitante; el contador y el panel se repintan en el navegador (sin consultas extra).
+const _enVivo = { docs: new Map(), vistos: new Set(), desde: Date.now(), abierto: false };
+const EN_VIVO_VIGENCIA_MS = 90000;
+function _enVivoLista() {
+    const lim = Date.now() - EN_VIVO_VIGENCIA_MS;
+    const ord = { pagando: 0, carrito: 1, viendo: 2 };
+    return [..._enVivo.docs.values()].filter((d) => Number(d.ts) > lim).sort((a, b) => (ord[a.etapa] - ord[b.etapa]) || (b.ts - a.ts));
+}
+function _enVivoPintar() {
+    const w = document.getElementById('enVivoWidget');
+    if (!w) return;
+    const l = _enVivoLista();
+    const pedidos = l.filter((d) => d.etapa !== 'viendo').length;
+    const pagando = l.filter((d) => d.etapa === 'pagando').length;
+    w.querySelector('[data-ev-n]').textContent = l.length;
+    w.querySelector('[data-ev-sub]').textContent = l.length ? `${pedidos ? `🛒 ${pedidos} con pedido` : 'solo mirando'}${pagando ? ` · 💳 ${pagando} pagando` : ''}` : 'nadie en la página';
+    w.classList.toggle('ev-activo', pedidos > 0);
+    w.querySelector('[data-ev-punto]').style.background = l.length ? '#34d399' : '#6b7280';
+    if (_enVivo.abierto) _enVivoPintarPanel();
+}
+function _enVivoPintarPanel() {
+    const cuerpo = document.getElementById('enVivoCuerpo');
+    if (!cuerpo) return;
+    const l = _enVivoLista();
+    const ETAPA = { pagando: ['💳 Pagando', '#fbbf24'], carrito: ['🛒 Armando pedido', '#ff9a3d'], viendo: ['👀 Mirando el menú', '#9ca3af'] };
+    const hace = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? `${s}s` : `${Math.round(s / 60)} min`; };
+    const filas = l.map((d) => {
+        const [txt, col] = ETAPA[d.etapa] || ETAPA.viendo;
+        const items = (d.items || []).map((i) => `<div style="padding-left:${i.h ? 18 : 0}px;opacity:${i.h ? 0.8 : 1}">${i.h ? '↳ ' : ''}${escapeHtml(String(i.q))}× ${escapeHtml(i.n)}${i.p ? ` · ${escapeHtml(formatMoney(i.p * i.q))}` : ''}</div>`).join('');
+        return `<div style="border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:9px 11px;margin-bottom:8px;background:rgba(255,255,255,.04)">
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px"><b style="color:${col}">${txt}</b><span style="opacity:.7">${d.disp === 'movil' ? '📱' : '💻'} ${escapeHtml(d.fuente || 'directo')} · en la página hace ${escapeHtml(hace(d.inicio))}</span></div>
+            ${items ? `<div style="margin-top:6px;font-size:13px">${items}<div style="margin-top:4px;font-weight:800">Total: ${escapeHtml(formatMoney(d.total))}</div></div>` : ''}</div>`;
+    }).join('');
+    cuerpo.innerHTML = filas || '<p style="opacity:.6;text-align:center;margin:20px 0">Nadie en la página en este momento.</p>';
+    const r = document.getElementById('enVivoResumen');
+    if (r) r.textContent = `Desde que abriste el panel han entrado ${_enVivo.vistos.size} visitante${_enVivo.vistos.size === 1 ? '' : 's'}. El histórico (por día y hora) está en Informes › Tráfico.`;
+}
+function _enVivoAbrir() {
+    let m = document.getElementById('enVivoModal');
+    if (!m) {
+        m = document.createElement('div'); m.id = 'enVivoModal';
+        m.style.cssText = 'position:fixed;top:0;right:0;bottom:40px;left:0;z-index:10450;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
+        m.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:12px;max-width:560px;width:100%;max-height:min(82vh,720px);display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.07)"><strong>🟢 En vivo · menú público</strong><button type="button" data-ev-cerrar style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
+            <div id="enVivoCuerpo" style="padding:12px 16px;overflow-y:auto;flex:1;min-height:0"></div>
+            <div id="enVivoResumen" style="padding:6px 16px 10px;font-size:11px;opacity:.6"></div></div>`;
+        document.body.appendChild(m);
+        m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-ev-cerrar]')) { m.style.display = 'none'; _enVivo.abierto = false; } });
+    }
+    const sb = document.querySelector('.admin-sidebar'), r = sb ? sb.getBoundingClientRect() : null;
+    m.style.left = (r && r.height > 200 && r.width < window.innerWidth * 0.5 ? Math.round(r.right) : 0) + 'px';
+    m.style.display = 'flex'; _enVivo.abierto = true; _enVivoPintarPanel();
+}
+function startPresenciaAdmin() {
+    if (!firebaseDb || (typeof _meseroSession !== 'undefined' && _meseroSession)) return [];
+    document.getElementById('enVivoWidget')?.addEventListener('click', _enVivoAbrir);
+    const unsub = firebaseDb.collection('presencia').where('ts', '>', Date.now() - 30 * 60000).onSnapshot((snap) => {
+        snap.docChanges().forEach((ch) => {
+            if (ch.type === 'removed') { _enVivo.docs.delete(ch.doc.id); return; }
+            const d = ch.doc.data(); _enVivo.docs.set(ch.doc.id, d);
+            if (Number(d.ts) >= _enVivo.desde - EN_VIVO_VIGENCIA_MS) _enVivo.vistos.add(ch.doc.id);
+        });
+        _enVivoPintar();
+    }, (err) => console.warn('[ADMIN] presencia en vivo:', err?.code || err?.message));
+    const tick = setInterval(_enVivoPintar, 15000); // los que dejan de latir salen solos del contador
+    // Limpieza: borra los registros de más de 1 h (visitantes que cerraron sin avisar); una vez al abrir y cada hora.
+    const limpiar = () => firebaseDb.collection('presencia').where('ts', '<', Date.now() - 3600000).limit(100).get().then((s) => { const b = firebaseDb.batch(); s.docs.forEach((d) => b.delete(d.ref)); return s.size ? b.commit() : null; }).catch(() => {});
+    setTimeout(limpiar, 20000); const tl = setInterval(limpiar, 3600000);
+    return [unsub, () => { clearInterval(tick); clearInterval(tl); }];
+}
+
 function startRedesAlerts() {
     if (!firebaseDb) return [];
     const nombreCanal = (canal) => (canal === 'facebook' ? 'Facebook' : 'Instagram');
@@ -22980,6 +23053,7 @@ function setupLiveFirebaseSync() {
     // Redes (Instagram/Facebook): aviso en pantalla + sonido cuando entra un mensaje o comentario,
     // aunque el admin esté en otra pestaña. La primera carga solo fija la línea base (no avisa lo viejo).
     liveSubscriptions.push(...startRedesAlerts());
+    liveSubscriptions.push(...startPresenciaAdmin()); // «En vivo»: quién está en el menú público ahora y qué tiene en el carrito
 
     // Config general: recarga completa (afecta todo el UI)
     // Catálogo (productos/categorías/botones/promos) NO tiene listener en tiempo real —

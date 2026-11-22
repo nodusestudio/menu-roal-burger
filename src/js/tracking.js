@@ -90,8 +90,50 @@ function trackVisita(db) {
     } catch(e) {}
 }
 
+
+// ── Presencia en vivo (admin: "En vivo" en la barra lateral) ─────────────────────────────────────────────────────
+// Cada visitante con la página visible mantiene UN documento presencia/{sid} (sin datos personales: solo qué hay en su carrito).
+// Se escribe solo cuando cambia algo (debounce) o cada 60 s como latido; con la pestaña oculta no se escribe nada. Al cerrar se borra.
+function startPresencia(db) {
+    try {
+        if (!db || window.__roalPresencia) return;
+        if (/[?&]nopresencia=1/.test(location.search)) return;
+        window.__roalPresencia = true;
+        let sid = '';
+        try { sid = sessionStorage.getItem('roal_sid') || ''; } catch (_) { /* sin storage */ }
+        if (!sid) { sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('roal_sid', sid); } catch (_) { /* sin storage */ } }
+        const ref = db.collection('presencia').doc(sid);
+        const inicio = Date.now();
+        const disp = /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 'movil' : 'pc';
+        const params = new URLSearchParams(location.search), rf = document.referrer || '';
+        const fuente = (params.get('utm_source') || (rf.includes('instagram') ? 'instagram' : rf.includes('facebook') || rf.includes('fb.') ? 'facebook' : rf.includes('whatsapp') || rf.includes('wa.me') ? 'whatsapp' : rf.includes('google.') ? 'google' : rf.includes('tiktok') ? 'tiktok' : rf ? 'otro' : 'directo')).toLowerCase().slice(0, 20);
+        let ultimaFirma = '', ultimoEnvio = 0;
+        const leerCarrito = () => {
+            try { const a = JSON.parse(localStorage.getItem('roalburger-cart-v1') || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; }
+        };
+        const enviar = (forzar) => {
+            if (document.visibilityState !== 'visible') return;
+            const cart = leerCarrito().filter((i) => i && i.productName);
+            const items = cart.slice(0, 15).map((i) => ({ n: String(i.productName).slice(0, 40), q: Math.max(1, Number(i.quantity) || 1), p: Math.round(Number(i.unitPrice) || 0), h: i.parentKey ? 1 : 0 }));
+            const total = Math.round(cart.reduce((t, i) => t + (Number(i.unitPrice) || 0) * (Number(i.quantity) || 1), 0));
+            const pagando = !!document.getElementById('checkout-info-modal');
+            const etapa = pagando ? 'pagando' : (items.length ? 'carrito' : 'viendo');
+            const firma = `${etapa}|${total}|${items.map((i) => i.n + i.q).join(',')}`;
+            const ahora = Date.now();
+            if (!forzar && firma === ultimaFirma && ahora - ultimoEnvio < 60000) return;
+            ultimaFirma = firma; ultimoEnvio = ahora;
+            ref.set({ sid, ts: ahora, inicio, etapa, items, total, disp, fuente }).catch(() => {});
+        };
+        enviar(true);
+        setInterval(() => enviar(false), 5000); // revisa cambios (barato: solo lee localStorage); escribe únicamente si algo cambió o pasó 1 min
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') enviar(true); });
+        window.addEventListener('pagehide', () => { try { ref.delete(); } catch (_) { /* mejor esfuerzo */ } });
+    } catch (e) { /* la presencia nunca debe romper el menú */ }
+}
+
 // Expose to global scope explicitly (for older browsers)
 window.trackButtonClick = window.trackButtonClick || trackButtonClick;
 window.trackProductInterest = window.trackProductInterest || trackProductInterest;
 window.trackMenuModal = window.trackMenuModal || trackMenuModal;
 window.trackVisita = window.trackVisita || trackVisita;
+window.startPresencia = window.startPresencia || startPresencia;
