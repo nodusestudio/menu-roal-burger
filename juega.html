@@ -21,7 +21,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Montserrat:wght@400;600;700;800&family=Permanent+Marker&display=swap" rel="stylesheet">
     <!-- Diseño: juega-tema.css y juega-tema.js. La lógica del juego está en juega.js -->
-    <link rel="stylesheet" href="juega-tema.css?v=20261122u">
+    <link rel="stylesheet" href="juega-tema.css?v=20261122v">
 </head>
 <body>
     <div id="intro">
@@ -55,6 +55,9 @@
         <div id="juegoCanvas"></div>
         <footer id="chips">
             <span class="chip">🔥 <b id="stRacha">0</b></span>
+            <span class="chip" id="chipEscudo" hidden title="Escudos de racha">🛡️ <b id="stEscudos">0</b></span>
+            <button type="button" class="chip" id="chipMisiones">🎯 <b id="stMis">0/3</b></button>
+            <button type="button" class="chip cofre" id="chipCofre" hidden>🎁 <b id="stCofres">0</b></button>
             <span class="chip">💰 <b id="stCredito">$0</b></span>
         </footer>
         <div class="aviso" id="avisoJuego" hidden></div>
@@ -68,6 +71,8 @@
                 <li>Nivel <b><span id="stNivel">1</span> · meta <span id="stMeta">500</span> pts</b></li>
                 <li>Puntos de hoy <b id="stHoy">0 / 300</b></li>
                 <li>Bonus de racha <b id="stBonus"></b></li>
+                <li>Tu récord <b id="stRecord">—</b></li>
+                <li>Escudos de racha <b id="stEscudosInfo">0</b></li>
                 <li>Tus créditos <b id="stVence">—</b></li>
             </ul>
             <p id="stAviso" hidden style="margin:-6px 0 14px">Tus créditos se activan cuando recibas tu primer pedido de ROAL.</p>
@@ -85,6 +90,17 @@
         </div>
     </div>
 
+    <div class="overlay" id="misiones" hidden>
+        <div class="card">
+            <h2>Misiones de hoy</h2>
+            <p style="margin:0 0 8px">Cumple una misión y ganas un cofre sorpresa 🎁</p>
+            <div id="misLista"></div>
+            <div id="cofrePremio" hidden></div>
+            <button class="btn" id="btnAbrirCofre" type="button" hidden>🎁 Abrir cofre</button>
+            <button class="btn sec" id="btnMisionesCerrar" type="button">Cerrar</button>
+        </div>
+    </div>
+
     <div class="overlay" id="sinSesion" hidden>
         <div class="card">
             <h2>Inicia sesión</h2>
@@ -99,10 +115,10 @@
             <div class="pts" id="resPuntaje">0 pts</div>
             <p id="resDetalle"></p>
             <div class="acciones">
-                <button class="btn" id="btnCompartir" type="button" hidden>📤 Compartir</button>
-                <button class="btn sec" id="btnVerRanking" type="button" hidden>🏆 Ranking</button>
+                <button class="btn grande" id="btnOtra" type="button">¡Otra, vale!</button>
                 <button class="btn" id="btnReintentar" type="button" hidden>Reintentar</button>
-                <button class="btn" id="btnOtra" type="button">¡Otra, vale!</button>
+                <button class="btn sec" id="btnCompartir" type="button" hidden>📤 Compartir</button>
+                <button class="btn sec" id="btnVerRanking" type="button" hidden>🏆 Ranking</button>
                 <a class="btn sec" href="/" data-menu>Menú</a>
             </div>
         </div>
@@ -112,8 +128,8 @@
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script defer src="https://www.gstatic.com/firebasejs/10.12.5/firebase-functions-compat.js"></script>
     <script defer src="firebase-config.js"></script>
-    <script defer src="juega-motor.js?v=20261122u"></script>
-    <script defer src="juega-tema.js?v=20261122u"></script>
-    <script defer src="juega.js?v=20261122u"></script>
+    <script defer src="juega-motor.js?v=20261122v"></script>
+    <script defer src="juega-tema.js?v=20261122v"></script>
+    <script defer src="juega.js?v=20261122v"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
  * juegoRanking). El navegador solo JUEGA: puntos, rachas, niveles, créditos y ranking los decide y guarda el servidor (functions/juego.js). */
 (function (root) {
     'use strict';
-    const { N, SHAPES, INGREDIENTES, nuevaGrilla, celdas, puedeColocar, colocar, lineasLlenas, borrarLineas, hayJugada, puntosJugada, nuevasPiezas, crearRng, codificarJugada, reproducirHasta } = root.BlockRoalMotor;
+    const { N, SHAPES, INGREDIENTES, BONO_TABLERO_LIMPIO, tableroVacio, nuevaGrilla, celdas, puedeColocar, colocar, lineasLlenas, borrarLineas, hayJugada, puntosJugada, nuevasPiezas, crearRng, codificarJugada, reproducirHasta } = root.BlockRoalMotor;
     root.BlockRoalEscena = () => escena; // solo para depurar/probar en el navegador
 
     // ───────────────────────── 2) SONIDO + ESCENA + SERVIDOR ─────────────────────────
@@ -247,6 +247,12 @@
         $('stCredito').textContent = peso(estado.creditoJuego);
         $('stHoy').textContent = `${fmt(estado.puntosHoy)} / ${fmt(estado.topeDiario)}`;
         $('stBonus').textContent = Object.keys(estado.rachaBonus || {}).map((d) => `${d}d +${estado.rachaBonus[d]}`).join(' · ');
+        const esc = Math.max(0, Number(estado.escudos) || 0), cof = Math.max(0, Number(estado.cofres) || 0);
+        $('stEscudos').textContent = esc; $('chipEscudo').hidden = esc === 0; $('stEscudosInfo').textContent = esc;
+        $('stRecord').textContent = estado.record > 0 ? fmt(estado.record) + ' pts' : '—';
+        $('stCofres').textContent = cof; $('chipCofre').hidden = !(cof > 0 && estado.cofresActivos !== false);
+        const mis = estado.misiones || []; $('chipMisiones').hidden = !mis.length;
+        $('stMis').textContent = `${mis.filter((m) => m.hecha).length}/${mis.length || 3}`;
         const cr = $('stCredito'); cr.style.fontSize = cr.textContent.length > 7 ? '34px' : (cr.textContent.length > 5 ? '44px' : '');
         const vence = $('stVence');
         if (vence) {
@@ -295,6 +301,14 @@
         $('btnCompartir').hidden = false;
         ultimoResultado = { puntaje: x.puntaje, reto: !!x.reto, nivel: estado.nivelMax + 1, racha: estado.racha, puesto: null };
         if (x.reto) { estado.retoHecho = true; estado.retoPuntaje = x.puntaje; pintarModos(); partes.push('🏆 Tu puntaje del reto ya está en el ranking de hoy.'); }
+        const rec = x.record || {};
+        if (rec.nuevo && rec.anterior > 0) { $('resTitulo').textContent = '¡NUEVO RÉCORD! 🏅'; partes.push(`Superaste tu récord anterior (${fmt(rec.anterior)} pts)`); Sonido.nivel(); if (escena) escena.confeti(); }
+        else if (rec.nuevo) { partes.push('🏅 ¡Tu primer récord!'); }
+        else if (rec.anterior > x.puntaje) { const f = rec.anterior - x.puntaje; partes.push(f <= Math.max(60, rec.anterior * 0.15) ? `¡Casi! Te faltaron ${fmt(f)} para tu récord (${fmt(rec.anterior)})` : `Tu récord: ${fmt(rec.anterior)} pts`); }
+        if (x.tablerosLimpios > 0) partes.push(`✨ Tablero limpio x${x.tablerosLimpios} (+${BONO_TABLERO_LIMPIO * x.tablerosLimpios})`);
+        if (x.escudoUsado) partes.push('🛡️ Tu escudo salvó tu racha');
+        if (x.escudoGanado) partes.push('🛡️ ¡Ganaste un escudo de racha!');
+        if (x.cofresNuevos > 0) { partes.push(`🎁 ¡Misión cumplida! Ganaste ${x.cofresNuevos > 1 ? x.cofresNuevos + ' cofres' : 'un cofre'}`); Sonido.monedas(); }
         partes.push(x.puntosOtorgados > 0 ? `+${fmt(x.puntosOtorgados)} puntos ROAL` : 'Hoy ya llegaste al tope de puntos');
         if (x.topeAlcanzado && x.puntosOtorgados > 0) partes.push('(llegaste al tope diario)');
         if (x.bonusRacha > 0) partes.push(`🔥 Bonus de racha +${x.bonusRacha}`);
@@ -411,7 +425,7 @@
             nueva() {
                 this.grilla = nuevaGrilla(); this.movs = [];
                 this.rng = crearRng(Number.isInteger(semilla) ? semilla : Math.floor(Math.random() * 4294967296)); // la semilla del servidor: así la partida se puede repetir y comprobar
-                this.puntos = 0; this.jugadas = 0; this.combo = 0; this.fin = false;
+                this.puntos = 0; this.jugadas = 0; this.combo = 0; this.fin = false; this.recordAviso = false;
                 this.celdasImg.forEach((f) => f.forEach((im) => im && im.destroy()));
                 this.celdasImg = Array.from({ length: N }, () => Array(N).fill(null));
                 (this.piezas || []).forEach((p) => { if (p) { p.cont.destroy(); if (p.zona) p.zona.destroy(); } });
@@ -530,7 +544,23 @@
                     this.tweens.add({ targets: t, scale: 1.25, duration: 220, ease: 'Back.Out' });
                     this.tweens.add({ targets: t, y: t.y - 70, alpha: 0, duration: 800, delay: 450, onComplete: () => t.destroy() });
                     if (navigator.vibrate) try { navigator.vibrate(30 + nLineas * 10); } catch (_) { /* sin vibración */ }
+                    if (tableroVacio(this.grilla)) {     // mismo bono que repite el servidor
+                        this.puntos += BONO_TABLERO_LIMPIO;
+                        this.time.delayedCall(350, () => {
+                            Sonido.nivel(); this.confeti(); this.cameras.main.flash(260, 255, 196, 0, true);
+                            const tl = this.add.text(W / 2, GY + (N * CELDA) / 2, `¡TABLERO LIMPIO!\n+${BONO_TABLERO_LIMPIO}`, { ...T.estiloPopup(true), color: '#ffc400' }).setOrigin(0.5).setDepth(45).setScale(0.3);
+                            tl.setShadow(3, 3, '#fb4b08', 0, true, true);
+                            this.tweens.add({ targets: tl, scale: 1.35, duration: 260, ease: 'Back.Out' });
+                            this.tweens.add({ targets: tl, y: tl.y - 60, alpha: 0, duration: 900, delay: 900, onComplete: () => tl.destroy() });
+                        });
+                    }
                 } else Sonido.colocar();
+                if (!this.recordAviso && estado && estado.record > 0 && this.puntos > estado.record) {
+                    this.recordAviso = true;
+                    const rt = this.add.text(W / 2, GY - 2, '🏅 ¡NUEVO RÉCORD!', { ...T.estiloPopup(false), color: '#ffc400' }).setOrigin(0.5, 0).setDepth(50);
+                    this.tweens.add({ targets: rt, alpha: 0, y: rt.y + 24, duration: 900, delay: 1200, onComplete: () => rt.destroy() });
+                    Sonido.monedas();
+                }
                 this.txtPuntos.setText(fmt(this.puntos));
                 if (this.txtPuntos.pulso) this.txtPuntos.pulso();
                 this.actualizarMeta();
@@ -657,6 +687,31 @@
         } catch (e) { $('rankLista').innerHTML = `<li class="rk-vacio">${esc(e && e.message || 'No se pudo cargar el ranking.')}</li>`; }
     }
 
+    // ── Misiones del día y cofres sorpresa ──
+    function textoSeguro(t) { return String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
+    function pintarMisiones() {
+        const mis = (estado && estado.misiones) || [];
+        $('misLista').innerHTML = mis.length ? mis.map((m) => `<div class="mis ${m.hecha ? 'hecha' : ''}"><div class="mis-fila"><span>${m.hecha ? '✅' : '🎯'} ${textoSeguro(m.texto)}</span><b>${m.progreso}/${m.meta}</b></div><div class="mis-barra"><i style="width:${Math.round((m.progreso / m.meta) * 100)}%"></i></div></div>`).join('') : '<p>Hoy no hay misiones.</p>';
+        const cof = Math.max(0, Number(estado && estado.cofres) || 0);
+        $('btnAbrirCofre').hidden = !(cof > 0 && estado.cofresActivos !== false); $('btnAbrirCofre').textContent = `🎁 Abrir cofre (${cof})`;
+    }
+    function abrirMisiones() { Sonido.clic(); $('cofrePremio').hidden = true; pintarMisiones(); $('misiones').hidden = false; }
+    async function abrirCofre() {
+        const b = $('btnAbrirCofre'); b.disabled = true;
+        try {
+            const r = (await funciones.httpsCallable('juegoAbrirCofre')({})).data;
+            const p = r.premio || {};
+            $('cofrePremio').textContent = p.tipo === 'escudo' ? '🛡️ ¡Un escudo de racha!' : `💰 ${peso(p.valor)} en créditos`;
+            $('cofrePremio').hidden = false;
+            Sonido.monedas(); if (escena) escena.confeti();
+            if (navigator.vibrate) try { navigator.vibrate([40, 30, 80]); } catch (_) { /* sin vibración */ }
+            estado = { ...estado, cofres: r.cofres, escudos: r.escudos };
+            if (r.creditoJuego != null) estado.creditoJuego = r.creditoJuego;
+            mostrarEstado(); pintarMisiones();
+        } catch (e) { $('cofrePremio').textContent = e && e.message ? e.message : 'No se pudo abrir el cofre.'; $('cofrePremio').hidden = false; }
+        b.disabled = false;
+    }
+
     async function jugarOtra() {
         Sonido.clic();
         $('resultado').hidden = true; $('btnVerRanking').hidden = true; $('btnCompartir').hidden = true;
@@ -727,6 +782,11 @@
         if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
         funciones = firebase.app().functions('us-central1');
         $('btnOtra').addEventListener('click', jugarOtra);
+        $('chipMisiones').addEventListener('click', abrirMisiones);
+        $('chipCofre').addEventListener('click', abrirMisiones);
+        $('btnAbrirCofre').addEventListener('click', abrirCofre);
+        $('btnMisionesCerrar').addEventListener('click', () => { $('misiones').hidden = true; });
+        $('misiones').addEventListener('click', (e) => { if (e.target === $('misiones')) $('misiones').hidden = true; });
         $('btnReintentar').addEventListener('click', reintentar);
         $('btnCompartir').addEventListener('click', compartirPuntaje);
         $('modoReto').addEventListener('click', () => cambiarModo('reto'));
