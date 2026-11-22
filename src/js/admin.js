@@ -30444,6 +30444,7 @@ async function initAdmin() {
         setupLiveFirebaseSync();
         _bancoIniciar();
         _cqRestaurar();
+        _tfRestaurar();
         _colaReactivarAvisoPc();
 
         fetchClients().then(() => {
@@ -42272,7 +42273,6 @@ function _asistAcciones(msg, acciones) {
             // llega el valor exacto, el sistema cobra e imprime solo (ver _transfEsperarPago / _cqAplicar).
             const b = e.currentTarget, bOk = card.querySelector('[data-acc="ok"]');
             if (b.disabled) return;
-            if (_cqEstado().cobro && _cqEstado().cobro.estado === 'abierto' && !(await showConfirmModal({ title: 'Ya hay un cobro esperando', message: `Está esperando ${formatMoney(_cqEstado().cobro.total)}. Solo se puede vigilar un pago a la vez: ¿cancelarlo y vigilar este pedido?`, confirmText: 'Sí, cambiar', cancelText: 'No', danger: false }))) return;
             if (bOk) bOk.disabled = true;
             const aT = { ...a, porTransferencia: true };
             b.disabled = true; if (bNo) bNo.disabled = true; b.textContent = 'Trabajando…'; estado.textContent = '';
@@ -44319,7 +44319,7 @@ function _cqEscuchar(id, datos) {
     _cqPintar();
 }
 // Pregunta cuánto se cobra por QR: el total del pedido u otro monto (cliente que paga solo una parte). Devuelve el monto o null si se cancela.
-function _cqPedirMonto(total, cliente) {
+function _cqPedirMonto(total, cliente, titulo = '📲 Cobrar con QR') {
     return new Promise((resolve) => {
         const fmt = (n) => '$' + Number(n).toLocaleString('es-CO');
         const fondo = document.createElement('div');
@@ -44327,7 +44327,7 @@ function _cqPedirMonto(total, cliente) {
         const caja = document.createElement('div');
         caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:20px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
         const boton = 'border:0;border-radius:12px;padding:13px 14px;font-weight:800;font-size:16px;cursor:pointer;color:#fff;';
-        caja.innerHTML = `<div style="font-weight:800;font-size:18px;margin-bottom:4px;">📲 Cobrar con QR</div>
+        caja.innerHTML = `<div style="font-weight:800;font-size:18px;margin-bottom:4px;">${titulo}</div>
             <div style="opacity:.75;margin-bottom:14px;">${cliente ? escapeHtml(cliente) + ' · ' : ''}Total del pedido ${fmt(total)}</div>
             <button type="button" id="cqmTotal" style="${boton}width:100%;background:#2e7d32;">Cobrar el total · ${fmt(total)}</button>
             <div style="text-align:center;opacity:.7;margin:12px 0 8px;">o cobrar otro monto (el cliente paga solo una parte)</div>
@@ -44387,26 +44387,227 @@ async function _cqIniciar() {
         showNotice('QR en la TV. Esperando el pago…', 'ok');
     } catch (e) { showNotice(`No se pudo abrir el cobro con QR: ${e.message || e}`, 'error'); }
 }
-// Pedido tomado por WhatsApp que el cliente pagará por transferencia (botón "🏦 Por transferencia" de FODI).
-// El pedido ya está creado: copia los datos de pago para pasárselos al cliente y deja un cobro abierto por el valor exacto
-// (domicilio incluido) SIN QR en la TV. Al llegar el pago de Bancolombia, _cqAplicar cobra, recibe e imprime el ticket solo.
+// ── Pedidos por transferencia (botón "🏦 Por transferencia" de FODI) ───────────────────────────────────────────────
+// Varios pedidos pueden esperar su pago a la vez (cada uno es un cobro en cobros_bancolombia con origen 'transferencia' y su propio
+// listener), sin QR en la TV. Al crearlo se pregunta cuánto va a transferir el cliente (el total u otro monto), se copian los datos de
+// pago y se abre una ventana con el QR (con ese valor) + la llave para pasárselos. Cuando bancoAviso enlaza un pago por el valor exacto,
+// _tfAplicar cobra, recibe e imprime el ticket solo (pago completo) o abre el pago dividido (pago parcial). Si dos esperan el MISMO
+// valor, el servidor no adivina: se usa "✓ Ya pagó" en el que corresponda.
 const TRANSFERENCIA_ESPERA_MS = 2 * 60 * 60 * 1000;
 const TRANSFERENCIA_LLAVE = '@roalburger'; // llave Bre-B de ROAL BURGER (la misma del qr-cobro.json)
+function _tfEstado() { return (window.__transf = window.__transf || { mapa: new Map(), cola: Promise.resolve(), tick: null, html: '' }); }
+function _tfMensaje(c) {
+    const parte = c.parcial ? `\n(Es una parte del pedido, que vale ${formatMoney(c.pedidoTotal)}; el resto lo pagas al recibirlo.)` : '';
+    return `Para pagar tu pedido por transferencia Bancolombia 💛\n\n🔑 Llave Bre-B: ${TRANSFERENCIA_LLAVE}\n🏪 A nombre de: ROAL BURGER\n💵 Valor exacto: ${formatMoney(c.total)}${c.entrega === 'delivery' && !c.parcial ? ' (domicilio incluido)' : ''}${parte}\n\nTambién puedes escanear el QR. En cuanto llegue el pago te confirmamos y empezamos a prepararlo 🍔`;
+}
+// Librerías del QR (las mismas de la TV): se cargan solo cuando hace falta.
+let _tfQrListo = null;
+function _tfCargarQr() {
+    if (_tfQrListo) return _tfQrListo;
+    const cargar = (src) => new Promise((ok) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ok; document.head.appendChild(s); });
+    _tfQrListo = (async () => {
+        if (!window.qrcode) await cargar('qrcode-generator.js');
+        if (!window.RoalQrEmv) await cargar('qr-emv.js');
+        try { return await (await fetch('qr-cobro.json?t=' + Date.now(), { cache: 'no-store' })).json(); } catch (_) { return null; }
+    })();
+    return _tfQrListo;
+}
+// Devuelve la imagen del QR (data URL) con el valor incluido; '' si no se pudo armar.
+async function _tfQrUrl(total) {
+    try {
+        const j = await _tfCargarQr();
+        if (!j || !j.payload || !window.qrcode) return '';
+        const modo = (j.conValor === true || j.conValor === '12') ? '12' : (j.conValor === '11' ? '11' : '');
+        let texto = j.payload;
+        if (modo && window.RoalQrEmv) { const q = window.RoalQrEmv.conMonto(j.payload, total, modo); if (q) texto = q; }
+        const q = window.qrcode(0, 'L'); q.addData(texto, 'Byte'); q.make();
+        return q.createDataURL(8, 4);
+    } catch (e) { console.warn('[TRANSF] QR:', e && e.message); return ''; }
+}
+// Imagen lista para mandar por WhatsApp: QR + valor + llave.
+async function _tfImagenBlob(urlQr, c) {
+    const img = new Image();
+    await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = urlQr; });
+    const cv = document.createElement('canvas'); cv.width = 640; cv.height = 840;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, 640, 840); g.fillStyle = '#111'; g.textAlign = 'center';
+    g.font = '800 38px system-ui,sans-serif'; g.fillText('ROAL BURGER', 320, 58);
+    g.font = '600 24px system-ui,sans-serif'; g.fillText('Paga con tu app de Bancolombia', 320, 94);
+    g.imageSmoothingEnabled = false; g.drawImage(img, 60, 120, 520, 520);
+    g.font = '800 56px system-ui,sans-serif'; g.fillText(formatMoney(c.total), 320, 716);
+    g.font = '600 28px system-ui,sans-serif'; g.fillText('Llave Bre-B: ' + TRANSFERENCIA_LLAVE, 320, 768);
+    if (c.codigo) { g.font = '400 20px system-ui,sans-serif'; g.fillStyle = '#555'; g.fillText('Pedido ' + c.codigo, 320, 808); }
+    return await new Promise((ok) => cv.toBlob(ok, 'image/png'));
+}
+async function _tfMostrarDatos(id) {
+    const it = _tfEstado().mapa.get(id); if (!it) return;
+    const c = it.datos, texto = _tfMensaje(c);
+    const fondo = document.createElement('div');
+    fondo.style.cssText = 'position:fixed;inset:0;z-index:2147482500;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+    const caja = document.createElement('div');
+    caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);text-align:center';
+    const B = 'border:0;border-radius:12px;padding:12px;font-weight:800;font-size:14px;cursor:pointer;color:#fff;width:100%;';
+    caja.innerHTML = `<div style="font-weight:800;font-size:18px">🏦 ${escapeHtml(c.codigo ? 'Pedido ' + c.codigo : 'Pago por transferencia')}${c.cliente ? ' · ' + escapeHtml(c.cliente) : ''}</div>
+        <div style="font-size:26px;font-weight:800;margin:6px 0">${formatMoney(c.total)}</div>
+        <div style="opacity:.75;font-size:13px;margin-bottom:10px">Llave Bre-B <b>${escapeHtml(TRANSFERENCIA_LLAVE)}</b>${c.parcial ? ` · parte del pedido (${formatMoney(c.pedidoTotal)})` : ''}</div>
+        <div id="tfQrBox" style="background:#fff;border-radius:12px;padding:8px;margin:0 auto 12px;width:240px;height:240px;display:flex;align-items:center;justify-content:center;color:#333;font-size:13px">Preparando QR…</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            <button type="button" id="tfCopiarTxt" style="${B}background:#2e7d32">📋 Copiar mensaje con la llave</button>
+            <button type="button" id="tfCopiarImg" style="${B}background:#1565c0" disabled>🖼️ Copiar imagen del QR</button>
+            <button type="button" id="tfCompartir" style="${B}background:#6a1b9a" hidden>📤 Compartir imagen</button>
+            <button type="button" id="tfCerrar" style="${B}background:transparent;border:1px solid rgba(255,255,255,.3)">Cerrar</button>
+        </div><div id="tfMsg" style="min-height:18px;margin-top:8px;font-size:13px;color:#7ee2a8"></div>`;
+    fondo.appendChild(caja); document.body.appendChild(fondo);
+    const q = (s) => caja.querySelector('#' + s), msg = (t, err) => { q('tfMsg').style.color = err ? '#ff9c9c' : '#7ee2a8'; q('tfMsg').textContent = t; };
+    const cerrar = () => { document.removeEventListener('keydown', tecla, true); fondo.remove(); };
+    const tecla = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(); } };
+    document.addEventListener('keydown', tecla, true);
+    fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(); });
+    q('tfCerrar').addEventListener('click', cerrar);
+    q('tfCopiarTxt').addEventListener('click', async () => { let ok = false; try { ok = await copyTextToClipboard(texto); } catch (_) { /* sin portapapeles */ } msg(ok ? '✓ Mensaje copiado' : 'No pude copiar: selecciónalo a mano', !ok); });
+    const url = await _tfQrUrl(c.total);
+    if (!url) { q('tfQrBox').textContent = 'No pude armar el QR: pásale la llave.'; return; }
+    q('tfQrBox').innerHTML = `<img src="${url}" alt="QR de pago" style="width:100%;height:100%;image-rendering:pixelated">`;
+    let blob = null; try { blob = await _tfImagenBlob(url, c); } catch (_) { /* sin canvas */ }
+    if (!blob) return;
+    const archivo = new File([blob], `pago-${(c.codigo || 'roal').toString().replace(/\W+/g, '')}.png`, { type: 'image/png' });
+    q('tfCopiarImg').disabled = false;
+    q('tfCopiarImg').addEventListener('click', async () => {
+        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); msg('✓ Imagen copiada: pégala en el chat'); }
+        catch (_) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = archivo.name; a.click(); msg('Tu navegador no copia imágenes: se descargó para adjuntarla', true); }
+    });
+    if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        q('tfCompartir').hidden = false;
+        q('tfCompartir').addEventListener('click', async () => { try { await navigator.share({ files: [archivo], text: texto }); } catch (_) { /* cancelado */ } });
+    }
+}
+function _tfPintar() {
+    const st = _tfEstado();
+    let p = document.getElementById('transfPanel');
+    const qc = document.getElementById('cobroQrCard');
+    if (!st.mapa.size) { if (p) p.hidden = true; if (qc) qc.style.bottom = '14px'; return; }
+    if (!p) {
+        p = document.createElement('div'); p.id = 'transfPanel';
+        p.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:2147482000;width:min(340px,calc(100vw - 28px));max-height:50vh;overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.97);color:#fff;font:14px system-ui,sans-serif;padding:10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.5)';
+        p.addEventListener('click', (e) => {
+            const b = e.target.closest('button[data-tf]'); if (!b) return;
+            const id = b.dataset.id;
+            if (b.dataset.tf === 'datos') _tfMostrarDatos(id); else if (b.dataset.tf === 'ya') _tfYaPago(id, b); else if (b.dataset.tf === 'x') _tfCancelar(id, 'cancelado');
+        });
+        document.body.appendChild(p);
+    }
+    const BT = 'border:0;border-radius:9px;padding:8px 6px;font-weight:700;cursor:pointer;color:#fff;font-size:13px;';
+    const html = `<div style="font-weight:800;margin-bottom:4px">🏦 Esperando transferencias (${st.mapa.size})</div>` + [...st.mapa.values()].map((it) => {
+        const c = it.datos, min = Math.max(0, Math.floor((Date.now() - (c.creadoMs || Date.now())) / 60000));
+        const quien = `${escapeHtml(c.codigo ? '#' + c.codigo : '')}${c.cliente ? ' · ' + escapeHtml(c.cliente) : ''}`;
+        if (c.estado === 'pagado') return `<div style="border-top:1px solid rgba(255,255,255,.15);padding:8px 0"><b style="color:#7ee2a8">✅ Pago recibido${c.pagador ? ' de ' + escapeHtml(c.pagador) : ''}</b><br>${quien} · ${formatMoney(c.total)} · registrando el cobro…</div>`;
+        return `<div style="border-top:1px solid rgba(255,255,255,.15);padding:8px 0"><div><b>${quien}</b> · ${formatMoney(c.total)}${c.parcial ? ` <small style="opacity:.8">(parte de ${formatMoney(c.pedidoTotal)})</small>` : ''}</div><div style="opacity:.7;font-size:12px;margin:2px 0 6px">hace ${min} min</div><div style="display:flex;gap:6px"><button type="button" data-tf="datos" data-id="${it.id}" style="${BT}flex:1;background:#1565c0">QR / llave</button><button type="button" data-tf="ya" data-id="${it.id}" style="${BT}flex:1;background:#2e7d32">✓ Ya pagó</button><button type="button" data-tf="x" data-id="${it.id}" style="${BT}background:#c62828">✕</button></div></div>`;
+    }).join('');
+    if (html !== st.html) { st.html = html; p.innerHTML = html; } // no se repinta si nada cambió: evita que un clic se pierda
+    p.hidden = false;
+    if (qc) qc.style.bottom = (p.offsetHeight + 26) + 'px';
+}
+function _tfQuitar(id) {
+    const st = _tfEstado(), it = st.mapa.get(id);
+    if (it && it.unsub) { try { it.unsub(); } catch (_) { /* ya cerrada */ } }
+    st.mapa.delete(id);
+    if (!st.mapa.size && st.tick) { clearInterval(st.tick); st.tick = null; }
+    _tfPintar();
+}
+async function _tfCancelar(id, motivo) {
+    const it = _tfEstado().mapa.get(id); if (!it) return;
+    try { await firebaseDb.collection('cobros_bancolombia').doc(id).update({ estado: motivo, cerradoEn: firestoreNow() }); } catch (e) { console.warn('[TRANSF] cancelar:', e && e.message); }
+    _tfQuitar(id);
+    showNotice(motivo === 'expirado' ? 'La espera de la transferencia venció (2 h). El pedido sigue en recepción: cóbralo a mano.' : 'Ya no se vigila ese pago. El pedido sigue en recepción sin cobrar.', 'info');
+}
+async function _tfYaPago(id, boton) {
+    const it = _tfEstado().mapa.get(id); if (!it || it.datos.estado !== 'abierto') return;
+    if (boton) { boton.disabled = true; boton.textContent = 'Confirmando…'; }
+    const NO_REINTENTAR = ['permission-denied', 'unauthenticated', 'invalid-argument', 'failed-precondition', 'not-found'];
+    let ultimo = null;
+    for (let n = 1; n <= 4; n++) {
+        try {
+            const r = (await firebaseFunctions.httpsCallable('confirmarCobroManual')({ cobroId: id })).data;
+            if (!r || !r.ok) showNotice('Ese cobro ya no estaba abierto.', 'info');
+            return; // el listener ve 'pagado' y aplica el cobro
+        } catch (e) {
+            ultimo = e;
+            if (NO_REINTENTAR.some((c) => String(e && e.code || '').endsWith(c))) break;
+            await new Promise((ok) => setTimeout(ok, 2500 * n));
+        }
+    }
+    showNotice(`No se pudo confirmar${ultimo ? ': ' + (ultimo.message || ultimo) : ''}. Cobra el pedido de forma manual.`, 'error');
+    if (boton) { boton.disabled = false; boton.textContent = '✓ Ya pagó'; }
+}
+function _tfTick() {
+    const st = _tfEstado();
+    for (const it of [...st.mapa.values()]) { if (it.datos.estado === 'abierto' && Date.now() > Number(it.datos.expiraEn)) _tfCancelar(it.id, 'expirado'); }
+    _tfPintar();
+}
+function _tfAgregar(id, datos) {
+    const st = _tfEstado(); if (st.mapa.has(id)) return;
+    const it = { id, datos: { ...datos }, unsub: null, aplicando: false };
+    st.mapa.set(id, it);
+    it.unsub = firebaseDb.collection('cobros_bancolombia').doc(id).onSnapshot((snap) => {
+        if (!snap.exists) { _tfQuitar(id); return; }
+        const d = snap.data();
+        it.datos = { ...it.datos, ...d, creadoMs: it.datos.creadoMs || (d.creadoEn && d.creadoEn.toMillis ? d.creadoEn.toMillis() : Date.now()) };
+        if (d.estado === 'pagado' && !d.aplicado) { _tfPintar(); st.cola = st.cola.then(() => _tfAplicarUno(it)).catch(() => { /* ya avisado */ }); return; }
+        if (d.estado !== 'abierto') { _tfQuitar(id); return; }
+        _tfPintar();
+    }, (e) => console.warn('[TRANSF] escuchando:', e && (e.code || e.message)));
+    if (!st.tick) st.tick = setInterval(_tfTick, 1000);
+    _tfPintar();
+}
+// Llegó el pago: se registra una sola vez (reclamo transaccional) y, si el pago es completo, se cobra, recibe e imprime solo.
+async function _tfAplicarUno(it) {
+    if (it.aplicando) return; it.aplicando = true;
+    const x = it.datos;
+    try {
+        const ref = firebaseDb.collection('cobros_bancolombia').doc(it.id);
+        const toca = await firebaseDb.runTransaction(async (tx) => { const d = await tx.get(ref); if (!d.exists || d.data().aplicado) return false; tx.update(ref, { aplicado: true, aplicadoEn: firestoreNow() }); return true; });
+        if (!toca) return;
+        let order = ordersState.find((o) => o.id === x.pedidoId);
+        if (!order) { try { await reloadDataAndRender(); } catch (_) { /* se refresca solo */ } order = ordersState.find((o) => o.id === x.pedidoId); }
+        if (!order) showNotice(`Llegó el pago de ${formatMoney(x.total)} pero no encuentro el pedido en pantalla. Revísalo en el POS.`, 'error');
+        else if (isOrderPaid(order)) showNotice(`El pedido #${order.code} ya estaba cobrado; el pago por transferencia quedó registrado aparte.`, 'info');
+        else if (x.parcial) {
+            openDeliveryPaymentModal(order, true);
+            _pfEnterSplitMode();
+            _pfSplitParts = [{ method: 'bancolombia', amount: Number(x.total) }, { method: null, amount: null }];
+            _pfRenderSplitParts();
+            showNotice(`Llegaron ${formatMoney(x.total)} por transferencia${x.pagador ? ' de ' + x.pagador : ''}. Elige cómo paga el resto (${formatMoney(Number(x.pedidoTotal) - Number(x.total))}) y confirma.`, 'ok');
+        } else {
+            await _pfApplyPaymentUpdate(order, true, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: it.id }, { despues: true, imprimirAuto: true });
+        }
+    } catch (e) { showNotice(`No se pudo registrar el pago por transferencia: ${e.message || e}`, 'error'); }
+    _tfQuitar(it.id);
+}
+// Pedido ya creado (r = { id, code, total }): pregunta cuánto transferirá el cliente, abre el cobro y muestra QR + llave.
 async function _transfEsperarPago(r, resumen) {
     const total = Math.round(Number(r && r.total) || 0);
     if (!r || !r.id || !(total > 0)) throw new Error('El pedido se creó pero no pude leer su total. Cóbralo desde el POS.');
     const cliente = String(resumen.cliente || '').trim();
-    const texto = `Para pagar tu pedido por transferencia Bancolombia 💛\n\n🔑 Llave Bre-B: ${TRANSFERENCIA_LLAVE}\n🏪 A nombre de: ROAL BURGER\n💵 Valor exacto: ${formatMoney(total)}${resumen.entrega === 'delivery' ? ' (domicilio incluido)' : ''}\n\nEn cuanto llegue el pago te confirmamos y empezamos a prepararlo 🍔`;
-    let copiado = false; try { copiado = await copyTextToClipboard(texto); } catch (_) { /* sin portapapeles */ }
+    // Cerrar la ventana sin elegir = el total del pedido
+    const monto = (await _cqPedirMonto(total, cliente, '🏦 ¿Cuánto transfiere el cliente?')) || total;
+    const parcial = monto < total;
     try { await reloadDataAndRender(); } catch (_) { /* se refresca solo */ }
-    const st = _cqEstado();
-    if (st.cobro && st.cobro.estado === 'abierto') await _cqCancelar('cancelado');
     const ref = firebaseDb.collection('cobros_bancolombia').doc();
     const ahora = Date.now();
-    const datos = { pedidoId: r.id, total, pedidoTotal: total, parcial: false, cliente, receiveOrder: 'true', estado: 'abierto', origen: 'transferencia', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + TRANSFERENCIA_ESPERA_MS };
+    const datos = { pedidoId: r.id, codigo: String(r.code || ''), total: monto, pedidoTotal: total, parcial, cliente, entrega: resumen.entrega || '', receiveOrder: 'true', estado: 'abierto', origen: 'transferencia', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + TRANSFERENCIA_ESPERA_MS };
     await ref.set(datos);
-    _cqEscuchar(ref.id, { ...datos, creadoMs: ahora });
-    showNotice(copiado ? `Pedido ${r.code || ''} creado (${formatMoney(total)}). Datos de pago copiados: pégalos al cliente.` : `Pedido ${r.code || ''} creado (${formatMoney(total)}). No pude copiar los datos de pago: llave ${TRANSFERENCIA_LLAVE}, valor ${formatMoney(total)}.`, copiado ? 'ok' : 'info');
+    _tfAgregar(ref.id, { ...datos, creadoMs: ahora });
+    let copiado = false; try { copiado = await copyTextToClipboard(_tfMensaje(datos)); } catch (_) { /* sin portapapeles */ }
+    showNotice(`Pedido ${r.code || ''} creado. Esperando ${formatMoney(monto)}${copiado ? ' (mensaje copiado)' : ''}.`, 'ok');
+    _tfMostrarDatos(ref.id);
+}
+// Si se recarga el panel, esta pestaña retoma sus transferencias abiertas.
+async function _tfRestaurar() {
+    if (_meseroSession) return;
+    try {
+        const snap = await firebaseDb.collection('cobros_bancolombia').where('sesion', '==', _cqSesion()).where('estado', '==', 'abierto').limit(20).get();
+        snap.docs.forEach((d) => { const x = d.data(); if (x.origen === 'transferencia' && Date.now() < Number(x.expiraEn)) _tfAgregar(d.id, { ...x, creadoMs: x.creadoEn && x.creadoEn.toMillis ? x.creadoEn.toMillis() : Date.now() }); });
+    } catch (_) { /* sin red: se reintenta con el próximo arranque */ }
 }
 // Si se recarga el panel con un cobro abierto, esta pestaña lo retoma (solo la pestaña que lo abrió).
 async function _cqRestaurar() {
