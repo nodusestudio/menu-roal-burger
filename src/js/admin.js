@@ -44668,6 +44668,16 @@ async function _cqRestaurar() {
     } catch (_) { /* sin red: se reintenta con el próximo arranque */ }
 }
 document.getElementById('pfQrTvBtn')?.addEventListener('click', _cqIniciar);
+// Botón "🏦 Por transferencia" de la ventana de cobro: el pedido ya existe; no va a la TV, queda esperando el pago y muestra QR + llave para mandarlos por WhatsApp.
+document.getElementById('pfTransfBtn')?.addEventListener('click', async () => {
+    const order = _pfOrder; if (!order) return;
+    const total = Math.round(_pfOrderTotal);
+    if (!(total > 0)) { showNotice('El pedido no tiene un total para cobrar.', 'error'); return; }
+    _pfClose();
+    try {
+        await _transfEsperarPago({ id: order.id, code: order.code, total }, { cliente: order.customerName, entrega: String(order.orderType || order.deliveryType || order.type || '') });
+    } catch (e) { showNotice(`No se pudo abrir la transferencia: ${e.message || e}`, 'error'); }
+});
 
 // ── Ticket de Recepción: si es más alto que la pantalla no debe quedar "pegado" (el botón Cobrar quedaba inalcanzable) ──
 (function _admTicketAlto() {
