@@ -945,6 +945,7 @@ const TOOLS = [
     require('./fodiFeedback').TOOL,
     require('./fodiCortesias').TOOL,
     require('./fodiAjustes').TOOL,
+    require('./fodiJuego').TOOL,
     require('./fodiNuevoCliente').TOOL,
     require('./reactivarCola').TOOL,
     require('./fodiFinanzasFestival').TOOL,
@@ -1227,6 +1228,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'nuevo_cliente') return await require('./fodiNuevoCliente').nuevoCliente(db, args);
         if (nombre === 'reactivar_cola') return await require('./reactivarCola').reactivarCola(db, args);
         if (nombre === 'descuentos_y_extras') return await require('./fodiAjustes').descuentosYExtras(db, args);
+        if (nombre === 'juego_metricas') return await require('./fodiJuego').juegoMetricas(db, args);
         if (nombre === 'finanzas_festival') return await require('./fodiFinanzasFestival').finanzasFestival(db);
         if (nombre === 'pantalla_tv') return await require('./fodiTv').pantallaTv(db);
         if (nombre === 'avisos_celular') return await require('./fodiAvisos').avisosCelular(db);

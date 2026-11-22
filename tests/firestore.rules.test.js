@@ -445,3 +445,50 @@ test('SEGURIDAD Instagram: el token y las imágenes no se leen desde el navegado
         await assertFails(adminDb.collection(col).doc(`${id}-nuevo`).set({ hack: true }));
     }
 });
+
+// ── Block ROAL (minijuego): puntos, créditos, nivel y racha SOLO con Admin SDK (functions/juego.js) ──
+const CAMPOS_JUEGO = [['puntosJuego', 99999], ['creditoJuego', 99999], ['nivelMaxJuego', 50], ['rachaJuego', 30], ['ultimoDiaJuego', '2026-11-22'], ['juegoHoyDia', '2000-01-01'], ['juegoHoyPts', 0]];
+
+test('juego) ni el dueño ni un admin pueden escribir puntos, créditos, nivel ni racha del juego', async () => {
+    const clientId = 'phone_3001119999';
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-juego').set({ seeded: true });
+        await context.firestore().collection('clientes').doc(clientId).set({ customerName: 'Test', customerPhone: '3001119999' });
+    });
+    const ownerDb = testEnv.authenticatedContext(clientId).firestore();
+    const adminDb = testEnv.authenticatedContext('admin-juego').firestore();
+    for (const [campo, valor] of CAMPOS_JUEGO) {
+        await assertFails(ownerDb.collection('clientes').doc(clientId).update({ [campo]: valor }));
+        await assertFails(adminDb.collection('clientes').doc(clientId).update({ [campo]: valor }));
+    }
+    // Y nadie puede crear un cliente ya con crédito.
+    const anonDb = testEnv.unauthenticatedContext().firestore();
+    await assertFails(anonDb.collection('clientes').doc('phone_3001118888').set({ customerName: 'X', customerPhone: '3001118888', creditoJuego: 50000 }));
+    // La regla no rompe las escrituras normales del dueño.
+    await assertSucceeds(ownerDb.collection('clientes').doc(clientId).update({ lastOrderCode: 'A-1' }));
+});
+
+test('juego) sesiones, partidas y canjes: el navegador no escribe; el admin solo lee partidas/canjes', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('admins').doc('admin-juego2').set({ seeded: true });
+        await context.firestore().collection('juego_partidas').doc('p1').set({ uid: 'u', puntaje: 10 });
+        await context.firestore().collection('juego_sesiones').doc('s1').set({ uid: 'u' });
+    });
+    const userDb = testEnv.authenticatedContext('u').firestore();
+    const adminDb = testEnv.authenticatedContext('admin-juego2').firestore();
+    for (const col of ['juego_sesiones', 'juego_partidas', 'juego_canjes']) {
+        await assertFails(userDb.collection(col).doc('nuevo').set({ uid: 'u', puntaje: 999999 }));
+        await assertFails(adminDb.collection(col).doc('nuevo').set({ uid: 'u', puntaje: 999999 }));
+    }
+    await assertFails(userDb.collection('juego_partidas').doc('p1').get());
+    await assertSucceeds(adminDb.collection('juego_partidas').doc('p1').get());
+    await assertFails(adminDb.collection('juego_sesiones').doc('s1').get()); // sesiones: solo servidor
+});
+
+test('juego) la configuración la escribe solo el admin', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => { await context.firestore().collection('admins').doc('admin-juego3').set({ seeded: true }); });
+    const userDb = testEnv.authenticatedContext('u').firestore();
+    const adminDb = testEnv.authenticatedContext('admin-juego3').firestore();
+    await assertFails(userDb.collection('configuracion').doc('juego').set({ topeDiario: 999999 }));
+    await assertSucceeds(adminDb.collection('configuracion').doc('juego').set({ topeDiario: 300 }));
+});

@@ -1,3 +1,4 @@
+const juego = require('./juego');
 // Motor de validación server-side del precio de un pedido del checkout web público
 // (submitPublicOrder, ver index.js). Reutiliza lo que ya existe y está probado en producción
 // para el agente de IA (agent/tools.js, agent/orderLogic.js) y agrega las piezas que le faltan
@@ -273,6 +274,15 @@ async function fetchCouponLocks(db, clientId) {
 // lealtad -- se separa en su propia función (en vez de fusionar ambas en un solo fetch) para no
 // tocar la firma/comportamiento ya probado de fetchCouponLocks; Firestore igual deduplica lecturas
 // concurrentes del mismo doc dentro de un único Promise.all.
+// Créditos ROAL del minijuego (COP) y el tope % del pedido: ver functions/juego.js. Lectura aparte para no tocar lo ya probado.
+async function fetchGameCredit(db, clientId) {
+    const cfgSnap = await db.collection('configuracion').doc('juego').get();
+    const cfg = juego.normalizarConfig(cfgSnap.exists ? cfgSnap.data() : {});
+    if (!clientId || !cfg.activo) return { saldo: 0, topePct: cfg.topeCreditoPct };
+    const snap = await db.collection('clientes').doc(clientId).get();
+    return { saldo: snap.exists ? Math.max(0, Math.trunc(Number(snap.data()?.creditoJuego) || 0)) : 0, topePct: cfg.topeCreditoPct };
+}
+
 async function fetchLoyaltyPointsBalance(db, clientId) {
     if (!clientId) return 0;
     const snap = await db.collection('clientes').doc(clientId).get();
@@ -390,17 +400,19 @@ async function computeServerPricedOrder(db, {
     deliveryFeeSubmitted,
     clientId,
     pointsToRedeemRequested,
+    gameCreditRequested = 0,
     codigoDia = null
 }) {
     const itemList = Array.isArray(items) ? items : [];
     const needsPromos = itemList.some((i) => String(i?.orderOptions?.couponId || '').startsWith('desc_'));
     const needsProductos = needsPromos || itemList.some((i) => String(i?.orderOptions?.couponId || '').startsWith('ce_'));
-    const [catalog, combosEspecialesSnapshot, couponLocks, puntosDisponibles, barriosEspeciales] = await Promise.all([
+    const [catalog, combosEspecialesSnapshot, couponLocks, puntosDisponibles, barriosEspeciales, gameCredit] = await Promise.all([
         fetchAllSellableItems(db),
         db.collection('combos_especiales').get(),
         fetchCouponLocks(db, clientId),
         fetchLoyaltyPointsBalance(db, clientId),
-        orderLogic.loadBarriosEspeciales(db)
+        orderLogic.loadBarriosEspeciales(db),
+        Number(gameCreditRequested) > 0 ? fetchGameCredit(db, clientId) : Promise.resolve({ saldo: 0, topePct: 0 })
     ]);
     const [promosSnap, productosSnap] = await Promise.all([
         needsPromos ? db.collection('promociones').get() : null,
@@ -535,7 +547,16 @@ async function computeServerPricedOrder(db, {
         loyaltyEligibleSubtotal
     });
 
-    const total = subtotal + deliveryFee + promo2x1IncrementoFee - pointsDiscountAmount;
+    // Crédito ROAL del minijuego: solo con compra (se descuenta de los productos, nunca del domicilio ni del empaque) y como máximo
+    // topePct % de ese valor ya con el descuento de puntos. Se clampa contra el saldo real, nunca se rechaza.
+    const gameCreditAmount = juego.clampCreditoJuego({
+        solicitado: gameCreditRequested,
+        saldo: gameCredit.saldo,
+        baseProductos: Math.max(0, subtotal - pointsDiscountAmount),
+        topePct: gameCredit.topePct
+    });
+
+    const total = subtotal + deliveryFee + promo2x1IncrementoFee - pointsDiscountAmount - gameCreditAmount;
 
     return {
         items: pricedItems,
@@ -546,6 +567,7 @@ async function computeServerPricedOrder(db, {
         promo2x1IncrementoFee,
         pointsRedeemed,
         pointsDiscountAmount,
+        gameCreditAmount,
         loyaltyEligibleSubtotal,
         total,
         mismatchDetected,
@@ -591,6 +613,7 @@ module.exports = {
     resolveServerDiscountRate,
     computeLoyaltyRedemptionForItems,
     fetchLoyaltyPointsBalance,
+    fetchGameCredit,
     LOYALTY_POINT_VALUE_COP,
     isLoyaltyEligibleItem,
     // Para tests/precios-paridad.test.js (compara con las mismas funciones del menú público)

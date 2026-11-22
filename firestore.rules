@@ -252,7 +252,9 @@ service cloud.firestore {
       // que la transacción del trigger siga siendo la fuente de verdad única de los puntos.
       function touchesLoyaltyPoints() {
         return request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['puntosDisponibles', 'puntosAcumuladosTotal']);
+          .hasAny(['puntosDisponibles', 'puntosAcumuladosTotal',
+            // Block ROAL (minijuego, functions/juego.js): puntos, créditos ROAL, nivel y racha SOLO con Admin SDK.
+            'puntosJuego', 'creditoJuego', 'nivelMaxJuego', 'rachaJuego', 'ultimoDiaJuego', 'juegoHoyDia', 'juegoHoyPts']);
       }
 
       allow update: if !touchesLoyaltyPoints()
@@ -500,6 +502,10 @@ service cloud.firestore {
     // Auditoria de adminAdjustLoyaltyPoints (functions/index.js) -- solo lectura desde el admin
     // (para el historial de ajustes por cliente); la escritura es EXCLUSIVA del Admin SDK dentro
     // de esa Cloud Function, nunca desde el navegador (ni siquiera un admin autenticado).
+    // Block ROAL (minijuego): sesiones, partidas y canjes los escribe solo el servidor; el admin los lee para las métricas.
+    match /juego_sesiones/{doc} { allow read, write: if false; }
+    match /juego_partidas/{doc} { allow read: if isAdmin(); allow write: if false; }
+    match /juego_canjes/{doc} { allow read: if isAdmin(); allow write: if false; }
     match /ajustes_puntos_lealtad/{doc} {
       allow read: if isAdmin();
       allow write: if false;

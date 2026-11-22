@@ -14,6 +14,7 @@ const orderLogic = require('./agent/orderLogic');
 const { buildDeliveredOrderWhatsAppMessage } = orderLogic;
 const pricing = require('./pricing');
 const codigoDia = require('./codigoDia');
+const juego = require('./juego');
 const { assertRecaptchaToken } = require('./recaptcha');
 
 initializeApp();
@@ -733,6 +734,28 @@ async function redeemLoyaltyPointsTransaction(db, orderId, clientId, pointsToRed
 // Exportado solo para tests (tests/loyalty-redemption.test.js).
 exports._redeemLoyaltyPointsTransaction = redeemLoyaltyPointsTransaction;
 
+// Descuenta del saldo de créditos ROAL (clientes/{id}.creditoJuego, en COP) lo que el pedido ya usó, releyendo el saldo fresco.
+// Devuelve cuánto se descontó de verdad y el faltante (a sumar de vuelta al total del pedido). Registra juego_canjes para métricas.
+async function redeemGameCreditTransaction(db, orderId, clientId, amount) {
+    const orderRef = db.collection('pedidos').doc(orderId);
+    const clientRef = db.collection(CLIENTS_COLLECTION).doc(clientId);
+    return db.runTransaction(async (transaction) => {
+        const [orderSnap, clientSnap] = await Promise.all([transaction.get(orderRef), transaction.get(clientRef)]);
+        const saldo = clientSnap.exists ? Math.max(0, Math.trunc(Number(clientSnap.data()?.creditoJuego) || 0)) : 0;
+        const actual = Math.max(0, Math.min(amount, saldo));
+        if (actual > 0) {
+            transaction.update(clientRef, { creditoJuego: FieldValue.increment(-actual) });
+            transaction.set(db.collection('juego_canjes').doc(orderId), { orderId, uid: clientId, monto: actual, dia: juego.diaBogota(Date.now()), creadoAt: FieldValue.serverTimestamp() });
+        }
+        const shortfall = amount - actual;
+        if (shortfall > 0 && orderSnap.exists) {
+            transaction.update(orderRef, { gameCreditAmount: actual, gameCreditClientId: actual > 0 ? clientId : null, total: FieldValue.increment(shortfall) });
+        }
+        return { actual, shortfall };
+    });
+}
+exports._redeemGameCreditTransaction = redeemGameCreditTransaction;
+
 // ─────────────────────────────────────────────────────────────
 // Revertir puntos (ganados y/o canjeados) cuando un pedido se cancela. Cancelar hoy NO es un
 // status nuevo -- es un flag `anulado:true` (ver anularOrder en admin.js) para pedidos que aun no
@@ -753,7 +776,8 @@ exports._redeemLoyaltyPointsTransaction = redeemLoyaltyPointsTransaction;
 async function reverseLoyaltyPointsTransaction(db, orderId, orderData) {
     const pointsEarned = orderData?.pointsAwarded === true ? Math.max(0, Number(orderData.pointsEarned) || 0) : 0;
     const pointsRedeemed = Math.max(0, Number(orderData?.pointsRedeemed) || 0);
-    if (pointsEarned <= 0 && pointsRedeemed <= 0) {
+    const gameCredit = Math.max(0, Math.trunc(Number(orderData?.gameCreditAmount) || 0));
+    if (pointsEarned <= 0 && pointsRedeemed <= 0 && gameCredit <= 0) {
         return { pointsEarnedReversed: 0, pointsRedeemedRefunded: 0 };
     }
 
@@ -771,7 +795,8 @@ async function reverseLoyaltyPointsTransaction(db, orderId, orderData) {
             return { pointsEarnedReversed: 0, pointsRedeemedRefunded: 0 }; // ya se revirtio antes
         }
 
-        const clientIds = [...new Set([earnedClientId, redeemedClientId].filter(Boolean))];
+        const gameCreditClientId = gameCredit > 0 ? (orderData?.gameCreditClientId || null) : null;
+        const clientIds = [...new Set([earnedClientId, redeemedClientId, gameCreditClientId].filter(Boolean))];
         const clientRefs = {};
         const clientSnaps = {};
         for (const cid of clientIds) {
@@ -806,8 +831,16 @@ async function reverseLoyaltyPointsTransaction(db, orderId, orderData) {
             actualRedeemedRefunded = pointsRedeemed;
         }
 
+        // Crédito ROAL del minijuego: se devuelve al saldo de quien lo usó (la reversa de los puntos y esta comparten el marcador de idempotencia).
+        if (gameCreditClientId) {
+            const update = { creditoJuego: FieldValue.increment(gameCredit) };
+            if (clientSnaps[gameCreditClientId]?.exists) transaction.update(clientRefs[gameCreditClientId], update);
+            else transaction.set(clientRefs[gameCreditClientId], update, { merge: true });
+        }
+
         transaction.set(markerRef, {
             orderId,
+            gameCreditRefunded: gameCreditClientId ? gameCredit : 0,
             pointsEarnedReversed: actualEarnedReversed,
             pointsRedeemedRefunded: actualRedeemedRefunded,
             earnedClientId,
@@ -1891,6 +1924,7 @@ exports.submitPublicOrder = onCall(
             deliveryFeeSubmitted: customerInfo.deliveryFee,
             clientId,
             pointsToRedeemRequested: customerInfo.pointsToRedeem,
+            gameCreditRequested: customerInfo.gameCredit,
             codigoDia: codigoDiaPricing
         });
 
@@ -1971,6 +2005,9 @@ exports.submitPublicOrder = onCall(
             // otro teléfono) para que una reversa futura (ver reverseLoyaltyPointsTransaction)
             // nunca tenga que adivinar a quién devolverle el saldo.
             pointsRedeemedClientId: priced.pointsRedeemed > 0 ? clientId : null,
+            // Crédito ROAL del minijuego (COP) y a quién se le descontó, para poder devolverlo si el pedido se anula.
+            gameCreditAmount: clientId ? priced.gameCreditAmount : 0,
+            gameCreditClientId: clientId && priced.gameCreditAmount > 0 ? clientId : null,
             paymentMethod,
             cashChangeRequired,
             cashTenderAmount: Number.isFinite(cashTenderAmount) ? cashTenderAmount : null,
@@ -2062,7 +2099,30 @@ exports.submitPublicOrder = onCall(
             }
         }
 
-        return { id: orderRef.id, code: orderCode, total: finalTotal, pointsRedeemed: finalPointsRedeemed };
+        // Crédito ROAL del minijuego: mismo patrón que los puntos (dinero => transacción que relee el saldo fresco; si no alcanza o falla,
+        // el pedido vuelve a cobrar completo en vez de quedar con un descuento que nunca se descontó).
+        let finalGameCredit = clientId ? priced.gameCreditAmount : 0;
+        if (finalGameCredit > 0) {
+            try {
+                const { actual, shortfall } = await redeemGameCreditTransaction(db, orderRef.id, clientId, finalGameCredit);
+                finalTotal += shortfall;
+                finalGameCredit = actual;
+            } catch (err) {
+                console.error(`submitPublicOrder: fallo al descontar crédito ROAL del pedido ${orderRef.id}:`, err);
+                try {
+                    finalTotal += finalGameCredit;
+                    finalGameCredit = 0;
+                    await orderRef.update({ gameCreditAmount: 0, gameCreditClientId: null, total: finalTotal });
+                } catch (revertErr) {
+                    console.error(`submitPublicOrder: fallo tambien al revertir el crédito ROAL del pedido ${orderRef.id}:`, revertErr);
+                }
+            }
+        } else if (priced.gameCreditAmount > 0) {
+            finalTotal += priced.gameCreditAmount; // sin cliente identificado no hay a quién descontarle: se cobra completo
+            await orderRef.update({ gameCreditAmount: 0, gameCreditClientId: null, total: finalTotal }).catch(() => {});
+        }
+
+        return { id: orderRef.id, code: orderCode, total: finalTotal, pointsRedeemed: finalPointsRedeemed, gameCreditAmount: finalGameCredit };
     }
 );
 
@@ -4285,3 +4345,6 @@ exports.obtenerCostosRoal = onCall(
         }
     }
 );
+
+// Block ROAL (minijuego): juegoEstado / juegoIniciar / juegoEnviarPuntaje. Validación, rachas y créditos en functions/juego.js.
+juego.registrar(exports, { onCall, HttpsError, ALLOWED_ORIGINS, getFirestore, FieldValue });
