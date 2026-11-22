@@ -14987,7 +14987,7 @@ async function _fidVerTicketUltimo(telefono) {
     ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
     const cuando = new Date(_orderTs(ult)).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' });
     ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:16px;width:min(100%,460px);max-height:94vh;overflow:auto;color:#fff;box-sizing:border-box">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>🧾 Último pedido · ${escapeHtml(cuando)}</strong><button type="button" class="ghost-button" data-ult-cerrar>✕ Cerrar</button></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>🧾 Último pedido · ${escapeHtml(cuando)} · ${_fidOrigenDeOrden(ult) === 'web' ? '🌐 por la página' : '🧾 lo digitó el local'}</strong><button type="button" class="ghost-button" data-ult-cerrar>✕ Cerrar</button></div>
         <div style="background:#fffdf8;color:#111;border-radius:9px;padding:10px;overflow:auto">${buildThermalTicketMarkup(ult, { printMode: true })}</div></div>`;
     document.body.appendChild(ov);
     ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-ult-cerrar]')) ov.remove(); });
@@ -15607,6 +15607,20 @@ async function _fidRestaurarDescartado(k) {
     } catch (err) { showNotice(`No se pudo restaurar: ${err.message || err}`, 'error'); }
 }
 
+// Origen del último pedido de un cliente de la cola: 'web' (página) o 'admin' (lo digitó el local). Consulta una vez por cliente.
+const _fidOrigenCache = new Map();
+const _fidOrigenDeOrden = (o) => (/^web/i.test(String((o && o.source) || '')) || (o && o.channel) === 'web' ? 'web' : 'admin');
+function _fidOrigenDe(e) {
+    if (_fidOrigenCache.has(e.k)) return _fidOrigenCache.get(e.k);
+    _fidOrigenCache.set(e.k, '');
+    const tel = String(e.telefono || '').replace(/\D/g, '');
+    const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === _sqPhoneKey(tel)) || { customerPhoneDigits: tel, customerPhone: tel };
+    _fidPedidosCliente(cliente).then((ps) => {
+        const ult = (ps || []).filter((o) => o && o.anulado !== true && o.voided !== true).sort((a, b) => _orderTs(b) - _orderTs(a))[0];
+        if (ult) { _fidOrigenCache.set(e.k, _fidOrigenDeOrden(ult)); renderMetricasFeedback(); }
+    }).catch(() => {});
+    return '';
+}
 function _fidHoraTexto(h) { return `${h % 12 || 12}:00 ${h >= 12 ? 'pm' : 'am'}`; }
 
 // Vista «Cola del día»: los clientes que el servidor eligió hoy (ritmo propio, hora ideal, favorito y regalo con tope de costo).
@@ -15634,7 +15648,8 @@ function _fidColaHtml() {
             ? `<button type="button" class="feedback-pending-btn" data-fid-prev-cola="${escapeHtml(e.k)}" title="Ver la imagen y el texto; copiarlos y confirmar el envío">👁 Vista previa</button><button type="button" class="ghost-button" data-fid-cola-omitir="${escapeHtml(e.k)}" title="Hoy no le escribo">Omitir</button>`
             : (e.estado === 'copiado' ? `<button type="button" class="ghost-button" data-fid-prev-cola="${escapeHtml(e.k)}">👁 Vista previa</button>` : '');
         const btnDescartar = hecha ? '' : `<button type="button" class="ghost-button" data-fid-cola-descartar="${escapeHtml(e.k)}" data-nombre="${escapeHtml(e.nombre)}" data-tel="${escapeHtml(tel)}" title="Sacarlo de Reactivar para siempre (número malo, regalo que no aplica…)">🚫 Descartar</button>`;
-        const origenTxt = e.origen === 'web' ? ' · 🌐 su último pedido fue por la página' : (e.origen === 'admin' ? ' · 🧾 su último pedido lo digitó el local' : '');
+        const origenE = e.origen || _fidOrigenDe(e); // las tarjetas armadas antes no traen el dato: se consulta una vez y se guarda en memoria
+        const origenTxt = origenE === 'web' ? ' · 🌐 su último pedido fue por la página' : (origenE === 'admin' ? ' · 🧾 su último pedido lo digitó el local' : '');
         return `<div class="met-user-row-v2"${hecha ? ' style="opacity:.55"' : ''}>
             <div class="met-avatar">${ICONO[e.estado] || '🔁'}</div>
             <div class="met-user-info-v2">
