@@ -16106,7 +16106,7 @@ function _fidArchivoGenerico(e) {
     document.body.appendChild(ov);
     _bindOverlayClose(ov, _fidCerrarPrevia);
     ov.innerHTML = _fidPreviaMarcoHtml({
-        titulo: nombre, encabezado: `📦 ${MOT[e.motivo] || 'Mensaje'} enviado a ${nombre}`, telefono: e.telefono, texto, sinImagen: !fijo,
+        titulo: nombre, encabezado: `📦 ${MOT[e.motivo] || 'Mensaje'} enviado a ${nombre}`, telefono: e.telefono, extraDer: _fidUltimoPedidoHtml(e.telefono, null), texto, sinImagen: !fijo,
         botones: e.mensaje ? '<button type="button" class="section-action-btn" data-arch-copiar>Copiar mensaje</button>' : '',
         hint: `Enviado el ${fh}. ${fijo ? 'Esta es la misma postal que se mandó.' : 'Este envío se hizo antes de las postales, por eso no tiene imagen guardada.'}`
     });
@@ -17873,6 +17873,12 @@ function buildOrderActionsMenuHtml(order) {
                 </div>`;
 }
 
+// Iniciales discretas junto al código del ticket para saber de dónde vino el pedido: W = web (cliente), C = caja/POS, A = panel admin.
+function _ticketOrigenIniciales(order) {
+    const o = order || {};
+    const letra = o.source === 'web' ? 'W' : (o.isAdminOrder === true || o.source === 'admin_pos') ? 'C' : o.source === 'admin_panel' ? 'A' : '';
+    return letra ? ` <small style="opacity:.55;font-size:.7em">·${letra}</small>` : '';
+}
 function buildThermalTicketMarkup(order, options = {}) {
     const printMode = options.printMode === true;
     // Menú hamburguesa en la esquina superior del ticket con dos secciones:
@@ -18054,7 +18060,7 @@ function buildThermalTicketMarkup(order, options = {}) {
                     <div class="ticket-brand-name">${restaurantName}</div>
                     <div class="ticket-brand-copy">Ticket de recepcion</div>
                     <div class="ticket-order-meta">
-                        <span>${escapeHtml(order.code)}</span>
+                        <span>${escapeHtml(order.code)}${_ticketOrigenIniciales(order)}</span>
                         <span>${orderHour}</span>
                     </div>
                     <div class="ticket-order-meta">
