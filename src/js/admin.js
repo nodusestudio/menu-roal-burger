@@ -2871,20 +2871,29 @@ function _tickerItems() {
     } catch (_) { /* aún sin datos cargados */ }
     return out;
 }
-function _tickerActualizar() {
+function _tickerActualizar(forzar) {
     const el = document.getElementById('rrTicker');
     if (!el) return;
     const items = _tickerItems();
     const firma = items.join('|');
-    if (firma === _tickerFirma) return; // sin cambios: no reiniciar la animación
+    if (firma === _tickerFirma && !forzar) return; // sin cambios: no reiniciar la animación
     _tickerFirma = firma;
     if (!items.length) { el.hidden = true; el.innerHTML = ''; return; }
     el.hidden = false;
     const html = items.map((t) => `<span class="rr-tk-item">${escapeHtml(t)}</span>`).join('');
-    // Se repite el contenido 2 veces para que el recorrido sea continuo; velocidad constante según el largo.
-    const seg = Math.max(27, Math.round(firma.length / 4));
-    el.innerHTML = `<div class="rr-tk-track" style="animation-duration:${seg}s">${html}${html}</div>`;
+    // Recorrido SIN huecos: la mitad del contenido se repite hasta ser más ancha que el letrero y se duplica; el movimiento va de 0 a -50%,
+    // así al reiniciar el vuelo se ve idéntico y nunca queda vacío. Velocidad constante (px/s); solo usa el navegador (sin Firebase ni créditos).
+    el.innerHTML = `<div class="rr-tk-track">${html}</div>`;
+    const track = el.firstChild;
+    const ancho = el.clientWidth || 600;
+    const unidad = track.scrollWidth || 1;
+    const veces = Math.max(1, Math.ceil(ancho / unidad));
+    const mitad = html.repeat(veces);
+    track.innerHTML = mitad + mitad;
+    const px = track.scrollWidth / 2;
+    track.style.animationDuration = `${Math.max(12, Math.round(px / 55))}s`; // ~55 px por segundo
 }
+window.addEventListener('resize', () => { try { _tickerActualizar(true); } catch (_) { /* aún sin letrero */ } });
 
 function startRedesAlerts() {
     if (!firebaseDb) return [];

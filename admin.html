@@ -18149,8 +18149,8 @@
             #rrTicker:hover .rr-tk-track{animation-play-state:paused}
             #rrTicker .rr-tk-item{padding:0 28px;position:relative}
             #rrTicker .rr-tk-item::after{content:"•";position:absolute;right:-3px;color:#ff7a1a}
-            /* arranca fuera por la derecha (100% del letrero) y termina fuera por la izquierda (la mitad del contenido duplicado) */
-            @keyframes rrTkRun{from{transform:translateX(100%)}to{transform:translateX(-50%)}}
+            /* recorrido continuo sin huecos: el contenido va duplicado y se mueve de 0 a -50% (al reiniciar se ve idéntico) */
+            @keyframes rrTkRun{from{transform:translateX(0)}to{transform:translateX(-50%)}}
             @media (prefers-reduced-motion:reduce){#rrTicker .rr-tk-track{animation:none}}
         }
         /* CELULAR: la misma barra fija abajo que en PC (Cerrar sesión, Accesos, voz, FODI, respuestas rápidas) */
