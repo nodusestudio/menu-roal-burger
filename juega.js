@@ -166,7 +166,20 @@
                 tono(80, t + 0.85, 0.7, 'sine', 0.6, sfxG, 40);
             },
             monedas() { if (!ctx) return; const t = ctx.currentTime; tono(hz(88), t, 0.12, 'square', 0.22, sfxG); tono(hz(95), t + 0.1, 0.4, 'square', 0.22, sfxG); },
-            clic() { if (!ctx) return; tono(700, ctx.currentTime, 0.06, 'triangle', 0.25, sfxG, 1000); }
+            clic() { if (!ctx) return; tono(700, ctx.currentTime, 0.06, 'triangle', 0.25, sfxG, 1000); },
+            warp() { // salto al hiperespacio: barrido de ruido que sube + tono que sube + acorde final
+                if (!ctx) return; const t = ctx.currentTime;
+                const n = Math.floor(ctx.sampleRate * 1.4), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+                for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+                const s = ctx.createBufferSource(); s.buffer = buf;
+                const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2.5;
+                f.frequency.setValueAtTime(250, t); f.frequency.exponentialRampToValueAtTime(7000, t + 1.2);
+                const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9, t + 1.0); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+                s.connect(f); f.connect(g); g.connect(sfxG); s.start(t); s.stop(t + 1.45);
+                tono(60, t, 1.2, 'sawtooth', 0.32, sfxG, 1100);
+                [57, 64, 69, 76].forEach((m, i) => tono(hz(m), t + 1.15, 1.1, i % 2 ? 'triangle' : 'square', 0.2, sfxG));
+                tono(70, t + 1.15, 0.6, 'sine', 0.8, sfxG, 35);
+            }
         };
         return S;
     })();
@@ -178,6 +191,7 @@
     let funciones = null;
     let juego = null;         // instancia Phaser
     let sesionId = null;
+    let sesionPromesa = Promise.resolve();
     let escena = null;
 
     function mostrarEstado() {
@@ -197,10 +211,13 @@
     }
     function aviso(msg, esError) { const e = $('avisoJuego'); e.textContent = msg || ''; e.className = 'aviso' + (esError ? ' err' : ''); e.hidden = !msg; }
 
-    async function iniciarPartida() {
+    function iniciarPartida() {
         sesionId = null;
-        try { const r = await funciones.httpsCallable('juegoIniciar')({}); sesionId = r.data.sesionId; aviso(''); }
-        catch (e) { aviso(e?.message || 'No se pudo iniciar la partida.', true); }
+        sesionPromesa = (async () => {
+            try { const r = await funciones.httpsCallable('juegoIniciar')({}); sesionId = r.data.sesionId; aviso(''); }
+            catch (e) { aviso(e?.message || 'No se pudo iniciar la partida.', true); }
+        })();
+        return sesionPromesa;
     }
 
     async function terminarPartida(puntaje, jugadas) {
@@ -211,6 +228,7 @@
         $('resDetalle').textContent = 'Guardando tus puntos…';
         $('btnOtra').disabled = true;
         try {
+            if (!sesionId) await sesionPromesa;
             if (!sesionId) throw new Error('La partida no se pudo registrar. Intenta de nuevo.');
             const r = await funciones.httpsCallable('juegoEnviarPuntaje')({ sesionId, puntaje, jugadas });
             if (!r.data.ok) { $('resDetalle').textContent = 'Esta partida no se pudo validar, así que no suma puntos.'; }
@@ -296,7 +314,11 @@
                 g.clear(); g.fillStyle(0xffffff, 1).fillCircle(5, 5, 5); g.generateTexture('chispa', 10, 10);
                 g.destroy();
             }
-            update(time) {
+            update(time, delta) {
+                if (this.arrastrando && this.objetivo) { // la pieza sigue al dedo con suavidad (pegada, sin saltos)
+                    const k = Math.min(1, 0.5 * ((delta || 16.6) / 16.6)), cn = this.arrastrando.cont;
+                    cn.x += (this.objetivo.x - cn.x) * k; cn.y += (this.objetivo.y - cn.y) * k;
+                }
                 // Borde del tablero: arcoíris neón que gira alrededor del marco, con resplandor.
                 const x0 = GX - 5, y0 = GY - 5, w = N * CELDA + 10, h = N * CELDA + 10, per = 2 * (w + h), seg = 96;
                 const pt = (t) => { let d = (t % 1) * per; if (d < w) return [x0 + d, y0]; d -= w; if (d < h) return [x0 + w, y0 + d]; d -= h; if (d < w) return [x0 + w - d, y0 + h]; d -= w; return [x0, y0 + h - d]; };
@@ -313,7 +335,7 @@
                 this.puntos = 0; this.jugadas = 0; this.combo = 0; this.fin = false;
                 this.celdasImg.forEach((f) => f.forEach((im) => im && im.destroy()));
                 this.celdasImg = Array.from({ length: N }, () => Array(N).fill(null));
-                (this.piezas || []).forEach((p) => p && p.cont.destroy());
+                (this.piezas || []).forEach((p) => { if (p) { p.cont.destroy(); if (p.zona) p.zona.destroy(); } });
                 this.txtPuntos.setText('0');
                 this.actualizarMeta();
                 this.repartir();
@@ -340,13 +362,22 @@
                 for (let i = 0; i < d.shape.length; i++) for (let j = 0; j < d.shape[0].length; j++) {
                     if (d.shape[i][j]) cont.add(this.add.image(j * CELDA + (CELDA - 3) / 2, i * CELDA + (CELDA - 3) / 2, 'ing_' + INGREDIENTES[d.ing]));
                 }
-                cont.setSize(ancho, alto).setInteractive(new Phaser.Geom.Rectangle(-10, -10, ancho + 20, alto + 20), Phaser.Geom.Rectangle.Contains);
-                const pieza = { cont, shape: d.shape, ing: d.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
-                cont.on('pointerdown', (p) => {
-                    if (this.fin || pieza.usada) return;
+                // Zona de toque propia, centrada en la ranura de la bandeja y generosa (116x136): se agarra desde cualquier parte, sin importar la forma.
+                const zona = this.add.zone(cx, BANDEJA_Y + 60, 116, 136).setInteractive();
+                const pieza = { cont, zona, shape: d.shape, ing: d.ing, usada: false, home: { x: cont.x, y: cont.y, esc }, ancho, alto };
+                zona.on('pointerdown', (p) => {
+                    if (this.fin || pieza.usada || this.arrastrando) return;
                     Sonido.init(); Sonido.tomar();
+                    if (navigator.vibrate) try { navigator.vibrate(18); } catch (_) { /* sin vibración */ }
                     if (pieza.flota) { pieza.flota.stop(); pieza.flota = null; }
-                    this.arrastrando = pieza; cont.setScale(1).setDepth(10); this.arrastrar(p);
+                    this.arrastrando = pieza; this.ultCelda = '';
+                    // "Se pega al dedo": crece con rebote, deja un anillo de luz y la sigue con suavidad.
+                    this.tweens.killTweensOf(cont);
+                    cont.setDepth(10);
+                    this.tweens.add({ targets: cont, scale: 1, duration: 150, ease: 'Back.Out' });
+                    const anillo = this.add.circle(p.x, p.y, 10, 0xffffff, 0).setStrokeStyle(3, PAL[INGREDIENTES[pieza.ing]], 1).setDepth(9);
+                    this.tweens.add({ targets: anillo, radius: 46, alpha: 0, duration: 360, onComplete: () => anillo.destroy() });
+                    this.arrastrar(p);
                 });
                 return pieza;
             }
@@ -358,9 +389,11 @@
             arrastrar(p) {
                 const pz = this.arrastrando; if (!pz) return;
                 const pos = this.posicionSobreGrilla(p, pz);
-                pz.cont.setPosition(pos.x, pos.y);
+                this.objetivo = { x: pos.x, y: pos.y };
                 this.fantasma.clear();
                 if (puedeColocar(this.grilla, pz.shape, pos.r, pos.c)) {
+                    const clave = pos.r + ',' + pos.c;
+                    if (clave !== this.ultCelda) { this.ultCelda = clave; if (navigator.vibrate) try { navigator.vibrate(6); } catch (_) { /* sin vibración */ } }
                     this.fantasma.fillStyle(PAL[INGREDIENTES[pz.ing]], 0.4);
                     for (let i = 0; i < pz.shape.length; i++) for (let j = 0; j < pz.shape[0].length; j++) if (pz.shape[i][j]) this.fantasma.fillRoundedRect(GX + (pos.c + j) * CELDA, GY + (pos.r + i) * CELDA, CELDA - 3, CELDA - 3, 7);
                 }
@@ -368,7 +401,8 @@
             soltar() {
                 const pz = this.arrastrando; if (!pz) return;
                 this.arrastrando = null; this.fantasma.clear();
-                const c = Math.round((pz.cont.x - GX) / CELDA), r = Math.round((pz.cont.y - GY) / CELDA);
+                const ob = this.objetivo || { x: pz.cont.x, y: pz.cont.y };
+                const c = Math.round((ob.x - GX) / CELDA), r = Math.round((ob.y - GY) / CELDA);
                 if (!puedeColocar(this.grilla, pz.shape, r, c)) {
                     Sonido.invalido();
                     this.tweens.add({ targets: pz.cont, x: pz.home.x, y: pz.home.y, scale: pz.home.esc, duration: 220, ease: 'Back.Out', onComplete: () => this.flotar(pz) });
@@ -387,7 +421,7 @@
                     this.pintarCelda(r + i, c + j, pz.ing);
                     this.emisores[pz.ing].explode(2, GX + (c + j) * CELDA + CELDA / 2, GY + (r + i) * CELDA + CELDA / 2);
                 }
-                pz.usada = true; pz.cont.destroy();
+                pz.usada = true; pz.cont.destroy(); if (pz.zona) pz.zona.destroy();
                 const l = lineasLlenas(this.grilla);
                 const nLineas = l.filas.length + l.cols.length;
                 if (nLineas > 0) this.combo += 1; else this.combo = 0;
@@ -454,31 +488,78 @@
         $('btnSfx').setAttribute('aria-pressed', String(Sonido.sfxOn));
     }
 
+    const PHASER_URL = 'https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js';
+    const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+    function cargarPhaser() {
+        if (window.Phaser) return Promise.resolve();
+        return new Promise((ok, mal) => {
+            const sc = document.createElement('script');
+            sc.src = PHASER_URL; sc.onload = () => ok(); sc.onerror = () => mal(new Error('No se pudo cargar el motor del juego. Revisa tu conexión.'));
+            document.head.appendChild(sc);
+        });
+    }
+
+    // Intro: túnel de estrellas en el canvas 2D (liviano, no necesita Phaser ni Firebase: aparece al instante mientras todo lo demás carga).
+    function iniciarIntro() {
+        const cv = $('warp'); if (!cv) return { acelerar() {}, parar() {} };
+        const c = cv.getContext('2d'); let w = 0, h = 0, est = [], vel = 1.2, activo = true;
+        const reset = () => { w = cv.width = window.innerWidth; h = cv.height = window.innerHeight; est = Array.from({ length: 170 }, () => ({ x: (Math.random() - 0.5) * w * 1.4, y: (Math.random() - 0.5) * h * 1.4, z: Math.random() * w, col: Math.floor(Math.random() * 360) })); };
+        reset(); window.addEventListener('resize', reset);
+        (function dibujar() {
+            if (!activo) return;
+            c.fillStyle = 'rgba(18, 6, 46, 0.32)'; c.fillRect(0, 0, w, h);
+            for (const e of est) {
+                const zAnt = e.z; e.z -= vel * 4;
+                if (e.z <= 2) { e.z = w; e.x = (Math.random() - 0.5) * w * 1.4; e.y = (Math.random() - 0.5) * h * 1.4; continue; }
+                const k = 140 / e.z, k0 = 140 / zAnt, x = e.x * k + w / 2, y = e.y * k + h / 2, x0 = e.x * k0 + w / 2, y0 = e.y * k0 + h / 2;
+                c.strokeStyle = `hsl(${e.col}, 100%, ${60 + (1 - e.z / w) * 30}%)`; c.lineWidth = Math.max(0.6, (1 - e.z / w) * 3.2);
+                c.beginPath(); c.moveTo(x0, y0); c.lineTo(x, y); c.stroke();
+            }
+            requestAnimationFrame(dibujar);
+        })();
+        return { acelerar() { vel = 16; }, parar() { activo = false; window.removeEventListener('resize', reset); } };
+    }
+
     async function arrancar() {
-        const fuentes = Promise.all([document.fonts.load('44px Anton'), document.fonts.load('600 14px Montserrat')]).catch(() => {});
-        // El navegador solo deja sonar el audio tras un toque del usuario: el primero lo activa (y arranca la música).
-        const despertar = () => Sonido.init();
-        document.addEventListener('pointerdown', despertar, { once: true });
+        const intro = iniciarIntro();
+        const phaserP = cargarPhaser();                       // se baja YA, en paralelo con Firebase y el servidor
+        phaserP.catch(() => {});
+        const fuentes = Promise.race([Promise.all([document.fonts.load('44px Anton'), document.fonts.load('600 14px Montserrat')]), dormir(2500)]).catch(() => {});
+        let listoOk; const listoP = new Promise((r) => { listoOk = r; });
+        let entrando = false;
+
+        // El navegador solo deja sonar el audio tras un toque del usuario: el toque de «ENTRAR» lo activa y arranca la música de una vez.
+        async function entrar() {
+            if (entrando) return; entrando = true;
+            Sonido.init(); Sonido.warp(); intro.acelerar();
+            if (navigator.vibrate) try { navigator.vibrate([30, 40, 60]); } catch (_) { /* sin vibración */ }
+            $('btnEntrar').hidden = true; $('introEstado').textContent = '¡Entrando!';
+            await dormir(1250);
+            if (await Promise.race([listoP.then(() => true), dormir(900).then(() => false)]) === false) $('introEstado').textContent = 'Preparando tu partida…';
+            await Promise.race([listoP, dormir(10000)]);
+            $('app').classList.add('entrar'); $('intro').classList.add('salir');
+            setTimeout(() => { intro.parar(); $('intro').hidden = true; }, 900);
+        }
+        $('btnEntrar').addEventListener('click', entrar);
         $('btnMusica').addEventListener('click', () => { Sonido.init(); Sonido.setMusica(!Sonido.musicaOn); pintarBotonesSonido(); });
         $('btnSfx').addEventListener('click', () => { Sonido.init(); Sonido.setSfx(!Sonido.sfxOn); pintarBotonesSonido(); Sonido.clic(); });
         pintarBotonesSonido();
-        if (!window.firebase || !window.FIREBASE_CONFIG) { aviso('No se pudo cargar el servicio. Recarga la página.', true); return; }
+
+        if (!window.firebase || !window.FIREBASE_CONFIG) { aviso('No se pudo cargar el servicio. Recarga la página.', true); $('intro').hidden = true; $('app').hidden = false; return; }
         // Solo app + auth + functions (esta página no carga Firestore): no se usa initFirebaseServices() porque exige el SDK de Firestore.
         if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
         funciones = firebase.app().functions('us-central1');
         $('btnOtra').addEventListener('click', jugarOtra);
-        firebase.auth().onAuthStateChanged(async (user) => {
-            if (!user) { $('sinSesion').hidden = false; $('app').hidden = true; return; }
+        firebase.auth().onAuthStateChanged((user) => {
+            if (!user) { intro.parar(); $('intro').hidden = true; $('sinSesion').hidden = false; $('app').hidden = true; return; }
             $('sinSesion').hidden = true; $('app').hidden = false;
-            try {
-                await cargarEstado();
-                if (!estado.activo) { aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); return; }
-                await fuentes;
-                if (!juego) crearJuego();
-                await iniciarPartida();
-            } catch (e) {
+            // Todo en paralelo: estado del jugador, sesión de partida y el motor del juego (antes iba uno detrás de otro).
+            const pEstado = cargarEstado().then(() => { if (!estado.activo) aviso('El juego está en pausa por ahora. ¡Vuelve pronto!', true); });
+            iniciarPartida();
+            const pJuego = Promise.all([phaserP, fuentes]).then(() => { if (!juego) crearJuego(); });
+            Promise.all([pEstado, pJuego]).then(() => { if (escena) { escena.actualizarMeta(); } }).catch((e) => {
                 aviso(e?.code === 'functions/not-found' ? 'Para jugar necesitas una cuenta ROAL. Crea una al hacer tu primer pedido.' : (e?.message || 'No se pudo cargar el juego.'), true);
-            }
+            }).finally(() => listoOk());
         });
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', arrancar); else arrancar();
