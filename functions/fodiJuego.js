@@ -15,13 +15,14 @@ async function juegoMetricas(db, args = {}) {
     const desde = valido(args.desde) ? args.desde : hoy;
     const hasta = valido(args.hasta) ? args.hasta : desde;
     const semana = J.lunesDe(hoy);
-    const [pSnap, cSnap, cfgSnap, presSnap, rankSnap, evSnap] = await Promise.all([
+    const [pSnap, cSnap, cfgSnap, presSnap, rankSnap, evSnap, cofSnap] = await Promise.all([
         db.collection('juego_partidas').where('dia', '>=', desde).where('dia', '<=', hasta).get(),
         db.collection('juego_canjes').where('dia', '>=', desde).where('dia', '<=', hasta).get(),
         db.collection('configuracion').doc('juego').get(),
         db.collection('juego_presupuesto').doc(J.diaBogota(Date.now())).get(),
         db.collection('juego_ranking_semana').doc(semana).collection('jugadores').orderBy('puntos', 'desc').limit(5).get(),
-        db.collection('juego_eventos').where('dia', '>=', desde).where('dia', '<=', hasta).get()
+        db.collection('juego_eventos').where('dia', '>=', desde).where('dia', '<=', hasta).get(),
+        db.collection('juego_cofres').where('dia', '>=', desde).where('dia', '<=', hasta).get()
     ]);
     const partidas = pSnap.docs.map((d) => d.data());
     const ok = partidas.filter((p) => p.aceptada === true);
@@ -49,6 +50,7 @@ async function juegoMetricas(db, args = {}) {
                 jugaron_el_reto: unicos(ok.filter((p) => p.modo === 'reto').map((p) => p.uid))
             };
         })(),
+        cofres: { abiertos: cofSnap.size, creditos_entregados_cop: cofSnap.docs.map((d) => d.data()).filter((x) => x.tipo === 'credito').reduce((s, x) => s + (Number(x.valor) || 0), 0), escudos: cofSnap.docs.filter((d) => d.data().tipo === 'escudo').length },
         ventas_con_credito_cop: canjes.reduce((s, c) => s + (Number(c.totalPedido) || 0), 0),
         reto_ranking_semana: { desde: semana, top5: rankSnap.docs.map((d, i) => ({ pos: i + 1, nombre: d.data().nombre, puntos: Number(d.data().puntos) || 0, dias: Number(d.data().dias) || 0 })), premio: cfg.retoPremio },
         presupuesto_hoy: { emitido_cop: presSnap.exists ? Number(presSnap.data().emitido) || 0 : 0, presupuesto_cop: cfg.presupuestoDiario, agotado: presSnap.exists && presSnap.data().agotado === true },

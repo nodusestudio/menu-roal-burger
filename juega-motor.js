@@ -10,6 +10,7 @@ var BlockRoalMotor = (() => {
     "src/js/juego/motor.js"(exports, module) {
       var N = 8;
       var MAX_PUNTOS_JUGADA = 150;
+      var BONO_TABLERO_LIMPIO = 100;
       var SHAPES = [
         [[1]],
         [[1, 1]],
@@ -74,6 +75,7 @@ var BlockRoalMotor = (() => {
         });
         return borradas;
       }
+      var tableroVacio = (grilla) => grilla.every((f) => f.every((v) => v === -1));
       function hayJugada(grilla, shapes) {
         return shapes.some((s) => {
           for (let r = 0; r <= N - s.length; r++) for (let c = 0; c <= N - s[0].length; c++) if (puedeColocar(grilla, s, r, c)) return true;
@@ -118,6 +120,7 @@ var BlockRoalMotor = (() => {
         const grilla = nuevaGrilla();
         const reparte = () => nuevasPiezas(grilla, rng).map((p) => ({ ...p, usada: false }));
         let piezas = reparte(), puntos = 0, combo = 0, hechas = 0;
+        const stats = { lineas: 0, mejorCombo: 0, tablerosLimpios: 0, dobles: 0 };
         for (const cod of jugadas) {
           if (!Number.isInteger(cod) || cod < 0 || cod > 191) return { ok: false, error: "jugada-invalida" };
           const { pieza, fila, col } = decodificarJugada(cod);
@@ -129,24 +132,35 @@ var BlockRoalMotor = (() => {
           const nLineas = l.filas.length + l.cols.length;
           combo = nLineas > 0 ? combo + 1 : 0;
           puntos += puntosJugada({ casillas: celdas(p.shape), lineas: nLineas, combo: combo - 1 });
-          if (nLineas > 0) borrarLineas(grilla, l);
+          if (nLineas > 0) {
+            borrarLineas(grilla, l);
+            stats.lineas += nLineas;
+            if (nLineas >= 2) stats.dobles += 1;
+            if (combo > stats.mejorCombo) stats.mejorCombo = combo;
+            if (tableroVacio(grilla)) {
+              puntos += BONO_TABLERO_LIMPIO;
+              stats.tablerosLimpios += 1;
+            }
+          }
           p.usada = true;
           hechas += 1;
           if (piezas.every((x) => x.usada)) piezas = reparte();
         }
-        return { ok: true, grilla, piezas, puntos, combo, hechas, rng };
+        return { ok: true, grilla, piezas, puntos, combo, hechas, rng, stats };
       }
       function repetirPartida(args) {
         const e = reproducirHasta(args);
         if (!e.ok) return e;
         const quedan = e.piezas.filter((p) => !p.usada);
-        return { ok: true, puntaje: e.puntos, jugadas: e.hechas, terminada: !hayJugada(e.grilla, quedan.map((p) => p.shape)) };
+        return { ok: true, puntaje: e.puntos, jugadas: e.hechas, terminada: !hayJugada(e.grilla, quedan.map((p) => p.shape)), stats: e.stats };
       }
       module.exports = {
         N,
         SHAPES,
         INGREDIENTES,
         MAX_PUNTOS_JUGADA,
+        BONO_TABLERO_LIMPIO,
+        tableroVacio,
         nuevaGrilla,
         celdas,
         puedeColocar,

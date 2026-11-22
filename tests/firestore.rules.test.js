@@ -447,7 +447,7 @@ test('SEGURIDAD Instagram: el token y las imágenes no se leen desde el navegado
 });
 
 // ── Block ROAL (minijuego): puntos, créditos, nivel y racha SOLO con Admin SDK (functions/juego.js) ──
-const CAMPOS_JUEGO = [['puntosJuego', 99999], ['creditoJuego', 99999], ['nivelMaxJuego', 50], ['rachaJuego', 30], ['ultimoDiaJuego', '2026-11-22'], ['juegoHoyDia', '2000-01-01'], ['juegoHoyPts', 0], ['creditoJuegoVence', 9999999999999], ['juegoSesDia', '2000-01-01'], ['juegoSesHoy', 0]];
+const CAMPOS_JUEGO = [['puntosJuego', 99999], ['creditoJuego', 99999], ['nivelMaxJuego', 50], ['rachaJuego', 30], ['ultimoDiaJuego', '2026-11-22'], ['juegoHoyDia', '2000-01-01'], ['juegoHoyPts', 0], ['creditoJuegoVence', 9999999999999], ['juegoSesDia', '2000-01-01'], ['juegoSesHoy', 0], ['juegoCofres', 99], ['juegoEscudos', 3], ['juegoRecord', 99999], ['juegoDias', ['2000-01-01']], ['juegoPrimerDia', '2000-01-01']];
 
 test('juego) ni el dueño ni un admin pueden escribir puntos, créditos, nivel ni racha del juego', async () => {
     const clientId = 'phone_3001119999';
@@ -476,7 +476,7 @@ test('juego) sesiones, partidas y canjes: el navegador no escribe; el admin solo
     });
     const userDb = testEnv.authenticatedContext('u').firestore();
     const adminDb = testEnv.authenticatedContext('admin-juego2').firestore();
-    for (const col of ['juego_sesiones', 'juego_partidas', 'juego_canjes', 'juego_presupuesto', 'juego_reto', 'juego_eventos']) {
+    for (const col of ['juego_sesiones', 'juego_partidas', 'juego_canjes', 'juego_presupuesto', 'juego_reto', 'juego_eventos', 'juego_misiones', 'juego_cofres']) {
         await assertFails(userDb.collection(col).doc('nuevo').set({ uid: 'u', puntaje: 999999 }));
         await assertFails(adminDb.collection(col).doc('nuevo').set({ uid: 'u', puntaje: 999999 }));
     }

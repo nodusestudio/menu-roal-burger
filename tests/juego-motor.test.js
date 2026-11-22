@@ -90,15 +90,43 @@ test('repetir una partida: mismo puntaje que el del juego; rechaza jugadas impos
         for (let i = 0; i < 3 && !hecho; i++) { const p = piezas[i]; if (p.usada) continue;
             for (let r = 0; r <= 8 - p.shape.length && !hecho; r++) for (let c = 0; c <= 8 - p.shape[0].length && !hecho; c++) if (M.puedeColocar(g, p.shape, r, c)) {
                 M.colocar(g, p.shape, r, c, p.ing); const l = M.lineasLlenas(g), n = l.filas.length + l.cols.length; combo = n > 0 ? combo + 1 : 0;
-                pts += M.puntosJugada({ casillas: M.celdas(p.shape), lineas: n, combo: combo - 1 }); if (n > 0) M.borrarLineas(g, l);
+                pts += M.puntosJugada({ casillas: M.celdas(p.shape), lineas: n, combo: combo - 1 }); if (n > 0) { M.borrarLineas(g, l); if (M.tableroVacio(g)) pts += M.BONO_TABLERO_LIMPIO; }
                 p.usada = true; js.push(M.codificarJugada(i, r, c)); hecho = true; } }
         if (!hecho) break; if (piezas.every((x) => x.usada)) piezas = M.nuevasPiezas(g, rng).map((x) => ({ ...x, usada: false }));
     }
     const rep = M.repetirPartida({ semilla: 4242, jugadas: js });
-    assert.deepEqual(rep, { ok: true, puntaje: pts, jugadas: js.length, terminada: true });
+    assert.equal(rep.ok, true); assert.equal(rep.puntaje, pts); assert.equal(rep.jugadas, js.length); assert.equal(rep.terminada, true);
+    assert.ok(rep.stats.lineas >= 0 && rep.stats.mejorCombo >= 0);
     assert.equal(M.repetirPartida({ semilla: 4243, jugadas: js }).ok === true && M.repetirPartida({ semilla: 4243, jugadas: js }).puntaje === pts, false); // otra semilla, otra partida
     assert.equal(M.repetirPartida({ semilla: 4242, jugadas: [js[0], js[0]] }).ok, false);
     assert.equal(M.repetirPartida({ semilla: 4242, jugadas: [500] }).error, 'jugada-invalida');
     assert.equal(M.repetirPartida({ semilla: 4242, jugadas: 'x' }).error, 'registro-invalido');
     assert.equal(M.repetirPartida({ semilla: 4242, jugadas: js.slice(0, 3) }).terminada, false);
+});
+
+test('tablero limpio: +100 cuando tras limpiar líneas no queda ninguna ficha; cuenta en las estadísticas', () => {
+    // Se construye a mano una semilla cuyo primer movimiento sea una pieza 1x1... basta con probar el helper y el bono aparte de la partida completa.
+    const g = M.nuevaGrilla();
+    assert.equal(M.tableroVacio(g), true);
+    g[3][3] = 0;
+    assert.equal(M.tableroVacio(g), false);
+    assert.equal(M.BONO_TABLERO_LIMPIO, 100);
+    // Un tablero de una sola fila llena queda vacío al limpiarla
+    const h = M.nuevaGrilla(); for (let j = 0; j < 8; j++) h[0][j] = 1;
+    const l = M.lineasLlenas(h); M.borrarLineas(h, l);
+    assert.equal(M.tableroVacio(h), true);
+});
+
+test('estadísticas de la partida: líneas, mejor combo, dobles y tableros limpios salen de repetirla', () => {
+    const rng = M.crearRng(777), g = M.nuevaGrilla();
+    let piezas = M.nuevasPiezas(g, rng).map((p) => ({ ...p, usada: false })); const js = [];
+    for (let k = 0; k < 500; k++) { let hecho = false;
+        for (let i = 0; i < 3 && !hecho; i++) { const p = piezas[i]; if (p.usada) continue;
+            for (let r = 0; r <= 8 - p.shape.length && !hecho; r++) for (let c = 0; c <= 8 - p.shape[0].length && !hecho; c++) if (M.puedeColocar(g, p.shape, r, c)) {
+                M.colocar(g, p.shape, r, c, p.ing); const l = M.lineasLlenas(g); if (l.filas.length + l.cols.length > 0) M.borrarLineas(g, l); p.usada = true; js.push(M.codificarJugada(i, r, c)); hecho = true; } }
+        if (!hecho) break; if (piezas.every((x) => x.usada)) piezas = M.nuevasPiezas(g, rng).map((x) => ({ ...x, usada: false })); }
+    const rep = M.repetirPartida({ semilla: 777, jugadas: js });
+    assert.equal(rep.ok, true);
+    assert.ok(rep.stats.lineas > 0 && rep.stats.mejorCombo >= 1);
+    assert.ok(rep.stats.dobles <= rep.stats.lineas);
 });

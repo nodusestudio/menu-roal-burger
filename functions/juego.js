@@ -23,13 +23,14 @@ const DEFAULTS = Object.freeze({
     topeCreditoPct: 7,        // % máximo del pedido pagable con créditos
     duracionMinSeg: 20,       // partida más corta aceptada
     maxPuntosPorSeg: 15,      // plausibilidad: puntaje <= duración * esto
-    maxPuntosPorJugada: 150,  // plausibilidad: puntaje <= jugadas * esto
+    maxPuntosPorJugada: 260,  // plausibilidad: puntaje <= jugadas * esto (150 por líneas/combo + 100 del tablero limpio)
     minSegPorJugada: 0.6,     // plausibilidad: jugadas <= duración / esto
     rachaBonus: { 3: 50, 7: 150, 14: 400 },
     presupuestoDiario: 150000, // tope TOTAL de créditos (COP) que se reparten entre todos los jugadores por día; 0 = sin tope
     creditoVigenciaDias: 30,   // el saldo vence si pasan tantos días sin ganar créditos; 0 = no vence
     requierePedidoPrevio: true, // para CANJEAR hay que tener al menos un pedido entregado (frena las cuentas falsas)
     maxPartidasDia: 40,        // partidas que un jugador puede iniciar por día
+    cofresActivos: true,       // los cofres de las misiones diarias (premios sorpresa)
     retoActivo: true,          // reto del día (mismas piezas para todos, una sola oportunidad, ranking)
     retoPremio: ''             // texto del premio semanal que se muestra en el ranking (ej. «Top 3 de la semana: hamburguesa gratis»)
 });
@@ -63,6 +64,7 @@ function normalizarConfig(raw) {
         requierePedidoPrevio: r.requierePedidoPrevio !== false,
         maxPartidasDia: Math.min(500, Math.max(1, Math.trunc(num(r.maxPartidasDia, DEFAULTS.maxPartidasDia)))),
         retoActivo: r.retoActivo !== false,
+        cofresActivos: r.cofresActivos !== false,
         retoPremio: String(r.retoPremio || '').slice(0, 160)
     };
 }
@@ -125,6 +127,57 @@ function clampCreditoJuego({ solicitado, saldo, baseProductos, topePct }) {
     const pedido = Math.max(0, Math.floor(num(solicitado, 0)));
     const tope = Math.floor(Math.max(0, num(baseProductos, 0)) * Math.max(0, num(topePct, 0)) / 100);
     return Math.max(0, Math.min(pedido, Math.max(0, Math.floor(num(saldo, 0))), tope));
+}
+
+// ── Misiones diarias: 3 por día (siempre las mismas para todos ese día). El progreso sale de la partida REPETIDA por el servidor, no del celular. ──
+const MISIONES = {
+    combo3: { texto: 'Haz un combo x3 en una partida', meta: 1, medir: (e) => (e.stats.mejorCombo >= 3 ? 1 : 0), acumula: false },
+    lineas15: { texto: 'Limpia 15 líneas hoy', meta: 15, medir: (e) => e.stats.lineas, acumula: true },
+    partidas3: { texto: 'Termina 3 partidas hoy', meta: 3, medir: () => 1, acumula: true },
+    puntos400: { texto: 'Suma 400 puntos en una partida', meta: 1, medir: (e) => (e.puntaje >= 400 ? 1 : 0), acumula: false },
+    limpio1: { texto: 'Deja el tablero completamente limpio', meta: 1, medir: (e) => (e.stats.tablerosLimpios >= 1 ? 1 : 0), acumula: false },
+    dobles3: { texto: 'Limpia 2 líneas a la vez, 3 veces', meta: 3, medir: (e) => e.stats.dobles, acumula: true },
+    jugadas40: { texto: 'Haz 40 jugadas hoy', meta: 40, medir: (e) => e.jugadas, acumula: true }
+};
+function misionesDelDia(dia) {
+    const ids = Object.keys(MISIONES);
+    const rng = Motor.crearRng(Motor.semillaDeTexto('misiones-' + dia));
+    for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    return ids.slice(0, 3);
+}
+// previo = documento del día (o null); evidencia = { stats, puntaje, jugadas } de la partida validada. Devuelve el progreso nuevo y cuántos cofres se ganaron.
+function progresarMisiones(dia, previo, evidencia) {
+    const ids = misionesDelDia(dia);
+    const progreso = { ...((previo && previo.progreso) || {}) };
+    const completadas = [...((previo && previo.completadas) || [])];
+    let nuevas = 0;
+    ids.forEach((id) => {
+        const m = MISIONES[id];
+        const med = Math.max(0, Math.trunc(num(m.medir(evidencia), 0)));
+        progreso[id] = Math.min(m.meta, m.acumula ? num(progreso[id], 0) + med : Math.max(num(progreso[id], 0), med));
+        if (progreso[id] >= m.meta && !completadas.includes(id)) { completadas.push(id); nuevas += 1; }
+    });
+    const todas = ids.every((id) => completadas.includes(id));
+    if (todas && !(previo && previo.bonusTodas)) nuevas += 1;     // cofre extra por completar las tres
+    return { progreso, completadas, bonusTodas: todas, cofresNuevos: nuevas };
+}
+function vistaMisiones(dia, doc) {
+    return misionesDelDia(dia).map((id) => ({ id, texto: MISIONES[id].texto, meta: MISIONES[id].meta, progreso: Math.min(MISIONES[id].meta, num(doc && doc.progreso && doc.progreso[id], 0)), hecha: !!(doc && (doc.completadas || []).includes(id)) }));
+}
+// Cofres: premio sorpresa decidido por el servidor. n = número 0-99. Esperado ≈ $16 por cofre.
+const PREMIOS_COFRE = [
+    { hasta: 55, tipo: 'credito', valor: 10 }, { hasta: 80, tipo: 'credito', valor: 20 }, { hasta: 88, tipo: 'credito', valor: 30 },
+    { hasta: 95, tipo: 'escudo', valor: 1 }, { hasta: 100, tipo: 'credito', valor: 60 }
+];
+function premioCofre(n) { return PREMIOS_COFRE.find((p) => n < p.hasta); }
+const ESCUDOS_MAX = 3;
+// Racha que se muestra: si falló exactamente un día y tiene escudo, la racha sigue viva (el escudo se gasta al volver a jugar).
+function rachaConEscudo(c, hoy) {
+    const r = rachaVigente(c, hoy);
+    if (r > 0) return r;
+    const ult = String((c && c.ultimoDiaJuego) || '');
+    if (ult && ult === diaAnterior(diaAnterior(hoy)) && num(c.juegoEscudos, 0) > 0) return Math.max(0, Math.trunc(num(c.rachaJuego, 0)));
+    return 0;
 }
 
 // Lunes de la semana (hora de Bogotá) de un día 'YYYY-MM-DD': clave del ranking semanal.
@@ -193,7 +246,11 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             vigenciaDias: cfg.creditoVigenciaDias,
             requierePedidoPrevio: cfg.requierePedidoPrevio,
             nivelMax: Math.max(0, Math.trunc(num(c.nivelMaxJuego, 0))),
-            racha: rachaVigente(c, hoy),
+            racha: rachaConEscudo(c, hoy),
+            escudos: Math.min(ESCUDOS_MAX, Math.max(0, Math.trunc(num(c.juegoEscudos, 0)))),
+            cofres: Math.max(0, Math.trunc(num(c.juegoCofres, 0))),
+            cofresActivos: cfg.cofresActivos,
+            record: Math.max(0, Math.trunc(num(c.juegoRecord, 0))),
             jugoHoy: c.ultimoDiaJuego === hoy,
             puntosHoy: c.juegoHoyDia === hoy ? Math.max(0, Math.trunc(num(c.juegoHoyPts, 0))) : 0,
             topeDiario: cfg.topeDiario,
@@ -208,15 +265,17 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
         const uid = exigirUid(request);
         const db = getFirestore();
         const ahora = Date.now(), dia = diaBogota(ahora);
-        const [snap, cfg, retoSnap, rankSnap] = await Promise.all([
+        const [snap, cfg, retoSnap, rankSnap, misSnap] = await Promise.all([
             db.collection(CLIENTS).doc(uid).get(), leerConfig(db),
             db.collection('juego_reto').doc(`${dia}_${uid}`).get(),
-            db.collection('juego_ranking').doc(dia).collection('jugadores').doc(uid).get()
+            db.collection('juego_ranking').doc(dia).collection('jugadores').doc(uid).get(),
+            db.collection('juego_misiones').doc(`${dia}_${uid}`).get()
         ]);
         if (!snap.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
         const v = vistaEstado(snap.data() || {}, cfg, dia, ahora);
         v.creditoActivo = (!cfg.requierePedidoPrevio || v.creditoJuego <= 0) ? true : await tienePedidoPrevio(db, uid);
         v.retoActivo = cfg.retoActivo;
+        v.misiones = vistaMisiones(dia, misSnap.exists ? misSnap.data() : null);
         v.retoHecho = retoSnap.exists;
         v.retoPuntaje = rankSnap.exists ? Math.max(0, Math.trunc(num(rankSnap.data().puntaje, 0))) : null;
         return v;
@@ -266,7 +325,8 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             const sesRef = db.collection('juego_sesiones').doc(sesionId);
             const cliRef = db.collection(CLIENTS).doc(uid);
             const presRef = db.collection('juego_presupuesto').doc(dia);
-            const [sesSnap, cliSnap, presSnap, cfg] = await Promise.all([tx.get(sesRef), tx.get(cliRef), tx.get(presRef), leerConfig(db, tx)]);
+            const misRef = db.collection('juego_misiones').doc(`${dia}_${uid}`);
+            const [sesSnap, cliSnap, presSnap, misSnap, cfg] = await Promise.all([tx.get(sesRef), tx.get(cliRef), tx.get(presRef), tx.get(misRef), leerConfig(db, tx)]);
             if (!sesSnap.exists || sesSnap.data().uid !== uid) throw new HttpsError('permission-denied', 'Partida no encontrada.');
             if (sesSnap.data().usada) throw new HttpsError('already-exists', 'Esta partida ya se registró.');
             if (!cliSnap.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
@@ -284,12 +344,12 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             };
 
             // 1) El puntaje sale de REPETIR la partida (sesiones nuevas, que traen semilla). Las viejas, sin semilla, siguen por la ruta anterior.
-            let puntaje, jugadas, terminada = null, discrepancia = false;
+            let puntaje, jugadas, terminada = null, discrepancia = false, stats = { lineas: 0, mejorCombo: 0, tablerosLimpios: 0, dobles: 0 }, conRegistro = false;
             if (Number.isInteger(ses.semilla)) {
                 if (!Array.isArray(d.movimientos)) return rechazar('sin-registro');
                 const rep = Motor.repetirPartida({ semilla: ses.semilla, jugadas: d.movimientos });
                 if (!rep.ok) return rechazar(rep.error);
-                puntaje = rep.puntaje; jugadas = rep.jugadas; terminada = rep.terminada;
+                puntaje = rep.puntaje; jugadas = rep.jugadas; terminada = rep.terminada; stats = rep.stats; conRegistro = true;
                 discrepancia = Number(d.puntaje) !== rep.puntaje; // si el celular dijo otra cosa se usa el del servidor y queda anotado
                 if (ses.modo === 'reto' && !terminada) return rechazar('reto-incompleto');
             } else { puntaje = Number(d.puntaje); jugadas = Number(d.jugadas); }
@@ -298,7 +358,10 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             if (motivo) return rechazar(motivo, { puntaje: Number.isFinite(puntaje) ? puntaje : null });
 
             const c = cliSnap.data() || {};
-            const r = calcularResultado({ estado: c, cfg, puntaje, dia });
+            // Escudo de racha: si faltó exactamente un día y tiene escudo, la racha sigue como si hubiera jugado ayer.
+            const ayerDia = diaAnterior(dia);
+            const escudoUsado = c.ultimoDiaJuego === diaAnterior(ayerDia) && num(c.juegoEscudos, 0) > 0 && num(c.rachaJuego, 0) > 0;
+            const r = calcularResultado({ estado: escudoUsado ? { ...c, ultimoDiaJuego: ayerDia } : c, cfg, puntaje, dia });
             // Presupuesto diario global + vencimiento del saldo
             const emitidoHoy = presSnap.exists ? Math.max(0, num(presSnap.data().emitido, 0)) : 0;
             const pres = aplicarPresupuesto({ creditoGanado: r.creditoGanado, emitidoHoy, presupuesto: cfg.presupuestoDiario });
@@ -313,6 +376,20 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
                 rachaJuego: r.racha,
                 nivelMaxJuego: r.nuevoNivelMax
             };
+            // Récord personal, escudos (se gasta uno al salvar la racha; se gana uno a los 7 y 14 días seguidos) y misiones del día
+            const recordPrev = Math.max(0, Math.trunc(num(c.juegoRecord, 0)));
+            const nuevoRecord = puntaje > recordPrev;
+            if (nuevoRecord) upd.juegoRecord = puntaje;
+            const escudoGanado = r.bonusRacha > 0 && (r.racha === 7 || r.racha === 14);
+            const escudosNuevo = Math.max(0, Math.min(ESCUDOS_MAX, Math.trunc(num(c.juegoEscudos, 0)) - (escudoUsado ? 1 : 0) + (escudoGanado ? 1 : 0)));
+            if (escudoUsado || escudoGanado) upd.juegoEscudos = escudosNuevo;
+            let cofresNuevos = 0, mis = null;
+            if (conRegistro) {
+                mis = progresarMisiones(dia, misSnap.exists ? misSnap.data() : null, { stats, puntaje, jugadas });
+                tx.set(misRef, { dia, uid, progreso: mis.progreso, completadas: mis.completadas, bonusTodas: mis.bonusTodas, actualizadoAt: FieldValue.serverTimestamp() }, { merge: true });
+                cofresNuevos = cfg.cofresActivos ? mis.cofresNuevos : 0;
+                if (cofresNuevos > 0) upd.juegoCofres = FieldValue.increment(cofresNuevos);
+            }
             if (r.puntosTotales > 0) upd.puntosJuego = FieldValue.increment(r.puntosTotales);
             upd.juegoDias = FieldValue.arrayUnion(dia);                  // días en que jugó (retención)
             if (!c.juegoPrimerDia) upd.juegoPrimerDia = dia;
@@ -340,14 +417,14 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             tx.set(db.collection('juego_partidas').doc(), {
                 uid, dia, puntaje, jugadas, duracionSeg: Math.round(duracionSeg), aceptada: true, modo: ses.modo || 'libre', terminada, discrepancia,
                 puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, racha: r.racha,
-                nivelSuperado: r.nivelSuperado, nivelMax: r.nuevoNivelMax, creditoGanado: credito, creditoRecortado: r.creditoGanado - credito,
+                nivelSuperado: r.nivelSuperado, nivelMax: r.nuevoNivelMax, creditoGanado: credito, creditoRecortado: r.creditoGanado - credito, stats, record: nuevoRecord, escudoUsado,
                 creadoAt: FieldValue.serverTimestamp()
             });
-            const nuevo = { ...c, ...upd, puntosJuego: num(c.puntosJuego, 0) + r.puntosTotales, creditoJuego: (expirado ? 0 : vigente) + credito, creditoJuegoVence: credito > 0 ? nuevoVencimiento(cfg, ahora) : (expirado ? 0 : num(c.creditoJuegoVence, 0)) };
+            const nuevo = { ...c, ...upd, juegoRecord: nuevoRecord ? puntaje : recordPrev, juegoEscudos: (escudoUsado || escudoGanado) ? escudosNuevo : num(c.juegoEscudos, 0), juegoCofres: Math.max(0, Math.trunc(num(c.juegoCofres, 0))) + cofresNuevos, puntosJuego: num(c.puntosJuego, 0) + r.puntosTotales, creditoJuego: (expirado ? 0 : vigente) + credito, creditoJuegoVence: credito > 0 ? nuevoVencimiento(cfg, ahora) : (expirado ? 0 : num(c.creditoJuegoVence, 0)) };
             return {
                 ok: true,
-                resultado: { puntaje, puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, nivelSuperado: r.nivelSuperado, creditoGanado: credito, topeAlcanzado: r.puntosOtorgados < puntaje, presupuestoAgotado: pres.recortado, reto: posicionReto === true },
-                estado: vistaEstado(nuevo, cfg, dia, ahora),
+                resultado: { puntaje, record: { anterior: recordPrev, nuevo: nuevoRecord }, escudoUsado, escudoGanado, cofresNuevos, tablerosLimpios: stats.tablerosLimpios, puntosOtorgados: r.puntosOtorgados, bonusRacha: r.bonusRacha, nivelSuperado: r.nivelSuperado, creditoGanado: credito, topeAlcanzado: r.puntosOtorgados < puntaje, presupuestoAgotado: pres.recortado, reto: posicionReto === true },
+                estado: { ...vistaEstado(nuevo, cfg, dia, ahora), ...(mis ? { misiones: vistaMisiones(dia, { progreso: mis.progreso, completadas: mis.completadas }) } : {}) },
                 _avisar: avisar ? { presupuesto: cfg.presupuestoDiario } : null
             };
         });
@@ -391,6 +468,42 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
         };
     });
 
+    // Abre un cofre (premio sorpresa decidido por el servidor). Los créditos salen del presupuesto diario: si ya se agotó, el cofre se queda cerrado para mañana.
+    exp.juegoAbrirCofre = onCall(opts, async (request) => {
+        const uid = exigirUid(request);
+        const db = getFirestore();
+        return db.runTransaction(async (tx) => {
+            const ahora = Date.now(), dia = diaBogota(ahora);
+            const cliRef = db.collection(CLIENTS).doc(uid), presRef = db.collection('juego_presupuesto').doc(dia);
+            const [cli, pres, cfg] = await Promise.all([tx.get(cliRef), tx.get(presRef), leerConfig(db, tx)]);
+            if (!cli.exists) throw new HttpsError('not-found', 'No encontramos tu cuenta.');
+            if (!cfg.activo || !cfg.cofresActivos) throw new HttpsError('failed-precondition', 'Los cofres están en pausa.');
+            const c = cli.data() || {};
+            const cofres = Math.max(0, Math.trunc(num(c.juegoCofres, 0)));
+            if (cofres <= 0) throw new HttpsError('failed-precondition', 'No tienes cofres por abrir.');
+            let premio = { ...premioCofre(crypto.randomInt(0, 100)) };
+            if (premio.tipo === 'escudo' && num(c.juegoEscudos, 0) >= ESCUDOS_MAX) premio = { tipo: 'credito', valor: 20 };   // ya tiene el máximo de escudos
+            const upd = { juegoCofres: FieldValue.increment(-1) };
+            let creditoNuevo = null;
+            if (premio.tipo === 'credito') {
+                const emitido = pres.exists ? Math.max(0, num(pres.data().emitido, 0)) : 0;
+                const a = aplicarPresupuesto({ creditoGanado: premio.valor, emitidoHoy: emitido, presupuesto: cfg.presupuestoDiario });
+                if (a.credito <= 0) throw new HttpsError('resource-exhausted', 'Los créditos de hoy ya se repartieron. Tu cofre te espera: ábrelo mañana.');
+                premio.valor = a.credito;
+                const vigente = creditoVigente(c, ahora);
+                const vencido = Math.max(0, Math.trunc(num(c.creditoJuego, 0))) > 0 && vigente === 0;
+                upd.creditoJuego = vencido ? premio.valor : FieldValue.increment(premio.valor);
+                upd.creditoJuegoVence = nuevoVencimiento(cfg, ahora);
+                creditoNuevo = (vencido ? 0 : vigente) + premio.valor;
+                const total = emitido + premio.valor;
+                tx.set(presRef, { dia, emitido: FieldValue.increment(premio.valor), agotado: (pres.exists && pres.data().agotado === true) || (cfg.presupuestoDiario > 0 && total >= cfg.presupuestoDiario), presupuesto: cfg.presupuestoDiario, actualizadoAt: FieldValue.serverTimestamp() }, { merge: true });
+            } else upd.juegoEscudos = Math.min(ESCUDOS_MAX, Math.trunc(num(c.juegoEscudos, 0)) + 1);
+            tx.update(cliRef, upd);
+            tx.set(db.collection('juego_cofres').doc(), { uid, dia, tipo: premio.tipo, valor: premio.valor, creadoAt: FieldValue.serverTimestamp() });
+            return { premio, cofres: cofres - 1, creditoJuego: creditoNuevo, escudos: premio.tipo === 'escudo' ? Math.min(ESCUDOS_MAX, Math.trunc(num(c.juegoEscudos, 0)) + 1) : Math.trunc(num(c.juegoEscudos, 0)) };
+        });
+    });
+
     // Limpieza diaria: las sesiones de partida (una por partida iniciada) no sirven pasadas 2 días.
     if (onSchedule) {
         exp.juegoLimpieza = onSchedule({ schedule: 'every day 04:30', timeZone: 'America/Bogota', region: 'us-central1', cpu: 0.5 }, async () => {
@@ -410,5 +523,5 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
 
 module.exports = {
     DEFAULTS, normalizarConfig, diaBogota, diaAnterior, metaNivel, rachaVigente,
-    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, registrar
+    motivoImplausible, calcularResultado, clampCreditoJuego, creditoVigente, nuevoVencimiento, aplicarPresupuesto, tienePedidoPrevio, lunesDe, nombrePublico, EVENTOS_CLIENTE, MISIONES, misionesDelDia, progresarMisiones, vistaMisiones, premioCofre, PREMIOS_COFRE, rachaConEscudo, registrar
 };
