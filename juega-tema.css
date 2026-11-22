@@ -16,6 +16,9 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -2; background:
 body::after { content: ''; position: fixed; left: 50%; bottom: 6vh; width: 70vmin; height: 70vmin; transform: translateX(-50%); z-index: -1; background: url("isotipo.webp") center / contain no-repeat; opacity: .045; pointer-events: none; }
 
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom); }
+/* Foto del local de ROAL (caricatura) como marca de agua: visible al 20 %, apenas difuminada, detrás de todo el juego. Va dentro de #app (que es su propio
+   plano de apilamiento) porque el fondo del <body> se pinta por encima de cualquier capa con z-index negativo de la raíz. */
+#app::before { content: ''; position: fixed; inset: 0; z-index: -1; background: url("juega-fondo.webp?v=1") center / cover no-repeat; opacity: .2; filter: blur(1.5px) saturate(.9); pointer-events: none; }
 header { display: flex; align-items: center; gap: 8px; padding: 10px 0 4px; }
 .ctl { width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center; border: 1px solid var(--linea); border-radius: 12px; background: rgba(255, 255, 255, .05); color: var(--crema); font: 400 1.25rem 'Anton', sans-serif; text-decoration: none; cursor: pointer; padding: 0; }
 .ctl:active { background: rgba(251, 75, 8, .35); border-color: var(--naranja); }
