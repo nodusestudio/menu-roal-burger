@@ -31758,8 +31758,56 @@ async function cargarJuegoAdmin() {
     } catch (e) { showNotice('No se pudo leer la configuración del juego: ' + (e.message || 'error'), 'error'); }
     renderJuegoAdmin();
     cargarJuegoMetricas();
+    cargarJuegoEmbudo();
     cargarJuegoRanking();
     cargarJuegoRachas();
+}
+async function cargarJuegoEmbudo() {
+    const box = document.getElementById('juegoEmbudo');
+    if (!box) return;
+    try {
+        const [d1, d2] = _juegoRango(_juegoPeriodo);
+        const hoy = _sqDayKey(Date.now()), hace29 = _sqDayKey(Date.now() - 29 * 86400000), hace35 = _sqDayKey(Date.now() - 35 * 86400000);
+        const [evS, paS, caS, cohS, actS] = await Promise.all([
+            firebaseDb.collection('juego_eventos').where('dia', '>=', d1).where('dia', '<=', d2).get(),
+            firebaseDb.collection('juego_partidas').where('dia', '>=', d1).where('dia', '<=', d2).get(),
+            firebaseDb.collection('juego_canjes').where('dia', '>=', d1).where('dia', '<=', d2).get(),
+            firebaseDb.collection('clientes').where('juegoPrimerDia', '>=', hace35).get(),
+            firebaseDb.collection('clientes').where('ultimoDiaJuego', '>=', hace29).get()
+        ]);
+        const ev = evS.docs.map((d) => d.data());
+        const unicosEv = (t) => { const s = new Set(); ev.filter((e) => e.tipo === t).forEach((e) => Object.keys(e.u || {}).forEach((k) => s.add(k))); return s.size; };
+        const totalIniciadas = ev.filter((e) => e.tipo === 'iniciar').reduce((s, e) => s + (Number(e.total) || 0), 0);
+        const partidas = paS.docs.map((d) => d.data()), ok = partidas.filter((p) => p.aceptada === true);
+        const canjes = caS.docs.map((d) => d.data());
+        const uniq = (arr) => new Set(arr).size;
+        const pasos = [
+            ['Abrieron el juego', unicosEv('abrir')], ['Entraron (pasaron la intro)', unicosEv('entrar')], ['Iniciaron una partida', unicosEv('iniciar')],
+            ['Terminaron una partida válida', uniq(ok.map((p) => p.uid))], ['Ganaron créditos', uniq(ok.filter((p) => Number(p.creditoGanado) > 0).map((p) => p.uid))], ['Canjearon créditos en un pedido', uniq(canjes.map((c) => c.uid))]
+        ];
+        const tope = Math.max(1, ...pasos.map((p) => p[1]));
+        const nf = (n) => Number(n || 0).toLocaleString('es-CO');
+        const pct = (a2, b2) => (b2 > 0 ? Math.round((a2 / b2) * 100) + '%' : '—');
+        const filas = pasos.map(([t, n], i) => `<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;font-size:.85rem"><span>${escapeHtml(t)}</span><b>${nf(n)}${i > 0 ? ` <small style="opacity:.65">· ${pct(n, pasos[i - 1][1])} del paso anterior</small>` : ''}</b></div><div style="height:8px;border-radius:5px;background:rgba(255,255,255,.1)"><div style="height:100%;width:${Math.round((n / tope) * 100)}%;border-radius:5px;background:#fb4b08"></div></div></div>`).join('');
+        // Retención: cohorte = jugadores cuyo primer día de juego es reciente
+        const dias = (dia, n) => _sqDayKey(Date.parse(dia + 'T12:00:00-05:00') + n * 86400000);
+        const coh = cohS.docs.map((d) => d.data()).filter((c) => c.juegoPrimerDia && Array.isArray(c.juegoDias));
+        const ret = (n) => { const el = coh.filter((c) => c.juegoPrimerDia <= dias(hoy, -n)); const vol = el.filter((c) => c.juegoDias.includes(dias(c.juegoPrimerDia, n))); return { n: el.length, v: vol.length }; };
+        const r1 = ret(1), r7 = ret(7);
+        const act = actS.docs.map((d) => d.data()), hace6 = _sqDayKey(Date.now() - 6 * 86400000);
+        const ventas = canjes.reduce((s, c) => s + (Number(c.totalPedido) || 0), 0), costo = canjes.reduce((s, c) => s + (Number(c.monto) || 0), 0);
+        const kpis = [
+            _fidKpi('met-kpi-card--hi', nf(act.filter((c) => c.ultimoDiaJuego === hoy).length), 'Jugaron hoy'),
+            _fidKpi('', nf(act.filter((c) => c.ultimoDiaJuego >= hace6).length), 'Activos 7 días'), _fidKpi('', nf(act.length), 'Activos 30 días'),
+            _fidKpi('', pct(r1.v, r1.n) + ` <small>(${nf(r1.v)}/${nf(r1.n)})</small>`, 'Retención día 1'), _fidKpi('', pct(r7.v, r7.n) + ` <small>(${nf(r7.v)}/${nf(r7.n)})</small>`, 'Retención día 7'),
+            _fidKpi('', pct(ok.length, totalIniciadas) + ` <small>(${nf(ok.length)}/${nf(totalIniciadas)})</small>`, 'Partidas terminadas / iniciadas'),
+            _fidKpi('', ok.length && uniq(ok.map((p) => p.uid)) ? (ok.length / uniq(ok.map((p) => p.uid))).toFixed(1) : '—', 'Partidas por jugador'),
+            _fidKpi('', nf(uniq(ok.filter((p) => p.modo === 'reto').map((p) => p.uid))), 'Jugaron el reto'),
+            _fidKpi('', nf(unicosEv('compartir')), 'Compartieron'), _fidKpi('', nf(unicosEv('ranking')), 'Vieron el ranking'),
+            _fidKpi('', escapeHtml(formatMoney(ventas)), 'Ventas con crédito'), _fidKpi('', escapeHtml(formatMoney(costo)) + (ventas > 0 ? ` <small>(${pct(costo, ventas + costo)} del precio)</small>` : ''), 'Costo del crédito')
+        ];
+        box.innerHTML = filas + `<div class="met-kpi-row" style="margin-top:12px">${kpis.join('')}</div>`;
+    } catch (e) { box.innerHTML = `<p class="admin-hint">No se pudieron leer las métricas: ${escapeHtml(e.message || 'error')}</p>`; }
 }
 function _juegoLunes(dia) { const [y, m, d] = String(dia).split('-').map(Number); const f = new Date(Date.UTC(y, m - 1, d)); f.setUTCDate(f.getUTCDate() - ((f.getUTCDay() + 6) % 7)); return f.toISOString().slice(0, 10); }
 function _juegoWa(tel, texto) { return `https://wa.me/57${String(tel || '').replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(texto)}`; }
@@ -31806,6 +31854,11 @@ function renderJuegoAdmin() {
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${pbtn('hoy', 'Hoy')}${pbtn('ayer', 'Ayer')}${pbtn('7d', 'Últimos 7 días')}${pbtn('mes', 'Este mes')}</div>
             <div id="juegoMetricas"><p class="admin-hint">Cargando…</p></div>
             <p class="admin-hint">Jugadores = personas distintas que terminaron al menos una partida válida. Créditos canjeados = lo que ya se descontó en pedidos (si un pedido se anula, el crédito vuelve al cliente pero este número no baja).</p>
+        </article>
+        <article class="admin-card">
+            <div class="met-section-title">📊 Embudo y retención</div>
+            <div id="juegoEmbudo"><p class="admin-hint">Cargando…</p></div>
+            <p class="admin-hint">Cada paso cuenta personas distintas en el periodo elegido arriba. «Abrieron» y «Entraron» se miden desde que se publicó esta función; antes de eso aparecen en 0. «Retención» = qué porcentaje de los jugadores nuevos volvió a jugar al día siguiente / a los 7 días.</p>
         </article>
         <article class="admin-card">
             <div class="met-section-title">🏆 Ranking del reto</div>
@@ -31908,12 +31961,12 @@ async function guardarJuegoAdmin() {
         await firebaseDb.collection(CONFIG_COLLECTION).doc('juego').set({ ...cfg, actualizadoAt: firestoreNow() });
         _juegoCfg = cfg;
         showNotice('Reglas del juego guardadas.', 'ok');
-        renderJuegoAdmin(); cargarJuegoMetricas();
+        renderJuegoAdmin(); cargarJuegoMetricas(); cargarJuegoEmbudo(); cargarJuegoRanking(); cargarJuegoRachas();
     } catch (e) { showNotice('No se pudo guardar: ' + (e.message || 'error'), 'error'); }
 }
 document.addEventListener('click', (e) => {
     const per = e.target.closest && e.target.closest('[data-juego-periodo]');
-    if (per) { _juegoPeriodo = per.dataset.juegoPeriodo; renderJuegoAdmin(); cargarJuegoMetricas(); return; }
+    if (per) { _juegoPeriodo = per.dataset.juegoPeriodo; renderJuegoAdmin(); cargarJuegoMetricas(); cargarJuegoEmbudo(); cargarJuegoRanking(); cargarJuegoRachas(); return; }
     if (e.target.closest && e.target.closest('[data-juego-guardar]')) guardarJuegoAdmin();
 });
 
