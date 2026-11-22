@@ -44512,6 +44512,7 @@ function _tfQuitar(id) {
     if (it && it.unsub) { try { it.unsub(); } catch (_) { /* ya cerrada */ } }
     st.mapa.delete(id);
     if (!st.mapa.size && st.tick) { clearInterval(st.tick); st.tick = null; }
+    if (!st.mapa.size && st.unsubAvisos) { try { st.unsubAvisos(); } catch (_) { /* ya cerrada */ } st.unsubAvisos = null; }
     _tfPintar();
 }
 async function _tfCancelar(id, motivo) {
@@ -44539,6 +44540,50 @@ async function _tfYaPago(id, boton) {
     showNotice(`No se pudo confirmar${ultimo ? ': ' + (ultimo.message || ultimo) : ''}. Cobra el pedido de forma manual.`, 'error');
     if (boton) { boton.disabled = false; boton.textContent = '✓ Ya pagó'; }
 }
+// Dos pedidos esperan el MISMO valor: el servidor no adivina, así que al llegar el pago se pregunta cuál es.
+function _tfVigilar() {
+    const st = _tfEstado(); if (st.unsubAvisos) return;
+    st.avisados = new Set();
+    st.unsubAvisos = firebaseDb.collection('avisos_banco').where('creadoEn', '>', firebase.firestore.Timestamp.fromMillis(Date.now() - 2000)).orderBy('creadoEn', 'asc').limit(20).onSnapshot((snap) => {
+        snap.docChanges().forEach((ch) => {
+            if (ch.type !== 'added') return;
+            const id = ch.doc.id, p = ch.doc.data();
+            if (p.prueba || p.cobroId || st.avisados.has(id)) return;
+            setTimeout(async () => { // unos segundos: la función puede estar enlazándolo sola en este momento
+                try {
+                    const d = await firebaseDb.collection('avisos_banco').doc(id).get();
+                    if (!d.exists || d.data().cobroId || st.avisados.has(id)) return;
+                    const monto = Number(p.monto) || 0;
+                    const opciones = [...st.mapa.values()].filter((it) => it.datos.estado === 'abierto' && Number(it.datos.total) === monto);
+                    if (opciones.length < 2) return;
+                    st.avisados.add(id);
+                    _tfPreguntarCual(id, p, opciones);
+                } catch (_) { /* sin red */ }
+            }, 4500);
+        });
+    }, (e) => console.warn('[TRANSF] vigilando avisos:', e && (e.code || e.message)));
+}
+function _tfPreguntarCual(avisoId, p, opciones) {
+    const fondo = document.createElement('div');
+    fondo.style.cssText = 'position:fixed;inset:0;z-index:2147482600;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+    const caja = document.createElement('div');
+    caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
+    const B = 'border:0;border-radius:12px;padding:12px;font-weight:800;font-size:15px;cursor:pointer;color:#fff;width:100%;background:#2e7d32;margin-top:8px;text-align:left;';
+    caja.innerHTML = `<div style="font-weight:800;font-size:18px">💬 Llegó ${formatMoney(p.monto)}${p.nombre ? ' de ' + escapeHtml(p.nombre) : ''}</div><div style="opacity:.8;margin:6px 0 4px">Hay ${opciones.length} pedidos esperando ese valor. ¿De cuál es?</div>`
+        + opciones.map((it) => `<button type="button" data-id="${it.id}" style="${B}">${escapeHtml(it.datos.codigo ? '#' + it.datos.codigo : 'Pedido')}${it.datos.cliente ? ' · ' + escapeHtml(it.datos.cliente) : ''}</button>`).join('')
+        + `<button type="button" data-id="" style="${B}background:transparent;border:1px solid rgba(255,255,255,.3);text-align:center">Ninguno / decidir después</button>`;
+    fondo.appendChild(caja); document.body.appendChild(fondo);
+    caja.addEventListener('click', async (e) => {
+        const b = e.target.closest('button[data-id]'); if (!b) return;
+        fondo.remove();
+        const id = b.dataset.id; if (!id) return;
+        try {
+            const it = _tfEstado().mapa.get(id); if (!it) return;
+            await firebaseDb.collection('cobros_bancolombia').doc(id).update({ estado: 'pagado', manual: true, pagoId: avisoId, pagador: p.nombre || '', pagadoEn: firestoreNow(), pagadoMs: Date.now(), esperaSeg: Math.round((Date.now() - (it.datos.creadoMs || Date.now())) / 1000) });
+            try { await firebaseDb.collection('avisos_banco').doc(avisoId).set({ cobroId: id }, { merge: true }); } catch (_) { /* sin permiso: no es crítico */ }
+        } catch (err) { showNotice(`No se pudo aplicar el pago: ${err.message || err}`, 'error'); }
+    });
+}
 function _tfTick() {
     const st = _tfEstado();
     for (const it of [...st.mapa.values()]) { if (it.datos.estado === 'abierto' && Date.now() > Number(it.datos.expiraEn)) _tfCancelar(it.id, 'expirado'); }
@@ -44557,6 +44602,7 @@ function _tfAgregar(id, datos) {
         _tfPintar();
     }, (e) => console.warn('[TRANSF] escuchando:', e && (e.code || e.message)));
     if (!st.tick) st.tick = setInterval(_tfTick, 1000);
+    _tfVigilar();
     _tfPintar();
 }
 // Llegó el pago: se registra una sola vez (reclamo transaccional) y, si el pago es completo, se cobra, recibe e imprime solo.
