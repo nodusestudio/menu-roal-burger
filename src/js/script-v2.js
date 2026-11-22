@@ -263,6 +263,10 @@ let checkoutDeliveryFeePending = false;
 let checkoutIsScheduled = false;
 let checkoutScheduledDate = '';
 let checkoutScheduledTime = '';
+// Créditos ROAL del minijuego (Block ROAL, /juega): saldo en COP y tope % del pedido. El servidor (pricing.js) es la autoridad;
+// esto solo da feedback inmediato en el checkout.
+let checkoutUseGameCredit = false;
+let gameCreditState = { saldo: 0, topePct: 0, at: 0 };
 let checkoutPointsToRedeem = 0; // cuántos puntos de lealtad el cliente eligió canjear en este checkout
 let activeMenuSection = 'PORTADA';
 let featuredProductsUnsubscribe = null;
@@ -1231,7 +1235,7 @@ function getCheckoutPromo2x1IncrementoFee(fulfillmentType) {
 }
 
 function getCheckoutOrderTotal(fulfillmentType) {
-    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType) + getCheckoutPromo2x1IncrementoFee(fulfillmentType) - getCheckoutPointsDiscountAmount();
+    return getCartTotalAmount() + getCheckoutDeliveryFee(fulfillmentType) + getCheckoutPromo2x1IncrementoFee(fulfillmentType) - getCheckoutPointsDiscountAmount() - getCheckoutGameCreditAmount();
 }
 
 function getCheckoutDiscountAmount() {
@@ -1285,6 +1289,24 @@ function getCheckoutMaxRedeemablePoints() {
     const available = Math.max(0, Number(activeCustomerProfile?.puntosDisponibles) || 0);
     const maxByEligibleSubtotal = Math.floor(getLoyaltyEligibleCartSubtotal() / LOYALTY_POINT_VALUE_COP);
     return Math.max(0, Math.min(available, maxByEligibleSubtotal));
+}
+
+function getCheckoutGameCreditAmount() {
+    if (!checkoutUseGameCredit || !activeCustomerProfile) return 0;
+    const base = Math.max(0, getCartTotalAmount() - getCheckoutPointsDiscountAmount());
+    return Math.max(0, Math.min(Math.floor(gameCreditState.saldo || 0), Math.floor(base * (gameCreditState.topePct || 0) / 100)));
+}
+// Trae el saldo de créditos ROAL (juegoEstado). Silencioso: si falla o no hay sesión, simplemente no se ofrece.
+async function refreshGameCredit() {
+    if (!activeCustomerProfile) { gameCreditState = { saldo: 0, topePct: 0, at: 0 }; return; }
+    if (Date.now() - gameCreditState.at < 30000) return;
+    try {
+        const fn = getPublicFirebaseFunctions();
+        if (!fn) return;
+        const r = await fn.httpsCallable('juegoEstado')({});
+        gameCreditState = { saldo: Math.max(0, Number(r.data?.creditoJuego) || 0), topePct: r.data?.activo === false ? 0 : Math.max(0, Number(r.data?.topeCreditoPct) || 0), at: Date.now() };
+        if (typeof updateCheckoutInfoModalState === 'function' && checkoutInfoUI) updateCheckoutInfoModalState();
+    } catch (_) { /* sin crédito disponible */ }
 }
 
 function getCheckoutPointsDiscountAmount() {
@@ -5519,7 +5541,8 @@ async function createOrderFromCart(customerInfo = {}) {
     // (pricing.js: computeServerPricedOrder) es la autoridad real, releyendo el saldo fresco.
     const pointsToRedeem = Math.max(0, Math.min(Math.floor(Number(customerInfo.pointsToRedeem) || 0), getCheckoutMaxRedeemablePoints()));
     const pointsDiscountAmount = pointsToRedeem * LOYALTY_POINT_VALUE_COP;
-    const clientReportedTotal = subtotal + deliveryFee + promo2x1IncrementoFee - pointsDiscountAmount;
+    const gameCredit = Math.max(0, Math.floor(Number(customerInfo.gameCredit) || 0));
+    const clientReportedTotal = subtotal + deliveryFee + promo2x1IncrementoFee - pointsDiscountAmount - gameCredit;
     const deliveryAddress = String(customerInfo.address || '').trim();
     const customerPhone = String(customerInfo.phone || '').trim();
     const customerPhoneDigits = customerPhone.replace(/\D+/g, '');
@@ -5550,6 +5573,7 @@ async function createOrderFromCart(customerInfo = {}) {
             salirARecibirConfirmado: customerInfo.salirARecibirConfirmado === true,
             promo2x1IncrementoFee,
             pointsToRedeem,
+            gameCredit,
             clientRequestId: String(customerInfo.clientRequestId || ''),
             isScheduled: Boolean(customerInfo.isScheduled),
             scheduledDate: customerInfo.isScheduled ? String(customerInfo.scheduledDate || '') : null,
@@ -6321,7 +6345,8 @@ async function submitCheckoutInfo() {
             scheduledDate: checkoutIsScheduled ? checkoutScheduledDate : '',
             scheduledTime: checkoutIsScheduled ? checkoutScheduledTime : '',
             scheduledLabel: checkoutIsScheduled ? scheduledLabel : '',
-            pointsToRedeem: Math.max(0, Math.min(Math.floor(checkoutPointsToRedeem || 0), getCheckoutMaxRedeemablePoints()))
+            pointsToRedeem: Math.max(0, Math.min(Math.floor(checkoutPointsToRedeem || 0), getCheckoutMaxRedeemablePoints())),
+            gameCredit: getCheckoutGameCreditAmount()
         };
 
         if (profile && shouldSaveNewAddress) {
@@ -6627,6 +6652,20 @@ function updateCheckoutInfoModalState() {
         checkoutInfoUI.pointsDiscountValue.textContent = formatCurrency(pointsDiscountAmount);
     }
 
+    // Créditos ROAL (minijuego): solo con compra y hasta el tope % del pedido (el servidor re-calcula).
+    const gameCreditMax = (activeCustomerProfile && gameCreditState.saldo > 0 && gameCreditState.topePct > 0)
+        ? Math.max(0, Math.min(Math.floor(gameCreditState.saldo), Math.floor(Math.max(0, getCartTotalAmount() - pointsDiscountAmount) * gameCreditState.topePct / 100)))
+        : 0;
+    if (checkoutInfoUI.gameField) checkoutInfoUI.gameField.hidden = gameCreditMax <= 0;
+    if (gameCreditMax <= 0) checkoutUseGameCredit = false;
+    if (checkoutInfoUI.gameToggle) checkoutInfoUI.gameToggle.checked = checkoutUseGameCredit;
+    if (checkoutInfoUI.gameHint) checkoutInfoUI.gameHint.textContent = `Tienes ${formatCurrency(gameCreditState.saldo)}. En este pedido puedes usar hasta ${formatCurrency(gameCreditMax)} (máx. ${gameCreditState.topePct}% del pedido, sin domicilio).`;
+    const gameCreditAmount = getCheckoutGameCreditAmount();
+    if (checkoutInfoUI.gameRow && checkoutInfoUI.gameValue) {
+        checkoutInfoUI.gameRow.hidden = gameCreditAmount <= 0;
+        checkoutInfoUI.gameValue.textContent = formatCurrency(gameCreditAmount);
+    }
+
     const _empaqueVisible = getCheckoutPromo2x1IncrementoFee(fulfillmentType);
     if (checkoutInfoUI.packagingRow) checkoutInfoUI.packagingRow.hidden = _empaqueVisible <= 0;
     if (checkoutInfoUI.packagingValue) checkoutInfoUI.packagingValue.textContent = formatCurrency(_empaqueVisible);
@@ -6642,7 +6681,7 @@ function updateCheckoutInfoModalState() {
             const feeForDisplay = checkoutDeliveryLocationConfirmed ? deliveryFee : DELIVERY_FEE_AMOUNT;
             displayTotal = getCartTotalAmount() + feeForDisplay + incrementoFeeForDisplay;
         }
-        displayTotal -= pointsDiscountAmount;
+        displayTotal -= pointsDiscountAmount + gameCreditAmount;
         checkoutInfoUI.orderTotalValue.textContent = formatCurrency(displayTotal);
     }
 }
@@ -6700,6 +6739,9 @@ function openCheckoutInfoModal() {
     checkoutDeliveryLocationConfirmed = false;
     checkoutDeliveryFeePending = false;
     checkoutPointsToRedeem = 0;
+    checkoutUseGameCredit = false;
+    gameCreditState.at = 0; // saldo fresco cada vez que se abre el checkout
+    refreshGameCredit();
 
     const profile = activeCustomerProfile;
     const savedAddresses = profile ? getCustomerSavedAddresses(profile) : [];
@@ -6804,6 +6846,12 @@ function openCheckoutInfoModal() {
                 </label>
                 <p class="checkout-points-hint" id="checkoutPointsHint"></p>
             </div>
+            <div class="checkout-points-field" id="checkoutGameField" hidden>
+                <label class="checkout-game-toggle" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+                    <input type="checkbox" id="checkoutGameCredit" style="margin-top:3px">
+                    <span><strong>🎮 Usar mis créditos ROAL</strong><br><small id="checkoutGameHint"></small></span>
+                </label>
+            </div>
             <div class="customer-profile-summary customer-profile-summary-grid checkout-summary-grid">
                 <div id="checkoutDeliveryFeeRow" hidden>
                     <span>Costo de envío (domicilio)</span>
@@ -6820,6 +6868,10 @@ function openCheckoutInfoModal() {
                 <div id="checkoutPointsDiscountRow" hidden>
                     <span>Descuento por puntos</span>
                     <strong id="checkoutPointsDiscountValue">${formatCurrency(0)}</strong>
+                </div>
+                <div id="checkoutGameRow" hidden>
+                    <span>Crédito ROAL</span>
+                    <strong id="checkoutGameValue">${formatCurrency(0)}</strong>
                 </div>
                 <div>
                     <span>Total</span>
@@ -6872,6 +6924,11 @@ function openCheckoutInfoModal() {
         pointsField: modal.querySelector('#checkoutPointsField'),
         pointsInput: modal.querySelector('#checkoutPointsInput'),
         pointsHint: modal.querySelector('#checkoutPointsHint'),
+        gameField: modal.querySelector('#checkoutGameField'),
+        gameToggle: modal.querySelector('#checkoutGameCredit'),
+        gameHint: modal.querySelector('#checkoutGameHint'),
+        gameRow: modal.querySelector('#checkoutGameRow'),
+        gameValue: modal.querySelector('#checkoutGameValue'),
         pointsDiscountRow: modal.querySelector('#checkoutPointsDiscountRow'),
         pointsDiscountValue: modal.querySelector('#checkoutPointsDiscountValue'),
         orderTotalValue: modal.querySelector('#checkoutOrderTotalValue'),
@@ -6916,6 +6973,10 @@ function openCheckoutInfoModal() {
             checkoutInfoUI.setPrimaryField.style.display =
                 checkoutInfoUI.saveAddressToggle.checked && canShowPrimary ? '' : 'none';
         }
+    });
+    checkoutInfoUI.gameToggle?.addEventListener('change', () => {
+        checkoutUseGameCredit = checkoutInfoUI.gameToggle.checked;
+        updateCheckoutInfoModalState();
     });
     checkoutInfoUI.pointsInput?.addEventListener('input', () => {
         checkoutPointsToRedeem = Math.max(0, Math.floor(Number(checkoutInfoUI.pointsInput.value) || 0));
