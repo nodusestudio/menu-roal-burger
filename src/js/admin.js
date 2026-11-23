@@ -6215,7 +6215,7 @@ function _modalUnificarTarjeta(fondo, tarjeta) {
     });
 }
 function _modalesUnificar() {
-    // REGLA: toda ventana emergente se centra en el MEDIO DE TODA LA PANTALLA (no depende de la barra lateral ni del carrito del POS).
+    // REGLA (2026-11-23): toda ventana emergente se centra en el ÁREA LIBRE, ignorando la barra lateral (ver reglaVentanasEmergentes al final).
     document.querySelectorAll('body > *, [id*="odal"], [class*="modal"], [class*="overlay"], [class*="backdrop"]').forEach((fondo) => {
         if (fondo.matches(_MODAL_SALTAR) || fondo.closest(_MODAL_SALTAR)) return;
         const cs = getComputedStyle(fondo);
@@ -6231,8 +6231,9 @@ function _modalesUnificar() {
             _modalUnificarTarjeta(fondo, tarjeta);
             fondo.dataset.modalUnif = '1';
             fondo.style.setProperty('box-sizing', 'border-box', 'important');
-            fondo.style.setProperty('padding-left', '12px', 'important');
-            fondo.style.setProperty('padding-right', '12px', 'important');
+            // Centrado en el ÁREA LIBRE (a la derecha de la barra lateral) con margen igual: lo da la clase rr-modal-host (reglaVentanasEmergentes).
+            fondo.style.removeProperty('padding-left'); fondo.style.removeProperty('padding-right');
+            fondo.classList.add('rr-modal-host');
         }
     });
 }
@@ -46643,7 +46644,7 @@ padding:var(--modal-margen) var(--modal-margen) calc(var(--modal-margen) + var(-
         raf = 0; const lista = Array.from(pend); pend = new Set();
         lista.forEach(marcar);
     }
-    function encolar(el) { if (el && el.nodeType === 1) { pend.add(el); if (!raf) raf = requestAnimationFrame(procesar); } }
+    function encolar(el) { if (el && el.nodeType === 1) { pend.add(el); if (!raf) { raf = 1; queueMicrotask(procesar); } } }
     const obs = new MutationObserver((muts) => {
         for (const m of muts) {
             if (m.type === 'attributes') { if (m.target !== document.body) encolar(m.target); continue; }
