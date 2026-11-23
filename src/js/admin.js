@@ -6220,9 +6220,6 @@ function _modalesUnificar() {
         if (fondo.matches(_MODAL_SALTAR) || fondo.closest(_MODAL_SALTAR)) return;
         const cs = getComputedStyle(fondo);
         if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden' || !fondo.getClientRects().length) return;
-        if (fondo.dataset.modalUnif) { // la versión anterior la corría a un lado: se deshace
-            fondo.style.removeProperty('left'); fondo.style.removeProperty('right'); fondo.style.removeProperty('padding-left');
-        }
         const r = fondo.getBoundingClientRect();
         if (r.width < window.innerWidth * 0.9 || r.height < window.innerHeight * 0.6) return;
         const tarjeta = [...fondo.children].filter((c) => c.nodeType === 1 && getComputedStyle(c).display !== 'none' && c.getClientRects().length)
