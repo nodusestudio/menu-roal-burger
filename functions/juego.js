@@ -308,6 +308,7 @@ function registrar(exp, { onCall, onSchedule, HttpsError, ALLOWED_ORIGINS, getFi
             valorPunto: cfg.valorPunto,
             topeCreditoPct: cfg.topeCreditoPct,
             metaSiguiente: metaNivel(Math.max(0, Math.trunc(num(c.nivelMaxJuego, 0))) + 1, cfg),
+            metasMapa: Array.from({ length: 10 }, (_, i) => metaNivel(i + 1, cfg)), // mapa de barrios (solo lectura)
             rachaBonus: cfg.rachaBonus
         };
     };

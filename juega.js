@@ -244,6 +244,7 @@
     function mostrarEstado() {
         if (!estado) return;
         $('stNivel').textContent = estado.nivelMax + 1;
+        $('stBarrios').textContent = Math.min(estado.nivelMax, 10) + '/10';
         $('stMeta').textContent = fmt(estado.metaSiguiente);
         $('stRacha').textContent = estado.racha;
         $('stCredito').textContent = peso(estado.creditoJuego);
@@ -760,6 +761,16 @@
             setTimeout(() => { b.hidden = true; b.classList.remove('listo'); b.disabled = false; b.innerHTML = original; }, 2600);
         } else { b.disabled = false; b.innerHTML = original; $('cofrePremio').className = 'error'; $('cofrePremio').textContent = msg; $('cofrePremio').hidden = false; }
     }
+    const BARRIOS = ['Centro', 'La Castellana', 'Av. Bolívar', 'La Fachada', 'Los Quindos', 'Ciudad Dorada', 'El Bosque', 'Granada', 'La Patria', 'Montevideo'];
+    function pintarMapa() {
+        const max = estado.nivelMax || 0, metas = estado.metasMapa || [];
+        $('stBarrios').textContent = Math.min(max, BARRIOS.length) + '/' + BARRIOS.length;
+        $('mapaLista').innerHTML = BARRIOS.map((b, i) => {
+            const conq = i < max, actual = i === max;
+            return `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 10px;margin:4px 0;border-radius:9px;border:1px solid rgba(255,255,255,.2);${actual ? 'background:rgba(255,196,0,.18);' : ''}${!conq && !actual ? 'opacity:.5;' : ''}"><span>${conq ? '✅' : actual ? '🎯' : '🔒'} ${i + 1}. ${b}</span><b>${conq ? 'Conquistado' : fmt(metas[i] || 0) + ' pts'}</b></div>`;
+        }).join('') + (max >= BARRIOS.length ? '<p style="margin-top:8px">🏆 ¡Conquistaste todos los barrios! Pronto más.</p>' : '');
+    }
+    function abrirMapa() { Sonido.clic(); pintarMapa(); $('mapa').hidden = false; }
     function abrirMisiones() { Sonido.clic(); $('cofrePremio').hidden = true; pintarMisiones(); $('misiones').hidden = false; }
     async function abrirCofre() {
         const b = $('btnAbrirCofre'); if (b.disabled) return;
@@ -855,6 +866,8 @@
         if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
         funciones = firebase.app().functions('us-central1');
         $('btnOtra').addEventListener('click', jugarOtra);
+        $('chipMapa').addEventListener('click', abrirMapa);
+        $('btnMapaCerrar').addEventListener('click', () => { $('mapa').hidden = true; });
         $('chipMisiones').addEventListener('click', abrirMisiones);
         $('chipCofre').addEventListener('click', abrirMisiones);
         $('btnAbrirCofre').addEventListener('click', abrirCofre);

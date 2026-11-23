@@ -58,6 +58,7 @@
         <footer id="chips">
             <span class="chip">🔥 <b id="stRacha">0</b></span>
             <span class="chip" id="chipEscudo" hidden title="Escudos de racha">🛡️ <b id="stEscudos">0</b></span>
+            <button type="button" class="chip" id="chipMapa" aria-label="Mapa de barrios">🗺️ <b id="stBarrios">0/10</b></button>
             <button type="button" class="chip" id="chipMisiones">🎯 <b id="stMis">0/3</b></button>
             <button type="button" class="chip cofre" id="chipCofre" hidden>🎁 <b id="stCofres">0</b></button>
             <span class="chip">💰 <b id="stCredito">$0</b></span>
@@ -98,6 +99,14 @@
             <p style="margin:0 0 8px">¿Seguimos? Borramos 2 filas y te damos piezas nuevas 💖</p>
             <button class="btn" id="btnRevive" type="button">💖 Seguir jugando</button>
             <button class="btn sec" id="btnReviveNo" type="button">Terminar partida</button>
+        </div>
+    </div>
+    <div class="overlay" id="mapa" hidden>
+        <div class="card">
+            <h2>Conquista Armenia 🗺️</h2>
+            <p style="margin:0 0 8px">Llega a la meta de puntos en una partida para conquistar el siguiente barrio.</p>
+            <div id="mapaLista"></div>
+            <button class="btn sec" id="btnMapaCerrar" type="button">Cerrar</button>
         </div>
     </div>
     <div class="overlay" id="misiones" hidden>
