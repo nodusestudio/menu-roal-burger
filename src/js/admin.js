@@ -46588,3 +46588,75 @@ document.getElementById('costosNuevoFiltro')?.addEventListener('change', _cnRend
     function iniciar() { barrer(); obs.observe(document.body, { childList: true, subtree: true }); }
     if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
 })();
+
+// ── REGLA GLOBAL DE VENTANAS EMERGENTES (2026-11-23) ──
+// Toda ventana (modal) sale centrada en el ÁREA LIBRE: la barra lateral se ignora (el fondo oscuro sigue cubriendo todo,
+// pero el centro se calcula a la derecha de la barra), con margen igual arriba, abajo y a los lados (y sin quedar detrás
+// de la barra inferior). Solo dos anchos: estándar (--modal-w-estandar, 560 px) y grande (--modal-w-grande, 900 px);
+// si el contenido es más alto que el área libre, la ventana hace scroll por dentro. Detecta cualquier capa fija a pantalla
+// completa (modales hechos en JS o en admin.html) sin tocar cada una.
+(function reglaVentanasEmergentes() {
+    const EXCLUIR = '#posView,.pos-view,.admin-auth-overlay,#adminPopupHost,.admin-sidebar,.mesero-invalid-screen,.cpana-preview,#rrWrap,#fodiFlot,[data-rr-sin-regla]';
+    const SIN_TAMANO = '#ticketPreviewModal,.velo-completo,#fidPreviaOverlay,.vd-overlay';
+    const st = document.createElement('style');
+    st.textContent = `:root{--modal-margen:24px;--modal-inset-left:0px}
+.rr-modal-host{box-sizing:border-box!important;justify-content:center!important;align-items:center!important;overflow:auto;
+padding:var(--modal-margen) var(--modal-margen) calc(var(--modal-margen) + var(--rr-bar-h,0px)) calc(var(--modal-margen) + var(--modal-inset-left,0px))!important}
+.rr-modal-host>.rr-dlg{box-sizing:border-box!important;max-width:100%!important;max-height:100%!important;overflow:auto;margin:0!important}
+.rr-modal-host>.rr-dlg-std{width:var(--modal-w-estandar,560px)!important}
+.rr-modal-host>.rr-dlg-big{width:var(--modal-w-grande,900px)!important}`;
+    document.head.appendChild(st);
+
+    function medirInset() {
+        const sb = document.querySelector('.admin-sidebar');
+        let inset = 0;
+        if (sb) {
+            const cs = getComputedStyle(sb); const r = sb.getBoundingClientRect();
+            if (cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.width < innerWidth * 0.6 && r.left <= 4) inset = Math.round(r.right);
+        }
+        document.documentElement.style.setProperty('--modal-inset-left', inset + 'px');
+    }
+    function esCapa(el) {
+        if (el.nodeType !== 1 || el.dataset.rrMh === '1' || !el.childElementCount || el.matches(EXCLUIR) || el.closest(EXCLUIR)) return false;
+        const cs = getComputedStyle(el);
+        if (cs.position !== 'fixed' || (cs.display !== 'flex' && cs.display !== 'grid') || cs.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width >= innerWidth * 0.95 && r.height >= innerHeight * 0.95;
+    }
+    function marcar(el) {
+        if (!esCapa(el)) return;
+        medirInset();
+        const dlg = Array.from(el.children).find((c) => {
+            const p = getComputedStyle(c).position; const r = c.getBoundingClientRect();
+            return p !== 'fixed' && p !== 'absolute' && r.width > 0 && r.height > 0;
+        });
+        const w = dlg ? dlg.getBoundingClientRect().width : 0;
+        el.dataset.rrMh = '1';
+        el.classList.add('rr-modal-host');
+        if (dlg) {
+            dlg.classList.add('rr-dlg');
+            if (!el.matches(SIN_TAMANO)) dlg.classList.add(w > 700 ? 'rr-dlg-big' : 'rr-dlg-std');
+        }
+    }
+    let pend = new Set(); let raf = 0;
+    function procesar() {
+        raf = 0; const lista = Array.from(pend); pend = new Set();
+        lista.forEach(marcar);
+    }
+    function encolar(el) { if (el && el.nodeType === 1) { pend.add(el); if (!raf) raf = requestAnimationFrame(procesar); } }
+    const obs = new MutationObserver((muts) => {
+        for (const m of muts) {
+            if (m.type === 'attributes') { if (m.target !== document.body) encolar(m.target); continue; }
+            m.addedNodes.forEach((n) => { if (n.nodeType === 1) { encolar(n); Array.from(n.children).slice(0, 8).forEach(encolar); } });
+        }
+    });
+    function iniciar() {
+        medirInset();
+        addEventListener('resize', medirInset);
+        const sb = document.querySelector('.admin-sidebar');
+        if (sb && window.ResizeObserver) new ResizeObserver(medirInset).observe(sb);
+        obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open', 'aria-hidden'] });
+        document.querySelectorAll('body *').forEach((el) => { if (el.childElementCount && el.id) encolar(el); });
+    }
+    if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
+})();
