@@ -5504,7 +5504,7 @@ function _posElegirOpcionesCuponera(bono) {
     const ov = document.createElement('div');
     ov.id = 'posCuponeraOv';
     ov.style.cssText = 'position:fixed;inset:0;z-index:10500;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;';
-    const chips = (grupo) => sabores.map((s) => `<button type="button" class="pos-product-btn" data-grupo="${grupo}" data-sabor="${escapeHtml(s)}" style="padding:12px 6px;">${escapeHtml(s)}</button>`).join('');
+    const chips = (grupo) => sabores.map((s) => `<button type="button" data-grupo="${grupo}" data-sabor="${escapeHtml(s)}" style="padding:12px 6px;min-height:46px;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.2);border-radius:9px;color:#fff;font-weight:600;cursor:pointer;">${escapeHtml(s)}</button>`).join('');
     ov.innerHTML = `<div style="background:#1b1b22;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:20px;max-width:420px;width:100%;max-height:92vh;overflow:auto;color:#fff;">
         <h4 style="margin:0 0 12px;">${escapeHtml(bono.nombre)} · ${escapeHtml(formatMoney(bono.precio))}</h4>
         <p style="margin:0 0 6px;font-size:.85rem;opacity:.8;">Sabor de la bebida (Postobón 250 ml)</p>
@@ -5515,13 +5515,15 @@ function _posElegirOpcionesCuponera(bono) {
         <button type="button" id="posCupOtraBebida" style="width:100%;padding:10px;margin-bottom:12px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">🥤 Agregar otra bebida (litro, etc.)</button>
         <div style="display:flex;gap:8px;">
             <button type="button" data-cancel="1" style="flex:1;padding:12px;background:none;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#fff;">Cancelar</button>
-            <button type="button" id="posCupOk" disabled style="flex:2;padding:12px;border:0;border-radius:8px;background:#22a05a;color:#fff;font-weight:800;opacity:.5;">AGREGAR AL TICKET</button>
+            <button type="button" id="posCupOk" disabled style="flex:2;padding:12px;border:0;border-radius:8px;background:#22a05a;color:#fff;font-weight:800;opacity:.35;">AGREGAR AL TICKET</button>
         </div></div>`;
     const okBtn = ov.querySelector('#posCupOk');
     const refrescar = () => {
         ov.querySelectorAll('[data-sabor]').forEach((b) => {
             const sel = (b.dataset.grupo === '1' ? sabor1 : sabor2) === b.dataset.sabor;
-            b.style.outline = sel ? '3px solid #ffaa1e' : 'none';
+            b.style.background = sel ? '#ff7b45' : 'rgba(255,255,255,.07)';
+            b.style.borderColor = sel ? '#ffaa1e' : 'rgba(255,255,255,.2)';
+            b.style.fontWeight = sel ? '800' : '600';
         });
         const listo = sabor1 && (!combo2 || sabor2);
         okBtn.disabled = !listo; okBtn.style.opacity = listo ? '1' : '.5';
