@@ -5903,13 +5903,15 @@ async function _posPendRefrescar() {
         const [cola, mal, disc] = await Promise.all([
             firebaseDb.collection('fidelizacion_cola').doc(hoy).get(),
             firebaseDb.collection('encuestas_pedido').where('requiereAtencion', '==', true).limit(300).get(),
-            firebaseDb.collection('fidelizacion_envios').where('motivo', '==', 'disculpa').limit(500).get()
+            firebaseDb.collection('fidelizacion_envios').where('motivo', 'in', ['disculpa', 'respuesta']).limit(500).get()
         ]);
         _posPend.colaDoc = cola.exists ? (cola.data() || null) : null;
         _posPend.cola = cola.exists ? ((cola.data() || {}).entradas || []).filter((e) => e.estado === 'pendiente') : [];
         // «Atender»: respuestas malas sin mensaje de disculpa registrado (misma regla que la pestaña Atender de Feedback)
-        const atendidas = new Set(disc.docs.map((d) => d.data().encuestaId).filter(Boolean));
-        _posPend.atender = mal.docs.filter((d) => !atendidas.has(d.id)).map((d) => { const x = d.data() || {}; return { id: d.id, name: String(x.customerName || ''), code: String(x.orderCode || ''), motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [] }; });
+        const atendidas = new Set([...disc.docs.map((d) => d.data().encuestaId), ...(_fidEnvios || []).filter((e) => (e.motivo === 'disculpa' || e.motivo === 'respuesta') && e.encuestaId).map((e) => e.encuestaId)].filter(Boolean));
+        // El panel del botón de la barra es SOLO del día: únicamente respuestas de hoy.
+        const hoyKey = _sqDayKey(Date.now());
+        _posPend.atender = mal.docs.filter((d) => !atendidas.has(d.id) && _sqDayKey(_tsMs((d.data() || {}).createdAt)) === hoyKey).map((d) => { const x = d.data() || {}; return { id: d.id, name: String(x.customerName || ''), code: String(x.orderCode || ''), motivos: Array.isArray(x.motivosAtencion) ? x.motivosAtencion : [] }; });
     } catch (_) { /* sin permiso o sin conexión: el resumen muestra lo que haya */ }
     _posFbActualizarInsignia();
 }
@@ -6040,8 +6042,8 @@ function _posFbRender() {
 
     // Mensajes de Reactivar ya enviados (ventana de 14 días): primero los que ya pidieron (clic → su respuesta), abajo los que siguen sin responder.
     const enviadosReact = (() => {
-        const lim = Date.now() - FID_VENTANA_MS;
-        const lst = (_fidEnvios || []).filter((e) => e.motivo === 'reactivar' && e.pendiente === false && e.descartado !== true && (_tsMs(e.enviadoAt) || _tsMs(e.creadoAt)) > lim);
+        const hoyKey = _sqDayKey(Date.now()); // solo los enviados HOY (los de días anteriores se ven en Feedback → Reactivar)
+        const lst = (_fidEnvios || []).filter((e) => e.motivo === 'reactivar' && e.pendiente === false && e.descartado !== true && _sqDayKey(_tsMs(e.enviadoAt) || _tsMs(e.creadoAt)) === hoyKey);
         if (!lst.length) return [];
         const porTel = _fbPedidosPorTel();
         return lst.map((e) => {
