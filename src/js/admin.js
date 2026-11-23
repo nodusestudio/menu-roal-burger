@@ -45058,6 +45058,15 @@ async function _cqConfirmarManual() {
     if (boton) { boton.disabled = false; boton.textContent = '✓ Ya pagó'; }
 }
 // Registra el pago en el pedido: el mismo camino del modal de cobro (Bancolombia → Transferencia), una sola vez.
+// Al llegar el pago completo (ya cobrado e impreso el ticket): deja en el portapapeles el mensaje «tu pedido ya está en preparación» y avisa en pantalla.
+async function _cobroCopiarMensajeProceso(pedidoId, respaldo) {
+    try {
+        const o = ordersState.find((r) => r.id === pedidoId) || respaldo;
+        if (!o) return;
+        const ok = await copyTextToClipboard(buildOrderWhatsAppMessage(normalizeOrder(o), { includeItems: false }));
+        showNotice(ok ? `✅ Pago recibido. El mensaje «pedido en proceso» para ${o.customerName || 'el cliente'} ya está copiado: pégalo en su chat.` : 'Pago recibido, pero no pude copiar el mensaje del cliente (cópialo desde el ticket).', ok ? 'ok' : 'error');
+    } catch (_) { /* sin portapapeles */ }
+}
 async function _cqAplicar(x) {
     const st = _cqEstado();
     if (st.aplicando) return; st.aplicando = true;
@@ -45080,6 +45089,7 @@ async function _cqAplicar(x) {
             const receive = x.receiveOrder === 'mesa' ? 'mesa' : (x.receiveOrder === 'true');
             // Pedido por transferencia (tomado desde FODI): es el ÚNICO caso en que el ticket se imprime solo al llegar el pago.
             await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id }, { despues: true, imprimirAuto: true });
+            await _cobroCopiarMensajeProceso(x.pedidoId, order);
         }
     } catch (e) { showNotice(`No se pudo registrar el pago del QR: ${e.message || e}`, 'error'); }
     // la TV agradece unos segundos y luego vuelve a la publicidad
@@ -45477,6 +45487,7 @@ async function _tfAplicarUno(it) {
             showNotice(`Llegaron ${formatMoney(x.total)} por transferencia${x.pagador ? ' de ' + x.pagador : ''}. Elige cómo paga el resto (${formatMoney(Number(x.pedidoTotal) - Number(x.total))}) y confirma.`, 'ok');
         } else {
             await _pfApplyPaymentUpdate(order, true, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: it.id }, { despues: true, imprimirAuto: true });
+            await _cobroCopiarMensajeProceso(x.pedidoId, order);
         }
     } catch (e) { showNotice(`No se pudo registrar el pago por transferencia: ${e.message || e}`, 'error'); }
     _tfQuitar(it.id);
