@@ -6181,14 +6181,13 @@ function _modalUnificarTarjeta(fondo, tarjeta) {
     const sp = (el, k, v) => el.style.setProperty(k, v, 'important');
     const csT = getComputedStyle(tarjeta);
     const grande = tarjeta.dataset.modalTam === 'grande' || (tarjeta.dataset.modalTam !== 'estandar' && (tarjeta.querySelectorAll('input,select,textarea').length >= 8 || !!tarjeta.querySelector('table')));
-    sp(tarjeta, 'width', `min(100%, var(--modal-w-${grande ? 'grande' : 'estandar'}))`);
-    sp(tarjeta, 'min-width', '0');
-    sp(tarjeta, 'max-width', 'none');
-    sp(tarjeta, 'max-height', 'min(var(--modal-h-max), 100%)'); // 100% = alto libre del fondo (ya descuenta márgenes y barra inferior)
-    sp(tarjeta, 'box-sizing', 'border-box');
+    // Ancho, alto y márgenes los manda SOLO la regla global (CSS rr-modal-host / rr-dlg-std / rr-dlg-big): aquí solo se elige el tamaño por clase.
+    tarjeta.classList.remove('rr-dlg-std', 'rr-dlg-big');
+    tarjeta.classList.add('rr-dlg', grande ? 'rr-dlg-big' : 'rr-dlg-std');
+    tarjeta.dataset.rrTam = '1';
+    ['width', 'min-width', 'max-width', 'max-height', 'margin-left', 'margin-right'].forEach((k) => tarjeta.style.removeProperty(k));
     sp(tarjeta, 'border', '1px solid rgba(255,255,255,0.07)');
     if (csT.overflowY === 'visible') sp(tarjeta, 'overflow-y', 'auto');
-    if (!/flex|grid/.test(getComputedStyle(fondo).display)) { sp(tarjeta, 'margin-left', 'auto'); sp(tarjeta, 'margin-right', 'auto'); }
     // Cabecera: el × SIEMPRE arriba a la derecha (mismo tamaño) y el título con el mismo tamaño
     if (getComputedStyle(tarjeta).position === 'static') sp(tarjeta, 'position', 'relative');
     const titulo = tarjeta.querySelector('h1,h2,h3,h4,[class*="modal-title"],[class*="-title"],[class*="head"] > strong');
@@ -46633,7 +46632,7 @@ padding:var(--modal-margen) var(--modal-margen) calc(var(--modal-margen) + var(-
         el.classList.add('rr-modal-host');
         if (dlg) {
             dlg.classList.add('rr-dlg');
-            if (!el.matches(SIN_TAMANO)) dlg.classList.add(w > 700 ? 'rr-dlg-big' : 'rr-dlg-std');
+            if (!el.matches(SIN_TAMANO) && !dlg.dataset.rrTam) { dlg.classList.remove('rr-dlg-std', 'rr-dlg-big'); dlg.classList.add(w > 700 ? 'rr-dlg-big' : 'rr-dlg-std'); }
         }
     }
     let pend = new Set(); let raf = 0;
