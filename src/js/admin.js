@@ -14032,7 +14032,8 @@ function renderMetricasFeedback() {
         return { label: `${M.q3[k][0]} ${M.q3[k][1]} (${g.length})`, val: _fbPct(g.filter(_fbPositiva).length, g.length) };
     });
 
-    const sugs = rows.filter((r) => r.q4);
+    const _fbAtendidasResp = _fidEncuestasAtendidas('respuesta');
+    const sugs = rows.filter((r) => r.q4 && !_fbAtendidasResp.has(r.id)); // las ya atendidas quedan archivadas
     const sugRows = sugs.slice(0, 40).map((r) => `
         <div class="met-user-row-v2">
             <div class="met-avatar">💡</div>
@@ -15159,7 +15160,7 @@ function _fidUltimoPedidoHtml(telefono, dias) {
 function _fbAccionesHtml(r) {
     const tel = String(r.phone || '').replace(/\D/g, '');
     if (!tel) return '';
-    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="ghost-button" data-fid-ult-ticket="${tel}" data-fid-ult-code="${escapeHtml(r.orderCode || '')}" style="padding:4px 10px;font-size:.78rem">🧾 Ver pedido</button><button type="button" class="ghost-button" data-fid-prev-tel="${tel}" title="Copiar el número del cliente" style="padding:4px 10px;font-size:.78rem">📋 Copiar número</button><button type="button" class="ghost-button" data-fb-responder="${escapeHtml(r.id || '')}" style="padding:4px 10px;font-size:.78rem">✉️ Responder</button></div>`;
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="ghost-button" data-fid-ult-ticket="${tel}" data-fid-ult-code="${escapeHtml(r.orderCode || '')}" style="padding:4px 10px;font-size:.78rem">🧾 Ver pedido</button><button type="button" class="ghost-button" data-fid-prev-tel="${tel}" title="Copiar el número del cliente" style="padding:4px 10px;font-size:.78rem">📋 Copiar número</button><button type="button" class="ghost-button" data-fb-responder="${escapeHtml(r.id || '')}" style="padding:4px 10px;font-size:.78rem">✉️ Responder</button>${_fidEncuestasAtendidas('respuesta').has(r.id) ? '<span style="align-self:center;font-size:.78rem;color:#34d399;font-weight:700">✅ Atendido</span>' : ''}</div>`;
 }
 function _fbMensajeRespuesta(r) {
     const nombre = String(r.name || '').trim().split(/\s+/)[0] || '';
@@ -15206,7 +15207,7 @@ function _fbAbrirResponder(id) {
     const contenido = `${r.q4 ? `<div style="font-size:.82rem;opacity:.85;background:rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:10px">💡 ${escapeHtml(r.q4)}</div>` : ''}
         <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (edítalo antes de enviarlo)</div>
         <textarea data-fid-prev-texto id="fbResponderTexto" class="admin-input" rows="10" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(_fbMensajeRespuesta(r))}</textarea>`;
-    const botones = '<button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button><button type="button" class="ghost-button" data-fid-ult-ticket="' + String(r.phone || '').replace(/\D/g, '') + '" data-fid-ult-code="' + escapeHtml(r.orderCode || '') + '">🧾 Ver pedido</button>';
+    const botones = '<button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button>' + (_fidEncuestasAtendidas('respuesta').has(r.id) ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">✅ Ya atendido</span>' : '<button type="button" class="feedback-pending-btn" data-fbr-atendido>✅ Ya fue atendido</button>') + '<button type="button" class="ghost-button" data-fid-ult-ticket="' + String(r.phone || '').replace(/\D/g, '') + '" data-fid-ult-code="' + escapeHtml(r.orderCode || '') + '">🧾 Ver pedido</button>';
     ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, encabezado: `✉️ Responder a ${nombre}`, telefono: r.phone, contenido, botones, hint: 'Pega primero la imagen en el chat y luego el mensaje. «Copiar imagen + mensaje» pega los dos juntos.' });
     ov.addEventListener('click', (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
@@ -15215,6 +15216,14 @@ function _fbAbrirResponder(id) {
         const txt = ov.querySelector('#fbResponderTexto').value;
         const w = e.target.closest('[data-fbr-wa]');
         if (w) { window.open(buildWhatsAppUrl(r.phone, txt), '_blank', 'noopener'); return; }
+        const at = e.target.closest('[data-fbr-atendido]');
+        if (at) {
+            at.disabled = true;
+            _fidGuardarEnvio({ id: r.clientId, customerName: r.name, customerPhoneDigits: String(r.phone || '').replace(/\D/g, '') }, 'respuesta', { envioExtra: { encuestaId: r.id } });
+            _btnHecho(at, 'Archivado');
+            setTimeout(() => { _fidCerrarPrevia(); renderMetricasFeedback(); }, 900);
+            return;
+        }
         const c = e.target.closest('[data-fbr-copiar]');
         if (c) copyTextToClipboard(txt).then((ok) => { showNotice(ok ? 'Mensaje copiado.' : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'); if (ok) _btnHecho(c, 'Mensaje copiado'); });
     });
