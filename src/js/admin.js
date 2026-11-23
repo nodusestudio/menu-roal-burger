@@ -2961,7 +2961,7 @@ function _enVivoAbrir() {
     let m = document.getElementById('enVivoModal');
     if (!m) {
         m = document.createElement('div'); m.id = 'enVivoModal';
-        m.style.cssText = 'position:fixed;top:0;right:0;bottom:40px;left:0;z-index:10450;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
+        m.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:10450;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
         m.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:12px;max-width:560px;width:100%;max-height:min(82vh,720px);display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
             <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.07)"><strong>🟢 En vivo · menú público</strong><button type="button" data-ev-cerrar style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
             <div id="enVivoCuerpo" style="padding:12px 16px;overflow-y:auto;flex:1;min-height:0"></div>
@@ -6078,7 +6078,7 @@ function openPosFeedbackModal() {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'posFbModal';
-        modal.style.cssText = 'position:fixed;top:0;right:0;bottom:40px;left:0;z-index:10400;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
+        modal.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:10400;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
         modal.innerHTML = `<div style="background:#1f2430;color:#f3f4f6;border-radius:14px;max-width:1180px;width:100%;height:min(82vh,760px);display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)">
             <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.07)"><strong>📣 Pendientes de hoy</strong><button type="button" data-posfb-close style="background:none;border:0;color:inherit;font-size:22px;cursor:pointer">×</button></div>
             <div class="posfb-body" style="padding:12px 16px;flex:1;min-height:0"></div>
@@ -15765,7 +15765,7 @@ const _FID_MOTIVOS_DESC = [
 function _fidPedirMotivoDescarte(nombre) {
     return new Promise((resolve) => {
         const fondo = document.createElement('div');
-        fondo.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+        fondo.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
         const caja = document.createElement('div');
         caja.style.cssText = 'width:min(420px,100%);border-radius:12px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
         const B = 'border:1px solid rgba(255,255,255,.25);border-radius:9px;padding:11px;font-weight:700;font-size:14px;cursor:pointer;color:#fff;width:100%;background:rgba(255,255,255,.08);text-align:left;margin-top:8px;';
@@ -16174,7 +16174,7 @@ async function _fidCambiarProductoCola(entrada, alCambiar) {
         opciones = [...cuenta.entries()].sort((a, b) => b[1] - a[1]);
     } catch (_) { /* sin historial: queda el campo libre */ }
     const fondo = document.createElement('div');
-    fondo.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+    fondo.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
     const caja = document.createElement('div');
     caja.style.cssText = 'width:min(440px,100%);border-radius:12px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
     const B = 'border:1px solid rgba(255,255,255,.25);border-radius:9px;padding:10px;font-weight:700;font-size:14px;cursor:pointer;color:#fff;width:100%;background:rgba(255,255,255,.08);text-align:left;margin-top:8px;';
@@ -44911,7 +44911,7 @@ function _cqPedirMonto(total, cliente, titulo = '📲 Cobrar con QR') {
     return new Promise((resolve) => {
         const fmt = (n) => '$' + Number(n).toLocaleString('es-CO');
         const fondo = document.createElement('div');
-        fondo.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+        fondo.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
         const caja = document.createElement('div');
         caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:20px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6)';
         const boton = 'border:0;border-radius:12px;padding:13px 14px;font-weight:800;font-size:16px;cursor:pointer;color:#fff;';
@@ -44953,7 +44953,7 @@ function _cqPedirMonto(total, cliente, titulo = '📲 Cobrar con QR') {
 function _cqPedirCanal(total) {
     return new Promise((resolve) => {
         const fondo = document.createElement('div');
-        fondo.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+        fondo.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
         const caja = document.createElement('div');
         caja.style.cssText = 'width:min(380px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:20px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);display:flex;flex-direction:column;gap:10px';
         const B = 'border:0;border-radius:12px;padding:14px;font-weight:800;font-size:16px;cursor:pointer;color:#fff;width:100%;';
