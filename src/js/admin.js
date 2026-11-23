@@ -45033,26 +45033,49 @@ async function _tfQrUrl(total) {
         return q.createDataURL(8, 4);
     } catch (e) { console.warn('[TRANSF] QR:', e && e.message); return ''; }
 }
-// Imagen lista para mandar por WhatsApp: QR + valor + llave.
+// Imagen lista para mandar por WhatsApp, con la marca de ROAL: logo, QR, valor, pedido, llave y qué hacer (lleva TODO el mensaje: así llega completo aunque WhatsApp solo pegue la imagen).
 async function _tfImagenBlob(urlQr, c) {
-    const img = new Image();
-    await new Promise((ok, no) => { img.onload = ok; img.onerror = no; img.src = urlQr; });
-    const cv = document.createElement('canvas'); cv.width = 640; cv.height = 840;
+    const cargar = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
+    const FUENTE = '"Space Grotesk",system-ui,sans-serif';
+    try { await Promise.all([document.fonts.load('800 100px "Space Grotesk"'), document.fonts.load('600 40px "Space Grotesk"')]); } catch (_) { /* letra de respaldo */ }
+    const [qr, logo] = await Promise.all([cargar(urlQr), cargar('/logo-blanco.png')]);
+    if (!qr) throw new Error('sin QR');
+    const W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
-    g.fillStyle = '#fff'; g.fillRect(0, 0, 640, 840); g.fillStyle = '#111'; g.textAlign = 'center';
-    g.font = '800 38px system-ui,sans-serif'; g.fillText('ROAL BURGER', 320, 58);
-    g.font = '600 24px system-ui,sans-serif'; g.fillText('Paga con tu app de Bancolombia', 320, 94);
-    g.imageSmoothingEnabled = false; g.drawImage(img, 60, 120, 520, 520);
-    g.font = '800 56px system-ui,sans-serif'; g.fillText(formatMoney(c.total), 320, 716);
-    g.font = '600 28px system-ui,sans-serif'; g.fillText('Llave Bre-B: ' + TRANSFERENCIA_LLAVE, 320, 768);
-    if (c.codigo) { g.font = '400 20px system-ui,sans-serif'; g.fillStyle = '#555'; g.fillText('Pedido ' + c.codigo, 320, 808); }
+    const fondo = g.createLinearGradient(0, 0, 0, H); fondo.addColorStop(0, '#2b1708'); fondo.addColorStop(0.55, '#1a1210'); fondo.addColorStop(1, '#120c0a');
+    g.fillStyle = fondo; g.fillRect(0, 0, W, H);
+    const brillo = g.createRadialGradient(W / 2, 120, 20, W / 2, 120, 700); brillo.addColorStop(0, 'rgba(255,122,26,0.28)'); brillo.addColorStop(1, 'rgba(255,122,26,0)');
+    g.fillStyle = brillo; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#ff7a1a'; g.fillRect(0, 0, W, 14); g.fillRect(0, H - 14, W, 14);
+    g.textAlign = 'center';
+    if (logo) { const lw = 460, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 52, lw, lh); }
+    g.fillStyle = '#ffd6aa'; g.font = `600 40px ${FUENTE}`; g.fillText('Paga tu pedido con tu app de Bancolombia', W / 2, 262);
+    // tarjeta blanca con el QR
+    const cx = 215, cy = 300, cw = 650, ch = 650;
+    g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 40; g.shadowOffsetY = 12;
+    g.fillStyle = '#ffffff'; g.beginPath(); g.roundRect(cx, cy, cw, ch, 36); g.fill();
+    g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0;
+    g.strokeStyle = '#ff7a1a'; g.lineWidth = 8; g.beginPath(); g.roundRect(cx, cy, cw, ch, 36); g.stroke();
+    g.imageSmoothingEnabled = false; g.drawImage(qr, cx + 45, cy + 45, cw - 90, ch - 90);
+    g.imageSmoothingEnabled = true;
+    g.fillStyle = '#ff9a3d'; g.font = `800 130px ${FUENTE}`; g.fillText(formatMoney(c.total), W / 2, 1105);
+    const quien = [c.codigo ? 'Pedido ' + c.codigo : '', c.cliente || ''].filter(Boolean).join(' · ');
+    g.fillStyle = '#ffffff'; g.font = `600 40px ${FUENTE}`;
+    if (quien) g.fillText(quien, W / 2, 1160, W - 120);
+    // llave
+    g.fillStyle = 'rgba(255,255,255,0.1)'; g.beginPath(); g.roundRect(190, 1190, 700, 70, 35); g.fill();
+    g.fillStyle = '#ffffff'; g.font = `700 38px ${FUENTE}`; g.fillText('🔑 Llave Bre-B  ' + TRANSFERENCIA_LLAVE, W / 2, 1238);
+    g.fillStyle = '#d8c3ad'; g.font = `500 28px ${FUENTE}`;
+    const nota = c.parcial ? `Parte del pedido (total ${formatMoney(c.pedidoTotal)}); el resto lo pagas al recibirlo.` : (c.entrega === 'delivery' ? 'Valor exacto, domicilio incluido.' : 'Valor exacto del pedido.');
+    g.fillText(nota + ' En cuanto llegue el pago te confirmamos 🍔', W / 2, 1300, W - 100);
     return await new Promise((ok) => cv.toBlob(ok, 'image/png'));
 }
-async function _tfMostrarDatos(id) {
-    const it = _tfEstado().mapa.get(id); if (!it) return;
-    const c = it.datos, texto = _tfMensaje(c);
+async function _tfMostrarDatos(id, datosDirectos) {
+    const it = _tfEstado().mapa.get(id); if (!it && !datosDirectos) return;
+    const c = datosDirectos || it.datos, texto = _tfMensaje(c);
     const fondo = document.createElement('div');
-    fondo.style.cssText = 'position:fixed;inset:0;z-index:2147482500;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+    fondo.setAttribute('data-tf-modal', '1');
+    fondo.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;z-index:2147482500;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
     const caja = document.createElement('div');
     caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);text-align:center';
     const B = 'border:0;border-radius:12px;padding:12px;font-weight:800;font-size:14px;cursor:pointer;color:#fff;width:100%;';
@@ -45062,7 +45085,7 @@ async function _tfMostrarDatos(id) {
         <div id="tfQrBox" style="background:#fff;border-radius:12px;padding:8px;margin:0 auto 12px;width:240px;height:240px;display:flex;align-items:center;justify-content:center;color:#333;font-size:13px">Preparando QR…</div>
         <div style="display:flex;flex-direction:column;gap:8px">
             <button type="button" id="tfCopiarTxt" style="${B}background:#2e7d32">📋 Copiar mensaje con la llave</button>
-            <button type="button" id="tfCopiarImg" style="${B}background:#1565c0" disabled>🖼️ Copiar QR + mensaje juntos</button>
+            <button type="button" id="tfCopiarImg" style="${B}background:#1565c0" disabled>🖼️ Copiar imagen (lleva todo el mensaje)</button>
             <button type="button" id="tfCompartir" style="${B}background:#6a1b9a" hidden>📤 Compartir imagen</button>
             <button type="button" id="tfCerrar" style="${B}background:transparent;border:1px solid rgba(255,255,255,.3)">Cerrar</button>
         </div><div id="tfMsg" style="min-height:18px;margin-top:8px;font-size:13px;color:#7ee2a8"></div>`;
@@ -45251,11 +45274,12 @@ async function _transfEsperarPago(r, resumen, montoFijo) {
     const ref = firebaseDb.collection('cobros_bancolombia').doc();
     const ahora = Date.now();
     const datos = { pedidoId: r.id, codigo: String(r.code || ''), total: monto, pedidoTotal: total, parcial, cliente, entrega: resumen.entrega || '', receiveOrder: 'true', estado: 'abierto', origen: 'transferencia', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + TRANSFERENCIA_ESPERA_MS };
-    await ref.set(datos);
+    // La ventana con el QR se abre YA (sin esperar a la red); el cobro se guarda en paralelo y, si fallara, se cierra con aviso.
+    _tfMostrarDatos(ref.id, { ...datos, creadoMs: ahora });
+    try { await ref.set(datos); } catch (e) { document.querySelectorAll('[data-tf-modal]').forEach((n) => n.remove()); throw e; }
     _tfAgregar(ref.id, { ...datos, creadoMs: ahora });
     let copiado = false; try { copiado = await copyTextToClipboard(_tfMensaje(datos)); } catch (_) { /* sin portapapeles */ }
     showNotice(`Pedido ${r.code || ''} creado. Esperando ${formatMoney(monto)}${copiado ? ' (mensaje copiado)' : ''}.`, 'ok');
-    _tfMostrarDatos(ref.id);
 }
 // Si se recarga el panel, esta pestaña retoma sus transferencias abiertas.
 async function _tfRestaurar() {
