@@ -14039,6 +14039,7 @@ function renderMetricasFeedback() {
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2" style="white-space:normal">${escapeHtml(r.q4)}</div>
                 <div class="met-user-meta-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${escapeHtml(fmt(r.ts))}</div>
+                ${_fbAccionesHtml(r)}
             </div>
         </div>`).join('');
 
@@ -14050,6 +14051,7 @@ function renderMetricasFeedback() {
             <div class="met-user-info-v2">
                 <div class="met-user-name-v2">${escapeHtml(r.name || 'Cliente')} · ${escapeHtml(FB_Q1[r.q1]?.[1] || r.q1)}</div>
                 <div class="met-user-meta-v2">${escapeHtml(r.phone)} · ${escapeHtml(r.orderCode)} · ${_fbTipo === 'general' ? 'Servicio' : 'Se enteró por'} ${escapeHtml(M.q2[r.q2]?.[1] || r.q2)}${_fbTipo === 'general' ? _fbDetalleHtml(r) : ` · App: ${escapeHtml(M.q3[r.q3]?.[1] || r.q3)}`}${r.cumple ? ` · 🎂 ${escapeHtml(r.cumple)}` : ''} · ${escapeHtml(fmt(r.ts))}${r.q4 ? `<br>💡 ${escapeHtml(r.q4)}` : ''}</div>
+                ${_fbAccionesHtml(r)}
             </div>
         </div>`).join('');
         return `<p class="met-empty-note" style="text-align:left;margin:0 0 6px">${nf(filtered.length)} respuesta${filtered.length === 1 ? '' : 's'}</p>${html || '<p class="met-empty-note">No hay respuestas con esos filtros.</p>'}`;
@@ -15151,13 +15153,67 @@ function _fidUltimoPedidoHtml(telefono, dias) {
     if (!tel) return '';
     return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:.85rem"><span>🕒 Último pedido${Number.isFinite(Number(dias)) && dias !== '' && dias != null ? `: hace <b>${Number(dias)} días</b>` : ''}</span><button type="button" class="ghost-button" data-fid-ult-ticket="${tel}" title="Ver el ticket de su último pedido" style="padding:4px 10px;font-size:.78rem">🧾 Ver ticket</button></div>`;
 }
-async function _fidVerTicketUltimo(telefono) {
+// Respuestas de Feedback: botones «Ver pedido» y «Responder» + mensaje sugerido según lo que escribió el cliente.
+function _fbAccionesHtml(r) {
+    const tel = String(r.phone || '').replace(/\D/g, '');
+    if (!tel) return '';
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="ghost-button" data-fid-ult-ticket="${tel}" data-fid-ult-code="${escapeHtml(r.orderCode || '')}" style="padding:4px 10px;font-size:.78rem">🧾 Ver pedido</button><button type="button" class="ghost-button" data-fb-responder="${escapeHtml(r.id || '')}" style="padding:4px 10px;font-size:.78rem">✉️ Responder</button></div>`;
+}
+function _fbMensajeRespuesta(r) {
+    const nombre = String(r.name || '').trim().split(/\s+/)[0] || '';
+    const hola = `Hola${nombre ? ` ${nombre}` : ''} 👋, te escribimos de ROAL BURGER.`;
+    const t = String(r.q4 || '').toLowerCase();
+    const partes = [hola, `Gracias por tomarte el tiempo de contarnos tu opinión sobre tu pedido ${r.orderCode || ''}.`.replace('  ', ' ')];
+    if (/coca|gaseosa|bebida|refresco|pepsi|sprite|postobon/.test(t)) {
+        partes.push('Sobre las gaseosas: sí las manejamos, ese día se nos habían agotado y por eso no pudimos ofrecértelas. Gracias por avisarnos, vamos a estar más pendientes del inventario 🙏');
+    }
+    if (/papa/.test(t)) {
+        partes.push('Tomamos nota de lo que nos dices sobre las papas, lo vamos a revisar con el equipo.');
+    }
+    if (/tamañ|tamano|porci|poquit|pequeñ|pequen/.test(t) && !/papa/.test(t)) {
+        partes.push('Tomamos nota de lo que nos cuentas sobre el tamaño y las porciones, lo vamos a revisar con el equipo.');
+    }
+    if (_fbBajo(r)) {
+        partes.push('Lamentamos que tu experiencia no haya sido la mejor. Queremos hacerlo bien contigo: cuéntanos qué pasó y lo solucionamos 🙏');
+    } else if (partes.length === 2) {
+        partes.push('Nos alegra mucho que lo hayas disfrutado y que nos lo cuentes 🧡');
+    }
+    partes.push('¡Aquí estamos para cuando quieras volver! 🍔');
+    return partes.join('\n\n');
+}
+function _fbAbrirResponder(id) {
+    const r = _fbRows().find((x) => x.id === id);
+    if (!r) { showNotice('No encuentro esa respuesta.', 'error'); return; }
+    document.getElementById('fbResponderOverlay')?.remove();
+    const ov = document.createElement('div');
+    ov.id = 'fbResponderOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:18px;width:min(100%,560px);max-height:94vh;overflow:auto;color:#fff;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>✉️ Responder a ${escapeHtml(r.name || 'cliente')}</strong><button type="button" class="ghost-button" data-fbr-cerrar>✕ Cerrar</button></div>
+        ${r.q4 ? `<div style="font-size:.82rem;opacity:.8;background:rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:10px">💡 ${escapeHtml(r.q4)}</div>` : ''}
+        <textarea id="fbResponderTexto" class="admin-input" rows="9" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(_fbMensajeRespuesta(r))}</textarea>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button></div>
+        <p class="admin-hint" style="margin-top:8px">Mensaje sugerido: edítalo antes de enviarlo.</p></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => {
+        if (e.target === ov || e.target.closest('[data-fbr-cerrar]')) { ov.remove(); return; }
+        const txt = ov.querySelector('#fbResponderTexto').value;
+        if (e.target.closest('[data-fbr-wa]')) window.open(buildWhatsAppUrl(r.phone, txt), '_blank', 'noopener');
+        else if (e.target.closest('[data-fbr-copiar]')) copyTextToClipboard(txt);
+    });
+}
+document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-fb-responder]');
+    if (b) _fbAbrirResponder(b.dataset.fbResponder);
+});
+async function _fidVerTicketUltimo(telefono, orderCode) {
     const tel = String(telefono || '').replace(/\D/g, '');
     const cliente = (clientsState || []).find((c) => _sqPhoneKey(c.customerPhoneDigits || c.customerPhone) === _sqPhoneKey(tel)) || { customerPhoneDigits: tel, customerPhone: tel };
     showNotice('Buscando su último pedido…', 'info');
     let pedidos = [];
     try { pedidos = await _fidPedidosCliente(cliente); } catch (_) { pedidos = []; }
-    const ult = pedidos.filter((o) => o && o.anulado !== true && o.voided !== true).sort((a, b) => _orderTs(b) - _orderTs(a))[0];
+    const validos = pedidos.filter((o) => o && o.anulado !== true && o.voided !== true).sort((a, b) => _orderTs(b) - _orderTs(a));
+    const ult = (orderCode && validos.find((o) => String(o.orderCode || '') === String(orderCode))) || validos[0];
     if (!ult) { showNotice('No encuentro pedidos de este cliente.', 'error'); return; }
     document.getElementById('fidTicketUltOverlay')?.remove();
     const ov = document.createElement('div');
@@ -15172,7 +15228,7 @@ async function _fidVerTicketUltimo(telefono) {
 }
 document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-fid-ult-ticket]');
-    if (b) _fidVerTicketUltimo(b.dataset.fidUltTicket);
+    if (b) _fidVerTicketUltimo(b.dataset.fidUltTicket, b.dataset.fidUltCode);
 });
 // Botón «Copiar número» de las vistas previas (un solo oyente para todas).
 document.addEventListener('click', (e) => {
