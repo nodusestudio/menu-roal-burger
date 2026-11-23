@@ -46598,7 +46598,7 @@ document.getElementById('costosNuevoFiltro')?.addEventListener('change', _cnRend
     const st = document.createElement('style');
     st.textContent = `:root{--modal-margen:24px;--modal-inset-left:0px}
 .rr-modal-host{box-sizing:border-box!important;justify-content:center!important;align-items:center!important;overflow:auto;
-padding:var(--modal-margen) var(--modal-margen) calc(var(--modal-margen) + var(--rr-bar-h,0px)) calc(var(--modal-margen) + var(--modal-inset-left,0px))!important}
+padding:var(--modal-margen) var(--modal-margen) var(--modal-margen) calc(var(--modal-margen) + var(--modal-inset-left,0px))!important}
 .rr-modal-host>.rr-dlg{box-sizing:border-box!important;max-width:100%!important;max-height:100%!important;overflow:auto;margin:0!important}
 .rr-modal-host>.rr-dlg-std{width:var(--modal-w-estandar,560px)!important}
 .rr-modal-host>.rr-dlg-big{width:var(--modal-w-grande,900px)!important}`;
