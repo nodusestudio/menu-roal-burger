@@ -12565,6 +12565,9 @@
         .ticket-action-btn.restore { background: rgba(16,185,129,0.18); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
 
         /* Modal vista previa ticket */
+    /* VELO COMPLETO: el fondo oscuro de las ventanas emergentes cubre SIEMPRE toda la pantalla (la barra de abajo queda por encima). */
+    #fidPreviaOverlay, #_fidDisculpaOverlay, #ticketPreviewModal, .velo-completo { position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; max-height: none !important; transition: none !important; box-sizing: border-box; }
+    #ticketPreviewModal[hidden] { display: none !important; }
         #ticketPreviewModal {
             position: fixed;
             inset: 0;
@@ -17745,7 +17748,7 @@
 
     <!-- ══════════ MODAL: Cobro domicilio ══════════ -->
     <!-- Modal vista previa de ticket -->
-    <div id="ticketPreviewModal" hidden>
+    <div id="ticketPreviewModal" class="velo-completo" hidden>
         <div class="tpv-card">
             <div class="tpv-header">
                 <h3>Vista previa del ticket</h3>
@@ -18352,7 +18355,7 @@
                 var kids=document.body.children;
                 for(var i=0;i<kids.length;i++){
                     var el=kids[i];
-                    if(IGNORAR[el.id]||el.tagName==='SCRIPT'||el.tagName==='STYLE')continue;
+                    if(IGNORAR[el.id]||(el.classList&&el.classList.contains('velo-completo'))||el.tagName==='SCRIPT'||el.tagName==='STYLE')continue;
                     var cs=getComputedStyle(el);
                     if(cs.position!=='fixed'||cs.display==='none'||cs.visibility==='hidden')continue;
                     var r=el.getBoundingClientRect();

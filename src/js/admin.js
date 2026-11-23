@@ -15134,6 +15134,7 @@ new MutationObserver((muts) => {
     muts.forEach((m) => m.addedNodes.forEach((ov) => {
         if (!ov || ov.nodeType !== 1 || (ov.id !== 'fidPreviaOverlay' && ov.id !== '_fidDisculpaOverlay')) return;
         const sb = document.querySelector('.admin-sidebar'), r = sb ? sb.getBoundingClientRect() : null;
+        ov.classList.add('velo-completo'); // el velo cubre toda la pantalla (ver CSS en admin.html); la barra de abajo queda encima
         ov.style.left = '0px';
         ov.style.bottom = '0px';
     }));
