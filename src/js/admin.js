@@ -6184,7 +6184,7 @@ function _modalUnificarTarjeta(fondo, tarjeta) {
     sp(tarjeta, 'width', `min(100%, var(--modal-w-${grande ? 'grande' : 'estandar'}))`);
     sp(tarjeta, 'min-width', '0');
     sp(tarjeta, 'max-width', 'none');
-    sp(tarjeta, 'max-height', 'var(--modal-h-max)');
+    sp(tarjeta, 'max-height', 'min(var(--modal-h-max), 100%)'); // 100% = alto libre del fondo (ya descuenta márgenes y barra inferior)
     sp(tarjeta, 'box-sizing', 'border-box');
     sp(tarjeta, 'border', '1px solid rgba(255,255,255,0.07)');
     if (csT.overflowY === 'visible') sp(tarjeta, 'overflow-y', 'auto');
