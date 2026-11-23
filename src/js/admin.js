@@ -44877,7 +44877,7 @@ async function _cqAplicar(x) {
         } else {
             const receive = x.receiveOrder === 'mesa' ? 'mesa' : (x.receiveOrder === 'true');
             // Pedido por transferencia (tomado desde FODI): es el ÚNICO caso en que el ticket se imprime solo al llegar el pago.
-            await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id }, { despues: true, imprimirAuto: x.origen === 'transferencia' });
+            await _pfApplyPaymentUpdate(order, receive, { paymentMethod: 'bancolombia', paymentSubMethod: 'transferencia', cashTenderAmount: null, cashChangeRequired: false, cashChangeAmount: null, paymentSplit: null, paidAt: firestoreNow(), qrCobroId: x.id }, { despues: true, imprimirAuto: true });
         }
     } catch (e) { showNotice(`No se pudo registrar el pago del QR: ${e.message || e}`, 'error'); }
     // la TV agradece unos segundos y luego vuelve a la publicidad
@@ -44949,14 +44949,45 @@ function _cqPedirMonto(total, cliente, titulo = '📲 Cobrar con QR') {
         setTimeout(() => q('cqmTotal').focus(), 50);
     });
 }
+// Segunda pregunta del botón único de QR: ¿se muestra en la pantalla (TV) o se manda por WhatsApp? Devuelve 'tv', 'whatsapp' o null.
+function _cqPedirCanal(total) {
+    return new Promise((resolve) => {
+        const fondo = document.createElement('div');
+        fondo.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px';
+        const caja = document.createElement('div');
+        caja.style.cssText = 'width:min(380px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:20px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);display:flex;flex-direction:column;gap:10px';
+        const B = 'border:0;border-radius:12px;padding:14px;font-weight:800;font-size:16px;cursor:pointer;color:#fff;width:100%;';
+        caja.innerHTML = `<div style="font-weight:800;font-size:18px">📲 Cobrar ${formatMoney(total)} con QR</div><div style="opacity:.75">¿Dónde se muestra el QR?</div>
+            <button type="button" data-c="tv" style="${B}background:#2e7d32">📺 En la pantalla</button>
+            <button type="button" data-c="whatsapp" style="${B}background:#1565c0">💬 Por WhatsApp</button>
+            <button type="button" data-c="" style="${B}background:transparent;border:1px solid rgba(255,255,255,.3);font-size:14px;padding:10px">Cancelar</button>`;
+        fondo.appendChild(caja); document.body.appendChild(fondo);
+        const cerrar = (v) => { document.removeEventListener('keydown', tecla, true); fondo.remove(); resolve(v || null); };
+        const tecla = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(null); } };
+        document.addEventListener('keydown', tecla, true);
+        caja.addEventListener('click', (e) => { const b = e.target.closest('button[data-c]'); if (b) cerrar(b.dataset.c); });
+        fondo.addEventListener('click', (e) => { if (e.target === fondo) cerrar(null); });
+        setTimeout(() => caja.querySelector('button[data-c="tv"]').focus(), 50);
+    });
+}
 async function _cqIniciar() {
     const order = _pfOrder, receive = _pfReceiveOrder;
     if (!order) return;
     const pedidoTotal = Math.round(_pfOrderTotal);
     if (!(pedidoTotal > 0)) { showNotice('El pedido no tiene un total para cobrar.', 'error'); return; }
     // Total del pedido u otro monto (el cliente que paga solo una parte): el resto se cobra con otro método al llegar el pago.
+    try { _tfCargarQr(); } catch (_) { /* precarga del QR: acelera el envío por WhatsApp */ }
     const total = await _cqPedirMonto(pedidoTotal, order.customerName);
     if (!total) return;
+    const canal = await _cqPedirCanal(total);
+    if (!canal) return;
+    if (canal === 'whatsapp') {
+        _pfClose();
+        try {
+            await _transfEsperarPago({ id: order.id, code: order.code, total: pedidoTotal }, { cliente: order.customerName, entrega: String(order.orderType || order.deliveryType || order.type || '') }, total);
+        } catch (e) { showNotice(`No se pudo abrir la transferencia: ${e.message || e}`, 'error'); }
+        return;
+    }
     const parcial = total < pedidoTotal;
     const st = _cqEstado();
     if (st.cobro && st.cobro.estado === 'abierto') {
@@ -45218,14 +45249,15 @@ async function _tfAplicarUno(it) {
     _tfQuitar(it.id);
 }
 // Pedido ya creado (r = { id, code, total }): pregunta cuánto transferirá el cliente, abre el cobro y muestra QR + llave.
-async function _transfEsperarPago(r, resumen) {
+async function _transfEsperarPago(r, resumen, montoFijo) {
     const total = Math.round(Number(r && r.total) || 0);
     if (!r || !r.id || !(total > 0)) throw new Error('El pedido se creó pero no pude leer su total. Cóbralo desde el POS.');
     const cliente = String(resumen.cliente || '').trim();
     // Cerrar la ventana sin elegir = el total del pedido
-    const monto = (await _cqPedirMonto(total, cliente, '🏦 ¿Cuánto transfiere el cliente?')) || total;
+    try { _tfCargarQr(); } catch (_) { /* precarga del QR */ }
+    const monto = Number(montoFijo) > 0 ? Math.round(Number(montoFijo)) : ((await _cqPedirMonto(total, cliente, '🏦 ¿Cuánto transfiere el cliente?')) || total);
     const parcial = monto < total;
-    try { await reloadDataAndRender(); } catch (_) { /* se refresca solo */ }
+    reloadDataAndRender().catch(() => { /* se refresca solo; ya no se espera para abrir el QR al instante */ });
     const ref = firebaseDb.collection('cobros_bancolombia').doc();
     const ahora = Date.now();
     const datos = { pedidoId: r.id, codigo: String(r.code || ''), total: monto, pedidoTotal: total, parcial, cliente, entrega: resumen.entrega || '', receiveOrder: 'true', estado: 'abierto', origen: 'transferencia', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + TRANSFERENCIA_ESPERA_MS };
