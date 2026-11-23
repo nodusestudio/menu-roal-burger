@@ -15157,7 +15157,7 @@ function _fidUltimoPedidoHtml(telefono, dias) {
 function _fbAccionesHtml(r) {
     const tel = String(r.phone || '').replace(/\D/g, '');
     if (!tel) return '';
-    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="ghost-button" data-fid-ult-ticket="${tel}" data-fid-ult-code="${escapeHtml(r.orderCode || '')}" style="padding:4px 10px;font-size:.78rem">🧾 Ver pedido</button><button type="button" class="ghost-button" data-fb-responder="${escapeHtml(r.id || '')}" style="padding:4px 10px;font-size:.78rem">✉️ Responder</button></div>`;
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="ghost-button" data-fid-ult-ticket="${tel}" data-fid-ult-code="${escapeHtml(r.orderCode || '')}" style="padding:4px 10px;font-size:.78rem">🧾 Ver pedido</button><button type="button" class="ghost-button" data-fid-prev-tel="${tel}" title="Copiar el número del cliente" style="padding:4px 10px;font-size:.78rem">📋 Copiar número</button><button type="button" class="ghost-button" data-fb-responder="${escapeHtml(r.id || '')}" style="padding:4px 10px;font-size:.78rem">✉️ Responder</button></div>`;
 }
 function _fbMensajeRespuesta(r) {
     const nombre = String(r.name || '').trim().split(/\s+/)[0] || '';
@@ -15192,7 +15192,7 @@ function _fbAbrirResponder(id) {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>✉️ Responder a ${escapeHtml(r.name || 'cliente')}</strong><button type="button" class="ghost-button" data-fbr-cerrar>✕ Cerrar</button></div>
         ${r.q4 ? `<div style="font-size:.82rem;opacity:.8;background:rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:10px">💡 ${escapeHtml(r.q4)}</div>` : ''}
         <textarea id="fbResponderTexto" class="admin-input" rows="9" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(_fbMensajeRespuesta(r))}</textarea>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button><button type="button" class="ghost-button" data-fid-prev-tel="${String(r.phone || '').replace(/\D/g, '')}">📋 Copiar número</button></div>
         <p class="admin-hint" style="margin-top:8px">Mensaje sugerido: edítalo antes de enviarlo.</p></div>`;
     document.body.appendChild(ov);
     ov.addEventListener('click', (e) => {
@@ -15215,16 +15215,10 @@ async function _fidVerTicketUltimo(telefono, orderCode) {
     const validos = pedidos.filter((o) => o && o.anulado !== true && o.voided !== true).sort((a, b) => _orderTs(b) - _orderTs(a));
     const ult = (orderCode && validos.find((o) => String(o.orderCode || '') === String(orderCode))) || validos[0];
     if (!ult) { showNotice('No encuentro pedidos de este cliente.', 'error'); return; }
-    document.getElementById('fidTicketUltOverlay')?.remove();
-    const ov = document.createElement('div');
-    ov.id = 'fidTicketUltOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
-    const cuando = new Date(_orderTs(ult)).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:16px;width:min(100%,460px);max-height:94vh;overflow:auto;color:#fff;box-sizing:border-box">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>🧾 Último pedido · ${escapeHtml(cuando)} · ${_fidOrigenDeOrden(ult) === 'web' ? '🌐 por la página' : '🧾 lo digitó el local'}</strong><button type="button" class="ghost-button" data-ult-cerrar>✕ Cerrar</button></div>
-        <div style="background:#fffdf8;color:#111;border-radius:9px;padding:10px;overflow:auto">${buildThermalTicketMarkup(ult, { printMode: true })}</div></div>`;
-    document.body.appendChild(ov);
-    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-ult-cerrar]')) ov.remove(); });
+    // Mismo modal estándar de tickets del admin (centrado y con el diseño correcto); solo lectura: sin editar ni eliminar.
+    openTicketPreviewModal(ult);
+    document.getElementById('ticketPreviewEditBtn')?.setAttribute('hidden', '');
+    document.getElementById('ticketPreviewDeleteBtn')?.setAttribute('hidden', '');
 }
 document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-fid-ult-ticket]');
