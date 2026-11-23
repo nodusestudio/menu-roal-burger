@@ -15198,7 +15198,7 @@ function _fbMensajeRespuesta(r) {
     return partes.join('\n\n');
 }
 // ── Historia tipo chat (2026-11-22): comentario del cliente + nuestra respuesta, imagen 1080x1920 para descargar y subir a redes ──
-async function _fbHistoriaBlob(nombre, comentario, respuesta) {
+async function _fbHistoriaBlob(nombre, comentario, respuesta, postal) {
     const W = 1080, H = 1920;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
@@ -15206,9 +15206,10 @@ async function _fbHistoriaBlob(nombre, comentario, respuesta) {
     const logo = await _fidCargarImg('/logo-blanco.png');
     const fondo = g.createLinearGradient(0, 0, 0, H); fondo.addColorStop(0, '#2b1a10'); fondo.addColorStop(1, '#120a06');
     g.fillStyle = fondo; g.fillRect(0, 0, W, H);
-    if (logo) { const lw = 300, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 110, lw, lh); }
-    g.textAlign = 'center'; g.fillStyle = '#ffa24d'; g.font = `800 52px ${F}`;
-    g.fillText('Lo que dicen de nosotros 🧡', W / 2, 380);
+    let y0 = 90;
+    if (logo) { const lw = 420, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, y0, lw, lh); y0 += lh; }
+    g.textAlign = 'center'; g.fillStyle = '#ffa24d'; g.font = `800 50px ${F}`;
+    g.fillText('Lo que dicen de nosotros 🧡', W / 2, y0 + 80);
     const envolver = (txt, size, maxW, peso = 500) => {
         g.font = `${peso} ${size}px ${F}`;
         const lin = []; let cur = '';
@@ -15219,25 +15220,34 @@ async function _fbHistoriaBlob(nombre, comentario, respuesta) {
         if (cur) lin.push(cur);
         return lin;
     };
-    const burbuja = (txt, y, lado, color, colorTxt, etiqueta) => {
-        const size = 46, maxW = 640, lin = envolver(txt, size, maxW), lh = Math.round(size * 1.35);
-        const w = Math.min(maxW, Math.max(...lin.map((l) => g.measureText(l).width), 160)) + 80, h = lin.length * lh + 70;
-        const x = lado === 'izq' ? 70 : W - 70 - w;
-        g.textAlign = lado === 'izq' ? 'left' : 'right';
-        g.fillStyle = 'rgba(255,255,255,0.65)'; g.font = `700 34px ${F}`;
-        g.fillText(etiqueta, lado === 'izq' ? x + 10 : x + w - 10, y - 14);
-        g.fillStyle = color; g.beginPath(); g.roundRect(x, y, w, h, 40); g.fill();
-        g.fillStyle = colorTxt; g.font = `500 ${size}px ${F}`; g.textAlign = 'left';
-        lin.forEach((l, i) => g.fillText(l, x + 40, y + 62 + i * lh));
-        return y + h;
-    };
-    const finCliente = burbuja(comentario, 520, 'izq', '#ffffff', '#1c1c1c', nombre);
-    burbuja(respuesta, finCliente + 110, 'der', '#e8590c', '#ffffff', 'ROAL BURGER');
-    g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,0.55)'; g.font = `600 38px ${F}`;
-    g.fillText('@roalburger · Armenia, Quindío', W / 2, H - 120);
+    const medir = (txt, size, maxW) => { const lin = envolver(txt, size, maxW), lh = Math.round(size * 1.35); return { lin, lh, w: Math.min(maxW, Math.max(...lin.map((l) => g.measureText(l).width), 160)) + 80 }; };
+    // Burbuja del cliente
+    const size = 44, maxW = 680;
+    const c = medir(comentario, size, maxW), hC = c.lin.length * c.lh + 70;
+    let y = y0 + 190;
+    g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,0.65)'; g.font = `700 32px ${F}`; g.fillText(nombre, 80, y - 14);
+    g.fillStyle = '#ffffff'; g.beginPath(); g.roundRect(70, y, c.w, hC, 40); g.fill();
+    g.fillStyle = '#1c1c1c'; g.font = `500 ${size}px ${F}`;
+    c.lin.forEach((l, i) => g.fillText(l, 110, y + 60 + i * c.lh));
+    y += hC + 100;
+    // Burbuja nuestra: la postal que se le envía al cliente + el mensaje
+    const r = medir(respuesta, size, maxW), hR = r.lin.length * r.lh + 70;
+    const libre = 1720 - y - hR - 60; // alto que queda para la postal
+    let pw = 0, ph = 0;
+    if (postal) { pw = Math.min(600, Math.floor(libre * (postal.width / postal.height))); ph = Math.round(pw * (postal.height / postal.width)); }
+    const w = Math.max(r.w, pw ? pw + 40 : 0), h = hR + (pw ? ph + 20 : 0) + (pw ? 20 : 0);
+    const x = W - 70 - w;
+    g.textAlign = 'right'; g.fillStyle = 'rgba(255,255,255,0.65)'; g.font = `700 32px ${F}`; g.fillText('ROAL BURGER', x + w - 10, y - 14);
+    g.fillStyle = '#e8590c'; g.beginPath(); g.roundRect(x, y, w, h, 40); g.fill();
+    let yy = y;
+    if (pw) { g.save(); g.beginPath(); g.roundRect(x + (w - pw) / 2, y + 20, pw, ph, 24); g.clip(); g.drawImage(postal, x + (w - pw) / 2, y + 20, pw, ph); g.restore(); yy = y + ph + 20; }
+    g.textAlign = 'left'; g.fillStyle = '#ffffff'; g.font = `500 ${size}px ${F}`;
+    r.lin.forEach((l, i) => g.fillText(l, x + 40, yy + 60 + i * r.lh));
+    g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,0.6)'; g.font = `600 40px ${F}`;
+    g.fillText('www.roalburger.com', W / 2, H - 90);
     return new Promise((ok) => cv.toBlob(ok, 'image/png'));
 }
-function _fbAbrirHistoria(r) {
+function _fbAbrirHistoria(r, postalBlob) {
     const nombre = String(r.name || '').trim().split(/\s+/)[0] || 'Cliente';
     const ov = document.createElement('div');
     ov.id = 'fbHistoriaOverlay';
@@ -15256,9 +15266,10 @@ function _fbAbrirHistoria(r) {
             </div>
         </div></div>`;
     document.body.appendChild(ov);
-    let url = null, blob = null;
+    let url = null, blob = null, postalImg = null;
     const pintar = async () => {
-        blob = await _fbHistoriaBlob(nombre, ov.querySelector('#fbHistoriaCom').value.trim() || '…', ov.querySelector('#fbHistoriaRes').value.trim() || '…');
+        if (postalBlob && !postalImg) { try { postalImg = await createImageBitmap(postalBlob); } catch (_) { postalImg = null; } }
+        blob = await _fbHistoriaBlob(nombre, ov.querySelector('#fbHistoriaCom').value.trim() || '…', ov.querySelector('#fbHistoriaRes').value.trim() || '…', postalImg);
         if (!blob) return;
         if (url) URL.revokeObjectURL(url);
         url = URL.createObjectURL(blob);
@@ -15327,7 +15338,7 @@ function _fbAbrirResponder(id) {
         if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
         if (e.target.closest('[data-fid-prev-otra]')) { fijo = null; pintarImagen(); return; }
         const txt = ov.querySelector('#fbResponderTexto').value;
-        if (e.target.closest('[data-fbr-historia]')) { _fbAbrirHistoria(r); return; }
+        if (e.target.closest('[data-fbr-historia]')) { _fbAbrirHistoria(r, _fidPrevio && _fidPrevio.blob); return; }
         const w = e.target.closest('[data-fbr-wa]');
         if (w) { window.open(buildWhatsAppUrl(r.phone, txt), '_blank', 'noopener'); return; }
         const at = e.target.closest('[data-fbr-atendido]');
@@ -15462,7 +15473,9 @@ function _fidOpcionesProducto(sel) {
 
 // Respuestas con calificación baja que aún no se han atendido (no hay un mensaje de disculpa registrado para esa encuesta).
 function _fidEncuestasAtendidas(motivo) {
-    return new Set(_fidEnvios.filter((e) => e.motivo === motivo && e.encuestaId).map((e) => e.encuestaId));
+    // Una mala calificación también queda atendida si se marcó «Ya fue atendido» desde Responder (motivo 'respuesta').
+    const motivos = motivo === 'disculpa' ? ['disculpa', 'respuesta'] : [motivo];
+    return new Set(_fidEnvios.filter((e) => motivos.includes(e.motivo) && e.encuestaId).map((e) => e.encuestaId));
 }
 function _fidAtenderPendientes() {
     const atendidas = _fidEncuestasAtendidas('disculpa');
