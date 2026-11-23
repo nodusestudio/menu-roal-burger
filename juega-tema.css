@@ -56,8 +56,8 @@ header h1 span { color: var(--naranja); margin-left: .18em; }
 #rankLista li.rk-vacio { justify-content: center; color: var(--tenue); border: 0; }
 #juegoCanvas { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
 #juegoCanvas canvas { touch-action: none; }
-#chips { display: flex; gap: 8px; justify-content: center; padding: 6px 0 10px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid var(--linea); border-radius: 999px; background: rgba(255, 255, 255, .05); font-size: .85rem; font-weight: 700; color: var(--crema); }
+#chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 6px 0 10px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 1px solid var(--linea); border-radius: 999px; background: rgba(255, 255, 255, .05); font-size: .85rem; font-weight: 700; color: var(--crema); }
 .chip b { font-family: 'Anton', sans-serif; font-weight: 400; letter-spacing: .03em; font-size: 1rem; }
 button.chip { font-family: inherit; cursor: pointer; }
 .chip.cofre { border-color: var(--amarillo); animation: latido 1.2s ease-in-out infinite; }
@@ -99,7 +99,9 @@ button.chip { font-family: inherit; cursor: pointer; }
 /* Ventanas */
 .overlay { position: fixed; inset: 0; background: rgba(8, 8, 9, .86); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 18px; z-index: 10; }
 .overlay[hidden], [hidden] { display: none !important; }
-#sinSesion, #resultado, #info, #misiones { z-index: 60; }
+#sinSesion, #resultado, #info, #misiones, #mapa { z-index: 60; }
+#mapa .card { max-height: 88vh; overflow-y: auto; }
+#mapa .btn { display: block; width: 100%; margin: 8px 0 0; }
 .card { border: 1px solid var(--linea); border-radius: 18px; padding: 22px 18px; width: min(100%, 340px); text-align: center; background: #151517; box-shadow: 0 14px 40px rgba(0, 0, 0, .6); position: relative; }
 .card::before { content: ''; position: absolute; left: 24px; right: 24px; top: -1px; height: 2px; background: var(--naranja); box-shadow: 0 0 14px rgba(251, 75, 8, .9); border-radius: 2px; }
 .card h2 { margin: 0 0 6px; font-size: 1.6rem; color: #fff; }
