@@ -45186,7 +45186,7 @@ async function _cqIniciar() {
     if (canal === 'whatsapp') {
         _pfClose();
         try {
-            await _transfEsperarPago({ id: order.id, code: order.code, total: pedidoTotal }, { cliente: order.customerName, entrega: String(order.orderType || order.deliveryType || order.type || '') }, total);
+            await _transfEsperarPago({ id: order.id, code: order.code, total: pedidoTotal }, { cliente: order.customerName, entrega: String(order.orderType || order.deliveryType || order.type || '') }, total, true);
         } catch (e) { showNotice(`No se pudo abrir la transferencia: ${e.message || e}`, 'error'); }
         return;
     }
@@ -45282,11 +45282,12 @@ async function _tfImagenBlob(urlQr, c) {
     g.fillText(nota + ' En cuanto llegue el pago te confirmamos 🍔', W / 2, 1300, W - 100);
     return await new Promise((ok) => cv.toBlob(ok, 'image/png'));
 }
-async function _tfMostrarDatos(id, datosDirectos) {
+async function _tfMostrarDatos(id, datosDirectos, auto) {
     const it = _tfEstado().mapa.get(id); if (!it && !datosDirectos) return;
     const c = datosDirectos || it.datos, texto = _tfMensaje(c);
     const fondo = document.createElement('div');
     fondo.setAttribute('data-tf-modal', '1');
+    if (auto) fondo.style.visibility = 'hidden'; // «Por WhatsApp»: se copia sola la imagen y no se muestra la ventana (si falla, se muestra)
     fondo.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;z-index:2147482500;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
     const caja = document.createElement('div');
     caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);text-align:center';
@@ -45310,11 +45311,18 @@ async function _tfMostrarDatos(id, datosDirectos) {
     q('tfCerrar').addEventListener('click', cerrar);
     q('tfCopiarTxt').addEventListener('click', async () => { let ok = false; try { ok = await copyTextToClipboard(texto); } catch (_) { /* sin portapapeles */ } msg(ok ? '✓ Mensaje copiado' : 'No pude copiar: selecciónalo a mano', !ok); });
     const url = await _tfQrUrl(c.total);
-    if (!url) { q('tfQrBox').textContent = 'No pude armar el QR: pásale la llave.'; return; }
+    if (!url) { fondo.style.visibility = ''; q('tfQrBox').textContent = 'No pude armar el QR: pásale la llave.'; return; }
     q('tfQrBox').innerHTML = `<img src="${url}" alt="QR de pago" style="width:100%;height:100%;image-rendering:pixelated">`;
     let blob = null; try { blob = await _tfImagenBlob(url, c); } catch (_) { /* sin canvas */ }
-    if (!blob) return;
+    if (!blob) { fondo.style.visibility = ''; return; }
     const archivo = new File([blob], `pago-${(c.codigo || 'roal').toString().replace(/\W+/g, '')}.png`, { type: 'image/png' });
+    if (auto) {
+        let ok = false;
+        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob, 'text/plain': new Blob([texto], { type: 'text/plain' }) })]); ok = true; }
+        catch (_) { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); ok = true; } catch (__) { /* se muestra la ventana */ } }
+        if (ok) { cerrar(); showNotice('QR copiado: pégalo en el chat de WhatsApp. Esperando el pago…', 'ok'); return; }
+        fondo.style.visibility = '';
+    }
     q('tfCopiarImg').disabled = false;
     q('tfCopiarImg').addEventListener('click', async () => {
         try { let juntos = true; try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob, 'text/plain': new Blob([texto], { type: 'text/plain' }) })]); } catch (_) { juntos = false; await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); } msg(juntos ? '✓ QR y mensaje copiados: pégalos en el chat (si solo aparece la imagen, usa también «Copiar mensaje»)' : '✓ Imagen copiada: pégala en el chat'); }
@@ -45474,7 +45482,7 @@ async function _tfAplicarUno(it) {
     _tfQuitar(it.id);
 }
 // Pedido ya creado (r = { id, code, total }): pregunta cuánto transferirá el cliente, abre el cobro y muestra QR + llave.
-async function _transfEsperarPago(r, resumen, montoFijo) {
+async function _transfEsperarPago(r, resumen, montoFijo, autoCopiar) {
     const total = Math.round(Number(r && r.total) || 0);
     if (!r || !r.id || !(total > 0)) throw new Error('El pedido se creó pero no pude leer su total. Cóbralo desde el POS.');
     const cliente = String(resumen.cliente || '').trim();
@@ -45487,7 +45495,7 @@ async function _transfEsperarPago(r, resumen, montoFijo) {
     const ahora = Date.now();
     const datos = { pedidoId: r.id, codigo: String(r.code || ''), total: monto, pedidoTotal: total, parcial, cliente, entrega: resumen.entrega || '', receiveOrder: 'true', estado: 'abierto', origen: 'transferencia', aplicado: false, sesion: _cqSesion(), creadoPor: (firebaseAuth.currentUser && firebaseAuth.currentUser.uid) || '', creadoEn: firestoreNow(), expiraEn: ahora + TRANSFERENCIA_ESPERA_MS };
     // La ventana con el QR se abre YA (sin esperar a la red); el cobro se guarda en paralelo y, si fallara, se cierra con aviso.
-    _tfMostrarDatos(ref.id, { ...datos, creadoMs: ahora });
+    _tfMostrarDatos(ref.id, { ...datos, creadoMs: ahora }, !!autoCopiar);
     try { await ref.set(datos); } catch (e) { document.querySelectorAll('[data-tf-modal]').forEach((n) => n.remove()); throw e; }
     _tfAgregar(ref.id, { ...datos, creadoMs: ahora });
     let copiado = false; try { copiado = await copyTextToClipboard(_tfMensaje(datos)); } catch (_) { /* sin portapapeles */ }
