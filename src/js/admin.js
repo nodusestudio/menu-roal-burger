@@ -15184,6 +15184,88 @@ function _fbMensajeRespuesta(r) {
     partes.push('¡Aquí estamos para cuando quieras volver! 🍔');
     return partes.join('\n\n');
 }
+// ── Historia tipo chat (2026-11-22): comentario del cliente + nuestra respuesta, imagen 1080x1920 para descargar y subir a redes ──
+async function _fbHistoriaBlob(nombre, comentario, respuesta) {
+    const W = 1080, H = 1920;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const F = '"Segoe UI", system-ui, -apple-system, sans-serif';
+    const logo = await _fidCargarImg('/logo-blanco.png');
+    const fondo = g.createLinearGradient(0, 0, 0, H); fondo.addColorStop(0, '#2b1a10'); fondo.addColorStop(1, '#120a06');
+    g.fillStyle = fondo; g.fillRect(0, 0, W, H);
+    if (logo) { const lw = 300, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 110, lw, lh); }
+    g.textAlign = 'center'; g.fillStyle = '#ffa24d'; g.font = `800 52px ${F}`;
+    g.fillText('Lo que dicen de nosotros 🧡', W / 2, 380);
+    const envolver = (txt, size, maxW, peso = 500) => {
+        g.font = `${peso} ${size}px ${F}`;
+        const lin = []; let cur = '';
+        String(txt).split(/\n/).forEach((par, pi) => {
+            if (pi > 0) { lin.push(cur); cur = ''; }
+            par.split(' ').forEach((w) => { const t = cur ? `${cur} ${w}` : w; if (g.measureText(t).width > maxW && cur) { lin.push(cur); cur = w; } else cur = t; });
+        });
+        if (cur) lin.push(cur);
+        return lin;
+    };
+    const burbuja = (txt, y, lado, color, colorTxt, etiqueta) => {
+        const size = 46, maxW = 640, lin = envolver(txt, size, maxW), lh = Math.round(size * 1.35);
+        const w = Math.min(maxW, Math.max(...lin.map((l) => g.measureText(l).width), 160)) + 80, h = lin.length * lh + 70;
+        const x = lado === 'izq' ? 70 : W - 70 - w;
+        g.textAlign = lado === 'izq' ? 'left' : 'right';
+        g.fillStyle = 'rgba(255,255,255,0.65)'; g.font = `700 34px ${F}`;
+        g.fillText(etiqueta, lado === 'izq' ? x + 10 : x + w - 10, y - 14);
+        g.fillStyle = color; g.beginPath(); g.roundRect(x, y, w, h, 40); g.fill();
+        g.fillStyle = colorTxt; g.font = `500 ${size}px ${F}`; g.textAlign = 'left';
+        lin.forEach((l, i) => g.fillText(l, x + 40, y + 62 + i * lh));
+        return y + h;
+    };
+    const finCliente = burbuja(comentario, 520, 'izq', '#ffffff', '#1c1c1c', nombre);
+    burbuja(respuesta, finCliente + 110, 'der', '#e8590c', '#ffffff', 'ROAL BURGER');
+    g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,0.55)'; g.font = `600 38px ${F}`;
+    g.fillText('@roalburger · Armenia, Quindío', W / 2, H - 120);
+    return new Promise((ok) => cv.toBlob(ok, 'image/png'));
+}
+function _fbAbrirHistoria(r) {
+    const nombre = String(r.name || '').trim().split(/\s+/)[0] || 'Cliente';
+    const ov = document.createElement('div');
+    ov.id = 'fbHistoriaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;padding:1rem;';
+    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:20px;width:min(100%,1000px);max-height:94vh;overflow:auto;color:#fff;box-sizing:border-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><strong>📸 Historia con el chat de ${escapeHtml(nombre)}</strong><button type="button" class="ghost-button" data-fbh-cerrar>✕ Cerrar</button></div>
+        <div style="display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:20px;align-items:start">
+            <div style="aspect-ratio:1080/1920;background:#000;border-radius:12px;overflow:hidden"><img id="fbHistoriaImg" alt="Historia" style="width:100%;height:100%;object-fit:contain"></div>
+            <div>
+                <div style="font-size:.78rem;opacity:.6;margin:0 0 4px">LO QUE ESCRIBIÓ EL CLIENTE (puedes recortarlo o corregirlo)</div>
+                <textarea id="fbHistoriaCom" class="admin-input" rows="5" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(r.q4 || '')}</textarea>
+                <div style="font-size:.78rem;opacity:.6;margin:10px 0 4px">NUESTRA RESPUESTA</div>
+                <textarea id="fbHistoriaRes" class="admin-input" rows="5" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(`¡Gracias ${nombre}! 🧡 Nos alegra mucho y aquí estamos para cuando quieras volver. 🍔`)}</textarea>
+                <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="ghost-button" data-fbh-ver>🔄 Actualizar vista</button><button type="button" class="section-action-btn" data-fbh-bajar>⬇️ Descargar imagen</button></div>
+                <p class="admin-hint" style="margin-top:10px">Solo sale el primer nombre del cliente. Pide su permiso antes de publicar.</p>
+            </div>
+        </div></div>`;
+    document.body.appendChild(ov);
+    let url = null, blob = null;
+    const pintar = async () => {
+        blob = await _fbHistoriaBlob(nombre, ov.querySelector('#fbHistoriaCom').value.trim() || '…', ov.querySelector('#fbHistoriaRes').value.trim() || '…');
+        if (!blob) return;
+        if (url) URL.revokeObjectURL(url);
+        url = URL.createObjectURL(blob);
+        ov.querySelector('#fbHistoriaImg').src = url;
+    };
+    const cerrar = () => { if (url) URL.revokeObjectURL(url); ov.remove(); };
+    ov.addEventListener('click', async (e) => {
+        if (e.target === ov || e.target.closest('[data-fbh-cerrar]')) { cerrar(); return; }
+        if (e.target.closest('[data-fbh-ver]')) { await pintar(); return; }
+        const b = e.target.closest('[data-fbh-bajar]');
+        if (b) {
+            await pintar();
+            if (!blob) { showNotice('No se pudo crear la imagen.', 'error'); return; }
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `historia-chat-${nombre.toLowerCase().replace(/[^a-z0-9]/g, '') || 'cliente'}.png`; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+            _btnHecho(b, 'Descargada');
+        }
+    });
+    pintar();
+}
 function _fbAbrirResponder(id) {
     const r = _fbRows().find((x) => x.id === id);
     if (!r) { showNotice('No encuentro esa respuesta.', 'error'); return; }
@@ -15207,13 +15289,14 @@ function _fbAbrirResponder(id) {
     const contenido = `${r.q4 ? `<div style="font-size:.82rem;opacity:.85;background:rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:10px">💡 ${escapeHtml(r.q4)}</div>` : ''}
         <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (edítalo antes de enviarlo)</div>
         <textarea data-fid-prev-texto id="fbResponderTexto" class="admin-input" rows="10" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(_fbMensajeRespuesta(r))}</textarea>`;
-    const botones = '<button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button>' + (_fidEncuestasAtendidas('respuesta').has(r.id) ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">✅ Ya atendido</span>' : '<button type="button" class="feedback-pending-btn" data-fbr-atendido>✅ Ya fue atendido</button>') + '<button type="button" class="ghost-button" data-fid-ult-ticket="' + String(r.phone || '').replace(/\D/g, '') + '" data-fid-ult-code="' + escapeHtml(r.orderCode || '') + '">🧾 Ver pedido</button>';
+    const botones = '<button type="button" class="ghost-button" data-fbr-historia>📸 Historia</button><button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button>' + (_fidEncuestasAtendidas('respuesta').has(r.id) ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">✅ Ya atendido</span>' : '<button type="button" class="feedback-pending-btn" data-fbr-atendido>✅ Ya fue atendido</button>') + '<button type="button" class="ghost-button" data-fid-ult-ticket="' + String(r.phone || '').replace(/\D/g, '') + '" data-fid-ult-code="' + escapeHtml(r.orderCode || '') + '">🧾 Ver pedido</button>';
     ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, encabezado: `✉️ Responder a ${nombre}`, telefono: r.phone, contenido, botones, hint: 'Pega primero la imagen en el chat y luego el mensaje. «Copiar imagen + mensaje» pega los dos juntos.' });
     ov.addEventListener('click', (e) => {
         if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
         if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
         if (e.target.closest('[data-fid-prev-otra]')) { fijo = null; pintarImagen(); return; }
         const txt = ov.querySelector('#fbResponderTexto').value;
+        if (e.target.closest('[data-fbr-historia]')) { _fbAbrirHistoria(r); return; }
         const w = e.target.closest('[data-fbr-wa]');
         if (w) { window.open(buildWhatsAppUrl(r.phone, txt), '_blank', 'noopener'); return; }
         const at = e.target.closest('[data-fbr-atendido]');
