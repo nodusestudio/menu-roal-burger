@@ -15006,7 +15006,7 @@ function _fidPostalSpec(clave) { return _fidPostalUlt && _fidPostalUlt.clave ===
 function _fidPostalEnvio(clave) { const sp = _fidPostalSpec(clave); return sp ? { postal: sp } : {}; }
 let _fidReactUltimoEnvio = null; // {clienteId, id} del último envío de Reactivar creado desde la vista previa
 let _fidPostalUlt = null; // {foto, frase} de la última postal dibujada: se guarda al confirmar el envío para poder reabrir LA MISMA
-const FID_POSTALES = ['p01', 'p04', 'p05', 'p06', 'p07', 'p08', 'p09', 'p10', 'p11', 'p12'];
+const FID_POSTALES = ['p01', 'p04', 'p05', 'p06', 'p07', 'p08', 'p09', 'p10', 'p11', 'p12', 'p16', 'p17', 'p18', 'p19', 'p20', 'p21', 'p22', 'p23', 'p24', 'p25', 'p26', 'p27', 'p28', 'p29', 'p30'];
 function _fidPostalSiguiente() {
     let ult = '';
     try { ult = localStorage.getItem('fidPostalUlt') || ''; } catch (_) { /* sin almacenamiento */ }
