@@ -46617,7 +46617,7 @@ padding:var(--modal-margen) var(--modal-margen) calc(var(--modal-margen) + var(-
         document.documentElement.style.setProperty('--modal-inset-left', inset + 'px');
     }
     function esCapa(el) {
-        if (el.nodeType !== 1 || el.dataset.rrMh === '1' || !el.childElementCount || el.matches(EXCLUIR) || el.closest(EXCLUIR)) return false;
+        if (el.nodeType !== 1 || el.dataset.rrMh === '1' || !el.childElementCount || el.matches(EXCLUIR)) return false;
         const cs = getComputedStyle(el);
         if (cs.position !== 'fixed' || (cs.display !== 'flex' && cs.display !== 'grid') || cs.visibility === 'hidden') return false;
         const r = el.getBoundingClientRect();
