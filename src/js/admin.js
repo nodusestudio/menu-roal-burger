@@ -45007,7 +45007,7 @@ const TRANSFERENCIA_LLAVE = '@roalburger'; // llave Bre-B de ROAL BURGER (la mis
 function _tfEstado() { return (window.__transf = window.__transf || { mapa: new Map(), cola: Promise.resolve(), tick: null, html: '' }); }
 function _tfMensaje(c) {
     const parte = c.parcial ? `\n(Es una parte del pedido, que vale ${formatMoney(c.pedidoTotal)}; el resto lo pagas al recibirlo.)` : '';
-    return `Para pagar tu pedido por transferencia Bancolombia 💛\n\n🔑 Llave Bre-B: ${TRANSFERENCIA_LLAVE}\n🏪 A nombre de: ROAL BURGER\n💵 Valor exacto: ${formatMoney(c.total)}${c.entrega === 'delivery' && !c.parcial ? ' (domicilio incluido)' : ''}${parte}\n\nTambién puedes escanear el QR. En cuanto llegue el pago te confirmamos y empezamos a prepararlo 🍔`;
+    return `Para pagar tu pedido por transferencia desde la app de tu banco 💛\n\n🔑 Llave Bre-B: ${TRANSFERENCIA_LLAVE}\n🏪 A nombre de: ROAL BURGER\n💵 Valor exacto: ${formatMoney(c.total)}${c.entrega === 'delivery' && !c.parcial ? ' (domicilio incluido)' : ''}${parte}\n\nTambién puedes escanear el QR. En cuanto llegue el pago te confirmamos y empezamos a prepararlo 🍔`;
 }
 // Librerías del QR (las mismas de la TV): se cargan solo cuando hace falta.
 let _tfQrListo = null;
@@ -45049,7 +45049,7 @@ async function _tfImagenBlob(urlQr, c) {
     g.fillStyle = '#ff7a1a'; g.fillRect(0, 0, W, 14); g.fillRect(0, H - 14, W, 14);
     g.textAlign = 'center';
     if (logo) { const lw = 460, lh = lw * (logo.height / logo.width); g.drawImage(logo, (W - lw) / 2, 52, lw, lh); }
-    g.fillStyle = '#ffd6aa'; g.font = `600 40px ${FUENTE}`; g.fillText('Paga tu pedido con tu app de Bancolombia', W / 2, 262);
+    g.fillStyle = '#ffd6aa'; g.font = `600 40px ${FUENTE}`; g.fillText('Paga tu pedido desde la app de tu banco', W / 2, 262);
     // tarjeta blanca con el QR
     const cx = 215, cy = 300, cw = 650, ch = 650;
     g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = 40; g.shadowOffsetY = 12;
