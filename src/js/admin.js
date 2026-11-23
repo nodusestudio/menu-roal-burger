@@ -15090,7 +15090,8 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
 async function _fidCopiarBlob(blob) {
     try {
         // Imagen + mensaje juntos (si la vista previa tiene el texto): al pegar en WhatsApp salen los dos. Si el navegador no deja, solo la imagen.
-        const txt = ((document.querySelector('#fidPreviaOverlay [data-fid-prev-texto]') || {}).textContent || '').trim();
+        const _el = document.querySelector('#fidPreviaOverlay [data-fid-prev-texto]') || {};
+        const txt = String(_el.value != null ? _el.value : (_el.textContent || '')).trim(); // textarea editable (Responder) o texto fijo
         let juntos = false;
         if (txt) { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob, 'text/plain': new Blob([txt], { type: 'text/plain' }) })]); juntos = true; } catch (_) { /* solo imagen */ } }
         if (!juntos) await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
@@ -15184,23 +15185,39 @@ function _fbMensajeRespuesta(r) {
 function _fbAbrirResponder(id) {
     const r = _fbRows().find((x) => x.id === id);
     if (!r) { showNotice('No encuentro esa respuesta.', 'error'); return; }
-    document.getElementById('fbResponderOverlay')?.remove();
+    // Mismo marco de las demás vistas previas: postal a la izquierda; a la derecha el comentario, el mensaje editable y los botones.
+    _fidCerrarPrevia();
     const ov = document.createElement('div');
-    ov.id = 'fbResponderOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
-    ov.innerHTML = `<div style="background:#1a1210;border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:18px;width:min(100%,560px);max-height:94vh;overflow:auto;color:#fff;box-sizing:border-box">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><strong>✉️ Responder a ${escapeHtml(r.name || 'cliente')}</strong><button type="button" class="ghost-button" data-fbr-cerrar>✕ Cerrar</button></div>
-        ${r.q4 ? `<div style="font-size:.82rem;opacity:.8;background:rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:10px">💡 ${escapeHtml(r.q4)}</div>` : ''}
-        <textarea id="fbResponderTexto" class="admin-input" rows="9" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(_fbMensajeRespuesta(r))}</textarea>
-        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button><button type="button" class="ghost-button" data-fid-prev-tel="${String(r.phone || '').replace(/\D/g, '')}">📋 Copiar número</button></div>
-        <p class="admin-hint" style="margin-top:8px">Mensaje sugerido: edítalo antes de enviarlo.</p></div>`;
+    ov.id = 'fidPreviaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:1rem;';
     document.body.appendChild(ov);
+    _bindOverlayClose(ov, _fidCerrarPrevia);
+    const nombre = r.name || 'Cliente';
+    let fijo = null;
+    const pintarImagen = async () => {
+        const blob = await _fidCopiarImagen(nombre, _fbBajo(r) ? 'disculpa' : 'gracias', true, '', '', `fbresp:${r.id}`, fijo);
+        if (!document.getElementById('fidPreviaOverlay')) return;
+        if (_fidPrevio && _fidPrevio.url) URL.revokeObjectURL(_fidPrevio.url);
+        _fidPrevio = blob ? { blob, url: URL.createObjectURL(blob) } : null;
+        const img = document.getElementById('fidPreviaImg');
+        if (img && _fidPrevio) img.src = _fidPrevio.url;
+    };
+    const contenido = `${r.q4 ? `<div style="font-size:.82rem;opacity:.85;background:rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:10px">💡 ${escapeHtml(r.q4)}</div>` : ''}
+        <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (edítalo antes de enviarlo)</div>
+        <textarea data-fid-prev-texto id="fbResponderTexto" class="admin-input" rows="10" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(_fbMensajeRespuesta(r))}</textarea>`;
+    const botones = '<button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button><button type="button" class="ghost-button" data-fid-ult-ticket="' + String(r.phone || '').replace(/\D/g, '') + '" data-fid-ult-code="' + escapeHtml(r.orderCode || '') + '">🧾 Ver pedido</button>';
+    ov.innerHTML = _fidPreviaMarcoHtml({ titulo: nombre, encabezado: `✉️ Responder a ${nombre}`, telefono: r.phone, contenido, botones, hint: 'Pega primero la imagen en el chat y luego el mensaje. «Copiar imagen + mensaje» pega los dos juntos.' });
     ov.addEventListener('click', (e) => {
-        if (e.target === ov || e.target.closest('[data-fbr-cerrar]')) { ov.remove(); return; }
+        if (e.target.closest('[data-fid-prev-cerrar]')) { _fidCerrarPrevia(); return; }
+        if (e.target.closest('[data-fid-prev-imgcopiar]')) { if (_fidPrevio) _fidCopiarBlob(_fidPrevio.blob); return; }
+        if (e.target.closest('[data-fid-prev-otra]')) { fijo = null; pintarImagen(); return; }
         const txt = ov.querySelector('#fbResponderTexto').value;
-        if (e.target.closest('[data-fbr-wa]')) window.open(buildWhatsAppUrl(r.phone, txt), '_blank', 'noopener');
-        else if (e.target.closest('[data-fbr-copiar]')) copyTextToClipboard(txt);
+        const w = e.target.closest('[data-fbr-wa]');
+        if (w) { window.open(buildWhatsAppUrl(r.phone, txt), '_blank', 'noopener'); return; }
+        const c = e.target.closest('[data-fbr-copiar]');
+        if (c) copyTextToClipboard(txt).then((ok) => { showNotice(ok ? 'Mensaje copiado.' : 'No se pudo copiar el mensaje.', ok ? 'ok' : 'error'); if (ok) _btnHecho(c, 'Mensaje copiado'); });
     });
+    pintarImagen();
 }
 document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-fb-responder]');
@@ -15217,6 +15234,8 @@ async function _fidVerTicketUltimo(telefono, orderCode) {
     if (!ult) { showNotice('No encuentro pedidos de este cliente.', 'error'); return; }
     // Mismo modal estándar de tickets del admin (centrado y con el diseño correcto); solo lectura: sin editar ni eliminar.
     openTicketPreviewModal(ult);
+    const _tpm = document.getElementById('ticketPreviewModal');
+    if (_tpm) _tpm.style.zIndex = '100001'; // por encima de las vistas previas (99999); se restablece al cerrar
     document.getElementById('ticketPreviewEditBtn')?.setAttribute('hidden', '');
     document.getElementById('ticketPreviewDeleteBtn')?.setAttribute('hidden', '');
 }
@@ -36682,7 +36701,8 @@ function openTicketPreviewModal(order) {
 }
 
 function closeTicketPreviewModal() {
-    document.getElementById('ticketPreviewModal')?.setAttribute('hidden', '');
+    const _tpm = document.getElementById('ticketPreviewModal');
+    if (_tpm) { _tpm.setAttribute('hidden', ''); _tpm.style.zIndex = ''; }
     _ticketPreviewCurrentOrder = null;
 }
 
