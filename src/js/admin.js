@@ -2970,7 +2970,7 @@ function _enVivoAbrir() {
         m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-ev-cerrar]')) { m.style.display = 'none'; _enVivo.abierto = false; } });
     }
     const sb = document.querySelector('.admin-sidebar'), r = sb ? sb.getBoundingClientRect() : null;
-    m.style.left = (r && r.height > 200 && r.width < window.innerWidth * 0.5 ? Math.round(r.right) : 0) + 'px';
+    m.style.left = '0px';
     m.style.display = 'flex'; _enVivo.abierto = true; _enVivoPintarPanel();
 }
 function startPresenciaAdmin() {
@@ -6113,7 +6113,7 @@ function openPosFeedbackModal() {
     }
     // Centrada en el área de contenido: se deja libre la columna lateral (si la barra lateral es vertical).
     const sb = document.querySelector('.admin-sidebar'), r = sb ? sb.getBoundingClientRect() : null;
-    modal.style.left = (r && r.height > 200 && r.width < window.innerWidth * 0.5 ? Math.round(r.right) : 0) + 'px';
+    modal.style.left = '0px';
     modal.style.display = 'flex';
     _posFbRender();
     _posPendRefrescar().then(() => { if (modal.style.display !== 'none') _posFbRender(); });
@@ -6210,37 +6210,23 @@ function _modalUnificarTarjeta(fondo, tarjeta) {
     });
 }
 function _modalesUnificar() {
-    const sb = document.querySelector('.admin-sidebar'), sr = sb ? sb.getBoundingClientRect() : null;
-    const lateral = sr && sr.height > 200 && sr.width > 0 && sr.width < window.innerWidth * 0.5 ? Math.round(sr.right) : 0;
-    // Columna del menú del POS (la del centro) cuando se está tomando un pedido y el carrito va a su lado.
-    const pv = document.getElementById('posView'), pm = document.getElementById('posScreenMain');
-    let colMenu = null;
-    if (pv && pm && pv.getClientRects().length && getComputedStyle(pv).display !== 'none' && pm.getClientRects().length) {
-        const cm = pm.getBoundingClientRect();
-        if (cm.width > 300 && cm.width < window.innerWidth * 0.85) colMenu = cm;
-    }
+    // REGLA: toda ventana emergente se centra en el MEDIO DE TODA LA PANTALLA (no depende de la barra lateral ni del carrito del POS).
     document.querySelectorAll('body > *, [id*="odal"], [class*="modal"], [class*="overlay"], [class*="backdrop"]').forEach((fondo) => {
         if (fondo.matches(_MODAL_SALTAR) || fondo.closest(_MODAL_SALTAR)) return;
         const cs = getComputedStyle(fondo);
         if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden' || !fondo.getClientRects().length) return;
+        if (fondo.dataset.modalUnif) { // la versión anterior la corría a un lado: se deshace
+            fondo.style.removeProperty('left'); fondo.style.removeProperty('right'); fondo.style.removeProperty('padding-left');
+        }
         const r = fondo.getBoundingClientRect();
         if (r.width < window.innerWidth * 0.9 || r.height < window.innerHeight * 0.6) return;
         const tarjeta = [...fondo.children].filter((c) => c.nodeType === 1 && getComputedStyle(c).display !== 'none' && c.getClientRects().length)
             .sort((a, b) => (b.offsetWidth * b.offsetHeight) - (a.offsetWidth * a.offsetHeight))[0];
         if (tarjeta && getComputedStyle(tarjeta).position !== 'fixed') {
             _modalUnificarTarjeta(fondo, tarjeta);
-            // Centrada en el área de información: se descuenta la columna lateral (solo si es vertical; en celular no hay).
+            fondo.dataset.modalUnif = '1';
             fondo.style.setProperty('box-sizing', 'border-box', 'important');
-            if (colMenu) {
-                // Tomando un pedido: la ventana se centra SOLO en la columna del menú y el carrito queda libre, a la vista.
-                fondo.style.setProperty('left', `${Math.round(colMenu.left)}px`, 'important');
-                fondo.style.setProperty('right', `${Math.round(window.innerWidth - colMenu.right)}px`, 'important');
-                fondo.style.setProperty('padding-left', '12px', 'important');
-            } else {
-                fondo.style.removeProperty('left');
-                fondo.style.removeProperty('right');
-                fondo.style.setProperty('padding-left', `${lateral + 12}px`, 'important');
-            }
+            fondo.style.setProperty('padding-left', '12px', 'important');
             fondo.style.setProperty('padding-right', '12px', 'important');
         }
     });
@@ -15101,9 +15087,13 @@ async function _fidCopiarImagen(nombre, tipo, soloBlob = false, regaloTexto = ''
 
 async function _fidCopiarBlob(blob) {
     try {
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        showNotice('Imagen copiada: pégala en el chat junto al mensaje.', 'ok');
-        _btnHecho(document.querySelector('#fidPreviaOverlay [data-fid-prev-imgcopiar]'), 'Imagen copiada');
+        // Imagen + mensaje juntos (si la vista previa tiene el texto): al pegar en WhatsApp salen los dos. Si el navegador no deja, solo la imagen.
+        const txt = ((document.querySelector('#fidPreviaOverlay [data-fid-prev-texto]') || {}).textContent || '').trim();
+        let juntos = false;
+        if (txt) { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob, 'text/plain': new Blob([txt], { type: 'text/plain' }) })]); juntos = true; } catch (_) { /* solo imagen */ } }
+        if (!juntos) await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        showNotice(juntos ? 'Imagen y mensaje copiados: pégalos en el chat.' : 'Imagen copiada: pégala en el chat junto al mensaje.', 'ok');
+        _btnHecho(document.querySelector('#fidPreviaOverlay [data-fid-prev-imgcopiar]'), juntos ? 'Imagen + mensaje copiados' : 'Imagen copiada');
     } catch (_) {
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'roal-mensaje.png'; a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);
@@ -15124,13 +15114,13 @@ function _fidPreviaMarcoHtml({ titulo, texto, botones, hint, idTexto = '', telef
         <div style="display:grid;grid-template-columns:${sinImagen ? 'minmax(0,1fr)' : 'minmax(0,360px) minmax(0,1fr)'};gap:22px;align-items:start">
             <div${sinImagen ? ' hidden' : ''}>
                 <div style="position:relative;width:100%;aspect-ratio:1080/1350;max-height:calc(94vh - 210px);margin:0 auto;border-radius:12px;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center"><span style="position:absolute;font-size:.85rem;opacity:.6">Preparando la postal…</span><img id="fidPreviaImg" alt="Postal del mensaje" style="position:relative;display:block;width:100%;height:100%;object-fit:contain"></div>
-                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button type="button" class="section-action-btn" data-fid-prev-imgcopiar>Copiar imagen + mensaje</button><button type="button" class="ghost-button" data-fid-prev-otra>🔄 Otra imagen</button></div>
             </div>
             <div style="min-width:0">
                 ${tel ? `<button type="button" class="ghost-button" data-fid-prev-tel="${tel}" title="Copiar el número del cliente" style="margin-bottom:10px">📋 Copiar número · ${tel}</button>` : ''}
                 ${extraDer}
                 ${contenido || `<div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (así le llega por WhatsApp)</div>
-                <div${idTexto ? ` id="${idTexto}"` : ''} style="white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>`}
+                <div data-fid-prev-texto${idTexto ? ` id="${idTexto}"` : ''} style="white-space:pre-wrap;overflow-wrap:anywhere;background:rgba(255,255,255,0.07);border-radius:12px;padding:14px;line-height:1.45">${escapeHtml(texto)}</div>`}
                 <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${botones}</div>
                 <p class="admin-hint"${String(hint).length >= 70 ? ' hidden' : ''} style="margin-top:10px">${hint}</p>
             </div>
@@ -15141,8 +15131,8 @@ new MutationObserver((muts) => {
     muts.forEach((m) => m.addedNodes.forEach((ov) => {
         if (!ov || ov.nodeType !== 1 || (ov.id !== 'fidPreviaOverlay' && ov.id !== '_fidDisculpaOverlay')) return;
         const sb = document.querySelector('.admin-sidebar'), r = sb ? sb.getBoundingClientRect() : null;
-        ov.style.left = (r && r.height > 200 && r.width < window.innerWidth * 0.5 ? Math.round(r.right) : 0) + 'px';
-        ov.style.bottom = '40px';
+        ov.style.left = '0px';
+        ov.style.bottom = '0px';
     }));
 }).observe(document.body, { childList: true });
 // Confirmación visible al tocar un botón de copiar/archivar: se pone verde con ✓, rebota y lanza un aro (ver .btn-hecho en style.css).
@@ -45072,7 +45062,7 @@ async function _tfMostrarDatos(id) {
         <div id="tfQrBox" style="background:#fff;border-radius:12px;padding:8px;margin:0 auto 12px;width:240px;height:240px;display:flex;align-items:center;justify-content:center;color:#333;font-size:13px">Preparando QR…</div>
         <div style="display:flex;flex-direction:column;gap:8px">
             <button type="button" id="tfCopiarTxt" style="${B}background:#2e7d32">📋 Copiar mensaje con la llave</button>
-            <button type="button" id="tfCopiarImg" style="${B}background:#1565c0" disabled>🖼️ Copiar imagen del QR</button>
+            <button type="button" id="tfCopiarImg" style="${B}background:#1565c0" disabled>🖼️ Copiar QR + mensaje juntos</button>
             <button type="button" id="tfCompartir" style="${B}background:#6a1b9a" hidden>📤 Compartir imagen</button>
             <button type="button" id="tfCerrar" style="${B}background:transparent;border:1px solid rgba(255,255,255,.3)">Cerrar</button>
         </div><div id="tfMsg" style="min-height:18px;margin-top:8px;font-size:13px;color:#7ee2a8"></div>`;
@@ -45092,7 +45082,7 @@ async function _tfMostrarDatos(id) {
     const archivo = new File([blob], `pago-${(c.codigo || 'roal').toString().replace(/\W+/g, '')}.png`, { type: 'image/png' });
     q('tfCopiarImg').disabled = false;
     q('tfCopiarImg').addEventListener('click', async () => {
-        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); msg('✓ Imagen copiada: pégala en el chat'); }
+        try { let juntos = true; try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob, 'text/plain': new Blob([texto], { type: 'text/plain' }) })]); } catch (_) { juntos = false; await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); } msg(juntos ? '✓ QR y mensaje copiados: pégalos en el chat (si solo aparece la imagen, usa también «Copiar mensaje»)' : '✓ Imagen copiada: pégala en el chat'); }
         catch (_) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = archivo.name; a.click(); msg('Tu navegador no copia imágenes: se descargó para adjuntarla', true); }
     });
     if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
