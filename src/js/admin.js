@@ -5867,6 +5867,7 @@ function _posFbEstado(order) {
     if (order.feedbackAnsweredAt) estado = 'respondio';
     else if (order.feedbackRequestedAt || _feedbackMarcadosLocal.has(order.id)) estado = 'enviado';
     else if (phone.length < 10) estado = 'sin_telefono';
+    else if (feedbackClienteReciente(order)) estado = 'reciente'; // regla de 7 días: ya se le pidió feedback en otro pedido
     return { phone, estado };
 }
 function _posFbPedidosHoy() {
@@ -13815,6 +13816,7 @@ function _fbSeguimiento() {
         else if (o.feedbackRequestedAt || solicitados.has(o.id) || _feedbackMarcadosLocal.has(o.id)) estado = 'enviado';
         else if (phone.length < 10) return; // sin teléfono no se puede contactar: se descarta del seguimiento
         if (estado === 'sin_enviar' && _fbTipo === 'general' && _sqDayKey(t) !== _sqDayKey(Date.now())) estado = 'vencido'; // fidelización es solo del día
+        if (estado === 'sin_enviar' && feedbackClienteReciente(o)) estado = 'vencido'; // regla de 7 días: ya se le pidió feedback en otro pedido
         const key = _sqDayKey(t);
         if (!dias.has(key)) dias.set(key, []);
         dias.get(key).push({ order: o, phone, estado, t });
