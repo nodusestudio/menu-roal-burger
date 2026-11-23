@@ -5371,7 +5371,7 @@ function getCartTotalAmount() {
 function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, options = {}) {
     const normalized = normalizeOrderOptions(orderOptions);
     const includeComment = options.includeComment !== false;
-    let optionLabel = 'Producto solo';
+    let optionLabel = '';
 
     if (normalized.type === 'combo-mixed') {
         optionLabel = `Combo mixto | Bebida 1 litro | ${normalized.drink}`;
@@ -5381,8 +5381,6 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
         optionLabel = `${peopleCount} persona${peopleCount === 1 ? '' : 's'} | ${peopleCount >= 3 ? '1 bebida 1000ML' : `${peopleCount} bebida${peopleCount === 1 ? '' : 's'} 250ML`} | ${drinkText}`;
     } else if (normalized.type === 'combo') {
         optionLabel = `${getComboButtonCopy(categoryName).combo} | ${normalized.drink}`;
-    } else if (isComboCategory(categoryName)) {
-        optionLabel = getComboButtonCopy(categoryName).solo;
     }
 
     if (normalized.almuerzo) {
@@ -5390,26 +5388,27 @@ function getCartOptionLabel(categoryName, orderOptions = { type: 'solo' }, optio
     }
 
     if (normalized.promoLabel) {
-        optionLabel = `🏷 ${normalized.promoLabel} | ${optionLabel}`;
+        optionLabel = [`🏷 ${normalized.promoLabel}`, optionLabel].filter(Boolean).join(' | ');
     }
 
     if (normalized.promo2x1Incremento) {
-        optionLabel = `${optionLabel} | +${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de empaque si es para llevar o domicilio`;
+        optionLabel = [optionLabel, `+${formatCurrency(PROMO_2X1_INCREMENTO_AMOUNT)} de empaque si es para llevar o domicilio`].filter(Boolean).join(' | ');
     }
 
     if (normalized.recommendedDiscount && normalized.discountRate > 0) {
         const discountPercent = Math.round(normalized.discountRate * 100);
         optionLabel = normalized.codigoDia
-            ? `${optionLabel} | Código del día ${normalized.codigoDia} -${discountPercent}%`
-            : `${optionLabel} | Descuento -${discountPercent}%`;
+            ? [optionLabel, `Código del día ${normalized.codigoDia} -${discountPercent}%`].filter(Boolean).join(' | ')
+            : [optionLabel, `Descuento -${discountPercent}%`].filter(Boolean).join(' | ');
     }
 
     if (normalized.flavor) {
-        optionLabel = `${optionLabel} | Sabor: ${normalized.flavor}`;
+        optionLabel = [optionLabel, `Sabor: ${normalized.flavor}`].filter(Boolean).join(' | ');
     }
 
+    // Sin opción especial no se muestra nada (antes decía "Producto solo").
     if (includeComment && normalized.comment) {
-        return `${optionLabel} | Comentario: ${normalized.comment}`;
+        return [optionLabel, `Comentario: ${normalized.comment}`].filter(Boolean).join(' | ');
     }
 
     return optionLabel;
