@@ -15166,6 +15166,19 @@ function _fbMensajeRespuesta(r) {
     const nombre = String(r.name || '').trim().split(/\s+/)[0] || '';
     const hola = `Hola${nombre ? ` ${nombre}` : ''} 👋, te escribimos de ROAL BURGER.`;
     const t = String(r.q4 || '').toLowerCase();
+    // Campaña Sabe a Quindío (cuponera 2×1): NUNCA se regala ni se ofrece nada; solo gratitud, escucha y compromiso de mejora.
+    if (r.tipo !== 'general') {
+        const q = [hola, `Gracias de corazón por tomarte el tiempo de contarnos tu opinión sobre tu pedido ${r.orderCode || ''}.`.replace('  ', ' ')];
+        if (/coca|gaseosa|bebida|refresco|pepsi|sprite|postobon/.test(t)) q.push('Sobre las gaseosas: sí las manejamos, ese día se nos habían agotado. Gracias por avisarnos, vamos a estar más pendientes del inventario 🙏');
+        if (_fbBajo(r)) {
+            q.push('Lamentamos de verdad que tu experiencia no haya sido la que esperabas. Te pedimos disculpas: tu opinión nos duele y nos importa, porque cada pedido es nuestra carta de presentación.');
+            q.push('Ya compartimos tu comentario con todo el equipo y vamos a trabajar muy duro para mejorar eso que nos cuentas. Nos hacen crecer clientes sinceros como tú 🙏');
+        } else {
+            q.push('Saber que lo disfrutaste es lo que nos motiva a levantarnos cada día a hacerlo mejor 🧡 Tu opinión nos ayuda a seguir mejorando.');
+        }
+        q.push('Estamos escuchando a cada cliente, y eso es lo que nos hace una hamburguesería cada vez mejor. ¡Gracias por ser parte de esto! 🍔');
+        return q.join('\n\n');
+    }
     const partes = [hola, `Gracias por tomarte el tiempo de contarnos tu opinión sobre tu pedido ${r.orderCode || ''}.`.replace('  ', ' ')];
     if (/coca|gaseosa|bebida|refresco|pepsi|sprite|postobon/.test(t)) {
         partes.push('Sobre las gaseosas: sí las manejamos, ese día se nos habían agotado y por eso no pudimos ofrecértelas. Gracias por avisarnos, vamos a estar más pendientes del inventario 🙏');
@@ -15267,7 +15280,7 @@ function _fbAbrirHistoria(r) {
     pintar();
 }
 function _fbAbrirResponder(id) {
-    const r = _fbRows().find((x) => x.id === id);
+    const r = _fbResponses.find((x) => x.id === id);
     if (!r) { showNotice('No encuentro esa respuesta.', 'error'); return; }
     // Mismo marco de las demás vistas previas: postal a la izquierda; a la derecha el comentario, el mensaje editable y los botones.
     _fidCerrarPrevia();
@@ -15286,7 +15299,25 @@ function _fbAbrirResponder(id) {
         const img = document.getElementById('fidPreviaImg');
         if (img && _fidPrevio) img.src = _fidPrevio.url;
     };
-    const contenido = `${r.q4 ? `<div style="font-size:.82rem;opacity:.85;background:rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:10px">💡 ${escapeHtml(r.q4)}</div>` : ''}
+    // Todo lo que respondió el cliente + lo que pidió (para responder con conocimiento, sin salir de la ventana).
+    const _gen = r.tipo === 'general';
+    const _mp = _gen ? { q2: FB_Q2_GEN, q3: FB_Q3_GEN, t2: 'Servicio y entrega', t3: 'Volvería a pedir' } : { q2: FB_Q2, q3: FB_Q3, t2: 'Cómo se enteró de la promo', t3: 'App' };
+    const _nm = (map, lista) => (lista || []).map((k) => (map[k] ? map[k][1] : k)).join(', ');
+    const _fila = (t, v) => (v ? `<div><span style="opacity:.6">${escapeHtml(t)}:</span> <b>${escapeHtml(v)}</b></div>` : '');
+    const _ord = [..._fbArchOrders, ...ordersState].find((o) => o.id === r.id);
+    const _items = _ord && Array.isArray(_ord.items) ? _ord.items.map((i) => `${Number(i.quantity) > 1 ? `${i.quantity}× ` : ''}${i.productName || i.nombre || ''}${i.notes ? ` (${i.notes})` : ''}`).join('<br>') : '';
+    const resumen = `<div style="font-size:.84rem;background:rgba(255,255,255,0.06);border-radius:10px;padding:10px;margin-bottom:10px;display:grid;gap:3px">
+        <div style="font-weight:800;margin-bottom:2px">📋 Encuesta ${_gen ? 'de fidelización' : 'Sabe a Quindío (2×1)'}${r.ts ? ` · ${escapeHtml(new Date(r.ts).toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}` : ''}</div>
+        ${_fila('Sabor / calidad', FB_Q1[r.q1] ? FB_Q1[r.q1][1] : r.q1)}
+        ${_fila(_fbBajo(r) ? 'Qué falló' : 'Qué le gustó',_nm(_fbBajo(r) ? FB_Q1D_FALLO : FB_Q1D_GUSTO, r.q1d))}
+        ${_fila(_mp.t2, _mp.q2[r.q2] ? _mp.q2[r.q2][1] : r.q2)}
+        ${_fila('Problemas de servicio', _nm(FB_Q2D_PROBLEMA, r.q2d))}
+        ${_fila(_mp.t3, _mp.q3[r.q3] ? _mp.q3[r.q3][1] : r.q3)}
+        ${_fila('Pedido', `${r.orderCode || ''}${_ord ? ` · ${formatMoney(_ord.total)}` : ''}`)}
+        ${_items ? `<div style="margin-top:4px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.1)"><span style="opacity:.6">🧾 Lo que pidió:</span><br>${_items}</div>` : ''}
+        ${!_gen ? '<div style="margin-top:4px;color:#fbbf24;font-size:.78rem">⚠️ Campaña 2×1: no se regala ni se ofrece nada; solo agradecer y mostrar que estamos mejorando.</div>' : ''}
+    </div>`;
+    const contenido = `${resumen}${r.q4 ? `<div style="font-size:.82rem;opacity:.85;background:rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:10px">💬 «${escapeHtml(r.q4)}»</div>` : ''}
         <div style="font-size:.78rem;opacity:.6;margin-bottom:6px">MENSAJE (edítalo antes de enviarlo)</div>
         <textarea data-fid-prev-texto id="fbResponderTexto" class="admin-input" rows="10" style="width:100%;box-sizing:border-box;resize:vertical">${escapeHtml(_fbMensajeRespuesta(r))}</textarea>`;
     const botones = '<button type="button" class="ghost-button" data-fbr-historia>📸 Historia</button><button type="button" class="section-action-btn" data-fbr-wa>💬 Abrir en WhatsApp</button><button type="button" class="ghost-button" data-fbr-copiar>📋 Copiar mensaje</button>' + (_fidEncuestasAtendidas('respuesta').has(r.id) ? '<span style="align-self:center;font-size:.85rem;color:#34d399;font-weight:700">✅ Ya atendido</span>' : '<button type="button" class="feedback-pending-btn" data-fbr-atendido>✅ Ya fue atendido</button>') + '<button type="button" class="ghost-button" data-fid-ult-ticket="' + String(r.phone || '').replace(/\D/g, '') + '" data-fid-ult-code="' + escapeHtml(r.orderCode || '') + '">🧾 Ver pedido</button>';
@@ -15568,6 +15599,8 @@ function _fidAtender(clic) {
     const cliente = { id: r.clientId, customerName: r.name, customerPhoneDigits: String(r.phone || '').replace(/\D/g, '') };
     const yaHecho = _fidEncuestasAtendidas(vista === 'baja' ? 'disculpa' : 'resena').has(id);
     if (vista === 'resena') { _fidAtenderEstatico(r, cliente, 'resena', yaHecho); return; }
+    // Sabe a Quindío / cuponera (2×1): sin regalo ni cupón; solo disculpa y agradecimiento en la ventana de Responder.
+    if (r.tipo !== 'general') { _fbAbrirResponder(r.id); return; }
     // Ya atendido: se reabre el mismo mensaje con el mismo cupón y LA MISMA postal (sin crear nada nuevo).
     if (yaHecho) { _fidAtenderEstatico(r, cliente, 'baja', true); return; }
     _fidAbrirDisculpa(r, cliente);
