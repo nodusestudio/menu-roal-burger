@@ -480,7 +480,8 @@
         mw: 6, mc: 1.2, mo: 0, mx: 0, my: 64, blush: 0, zzz: 0, stars: 0, bulb: 0, qm: 0, hearts: 0, bob: 0.5
     };
     var FODI_EX = {
-        neutral: {},
+        neutral: { mc: 2.2, mw: 7, blush: 0.2 },
+        amable: { ehL: 1.1, ehR: 1.1, mw: 8, mc: 3.2, mo: 1, blush: 0.5, bob: 0.7 },
         thinking: { ehL: 0.85, ehR: 0.85, tilt: -5, gx: 4, gy: -4, gk: 0, mw: 3.5, mc: -0.3, mx: 7, bob: 0.3 },
         talking: { mc: 0.9, mw: 6 },
         happy: { arc: 1, mw: 9, mc: 4, mo: 2, blush: 0.75 },
@@ -659,7 +660,9 @@
                 var seg = Math.round((Date.now() - cobroVisto[d.cobroId + ':e']) / 1000);
                 if (seg > 32 * 60) { ocultarCobro(); return; } // el POS no lo cerró (se cerró la pestaña): la TV vuelve sola a la publicidad
                 msg.innerHTML = mensajeEspera(seg);
-                fodiExpr(seg < 6 ? 'happy' : seg < 30 ? 'thinking' : seg < 100 ? 'focused' : 'neutral');
+                // Siempre amable: sin cejas/ojos achinados (thinking/focused se veían bravos). Alterna sonrisa, guiño y calma.
+                var ciclo = ['happy', 'amable', 'wink', 'amable', 'happy', 'shy'];
+                fodiExpr(ciclo[Math.floor(seg / 4) % ciclo.length]);
             };
             tic();
             cobroReloj = setInterval(tic, 4000);
