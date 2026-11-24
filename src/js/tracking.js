@@ -100,8 +100,10 @@ function startPresencia(db) {
         if (/[?&]nopresencia=1/.test(location.search)) return;
         window.__roalPresencia = true;
         let sid = '';
-        try { sid = sessionStorage.getItem('roal_sid') || ''; } catch (_) { /* sin storage */ }
-        if (!sid) { sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('roal_sid', sid); } catch (_) { /* sin storage */ } }
+        // Estable por navegador (localStorage): varias pestañas o ir del menú al juego cuentan como UNA persona, no como varias.
+        try { sid = localStorage.getItem('roal_vid') || sessionStorage.getItem('roal_sid') || ''; } catch (_) { /* sin storage */ }
+        if (!sid) { sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+        try { localStorage.setItem('roal_vid', sid); sessionStorage.setItem('roal_sid', sid); } catch (_) { /* sin storage */ }
         const ref = db.collection('presencia').doc(sid);
         const inicio = Date.now();
         const disp = /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 'movil' : 'pc';

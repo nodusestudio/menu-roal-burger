@@ -2930,7 +2930,13 @@ const EN_VIVO_VIGENCIA_MS = 90000;
 function _enVivoLista() {
     const lim = Date.now() - EN_VIVO_VIGENCIA_MS;
     const ord = { pagando: 0, carrito: 1, viendo: 2 };
-    return [..._enVivo.docs.values()].filter((d) => Number(d.ts) > lim).sort((a, b) => (ord[a.etapa] - ord[b.etapa]) || (b.ts - a.ts));
+    // Una persona = un registro: si el mismo cliente (cid) aparece en dos pestañas/dispositivos, se cuenta una vez (el latido más reciente).
+    const porCid = new Map(); const sinCid = [];
+    [..._enVivo.docs.values()].filter((d) => Number(d.ts) > lim).forEach((d) => {
+        if (!d.cid) { sinCid.push(d); return; }
+        const p = porCid.get(d.cid); if (!p || Number(d.ts) > Number(p.ts)) porCid.set(d.cid, d);
+    });
+    return [...porCid.values(), ...sinCid].sort((a, b) => ((ord[a.etapa] ?? 2) - (ord[b.etapa] ?? 2)) || (b.ts - a.ts));
 }
 // Nombre de los visitantes con cuenta: se lee clientes/{cid} una sola vez por cliente y se guarda aquí.
 const _enVivoNombres = new Map();
@@ -2952,14 +2958,16 @@ function _enVivoPintar() {
     if (!w) return;
     const l = _enVivoLista();
     const jugando = l.filter((d) => d.lugar === 'juego').length;
-    const pedidos = l.filter((d) => d.lugar !== 'juego' && d.etapa !== 'viendo').length;
-    const pagando = l.filter((d) => d.etapa === 'pagando').length;
-    const partes = [];
-    if (pedidos) partes.push(`🛒 ${pedidos} con pedido`);
-    if (pagando) partes.push(`💳 ${pagando} pagando`);
-    if (jugando) partes.push(`🎮 ${jugando} jugando`);
+    const menu = l.filter((d) => d.lugar !== 'juego');
+    const pagando = menu.filter((d) => d.etapa === 'pagando').length;
+    const carrito = menu.filter((d) => d.etapa === 'carrito').length;
+    const mirando = menu.filter((d) => d.etapa !== 'pagando' && d.etapa !== 'carrito').length;
+    const pedidos = pagando + carrito;
     w.querySelector('[data-ev-n]').textContent = l.length;
-    w.querySelector('[data-ev-sub]').textContent = l.length ? (partes.join(' · ') || 'solo mirando') : 'nadie en la página';
+    [['mirando', mirando], ['carrito', carrito], ['pagando', pagando], ['jugando', jugando]].forEach(([k, v]) => {
+        const c = w.querySelector(`[data-ev-c="${k}"]`); if (!c) return;
+        c.textContent = v; c.parentElement.classList.toggle('ev-on', v > 0);
+    });
     w.classList.toggle('ev-activo', pedidos > 0);
     w.querySelector('[data-ev-punto]').style.background = l.length ? '#34d399' : '#6b7280';
     if (_enVivo.abierto) _enVivoPintarPanel();

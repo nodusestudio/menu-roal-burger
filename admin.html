@@ -14394,19 +14394,35 @@
 
         <!-- En vivo: visitantes del menú público ahora mismo (admin.js → startPresenciaAdmin). Solo PC. -->
         <button type="button" id="enVivoWidget" title="Quién está en la página ahora y qué está pidiendo" style="display:none">
-            <span class="ev-top"><span data-ev-punto class="ev-punto"></span><b>EN VIVO</b></span>
-            <b data-ev-n class="ev-n">0</b>
-            <span data-ev-sub class="ev-sub">nadie en la página</span>
+            <span class="ev-izq">
+                <span class="ev-top"><span data-ev-punto class="ev-punto"></span><b>EN VIVO</b></span>
+                <b data-ev-n class="ev-n">0</b>
+                <span class="ev-sub">en la página</span>
+            </span>
+            <span class="ev-der">
+                <span class="ev-fila" title="Mirando el menú"><i>👀</i><em>Mirando</em><b data-ev-c="mirando">0</b></span>
+                <span class="ev-fila" title="Ya tienen productos en el carrito"><i>🛒</i><em>En el carrito</em><b data-ev-c="carrito">0</b></span>
+                <span class="ev-fila" title="En la ventana de confirmar pedido"><i>💳</i><em>Pagando</em><b data-ev-c="pagando">0</b></span>
+                <span class="ev-fila" title="Jugando Block ROAL"><i>🎮</i><em>Jugando</em><b data-ev-c="jugando">0</b></span>
+            </span>
         </button>
         <style>
             @media (min-width:1024px){ body.admin-unlocked:not(.mesero-mode) #enVivoWidget{display:flex !important} }
             /* Mismo ancho y esquinas que los botones del menú; contenido centrado en columna */
-            #enVivoWidget{flex-direction:column;align-items:center;justify-content:center;gap:2px;width:100%;box-sizing:border-box;margin:12px 0 0;padding:9px 12px;text-align:center;cursor:pointer;color:#f3f4f6;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:var(--ui-radius,9px);font:inherit;flex-shrink:0;transition:border-color .18s ease,background .18s ease}
+            #enVivoWidget{flex-direction:row;align-items:center;justify-content:space-between;gap:10px;width:100%;box-sizing:border-box;margin:12px 0 0;padding:9px 12px;text-align:center;cursor:pointer;color:#f3f4f6;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:var(--ui-radius,9px);font:inherit;flex-shrink:0;transition:border-color .18s ease,background .18s ease}
             #enVivoWidget:hover{background:rgba(255,255,255,.09)}
             #enVivoWidget .ev-top{display:flex;align-items:center;justify-content:center;gap:7px;font-size:.72rem;letter-spacing:.08em}
             #enVivoWidget .ev-punto{width:8px;height:8px;border-radius:2px;background:#6b7280;display:inline-block}
             #enVivoWidget .ev-n{font-family:'Space Grotesk',sans-serif;font-size:1.7rem;line-height:1.1}
-            #enVivoWidget .ev-sub{font-size:.72rem;opacity:.75;line-height:1.25;overflow-wrap:anywhere}
+            #enVivoWidget .ev-sub{font-size:.68rem;opacity:.75;line-height:1.25}
+            #enVivoWidget .ev-izq{display:flex;flex-direction:column;align-items:center;gap:1px;flex:0 0 auto}
+            #enVivoWidget .ev-der{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+            #enVivoWidget .ev-fila{display:flex;align-items:center;gap:6px;font-size:.74rem;line-height:1.2;opacity:.5;text-align:left}
+            #enVivoWidget .ev-fila i{font-style:normal;width:1.2em;text-align:center}
+            #enVivoWidget .ev-fila em{font-style:normal;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            #enVivoWidget .ev-fila b{font-family:'Space Grotesk',sans-serif;font-size:.9rem;min-width:1.2em;text-align:right}
+            #enVivoWidget .ev-fila.ev-on{opacity:1}
+            #enVivoWidget .ev-fila.ev-on b{color:#ff9a3d}
             #enVivoWidget.ev-activo{border-color:#ff9a3d}
             /* REGLA: nada detrás de la barra fija de abajo: la barra lateral termina encima de ella */
             @media (min-width:1024px){ body.admin-unlocked:not(.mesero-mode) .admin-sidebar{height:calc(100vh - var(--rr-bar-h,0px)) !important} }

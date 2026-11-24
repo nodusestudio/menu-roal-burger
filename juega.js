@@ -911,8 +911,9 @@
     function presenciaJuego(uid) {
         if (presenciaOn) return; presenciaOn = true;
         try {
-            let sid = ''; try { sid = sessionStorage.getItem('roal_sid') || ''; } catch (_) { /* sin storage */ }
-            if (!sid) { sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('roal_sid', sid); } catch (_) { /* sin storage */ } }
+            let sid = ''; try { sid = localStorage.getItem('roal_vid') || sessionStorage.getItem('roal_sid') || ''; } catch (_) { /* sin storage */ }
+            if (!sid) { sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+            try { localStorage.setItem('roal_vid', sid); sessionStorage.setItem('roal_sid', sid); } catch (_) { /* sin storage */ }
             const url = `https://firestore.googleapis.com/v1/projects/${window.FIREBASE_CONFIG.projectId}/databases/(default)/documents/presencia/${sid}`;
             const inicio = Date.now(), disp = /Mobi|Android|iPhone/i.test(navigator.userAgent) ? 'movil' : 'pc';
             const enviar = () => {
