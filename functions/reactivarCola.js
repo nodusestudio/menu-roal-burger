@@ -179,6 +179,8 @@ function proteinaGratis(nombre, extraQueso = false) {
 function adaptarRegalo(regalo, fav) {
     if (!fav || !fav.nombre) return regalo;
     const prod = `tu ${String(fav.nombre).trim()}`;
+    // Regla del dueño (2026-11-24): al tequeño no se le regala adición; se regala otro producto (papas pequeñas).
+    if (/teque[ñn]o/i.test(String(fav.nombre)) && (regalo.tipo === 'carne' || regalo.tipo === 'carne_queso' || regalo.tipo === 'queso')) return { ...REGALOS.papas };
     if (regalo.tipo === 'carne') return { ...regalo, texto: proteinaGratis(fav.nombre) };
     if (regalo.tipo === 'carne_queso') return { ...regalo, texto: proteinaGratis(fav.nombre, true) };
     if (regalo.tipo === 'queso') return { ...regalo, texto: `un queso extra en ${prod}` };

@@ -7356,6 +7356,52 @@ function _posBuildCuponFidSection() {
     return section;
 }
 
+// ── Regalo de Reactivar automático (2026-11-24) ──
+// Si el celular del ticket tiene un cupón de Reactivar activo (enviado y aún vigente), el POS muestra solo el aviso
+// «🎁 Adición de proteína gratis» con botón Aplicar: el cajero no pide ni busca códigos. Al aplicar, el cupón queda canjeado
+// y la línea (a $0) sale en el ticket del cliente. La línea guarda el tipo de regalo para descontar inventario más adelante.
+const _posRegaloReact = { key: '', cupon: null, ts: 0, cargando: false };
+function _posRegaloReactivarNombre(k) {
+    return /papas/i.test(String(k && `${k.beneficio || ''} ${k.regalo || ''}` || '')) ? 'Papas pequeñas gratis' : 'Adición de proteína gratis';
+}
+function _posRegaloReactivarRefrescar() {
+    const cont = document.getElementById('internalOrderItemsSummary');
+    if (!cont || !cont.parentNode || !firebaseDb) return;
+    let box = document.getElementById('posRegaloReactivar');
+    const key = _sqPhoneKey((typeof posTicketConfig !== 'undefined' && posTicketConfig?.customerPhone) || '');
+    if (key && (_posRegaloReact.key !== key || Date.now() - _posRegaloReact.ts > 60000) && !_posRegaloReact.cargando) {
+        _posRegaloReact.cargando = true;
+        firebaseDb.collection('cupones_fidelizacion').where('telefono', 'in', [key, `57${key}`]).get().then((snap) => {
+            const ahora = Date.now();
+            const k = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+                .filter((x) => x.motivo === 'reactivar' && x.estado === 'activo' && _tsMs(x.venceAt) > ahora)
+                .sort((a, b) => _tsMs(b.creadoAt) - _tsMs(a.creadoAt))[0] || null;
+            _posRegaloReact.cupon = k;
+        }).catch(() => { _posRegaloReact.cupon = null; }).finally(() => {
+            _posRegaloReact.key = key; _posRegaloReact.ts = Date.now(); _posRegaloReact.cargando = false;
+            _posRegaloReactivarRefrescar();
+        });
+    }
+    const k = key && _posRegaloReact.key === key ? _posRegaloReact.cupon : null;
+    const yaAplicado = k && internalOrderItems.some((i) => i.cuponFidelizacionCodigo === k.codigo);
+    if (!k || yaAplicado) { box?.remove(); return; }
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'posRegaloReactivar';
+        box.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px;padding:7px 10px;border:1px solid rgba(251,146,60,.6);border-radius:9px;font-size:.85rem;font-weight:600';
+        cont.parentNode.insertBefore(box, cont);
+    }
+    const vence = new Date(_tsMs(k.venceAt)).toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'America/Bogota' });
+    box.innerHTML = `<span>🎁 ${escapeHtml(_posRegaloReactivarNombre(k))} <small style="opacity:.7;font-weight:500">· vence ${escapeHtml(vence)}</small></span><button type="button" class="pos-note-save-btn" style="padding:5px 12px">Aplicar</button>`;
+    box.querySelector('button').onclick = async (ev) => {
+        const b = ev.currentTarget; b.disabled = true; b.textContent = '…';
+        try { await _posCanjearCuponFid(k.codigo); showNotice(`🎁 ${_posRegaloReactivarNombre(k)} aplicada`, 'ok'); }
+        catch (err) { showNotice(err.message || 'No se pudo aplicar el regalo', 'error'); b.disabled = false; b.textContent = 'Aplicar'; }
+        _posRegaloReact.ts = 0;
+        _posRegaloReactivarRefrescar();
+    };
+}
+
 async function _posCanjearCuponFid(codigo) {
     if (internalOrderItems.some((i) => i.cuponFidelizacionCodigo === codigo)) throw new Error('Ese cupón ya está en el ticket.');
     const ref = firebaseDb.collection('cupones_fidelizacion').doc(codigo);
@@ -7408,7 +7454,7 @@ async function _posCanjearCuponFid(codigo) {
     internalOrderItems.push({
         itemKey: `cupon-fid-${codigo}`,
         productId: prod ? prod.id : 'cupon-fidelizacion',
-        productName: prod ? prod.nombre : `🎟️ Cupón: ${k.beneficio || 'regalo'}`,
+        productName: prod ? prod.nombre : (k.motivo === 'reactivar' ? `🎁 ${_posRegaloReactivarNombre(k)}` : `🎟️ Cupón: ${k.beneficio || 'regalo'}`),
         categoryName: prod ? (prod.categoria || 'Sin categoria') : 'CUPONES EXCLUSIVOS',
         quantity: 1,
         unitPrice: 0,
@@ -7419,7 +7465,7 @@ async function _posCanjearCuponFid(codigo) {
         promoLabel: etiqueta,
         ...(prod ? { cortesia: true, cortesiaPrecio: precio } : {}),
         cuponFidelizacionCodigo: codigo,
-        origOrderOptions: { cuponFidelizacionCodigo: codigo, cuponFidelizacionMotivo: String(k.motivo || '') },
+        origOrderOptions: { cuponFidelizacionCodigo: codigo, cuponFidelizacionMotivo: String(k.motivo || ''), ...(k.regalo ? { cuponFidelizacionRegalo: String(k.regalo) } : {}) },
         parentKey: null
     });
     renderPosOrderItems();
@@ -9606,6 +9652,7 @@ function renderPosOrderItems() {
     if (!itemsContainer) {
         return;
     }
+    _posRegaloReactivarRefrescar();
 
     if (!internalOrderItems.length) {
             itemsContainer.innerHTML = '<div class="kanban-empty">Carrito vacio</div>';
@@ -14875,6 +14922,7 @@ function _fidProteinaGratis(nombre) {
     const n = String(nombre || '').trim();
     if (!n) return 'una adición de proteína gratis en tu pedido';
     const prod = `tu ${n}`;
+    if (/teque[ñn]o/i.test(n)) return 'unas papas pequeñas gratis con tu pedido'; // al tequeño no se le regala adición
     if (/de la casa/i.test(n)) return `doble carne gratis en la Burger Caracas de ${prod}`;
     if (/emparejados/i.test(n)) return `doble carne gratis en la hamburguesa de ${prod}`;
     if (/familiar\s*(3|tres)(?!\d)/i.test(n)) return `el agrandado de las dos hamburguesas de ${prod}`;
@@ -14889,7 +14937,7 @@ function _fidProteinaGratis(nombre) {
 }
 function _fidRegaloReactivar(c, extra = []) {
     const fav = _fidProductoFavorito(c, extra);
-    return { tipo: 'carne', oferta: _fidProteinaGratis(fav && fav.nombre), productoId: '' };
+    return { tipo: /teque[ñn]o/i.test(String(fav && fav.nombre || '')) ? 'papas' : 'carne', oferta: _fidProteinaGratis(fav && fav.nombre), productoId: '' };
 }
 
 // Mensaje cálido firmado por Johan (modelo aprobado 2026-11-15): conecta primero, regala después, sin código ni presión.
@@ -16394,6 +16442,8 @@ function _fidRegaloParaProducto(tipo, nombre) {
     const n = String(nombre || '').trim();
     const prod = `tu ${n}`;
     const qs = tipo === 'carne_queso' ? ' y doble queso' : '';
+    if (/teque[ñn]o/i.test(n)) return 'unas papas pequeñas gratis con tu pedido'; // al tequeño no se le regala adición
+    // (el tipo del cupón queda 'carne' en colas viejas; el POS lo nombra por el texto, que dice «papas»)
     if (tipo === 'queso') return `un queso extra en ${prod}`;
     if (/perro|hot\s?dog|salchicha/i.test(n)) return `una salchicha extra${qs} gratis en ${prod}`;
     if (/salchi/i.test(n)) return `doble proteína${qs} gratis en ${prod}`;
