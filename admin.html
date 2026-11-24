@@ -13791,7 +13791,10 @@
         .mesa-map-tile.is-suma-on .mesa-svg { color: #fff; }
         /* Los iconos van flotando en la esquina: no ocupan alto y la tarjeta conserva su forma cuadrada */
         .mesa-map-tile { position: relative; }
-        .mesa-map-tile.is-ocupada .mesa-svg { width: 42px; height: 34px; margin-top: 6px; }
+        .mesa-map-tile.is-ocupada .mesa-svg { width: 42px; height: 34px; margin-top: 0; }
+        /* Los botones (➕ 💰 ☰) van en su propia franja arriba: el contenido baja para que NADA quede montado encima de la mesa. */
+        .mesa-map-tile.is-ocupada { padding-top: 32px; justify-content: flex-end; }
+        .mesa-tile-act { min-width: 24px; min-height: 24px; }
         .mesa-tile-actions { position: absolute; top: 3px; left: 3px; right: 3px; display: flex; justify-content: space-between; margin: 0; pointer-events: none; }
         .mesa-tile-actions .mesa-tile-act { pointer-events: auto; }
         .mesa-tile-act { min-width: 26px; min-height: 26px; padding: 0 4px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: rgba(255,255,255,0.6); display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; line-height: 1; cursor: pointer; user-select: none; opacity: 0.75; }
