@@ -2493,7 +2493,34 @@ function speakOrderAnnouncement(order) {
         }));
 }
 
+// Pedidos que el celular dejó marcados "imprimir al llegar": solo el computador (pantalla grande, sin sesión de mesero) los
+// imprime. Antes de imprimir "reclama" el pedido con una transacción para que, si hay dos computadores abiertos, salga una sola vez.
+let _imprimirAlLlegarCola = Promise.resolve();
+const _imprimirAlLlegarEnCurso = new Set();
+function _imprimirAlLlegarRevisar(orders) {
+    if (isMobileAdminViewport() || _meseroSession || !firebaseDb) return;
+    (orders || []).forEach((o) => {
+        if (!o.imprimirAlLlegar || o.imprimirHecho || o.status !== 'pendiente' || _imprimirAlLlegarEnCurso.has(o.id)) return;
+        _imprimirAlLlegarEnCurso.add(o.id);
+        _imprimirAlLlegarCola = _imprimirAlLlegarCola.then(async () => {
+            try {
+                const ref = firebaseDb.collection(ORDERS_COLLECTION).doc(o.id);
+                const toca = await firebaseDb.runTransaction(async (tx) => {
+                    const d = await tx.get(ref);
+                    if (!d.exists || d.data().imprimirHecho === true) return false;
+                    tx.update(ref, { imprimirHecho: true, imprimirHechoEn: firestoreNow() });
+                    return true;
+                });
+                if (toca) await openOrderPrintTicket(o.id);
+            } catch (e) {
+                showNotice(`No se pudo imprimir el pedido #${o.code || ''}: ${e.message || 'error inesperado.'}`, 'error');
+            } finally { _imprimirAlLlegarEnCurso.delete(o.id); }
+        });
+    });
+}
+
 function announceNewOrders(orders) {
+    if (hasLoadedOrdersOnce) { try { _imprimirAlLlegarRevisar(orders); } catch (_) { /* sin impresión automática */ } }
     const currentOrderIds = new Set(orders.map((order) => order.id));
 
     if (!hasLoadedOrdersOnce) {
@@ -4099,6 +4126,9 @@ function normalizeOrder(raw) {
         cobroRecibidoId: String(raw.cobroRecibidoId || '').trim(),
         // Nota general del ticket y salsas para llevar (POS): el ticket los lee, por eso viajan aquí.
         orderNote: String(raw.orderNote || '').trim(),
+        // "Imprimir al llegar": el celular lo marca y el computador imprime solo (ver _imprimirAlLlegarRevisar).
+        imprimirAlLlegar: raw.imprimirAlLlegar === true,
+        imprimirHecho: raw.imprimirHecho === true,
         salsasLlevar: Array.isArray(raw.salsasLlevar) ? raw.salsasLlevar.map(String) : [],
         salirARecibirConfirmado: raw.salirARecibirConfirmado === true,
         // Campos que el ticket / la edición de pedidos leen pero que normalizeOrder descartaba, por
@@ -10682,6 +10712,16 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
         }
     }
 
+    // Desde el celular (mesero o admin): preguntar si el computador debe imprimir el pedido apenas llegue.
+    let _imprimirAlLlegar = false;
+    if ((!isEditing || _wasEnEspera) && (_meseroSession || isMobileAdminViewport())) {
+        _imprimirAlLlegar = await showConfirmModal({
+            icon: '🖨️', title: '¿Imprimir en el computador?',
+            message: 'Si dices que sí, el pedido sale impreso solo apenas llegue al computador.',
+            confirmText: 'Sí, imprimir', cancelText: 'No', danger: false
+        });
+    }
+
     const saveBtn = document.getElementById('posDrawerSaveBtn');
     const mesaNumber = config.mesaNumber || editData?.mesaNumber || null;
     const defaultName = orderType === 'mesa'
@@ -10749,6 +10789,7 @@ async function _saveAdminOrderQuickImpl(config = {}, opts = {}) {
             updatedAt: firestoreNow()
         };
 
+        if (_imprimirAlLlegar) { orderDoc.imprimirAlLlegar = true; orderDoc.imprimirHecho = false; }
         // Velocidad del cajero (solo pedidos nuevos): tiempo activo y toques desde que se abrió el POS. Ver _posMed.
         if (!isEditing && _posMed.toques > 0) {
             orderDoc.posMedicion = {
