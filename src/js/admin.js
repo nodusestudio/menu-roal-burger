@@ -45053,6 +45053,7 @@ function _cqPintar() {
     const st = _cqEstado(), c = _cqTarjeta(), x = st.cobro;
     if (!x) { c.hidden = true; return; }
     c.hidden = false;
+    setTimeout(_tfApilar, 0);
     const seg = Math.max(0, Math.round((Date.now() - x.creadoMs) / 1000));
     const reloj = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
     const quien = (x.cliente ? ` · ${escapeHtml(x.cliente)}` : '') + (x.parcial && x.pedidoTotal ? ` · paga solo una parte (pedido ${formatMoney(x.pedidoTotal)})` : '');
@@ -45396,8 +45397,8 @@ async function _tfMostrarDatos(id, datosDirectos, auto) {
     const c = datosDirectos || it.datos, texto = _tfMensaje(c);
     const fondo = document.createElement('div');
     fondo.setAttribute('data-tf-modal', '1');
-    if (auto) fondo.style.visibility = 'hidden'; // «Por WhatsApp»: se copia sola la imagen y no se muestra la ventana (si falla, se muestra)
     fondo.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;box-sizing:border-box;z-index:2147482500;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto';
+    if (auto) fondo.style.visibility = 'hidden'; // «Por WhatsApp»: se copia sola la imagen y no se muestra la ventana (si falla, se muestra)
     const caja = document.createElement('div');
     caja.style.cssText = 'width:min(420px,100%);border-radius:16px;background:#14172a;color:#fff;border:1px solid rgba(255,255,255,.2);padding:18px;font:15px system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);text-align:center';
     const B = 'border:0;border-radius:12px;padding:12px;font-weight:800;font-size:14px;cursor:pointer;color:#fff;width:100%;';
@@ -45427,14 +45428,13 @@ async function _tfMostrarDatos(id, datosDirectos, auto) {
     const archivo = new File([blob], `pago-${(c.codigo || 'roal').toString().replace(/\W+/g, '')}.png`, { type: 'image/png' });
     if (auto) {
         let ok = false;
-        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob, 'text/plain': new Blob([texto], { type: 'text/plain' }) })]); ok = true; }
-        catch (_) { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); ok = true; } catch (__) { /* se muestra la ventana */ } }
+        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); ok = true; } catch (__) { /* se muestra la ventana */ }
         if (ok) { cerrar(); showNotice('QR copiado: pégalo en el chat de WhatsApp. Esperando el pago…', 'ok'); return; }
         fondo.style.visibility = '';
     }
     q('tfCopiarImg').disabled = false;
     q('tfCopiarImg').addEventListener('click', async () => {
-        try { let juntos = true; try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob, 'text/plain': new Blob([texto], { type: 'text/plain' }) })]); } catch (_) { juntos = false; await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); } msg(juntos ? '✓ QR y mensaje copiados: pégalos en el chat (si solo aparece la imagen, usa también «Copiar mensaje»)' : '✓ Imagen copiada: pégala en el chat'); }
+        try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); msg('✓ Imagen copiada: pégala en el chat'); }
         catch (_) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = archivo.name; a.click(); msg('Tu navegador no copia imágenes: se descargó para adjuntarla', true); }
     });
     if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
@@ -45446,14 +45446,14 @@ function _tfPintar() {
     const st = _tfEstado();
     let p = document.getElementById('transfPanel');
     const qc = document.getElementById('cobroQrCard');
-    if (!st.mapa.size) { if (p) p.hidden = true; if (qc) qc.style.bottom = '14px'; return; }
+    if (!st.mapa.size) { if (p) p.hidden = true; _tfApilar(); return; }
     if (!p) {
         p = document.createElement('div'); p.id = 'transfPanel';
         p.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:2147482000;width:min(340px,calc(100vw - 28px));max-height:50vh;overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.25);background:rgba(20,23,42,.97);color:#fff;font:14px system-ui,sans-serif;padding:10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.5)';
         p.addEventListener('click', (e) => {
             const b = e.target.closest('button[data-tf]'); if (!b) return;
             const id = b.dataset.id;
-            if (b.dataset.tf === 'datos') _tfMostrarDatos(id); else if (b.dataset.tf === 'ya') _tfYaPago(id, b); else if (b.dataset.tf === 'x') _tfCancelar(id, 'cancelado');
+            if (b.dataset.tf === 'datos') _tfMostrarDatos(id); else if (b.dataset.tf === 'img') _tfCopiarImagenDe(id, b); else if (b.dataset.tf === 'ya') _tfYaPago(id, b); else if (b.dataset.tf === 'x') _tfCancelar(id, 'cancelado');
         });
         document.body.appendChild(p);
     }
@@ -45462,11 +45462,30 @@ function _tfPintar() {
         const c = it.datos, min = Math.max(0, Math.floor((Date.now() - (c.creadoMs || Date.now())) / 60000));
         const quien = `${escapeHtml(c.codigo ? '#' + c.codigo : '')}${c.cliente ? ' · ' + escapeHtml(c.cliente) : ''}`;
         if (c.estado === 'pagado') return `<div style="border-top:1px solid rgba(255,255,255,.15);padding:8px 0"><b style="color:#7ee2a8">✅ Pago recibido${c.pagador ? ' de ' + escapeHtml(c.pagador) : ''}</b><br>${quien} · ${formatMoney(c.total)} · registrando el cobro…</div>`;
-        return `<div style="border-top:1px solid rgba(255,255,255,.15);padding:8px 0"><div><b>${quien}</b> · ${formatMoney(c.total)}${c.parcial ? ` <small style="opacity:.8">(parte de ${formatMoney(c.pedidoTotal)})</small>` : ''}</div><div style="opacity:.7;font-size:12px;margin:2px 0 6px">hace ${min} min</div><div style="display:flex;gap:6px"><button type="button" data-tf="datos" data-id="${it.id}" style="${BT}flex:1;background:#1565c0">QR / llave</button><button type="button" data-tf="ya" data-id="${it.id}" style="${BT}flex:1;background:#2e7d32">✓ Ya pagó</button><button type="button" data-tf="x" data-id="${it.id}" style="${BT}background:#c62828">✕</button></div></div>`;
+        return `<div style="border-top:1px solid rgba(255,255,255,.15);padding:8px 0"><div><b>${quien}</b> · ${formatMoney(c.total)}${c.parcial ? ` <small style="opacity:.8">(parte de ${formatMoney(c.pedidoTotal)})</small>` : ''}</div><div style="opacity:.7;font-size:12px;margin:2px 0 6px">hace ${min} min</div><div style="display:flex;gap:6px"><button type="button" data-tf="datos" data-id="${it.id}" style="${BT}flex:1;background:#1565c0">QR / llave</button><button type="button" data-tf="img" data-id="${it.id}" title="Copiar imagen del QR" style="${BT}background:#6a1b9a">🖼️ Copiar</button><button type="button" data-tf="ya" data-id="${it.id}" style="${BT}flex:1;background:#2e7d32">✓ Ya pagó</button><button type="button" data-tf="x" data-id="${it.id}" style="${BT}background:#c62828">✕</button></div></div>`;
     }).join('');
     if (html !== st.html) { st.html = html; p.innerHTML = html; } // no se repinta si nada cambió: evita que un clic se pierda
     p.hidden = false;
-    if (qc) qc.style.bottom = (p.offsetHeight + 26) + 'px';
+    _tfApilar();
+}
+// Apila la tarjeta del cobro con QR encima del panel de transferencias para que nunca se monten una sobre otra.
+function _tfApilar() {
+    const p = document.getElementById('transfPanel'), qc = document.getElementById('cobroQrCard');
+    if (!qc) return;
+    qc.style.bottom = (p && !p.hidden) ? (p.offsetHeight + 26) + 'px' : '14px';
+}
+// Copia SOLO la imagen del QR (con todo el mensaje dibujado) para pegarla en WhatsApp.
+async function _tfCopiarImagenDe(id, boton) {
+    const it = _tfEstado().mapa.get(id); if (!it) return;
+    const txt = boton ? boton.textContent : '';
+    try {
+        const url = await _tfQrUrl(it.datos.total);
+        const blob = url ? await _tfImagenBlob(url, it.datos) : null;
+        if (!blob) throw new Error('sin imagen');
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        if (boton) boton.textContent = '✓ Copiada';
+    } catch (_) { if (boton) boton.textContent = 'No se pudo'; }
+    if (boton) setTimeout(() => { boton.textContent = txt; }, 1800);
 }
 function _tfQuitar(id) {
     const st = _tfEstado(), it = st.mapa.get(id);
