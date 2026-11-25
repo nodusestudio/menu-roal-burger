@@ -2918,7 +2918,7 @@ exports.chatRoalMenuList = onCall(
 // aviso. Ver runInactivitySweep en orchestrator.js para el detalle.
 // ─────────────────────────────────────────────────────────────
 exports.chatRoalInactivitySweep = onSchedule(
-    { cpu: 0.5, schedule: 'every 5 minutes', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
+    { cpu: 0.5, schedule: 'every 10 minutes', region: 'us-central1', secrets: [ULTRAMSG_INSTANCE, ULTRAMSG_TOKEN] },
     async () => {
         const { warned, archived, toPushWhatsApp } = await runInactivitySweep(getFirestore());
         if (toPushWhatsApp.length) {
@@ -3027,7 +3027,7 @@ async function sweepEnviadoOrders(db, nowMs = Date.now()) {
 }
 
 exports.sweepEnviadoToEntregado = onSchedule(
-    { cpu: 0.5, schedule: 'every 5 minutes', region: 'us-central1' },
+    { cpu: 0.5, schedule: 'every 10 minutes', region: 'us-central1' },
     async () => {
         const closed = await sweepEnviadoOrders(getFirestore());
         console.log(`sweepEnviadoToEntregado: ${closed} pedido(s) cerrados a 'entregado'.`);
@@ -3615,7 +3615,7 @@ exports.actualizarMetricasFacebook = onSchedule(
 // Cada minuto de 6 p. m. a 11:59 p. m. (hora Colombia): si el código no se agotó solo, a una hora al azar
 // entre agotadoDesde (9 p. m.) y +agotadoVentanaMin (45 min) sale la historia de "agotado".
 exports.publicarAgotadoPorHorario = onSchedule(
-    { schedule: '* 18-23 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
+    { schedule: '*/5 18-23 * * *', timeZone: 'America/Bogota', region: 'us-central1' },
     async () => {
         const r = await instagramHistorias.publicarAgotadoPorHorario(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
         if (r.ok && !r.ya) console.log(`publicarAgotadoPorHorario: publicada ${r.mediaId}`);
@@ -3740,7 +3740,7 @@ exports.historiaPorEventoCaja = onDocumentWritten(
 
 // Cada 5 min: publica las publicaciones programadas cuya hora ya llegó.
 exports.publicarPostsProgramados = onSchedule(
-    { schedule: '*/5 * * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
+    { schedule: '*/10 * * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
     async () => {
         try {
             // Primero deja lista la historia de los días cerrados (si hoy toca); luego se publica todo lo vencido.
