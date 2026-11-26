@@ -15283,6 +15283,19 @@ function _fbMensajeRespuesta(r) {
     if (/coca|gaseosa|bebida|refresco|pepsi|sprite|postobon/.test(t)) {
         partes.push('Sobre las gaseosas: sí las manejamos, ese día se nos habían agotado y por eso no pudimos ofrecértelas. Gracias por avisarnos, vamos a estar más pendientes del inventario 🙏');
     }
+    // Vegetales adicionales (pepinillos, aguacate, maíz, cebolla, tomate, lechuga…): NUNCA se cobran, es un plus de la casa.
+    const vegs = [['pepinill', 'pepinillos'], ['aguacate', 'aguacate'], ['maiz', 'maíz'], ['maíz', 'maíz'], ['cebolla', 'cebolla'], ['tomate', 'tomate'], ['lechuga', 'lechuga'], ['repollo', 'repollo'], ['zanahoria', 'zanahoria'], ['pepino', 'pepino']];
+    const vegsHallados = [];
+    vegs.forEach(([k, n]) => { if (t.includes(k) && !vegsHallados.includes(n) && !(k === 'pepino' && vegsHallados.includes('pepinillos'))) vegsHallados.push(n); });
+    if (vegsHallados.length) {
+        const lista = vegsHallados.length > 1 ? `${vegsHallados.slice(0, -1).join(', ')} y ${vegsHallados[vegsHallados.length - 1]}` : vegsHallados[0];
+        partes.push(`Sobre ${lista}: con gusto te los agregamos en tu próximo pedido, sin costo adicional 🥒 Los vegetales extra son un plus de la casa, solo tienes que pedirlos en las notas de tu hamburguesa.`);
+    }
+    // Más salsas: también son gratis, solo hay que pedirlas.
+    const salsaHallada = /salsa|ajo|mayonesa|mayo\b|ketchup|catsup|mostaza|bbq|picante|aji\b|ají/.test(t) && /m[aá]s|extra|adicional|poca|falt|quiz|agreg|gust|pon|sugier|deber/.test(t);
+    if (salsaHallada) {
+        partes.push('Sobre las salsas: puedes pedir todas las que quieras en tu próximo pedido, sin costo adicional 🥫 Las salsas extra también son un plus de la casa, solo indícalo en las notas.');
+    }
     if (/papa/.test(t)) {
         partes.push('Tomamos nota de lo que nos dices sobre las papas, lo vamos a revisar con el equipo.');
     }
@@ -15293,6 +15306,8 @@ function _fbMensajeRespuesta(r) {
         partes.push('Lamentamos que tu experiencia no haya sido la mejor. Queremos hacerlo bien contigo: cuéntanos qué pasó y lo solucionamos 🙏');
     } else if (partes.length === 2) {
         partes.push('Nos alegra mucho que lo hayas disfrutado y que nos lo cuentes 🧡');
+    } else if ((vegsHallados.length || salsaHallada) && partes.length === 3) {
+        partes.push('Nos alegra mucho que lo hayas disfrutado 🧡');
     }
     partes.push('¡Aquí estamos para cuando quieras volver! 🍔');
     return partes.join('\n\n');
