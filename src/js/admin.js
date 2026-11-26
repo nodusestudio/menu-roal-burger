@@ -4368,22 +4368,9 @@ function renderFeedbackPending() {
     host.hidden = pending.length === 0;
     host.innerHTML = pending.map(filaHtml).join('');
 
-    // POS: solo los pendientes de cuponera, para que el cajero tenga el número y el mensaje a la mano.
+    // POS: ya no se muestran avisos arriba; los pendientes salen en la barra inferior (📣).
     const posHost = document.getElementById('posFeedbackHost');
-    if (posHost) {
-        const cup = pending.filter((o) => feedbackTipoOrden(o) === 'cuponera');
-        posHost.hidden = cup.length === 0;
-        posHost.innerHTML = cup.map(filaHtml).join('');
-        if (posHost.dataset.listener !== '1') {
-            posHost.dataset.listener = '1';
-            posHost.addEventListener('click', (event) => {
-                const phoneBtn = event.target.closest('[data-feedback-phone]');
-                if (phoneBtn) { copyTextToClipboard(phoneBtn.dataset.feedbackPhone); return; }
-                const btn = event.target.closest('[data-feedback-send]');
-                if (btn) sendFeedbackRequest(btn.dataset.feedbackSend, btn);
-            });
-        }
-    }
+    if (posHost) { posHost.hidden = true; posHost.innerHTML = ''; }
 }
 
 async function sendFeedbackRequest(orderId, btn, orderOverride, extra = {}, soloMarcar = false) {
