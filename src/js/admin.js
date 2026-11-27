@@ -40571,8 +40571,31 @@ function rdEmojisFrecuentes(uso, max = 12) {
 }
 // </redes-instagram>
 
+// Redes: 5 pestañas arriba y, dentro de cada una, sub-pestañas. Cada sub-pestaña es una "hoja" (rdState.tab).
+const RD_GRUPOS = [
+    { id: 'calendario', subs: [['calendario', '📅 Calendario'], ['reels', '🎬 Reels'], ['historias', '⭐ Historias'], ['posts', '📝 Posts']] },
+    { id: 'mensajes', subs: [['chats', '💬 Mensajes']] },
+    { id: 'metricas', subs: [['metricas', '📊 Métricas']] },
+    { id: 'ia', subs: [['ia', '🤖 IA']] },
+    { id: 'config', subs: [['cuentas_ig', '📸 Instagram'], ['cuentas_fb', '📘 Facebook'], ['cuentas_tg', '✈️ Telegram'], ['contenido', '✍️ Contenido de la IA']] }
+];
+// Hojas que viven dentro de otra sub-pestaña: el editor (según el tipo) y las series (dentro de Reels).
+function rdSubActiva(leaf) {
+    if (leaf === 'series') return 'reels';
+    if (leaf === 'crear') return rdState.ed?.tipo === 'reel' ? 'reels' : rdState.ed?.tipo === 'historia' ? 'historias' : 'posts';
+    return leaf;
+}
+function rdGrupoDe(leaf) {
+    const sub = rdSubActiva(leaf);
+    return RD_GRUPOS.find((g) => g.subs.some(([k]) => k === sub)) || RD_GRUPOS[0];
+}
+// Panel de HTML donde se pinta cada hoja.
+const rdPanelDe = (leaf) => (leaf.startsWith('cuentas_') ? 'cuentas' : leaf);
+
 const rdState = {
     tab: 'calendario',
+    subPorGrupo: {},
+    volverA: '',
     cargado: false,
     cargando: false,
     mes: '',
@@ -40596,14 +40619,22 @@ async function _ensureRedesLoaded() {
     const nav = document.getElementById('rdTabs');
     if (nav && !nav.dataset.bound) {
         nav.dataset.bound = '1';
-        nav.addEventListener('click', (e) => {
-            const b = e.target.closest('[data-rd-tab]');
-            if (!b) return;
-            rdState.tab = b.dataset.rdTab;
+        const ir = (leaf) => {
+            rdState.tab = leaf;
             rdPintarTabs();
             rdRender();
             // Si las series cambiaron fechas o pausas, el calendario se vuelve a leer para mostrar lo vigente.
             if (!rdState.cargado && !rdState.cargando) rdCargar().then(() => rdRender()).catch(() => {});
+        };
+        nav.addEventListener('click', (e) => {
+            const g = e.target.closest('[data-rd-grupo]');
+            if (!g) return;
+            const grupo = RD_GRUPOS.find((x) => x.id === g.dataset.rdGrupo);
+            if (grupo) ir(rdState.subPorGrupo[grupo.id] || grupo.subs[0][0]);
+        });
+        document.getElementById('rdSubTabs')?.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-rd-tab]');
+            if (b) ir(b.dataset.rdTab);
         });
     }
     if (!rdState.mes) { rdState.mes = _rdHoy().slice(0, 7); rdState.semanaDe = rdLunesDe(_rdHoy()); }
@@ -40613,12 +40644,21 @@ async function _ensureRedesLoaded() {
 }
 
 function rdPintarTabs() {
-    document.querySelectorAll('#rdTabs [data-rd-tab]').forEach((b) => {
-        const on = b.dataset.rdTab === rdState.tab;
+    const grupo = rdGrupoDe(rdState.tab);
+    const sub = rdSubActiva(rdState.tab);
+    if (rdState.tab !== 'crear' && rdState.tab !== 'series') rdState.subPorGrupo[grupo.id] = rdState.tab;
+    document.querySelectorAll('#rdTabs [data-rd-grupo]').forEach((b) => {
+        const on = b.dataset.rdGrupo === grupo.id;
         b.classList.toggle('active', on);
         b.setAttribute('aria-selected', String(on));
     });
-    document.querySelectorAll('.rd-panel[data-rd-panel]').forEach((p) => { p.hidden = p.dataset.rdPanel !== rdState.tab; });
+    const barra = document.getElementById('rdSubTabs');
+    if (barra) {
+        barra.hidden = grupo.subs.length < 2;
+        barra.innerHTML = grupo.subs.length < 2 ? '' : grupo.subs.map(([k, t]) => `<button type="button" class="cpana-tab${k === sub ? ' active' : ''}" role="tab" aria-selected="${k === sub}" data-rd-tab="${k}">${t}</button>`).join('');
+    }
+    const panel = rdPanelDe(rdState.tab);
+    document.querySelectorAll('.rd-panel[data-rd-panel]').forEach((p) => { p.hidden = p.dataset.rdPanel !== panel; });
 }
 
 async function rdCargarHistorias() {
@@ -40669,7 +40709,7 @@ async function rdLlamar(accion, payload = {}) {
 }
 
 function rdRender() {
-    const body = document.querySelector(`.rd-panel[data-rd-panel="${rdState.tab}"]`);
+    const body = document.querySelector(`.rd-panel[data-rd-panel="${rdPanelDe(rdState.tab)}"]`);
     if (!body) return;
     if (rdState.tab !== 'chats') rdChatsParar();
     if (rdState.tab === 'chats') rdRenderChats(body);
@@ -40678,9 +40718,45 @@ function rdRender() {
     else if (rdState.tab === 'ia') rdRenderIA(body);
     else if (rdState.tab === 'contenido') rdRenderContenido(body);
     else if (rdState.tab === 'metricas') rdRenderMetricas(body);
-    else if (rdState.tab === 'cuentas') rdRenderCuentas(body);
+    else if (rdState.tab.startsWith('cuentas_')) rdRenderCuentas(body);
     else if (rdState.tab === 'reels') rdRenderReels(body);
     else if (rdState.tab === 'series') rdRenderSeries(body);
+    else if (rdState.tab === 'historias') rdRenderListaTipo(body, 'historia');
+    else if (rdState.tab === 'posts') rdRenderListaTipo(body, 'post');
+}
+
+// Historias y Posts: lista de lo programado/guardado de ese tipo + botón para crear uno nuevo (abre el mismo editor).
+const RD_LISTA_TIPO = {
+    historia: { tipos: ['historia'], nuevo: '➕ Nueva historia', vacio: 'No tienes historias guardadas ni programadas.', nota: 'Las historias del Código del día salen solas y se ven en el Calendario con ⭐. Aquí van las que programas tú.' },
+    post: { tipos: ['foto', 'carrusel'], nuevo: '➕ Nuevo post', vacio: 'No tienes posts guardados ni programados.', nota: 'Fotos y carruseles. Los reels están en la sub-pestaña 🎬 Reels.' }
+};
+function rdRenderListaTipo(body, clave) {
+    const c = RD_LISTA_TIPO[clave];
+    const filtro = rdState['filtro_' + clave] || '';
+    const todos = rdState.posts.filter((p) => c.tipos.includes(p.tipo));
+    const lista = todos.filter((p) => !filtro || p.estado === filtro).sort((a, b) => (rdMomentoDe(b) || 0) - (rdMomentoDe(a) || 0));
+    const estados = [['', 'Todos'], ['borrador', 'Borrador'], ['programada', 'Programada'], ['publicada', 'Publicada'], ['error', 'Con error']];
+    body.innerHTML = `
+        ${rdAvisosHtml()}
+        <div class="rd-toolbar">
+            <div class="rd-vista" role="group" aria-label="Estado">
+                ${estados.map(([v, t]) => `<button type="button" class="cd-btn${filtro === v ? ' is-on' : ''}" data-rd-lf="${v}">${t}</button>`).join('')}
+            </div>
+            <button type="button" class="section-action-btn primary" data-rd-nuevo-tipo="${clave}">${c.nuevo}</button>
+        </div>
+        <p class="cd-muted">${escapeHtml(c.nota)}</p>
+        <div class="rd-listas">
+            <section class="rd-lista">
+                ${lista.length ? lista.map((p) => {
+                    const ms = rdMomentoDe(p);
+                    const est = RD_ESTADOS[p.estado] || RD_ESTADOS.borrador;
+                    return `<button type="button" class="rd-fila" data-rd-abrir="${escapeHtml(p.id)}"><span>${rdIcono(p)} <strong>${ms ? escapeHtml(_cdFechaLarga(rdFechaDeMs(ms))) + ' · ' + escapeHtml(rdHora12(rdHoraDeMs(ms))) : 'Sin fecha'}</strong> <span class="rd-chip rd-chip--${escapeHtml(p.estado)}">${est.icono} ${est.etiqueta}</span></span><span class="cd-muted">${escapeHtml(String(p.caption || '').replace(/\s+/g, ' ').slice(0, 70) || (p.tipo === 'historia' ? 'Historia' : 'Sin texto'))}</span></button>`;
+                }).join('') : `<p class="cd-muted">${filtro ? 'Nada con este estado.' : c.vacio}</p>`}
+            </section>
+        </div>`;
+    body.querySelectorAll('[data-rd-lf]').forEach((b) => b.addEventListener('click', () => { rdState['filtro_' + clave] = b.dataset.rdLf; rdRenderListaTipo(body, clave); }));
+    body.querySelectorAll('[data-rd-nuevo-tipo]').forEach((b) => b.addEventListener('click', () => rdNuevaPublicacion('', clave === 'historia' ? 'historia' : 'foto')));
+    body.querySelectorAll('[data-rd-abrir]').forEach((b) => b.addEventListener('click', () => rdAbrirPublicacion(b.dataset.rdAbrir)));
 }
 
 function rdAvisosHtml() {
@@ -40871,8 +40947,10 @@ function rdEdDesdePost(p) {
     };
 }
 
-function rdNuevaPublicacion(fecha) {
+function rdNuevaPublicacion(fecha, tipo = 'foto') {
     rdState.ed = rdEdVacio(fecha);
+    rdState.ed.tipo = tipo;
+    rdState.volverA = ['historias', 'posts'].includes(rdState.tab) ? rdState.tab : 'calendario';
     rdState.tab = 'crear';
     rdPintarTabs();
     rdRender();
@@ -40882,6 +40960,7 @@ function rdAbrirPublicacion(id) {
     const p = rdState.posts.find((x) => x.id === id);
     if (!p) return;
     rdState.ed = rdEdDesdePost(p);
+    rdState.volverA = ['historias', 'posts'].includes(rdState.tab) ? rdState.tab : 'calendario';
     rdState.tab = 'crear';
     rdPintarTabs();
     rdRender();
@@ -41052,7 +41131,7 @@ function rdRenderEditor(body) {
 
                 ${rdState.fb?.conectado ? `
                 <label class="cpana-toggle rd-fb-casilla"><input type="checkbox" id="rdFb"${ed.facebook ? ' checked' : ''}${!editable || ed.fbEstado === 'publicada' ? ' disabled' : ''}>
-                    <span><strong>📘 También publicar en Facebook (${escapeHtml(rdState.fb.pageName)})</strong><br><span class="cd-muted">${rdState.fb.activo ? `Sale a la misma hora, con ${ed.tipo === 'reel' ? 'el mismo video' : 'la misma imagen'} y el mismo texto.` : '⚠️ La publicación automática en Facebook está APAGADA: no saldrá sola (actívala en la pestaña 🔗 Cuentas).'}</span></span></label>` : ''}
+                    <span><strong>📘 También publicar en Facebook (${escapeHtml(rdState.fb.pageName)})</strong><br><span class="cd-muted">${rdState.fb.activo ? `Sale a la misma hora, con ${ed.tipo === 'reel' ? 'el mismo video' : 'la misma imagen'} y el mismo texto.` : '⚠️ La publicación automática en Facebook está APAGADA: no saldrá sola (actívala en ⚙️ Configuración → Facebook).'}</span></span></label>` : ''}
                 <div class="rd-campo">
                     <span class="rd-label">Cuándo se publica <span class="cd-muted">(hora de Colombia)</span></span>
                     <div class="rd-cuando">
@@ -41414,7 +41493,7 @@ function rdBindEditor(body) {
 async function rdAccion(body, btn) {
     const ed = rdState.ed;
     const a = btn.dataset.rdA;
-    if (a === 'volver') { rdState.tab = 'calendario'; rdPintarTabs(); await rdCargar().catch(() => {}); rdRender(); return; }
+    if (a === 'volver') { rdState.tab = rdState.volverA || 'calendario'; rdPintarTabs(); await rdCargar().catch(() => {}); rdRender(); return; }
     const etiqueta = btn.textContent;
     btn.disabled = true;
     let volver = null; // fecha a mostrar en el calendario cuando la publicación quedó programada o publicada
@@ -41594,7 +41673,7 @@ function rdRenderIA(body, { sinAdjuntar = false } = {}) {
                 <label>Publicaciones por semana<input type="number" id="rdIaSemana" min="1" max="14" value="${Number(cfg?.postsPorSemana) || 3}"></label>
                 <button type="button" class="section-action-btn primary" id="rdIaGenerar">✨ Generar borradores</button>
             </div>
-            <p class="cd-muted">Horarios y tono se cambian en la pestaña ⚙️ Contenido. Respeta los días de descanso y lo que ya tienes programado.</p>
+            <p class="cd-muted">Horarios y tono se cambian en ⚙️ Configuración → Contenido de la IA. Respeta los días de descanso y lo que ya tienes programado.</p>
         </section>
         <div class="rd-toolbar">
             <h3 class="rd-sub">Pendientes de aprobar <span class="cd-muted">(${pendientes.length})</span></h3>
@@ -42843,8 +42922,17 @@ function rdSeriesHtml() {
         ${nueva}${v.series.length ? v.series.map((s) => rdSerieTarjetaHtml(s, v.series)).join('') : '<p class="cd-muted">Todavía no hay series.</p>'}`;
 }
 
+// Reels y Series comparten sub-pestaña: un selector arriba pasa de una a otra.
+function rdReelsSegHtml(act) {
+    return `<div class="rd-vista" role="group" aria-label="Reels y series" style="margin-bottom:10px"><button type="button" class="cd-btn${act === 'reels' ? ' is-on' : ''}" data-rd-seg="reels">🎬 Reels</button><button type="button" class="cd-btn${act === 'series' ? ' is-on' : ''}" data-rd-seg="series">🗂️ Series</button></div>`;
+}
+function rdReelsSegEnlazar(body) {
+    body.querySelectorAll('[data-rd-seg]').forEach((b) => b.addEventListener('click', () => { rdState.tab = b.dataset.rdSeg; rdPintarTabs(); rdRender(); }));
+}
+
 function rdRenderSeries(body) {
-    body.innerHTML = rdSeriesHtml();
+    body.innerHTML = rdReelsSegHtml('series') + rdSeriesHtml();
+    rdReelsSegEnlazar(body);
     if (!rdSeries.datos && !rdSeries.cargando) { rdSeriesCargar(body); return; }
     rdSeriesEnlazar(body);
 }
@@ -42937,12 +43025,14 @@ function rdSeriesEnlazar(body) {
 function rdRenderReels(body, soloPintar) {
     const lista = rdReels.lista;
     body.innerHTML = `
+        ${rdReelsSegHtml('reels')}
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
             ${RD_REEL_ESTADOS.map(([v, t]) => `<button type="button" class="rd-tab ${rdReels.filtro === v ? 'on' : ''}" data-rr-filtro="${v}">${t}</button>`).join('')}
             <button type="button" class="cd-btn" data-rr="nuevo">➕ Nuevo reel</button>
             <button type="button" class="cd-btn" data-rr="refrescar">🔄</button>
         </div>
         ${!lista ? '<p class="cd-muted">Cargando reels…</p>' : (lista.reels.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${lista.reels.map(rdReelTarjetaHtml).join('')}</div>` : '<p class="cd-muted">No hay reels con este filtro.</p>')}`;
+    rdReelsSegEnlazar(body);
     if (!lista && !soloPintar) rdReelsCargar(body);
     body.querySelectorAll('[data-rr-filtro]').forEach((b) => b.addEventListener('click', () => { rdReels.filtro = b.dataset.rrFiltro; rdReels.lista = null; rdReels.cola = null; rdRenderReels(body); }));
     body.querySelectorAll('[data-rr]').forEach((b) => b.addEventListener('click', async () => {
@@ -42965,10 +43055,12 @@ function rdRenderReels(body, soloPintar) {
 }
 
 function rdRenderCuentas(body) {
-    body.innerHTML = `
-        <section class="cd-ig"><h4 class="cd-ig-titulo">📸 Instagram</h4>${rdCuentaIgHtml()}</section>
-        <section class="cd-ig"><h4 class="cd-ig-titulo">📘 Facebook (página)</h4>${rdCuentaFbHtml()}</section>
-        <section class="cd-ig"><h4 class="cd-ig-titulo">✈️ Telegram (canal)</h4>${rdCuentaTgHtml()}</section>`;
+    const canal = rdState.tab.replace('cuentas_', '');
+    body.innerHTML = canal === 'fb'
+        ? `<section class="cd-ig"><h4 class="cd-ig-titulo">📘 Facebook (página)</h4>${rdCuentaFbHtml()}</section>`
+        : canal === 'tg'
+            ? `<section class="cd-ig"><h4 class="cd-ig-titulo">✈️ Telegram (canal)</h4>${rdCuentaTgHtml()}</section>`
+            : `<section class="cd-ig"><h4 class="cd-ig-titulo">📸 Instagram</h4>${rdCuentaIgHtml()}</section>`;
     const refrescar = async () => {
         [rdState.fb, rdState.tg] = await Promise.all([rdFbLlamar('estado').catch(() => null), rdTgLlamar('estado').catch(() => null)]);
         rdRenderCuentas(body);

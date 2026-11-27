@@ -5378,6 +5378,8 @@
         .cpana-temp-aviso { font-size: 0.78rem; font-weight: 700; color: #ffb48f; }
         .cpana-badge--warn { background: rgba(251,191,36,0.16); color: #fcd34d; }
         .cpana-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+        .cpana-tabs[hidden] { display: none; }
+        #rdSubTabs { margin: 10px 0 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
         /* ── Modo TV (panel de control de la pantalla del local) ── */
         .tvc-estado { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; border-radius: 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); margin-bottom: 14px; }
         .tvc-estado .tvc-dot { width: 14px; height: 14px; border-radius: 50%; background: #3ddc84; box-shadow: 0 0 10px #3ddc84; flex: none; }
@@ -16289,20 +16291,17 @@
             <div class="admin-tab-panel" data-tab-panel="redes">
                 <article class="admin-card rd-card">
                     <div class="card-head">
-                        <h2>📣 Redes · Instagram</h2>
+                        <h2>📣 Redes</h2>
                         <div class="cpana-tabs" role="tablist" id="rdTabs">
-                            <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-rd-tab="calendario">📅 Calendario</button>
-                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="chats">💬 Chats</button>
-                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="crear">✍️ Crear</button>
-                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="metricas">📊 Métricas</button>
-                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="ia">🤖 IA</button>
-                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="contenido">⚙️ Contenido</button>
-                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="reels">🎬 Reels</button>
-                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="series">🗂️ Series</button>
-                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-tab="cuentas">🔗 Cuentas</button>
+                            <button type="button" class="cpana-tab active" role="tab" aria-selected="true" data-rd-grupo="calendario">📅 Calendario</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-grupo="mensajes">💬 Mensajes</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-grupo="metricas">📊 Métricas</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-grupo="ia">🤖 IA</button>
+                            <button type="button" class="cpana-tab" role="tab" aria-selected="false" data-rd-grupo="config">⚙️ Configuración</button>
                         </div>
                     </div>
-                    <p class="admin-hint">Programa las publicaciones de @roalburger por día y hora. Las historias del Código del día salen solas (se ven en el calendario); aquí se programan posts, carruseles e historias.</p>
+                    <div class="cpana-tabs" role="tablist" id="rdSubTabs" hidden></div>
+                    <p class="admin-hint">Programa las publicaciones de @roalburger por día y hora: posts, reels e historias. Las historias del Código del día salen solas (se ven en el calendario).</p>
                     <div class="card-body rd-panel" data-rd-panel="calendario"><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="chats" hidden><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="crear" hidden><!-- render JS --></div>
@@ -16312,6 +16311,8 @@
                     <div class="card-body rd-panel" data-rd-panel="reels" hidden><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="series" hidden><!-- render JS --></div>
                     <div class="card-body rd-panel" data-rd-panel="cuentas" hidden><!-- render JS --></div>
+                    <div class="card-body rd-panel" data-rd-panel="historias" hidden><!-- render JS --></div>
+                    <div class="card-body rd-panel" data-rd-panel="posts" hidden><!-- render JS --></div>
                 </article>
             </div>
 
