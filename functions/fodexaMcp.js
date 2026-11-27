@@ -293,6 +293,26 @@ const HERRAMIENTAS = [
         inputSchema: { type: 'object', properties: { serie: STR('Serie a cambiar (nombre o parte del nombre).'), nombre: STR('Nombre nuevo.'), color: STR('Color hexadecimal.'), hora: STR('Hora diaria "HH:mm".'), facebook: { type: 'boolean' }, activa: { type: 'boolean' } }, required: ['serie'] }
     },
     {
+        name: 'gestionar_imagenes',
+        description: 'Cambia las imágenes de un post, carrusel o historia que todavía no salió, por POSICIÓN (1 = la primera, como se ven en estado_publicacion): "quitar" (posicion), "ordenar" (orden: lista de posiciones en el orden nuevo, ej. [2,1,3]) o "reemplazar" (posicion + url https de la imagen nueva; se convierte y ajusta sola). Si estaba programada vuelve a borrador y lo avisa: reprograma con programar_publicacion. Para agregar usa agregar_imagen.',
+        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.'), accion: { type: 'string', enum: ['quitar', 'ordenar', 'reemplazar'] }, posicion: { type: 'integer', description: 'Posición de la imagen (1 = primera). Para quitar y reemplazar.' }, orden: { type: 'array', items: { type: 'integer' }, description: 'Para ordenar: todas las posiciones en el orden nuevo.' }, url: STR('Para reemplazar: https de la imagen nueva.') }, required: ['id', 'accion'] }
+    },
+    {
+        name: 'gestionar_publicacion',
+        description: 'Acciones sobre una publicación (cualquier tipo): "desprogramar" (vuelve a borrador; no sirve para reels de una serie: usa quitar_de_cola), "reintentar" (si falló en Instagram o Facebook, lo vuelve a intentar en ~2 min), "duplicar" (copia a un borrador nuevo para reusar lo que pegó), "cambiar_video" (url https de un MP4 nuevo para un reel o historia; conserva su hora si seguía en el futuro), "borrar" (elimina un borrador, cancelada o con error con sus archivos; exige confirmar:true; NO borra lo ya publicado) y "publicar_ahora" (sale YA en Instagram y, si tiene la casilla, en Facebook; exige confirmar:true y solo cuando el usuario lo pidió).',
+        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.'), accion: { type: 'string', enum: ['desprogramar', 'reintentar', 'duplicar', 'cambiar_video', 'borrar', 'publicar_ahora'] }, url: STR('Para cambiar_video: https del MP4 nuevo.'), confirmar: { type: 'boolean', description: 'Obligatorio en borrar y publicar_ahora.' } }, required: ['id', 'accion'] }
+    },
+    {
+        name: 'ver_agenda',
+        description: 'Todo lo que va a salir en los próximos días (por defecto 7, máx. 30): publicaciones programadas de cualquier tipo con su serie y hora, el cupo de Instagram de las últimas y próximas 24 h (límite 95), qué historias automáticas están activas (Código del día, días cerrados, abrir y cerrar caja) y avisos (cupo lleno, interruptor apagado, publicaciones atrasadas). Úsala antes de programar para no chocar con lo automático.',
+        inputSchema: { type: 'object', properties: { dias: { type: 'integer', description: '1 a 30 (por defecto 7).' } } }
+    },
+    {
+        name: 'facebook_estado',
+        description: 'Estado de la página de Facebook de Roal Burger (conexión, seguidores, interruptor, último error) y de las publicaciones que van a Facebook con error o pendientes. Con "id" muestra el estado de Facebook de esa publicación. Para reintentar una con error usa gestionar_publicacion con accion "reintentar".',
+        inputSchema: { type: 'object', properties: { id: STR('Id de una publicación (opcional).') } }
+    },
+    {
         name: 'rendimiento',
         description: 'ANALÍTICA: qué publicaciones pegaron en un periodo (Instagram y Facebook juntos). Devuelve las mejores (y las 3 peores si hay suficientes) con tipo, serie, texto, día y hora de publicación, alcance, vistas, interacciones, guardados, compartidos y tasa de interacción, más los totales del periodo. Úsala para "verifícame los reels de la semana pasada, ¿cuál pegó?". Las publicaciones con menos de 3 días siguen subiendo: el resultado lo avisa. Periodos: ultimos_7 (por defecto), semana_pasada (lunes a domingo anterior), ultimos_30, este_mes, o desde/hasta (YYYY-MM-DD, hora de Colombia, máx. 120 días).',
         inputSchema: { type: 'object', properties: { periodo: { type: 'string', enum: ['ultimos_7', 'semana_pasada', 'ultimos_30', 'este_mes'] }, desde: STR('Fecha inicial YYYY-MM-DD (opcional; manda sobre periodo).'), hasta: STR('Fecha final YYYY-MM-DD (opcional).'), ordenarPor: { type: 'string', enum: ['alcance', 'vistas', 'interacciones', 'guardados', 'compartidos', 'tasa'], description: 'Criterio para el ranking (por defecto alcance).' }, n: { type: 'integer', description: 'Cuántas mostrar (1 a 30, por defecto 10).' } } }
@@ -364,6 +384,14 @@ async function llamarHerramienta(db, nombre, a, deps) {
     }
     if (nombre === 'configurar_serie') return series.configurarSerie(db, a, 'mcp', so);
     if (nombre === 'definir_semana') return series.definirSemana(db, a, 'mcp', so);
+    if (['gestionar_imagenes', 'gestionar_publicacion', 'ver_agenda', 'facebook_estado'].includes(nombre)) {
+        const ctl = deps.control || require('./redesControl');
+        const co = { ...opts, ...(opts.nowMs ? { nowMs: opts.nowMs } : {}) };
+        if (nombre === 'gestionar_imagenes') return ctl.imagenes(db, a, 'mcp', co);
+        if (nombre === 'gestionar_publicacion') return ctl.gestionar(db, a, 'mcp', co);
+        if (nombre === 'ver_agenda') return ctl.agenda(db, a, opts.nowMs ? { nowMs: opts.nowMs } : {});
+        return ctl.facebookEstado(db, a);
+    }
     if (['rendimiento', 'resumen_series', 'crecimiento', 'historico_semanal'].includes(nombre)) {
         const an = deps.analitica || require('./redesAnalitica');
         const o = opts.nowMs ? { nowMs: opts.nowMs } : {};
@@ -385,7 +413,7 @@ async function procesarRpc(db, msg, deps) {
     if (id === undefined) return null; // notificación
     if (method === 'initialize') {
         const pedida = String(params?.protocolVersion || '');
-        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Publicaciones de Roal Burger en Instagram y Facebook: posts, carruseles, historias y reels, sin restricción por tipo (crear_publicacion, agregar_imagen, programar_publicacion, listar_publicaciones, estado_publicacion, editar_publicacion, cancelar_publicacion; subir_video con tipo historia para video por PUT). Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_reel y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola. ANALÍTICA (solo lectura): rendimiento (qué publicaciones pegaron en un periodo, Instagram + Facebook), resumen_series (qué serie, tipo, día y hora rinde más), crecimiento (seguidores e historias) e historico_semanal (semanas anteriores guardadas). Para "cuál pegó la semana pasada" usa rendimiento con periodo semana_pasada y luego resumen_series; no concluyas con menos de 3 publicaciones por grupo.' });
+        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Publicaciones de Roal Burger en Instagram y Facebook: posts, carruseles, historias y reels, sin restricción por tipo (crear_publicacion, agregar_imagen, programar_publicacion, listar_publicaciones, estado_publicacion, editar_publicacion, cancelar_publicacion; subir_video con tipo historia para video por PUT). Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_reel y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola. CONTROL: gestionar_imagenes (quitar/ordenar/reemplazar imágenes por posición), gestionar_publicacion (desprogramar, reintentar, duplicar, cambiar_video, borrar y publicar_ahora; los dos últimos exigen confirmar:true y solo si el usuario lo pidió), ver_agenda (qué sale, cupo de Instagram e historias automáticas: úsala antes de programar) y facebook_estado. ANALÍTICA (solo lectura): rendimiento (qué publicaciones pegaron en un periodo, Instagram + Facebook), resumen_series (qué serie, tipo, día y hora rinde más), crecimiento (seguidores e historias) e historico_semanal (semanas anteriores guardadas). Para "cuál pegó la semana pasada" usa rendimiento con periodo semana_pasada y luego resumen_series; no concluyas con menos de 3 publicaciones por grupo.' });
     }
     if (method === 'ping') return rpcOk(id, {});
     if (method === 'tools/list') return rpcOk(id, { tools: HERRAMIENTAS });

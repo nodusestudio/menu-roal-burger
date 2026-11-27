@@ -187,7 +187,7 @@ test('MCP: initialize, tools/list con todas las herramientas y notificación sin
     const ini = await rpc(tk, 'initialize', { protocolVersion: '2025-06-18' });
     assert.equal(ini.body.result.protocolVersion, '2025-06-18');
     const lista = await rpc(tk, 'tools/list');
-    assert.deepEqual(lista.body.result.tools.map((x) => x.name).sort(), ['agregar_a_cola', 'agregar_imagen', 'cancelar_publicacion', 'cancelar_reel', 'configurar_serie', 'crear_publicacion', 'crear_serie', 'crecimiento', 'definir_semana', 'editar_publicacion', 'editar_reel', 'estado_publicacion', 'estado_reel', 'historico_semanal', 'listar_publicaciones', 'listar_reels', 'listar_series', 'programar_publicacion', 'programar_reel', 'quitar_de_cola', 'rendimiento', 'reordenar_cola', 'resumen_series', 'subir_video', 'ver_cola']);
+    assert.deepEqual(lista.body.result.tools.map((x) => x.name).sort(), ['agregar_a_cola', 'agregar_imagen', 'cancelar_publicacion', 'cancelar_reel', 'configurar_serie', 'crear_publicacion', 'crear_serie', 'crecimiento', 'definir_semana', 'editar_publicacion', 'editar_reel', 'estado_publicacion', 'estado_reel', 'facebook_estado', 'gestionar_imagenes', 'gestionar_publicacion', 'historico_semanal', 'listar_publicaciones', 'listar_reels', 'listar_series', 'programar_publicacion', 'programar_reel', 'quitar_de_cola', 'rendimiento', 'reordenar_cola', 'resumen_series', 'subir_video', 'ver_agenda', 'ver_cola']);
     const nota = await pedir({ method: 'POST', path: '/mcp', headers: { authorization: `Bearer ${tk}` }, body: { jsonrpc: '2.0', method: 'notifications/initialized' } });
     assert.equal(nota.status, 202);
 });

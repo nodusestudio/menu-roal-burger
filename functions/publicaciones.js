@@ -65,7 +65,7 @@ async function imagenAJpeg(buffer, tipo, { sharp } = {}) {
 }
 
 // Baja una imagen pública (https) y la agrega a la publicación `id` (post: 1, historia: 1, carrusel: 2 a 10).
-async function agregarImagenDesdeUrl(db, { id, url }, uid, { fetchFn = fetch, sharp } = {}) {
+async function agregarImagenDesdeUrl(db, { id, url, reemplazaSlot = null }, uid, { fetchFn = fetch, sharp } = {}) {
     const dir = api.urlExternaSegura(url);
     const post = await posts.leerPost(db, String(id || ''));
     if (post.tipo === 'reel') throw new HttpsError('failed-precondition', 'Un reel lleva un video, no imágenes.');
@@ -77,7 +77,7 @@ async function agregarImagenDesdeUrl(db, { id, url }, uid, { fetchFn = fetch, sh
     if (!buf.length) throw new HttpsError('invalid-argument', 'La imagen bajada está vacía.');
     if (buf.length > MAX_IMAGEN_BYTES) throw new HttpsError('invalid-argument', `La imagen pesa ${Math.round(buf.length / 1048576)} MB: el máximo es ${MAX_IMAGEN_BYTES / 1048576} MB.`);
     const jpeg = await imagenAJpeg(buf, post.tipo, { sharp });
-    return posts.guardarImagen(db, { id: post.id, jpeg }, uid);
+    return posts.guardarImagen(db, { id: post.id, jpeg, reemplazaSlot }, uid);
 }
 
 // ── Crear / programar ────────────────────────────────────────────────────────
