@@ -106,7 +106,7 @@ h1{font-size:20px;margin:0 0 6px}p{margin:0 0 16px;font-size:14px;opacity:.85}la
 input[type=email],input[type=password]{width:100%;box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid #4a3d31;background:#15110d;color:#f3e9d8;font-size:15px}
 button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:9px;background:#e8501b;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
 .err{background:#4a1d17;border-radius:9px;padding:10px;font-size:13px;margin-bottom:12px}</style></head><body><main>
-<h1>Conectar Claude con FODEXA</h1><p>Claude podrá programar y revisar los reels de Roal Burger. Entra con la cuenta de administrador.</p>
+<h1>Conectar Claude con FODEXA</h1><p>Claude podrá programar y revisar las publicaciones de Roal Burger (posts, carruseles, historias y reels). Entra con la cuenta de administrador.</p>
 ${mensaje ? `<div class="err">${esc(mensaje)}</div>` : ''}
 <form method="post" action="${FUNCTION_BASE}/authorize">
 ${oculto('client_id', p.clientId)}${oculto('redirect_uri', p.redirect)}${oculto('state', p.state)}${oculto('code_challenge', p.challenge)}${oculto('code_challenge_method', 'S256')}${oculto('response_type', 'code')}${oculto('scope', p.scope)}
@@ -195,7 +195,7 @@ const HERRAMIENTAS = [
     {
         name: 'subir_video',
         description: 'Prepara un video para un reel de Roal Burger (MP4 vertical 9:16, 3 a 90 s, máx. 150 MB) y devuelve el id del reel y la dirección pública del video. Dos formas: (1) pasa "url" (https público del MP4) y el servidor lo baja y lo valida; (2) sin "url" devuelve una dirección de subida de un solo uso (PUT, 30 min): sube el MP4 con curl -T y luego usa programar_reel con el id. No publica nada.',
-        inputSchema: { type: 'object', properties: { url: STR('Dirección https pública del MP4 (opcional).'), serie: STR('Serie a la que pertenece el reel (nombre o parte del nombre; ver listar_series). Queda al final de su cola y sale solo cuando tenga video y texto.'), titulo: STR('Nombre corto del video (opcional), p. ej. "Video 3"; se ve en el calendario.') } }
+        inputSchema: { type: 'object', properties: { tipo: { type: 'string', enum: ['reel', 'historia'], description: 'Qué se va a publicar con este video: reel (por defecto) o historia (video vertical 9:16, hasta 60 s).' }, url: STR('Dirección https pública del MP4 (opcional).'), serie: STR('Serie a la que pertenece el reel (nombre o parte del nombre; ver listar_series). Queda al final de su cola y sale solo cuando tenga video y texto.'), titulo: STR('Nombre corto del video (opcional), p. ej. "Video 3"; se ve en el calendario.') } }
     },
     {
         name: 'programar_reel',
@@ -221,6 +221,41 @@ const HERRAMIENTAS = [
         name: 'estado_reel',
         description: 'Estado de un reel y, si ya se publicó, sus métricas básicas (alcance, reproducciones, me gusta, comentarios, compartidos, guardados). Si falló, dice el motivo.',
         inputSchema: { type: 'object', properties: { id: STR('Id del reel.') }, required: ['id'] }
+    },
+    {
+        name: 'crear_publicacion',
+        description: 'Crea una publicación de CUALQUIER tipo en Instagram (y opcional Facebook): "post" (1 foto), "carrusel" (2 a 10 fotos), "historia" (1 imagen o 1 video vertical) o "reel" (video). Todo en un solo paso: pasa el contenido por dirección https pública (imagenes: lista de URLs de JPG/PNG/WebP; videoUrl: MP4). El servidor baja, convierte y ajusta las imágenes solo (historia 9:16, posts 4:5 a 1,91:1, ≤ 900 KB). Con "cuando" ("YYYY-MM-DD HH:mm", hora de Colombia) queda programada; sin "cuando" queda borrador (luego programar_publicacion). Las historias no llevan texto ni hashtags (Instagram no los admite por API). Si algo falla no deja nada a medias. Sin límite por tipo: es el mismo sistema del panel FODEXA → Redes.',
+        inputSchema: { type: 'object', properties: { tipo: { type: 'string', enum: ['post', 'carrusel', 'historia', 'reel'], description: 'Tipo de publicación.' }, texto: STR('Texto (caption). Obligatorio en post, carrusel y reel; las historias no lo llevan. Máx. 2.200 caracteres.'), hashtags: { type: 'array', items: { type: 'string' }, description: 'Máx. 30, con o sin #.' }, imagenes: { type: 'array', items: { type: 'string' }, description: 'URLs https públicas de las imágenes (1 para post/historia, 2 a 10 para carrusel).' }, videoUrl: STR('MP4 público https (reel o historia en video).'), cuando: STR('Fecha y hora de Colombia, "YYYY-MM-DD HH:mm". Si la omites queda borrador.'), facebook: { type: 'boolean', description: 'También publicar en Facebook.' }, textoAlternativo: STR('Texto alternativo de la imagen (post), opcional.') }, required: ['tipo'] }
+    },
+    {
+        name: 'agregar_imagen',
+        description: 'Agrega una imagen (por URL https pública; JPG/PNG/WebP) a un post, carrusel o historia que ya existe como borrador. Se convierte y ajusta sola. Útil para armar un carrusel imagen por imagen.',
+        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.'), url: STR('Dirección https pública de la imagen.') }, required: ['id', 'url'] }
+    },
+    {
+        name: 'programar_publicacion',
+        description: 'Programa (o reprograma) cualquier publicación que ya existe (post, carrusel, historia o reel) para una fecha y hora de Colombia. Puede cambiar a la vez texto, hashtags y Facebook. Valida que esté completa (imágenes o video, texto).',
+        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.'), cuando: STR('Fecha y hora de Colombia, "YYYY-MM-DD HH:mm".'), texto: STR('Texto nuevo (opcional).'), hashtags: { type: 'array', items: { type: 'string' } }, facebook: { type: 'boolean' } }, required: ['id', 'cuando'] }
+    },
+    {
+        name: 'listar_publicaciones',
+        description: 'Lista las publicaciones de Roal Burger de cualquier tipo (post, carrusel, historia, reel) con su estado, fecha, y métricas básicas de las publicadas.',
+        inputSchema: { type: 'object', properties: { tipo: { type: 'string', enum: ['todos', 'post', 'carrusel', 'historia', 'reel'] }, estado: { type: 'string', enum: ['programado', 'publicado', 'error', 'borrador', 'cancelado'] }, limite: { type: 'integer' } } }
+    },
+    {
+        name: 'estado_publicacion',
+        description: 'Estado de cualquier publicación (post, carrusel, historia o reel): tipo, texto, fecha, imágenes o video, si falló el motivo y, si ya salió, sus métricas.',
+        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.') }, required: ['id'] }
+    },
+    {
+        name: 'editar_publicacion',
+        description: 'Cambia el texto, los hashtags, Facebook o la fecha de una publicación (cualquier tipo) que todavía no se ha publicado.',
+        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.'), texto: STR('Texto nuevo.'), hashtags: { type: 'array', items: { type: 'string' } }, cuando: STR('Fecha y hora nuevas de Colombia, "YYYY-MM-DD HH:mm".'), facebook: { type: 'boolean' } }, required: ['id'] }
+    },
+    {
+        name: 'cancelar_publicacion',
+        description: 'Cancela una publicación (cualquier tipo) programada o en borrador que todavía no se ha publicado. No se puede deshacer.',
+        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.') }, required: ['id'] }
     },
     {
         name: 'agregar_a_cola',
@@ -271,18 +306,28 @@ async function llamarHerramienta(db, nombre, a, deps) {
     const so = { baseUrl: opts.baseUrl, ...(opts.nowMs ? { nowMs: opts.nowMs } : {}), ...(opts.almacen ? { almacen: opts.almacen } : {}) };
     if (nombre === 'subir_video') {
         // La serie se comprueba ANTES de bajar o preparar nada, para no dejar un borrador huérfano si el nombre está mal.
+        const tipoVideo = a.tipo === 'historia' ? 'historia' : 'reel';
+        if (tipoVideo === 'historia' && a.serie) throw new Error('Las series son solo de reels: una historia no lleva serie.');
         if (a.serie) series.resolverSerie(await series.leerSeries(db), a.serie);
         if (a.url) {
             const posts = require('./instagramPosts');
-            const { id } = await posts.guardarPost(db, { tipo: 'reel', origen: 'manual' }, 'mcp');
+            const { id } = await posts.guardarPost(db, { tipo: tipoVideo, origen: 'manual' }, 'mcp');
             try { await api.importarVideoDesdeUrl(db, { id, url: a.url }, 'mcp', opts); } catch (err) { await posts.borrarPost(db, { id }).catch(() => {}); throw err; }
             if (a.serie) await series.asignar(db, { id, serie: a.serie, titulo: a.titulo }, 'mcp', so);
-            return { ...(await api.estado(db, { id, baseUrl: opts.baseUrl })), siguiente: a.serie ? 'Video listo y en su serie. Ponle texto con editar_reel y saldrá solo en su día.' : 'Video listo. Llama a programar_reel con este id (o agregar_a_cola para ponerlo en una serie).' };
+            return { ...(await api.estado(db, { id, baseUrl: opts.baseUrl, cualquiera: tipoVideo === 'historia' })), siguiente: tipoVideo === 'historia' ? 'Video de la historia listo. Llama a programar_publicacion con este id y la fecha.' : a.serie ? 'Video listo y en su serie. Ponle texto con editar_reel y saldrá solo en su día.' : 'Video listo. Llama a programar_reel con este id (o agregar_a_cola para ponerlo en una serie).' };
         }
-        const r = await api.prepararSubida(db, { baseUrl: opts.baseUrl, firmar: deps.firmar }, 'mcp');
+        const r = await api.prepararSubida(db, { baseUrl: opts.baseUrl, firmar: deps.firmar, tipo: tipoVideo }, 'mcp');
         if (a.serie && r?.id) await series.asignar(db, { id: r.id, serie: a.serie, titulo: a.titulo }, 'mcp', so);
         return r;
     }
+    const pub = deps.publicaciones || require('./publicaciones');
+    if (nombre === 'crear_publicacion') return pub.crear(db, a, 'mcp', opts);
+    if (nombre === 'agregar_imagen') return pub.agregarImagenDesdeUrl(db, { id: a.id, url: a.url }, 'mcp', opts);
+    if (nombre === 'programar_publicacion') return pub.programar(db, a, 'mcp', opts);
+    if (nombre === 'listar_publicaciones') return pub.listar(db, { tipo: a.tipo, estado: a.estado, limite: a.limite, baseUrl: opts.baseUrl });
+    if (nombre === 'estado_publicacion') return pub.estado(db, { id: a.id, baseUrl: opts.baseUrl });
+    if (nombre === 'editar_publicacion') return pub.editar(db, a, 'mcp', opts);
+    if (nombre === 'cancelar_publicacion') return pub.cancelar(db, a, 'mcp', opts);
     if (nombre === 'programar_reel') return api.programar(db, a, 'mcp', opts);
     if (nombre === 'listar_reels') return api.listar(db, { estado: a.estado, limite: a.limite, baseUrl: opts.baseUrl });
     if (nombre === 'editar_reel') return api.editar(db, a, 'mcp', opts);
@@ -312,7 +357,7 @@ async function procesarRpc(db, msg, deps) {
     if (id === undefined) return null; // notificación
     if (method === 'initialize') {
         const pedida = String(params?.protocolVersion || '');
-        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Reels de Roal Burger en Instagram. Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_reel y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola.' });
+        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Publicaciones de Roal Burger en Instagram y Facebook: posts, carruseles, historias y reels, sin restricción por tipo (crear_publicacion, agregar_imagen, programar_publicacion, listar_publicaciones, estado_publicacion, editar_publicacion, cancelar_publicacion; subir_video con tipo historia para video por PUT). Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_reel y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola.' });
     }
     if (method === 'ping') return rpcOk(id, {});
     if (method === 'tools/list') return rpcOk(id, { tools: HERRAMIENTAS });

@@ -62,6 +62,8 @@ function vista(post, met, baseUrl) {
             duracionSegundos: v.duracionS, tamano: `${v.ancho}x${v.alto}`, megas: Math.round((v.size || 0) / 104857.6) / 10, bytes: v.size || 0, borrado: v.borrado === true,
             ...(baseUrl && !v.borrado && post.imgToken ? { url: reels.urlVideo(baseUrl, post.id, post.imgToken) } : {})
         } : null,
+        imagenes: (post.imagenes || []).length,
+        ...(baseUrl && (post.imagenes || []).length ? { imagenesUrls: post.imagenes.map((im) => ig.urlImagen(baseUrl, `post_${post.id}`, String(im.slot), post.imgToken)) } : {}),
         instagramMediaId: post.mediaId || '',
         metricas: post.estado === 'publicada' ? {
             estado: met ? met.estado : 'sin_medir',
@@ -80,7 +82,7 @@ async function metricasDe(db, post) {
 
 // Si el MP4 ya se subió (PUT a partes/000) pero nunca se ensambló, lo ensambla y valida. Nunca lanza: devuelve el motivo.
 async function ensamblarPendiente(db, post, uid = 'auto', { almacen } = {}) {
-    if (!post || post.tipo !== 'reel' || ['publicada', 'cancelada', 'publicando'].includes(post.estado)) return '';
+    if (!post || !['reel', 'historia'].includes(post.tipo) || ['publicada', 'cancelada', 'publicando'].includes(post.estado)) return '';
     if (post.video?.estado === 'listo' && !post.video.borrado) return '';
     try {
         const alm = almacen || reels.almacen();
@@ -93,10 +95,11 @@ async function ensamblarPendiente(db, post, uid = 'auto', { almacen } = {}) {
     }
 }
 
-async function listar(db, { estado, limite = 20, baseUrl } = {}) {
+async function listar(db, { estado, limite = 20, baseUrl, tipo = 'reel' } = {}) {
     const interno = estado ? ESTADOS[String(estado).toLowerCase()] : null;
     if (estado && !interno) throw new HttpsError('invalid-argument', 'Estado inválido. Usa: programado, publicado, error, borrador o cancelado.');
-    const snap = await db.collection(ig.POSTS_COLLECTION).where('tipo', '==', 'reel').get();
+    const col = db.collection(ig.POSTS_COLLECTION);
+    const snap = await (tipo === 'todos' ? col.get() : col.where('tipo', '==', tipo).get());
     let lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     if (interno) lista = lista.filter((p) => p.estado === interno);
     lista.sort((a, b) => (b.programadaAtMs || b.creadoAtMs || 0) - (a.programadaAtMs || a.creadoAtMs || 0));
@@ -111,9 +114,9 @@ async function listar(db, { estado, limite = 20, baseUrl } = {}) {
     return { total: lista.length, reels: out };
 }
 
-async function estado(db, { id, baseUrl }) {
+async function estado(db, { id, baseUrl, cualquiera = false }) {
     const p = await posts.leerPost(db, String(id || ''));
-    if (p.tipo !== 'reel') throw new HttpsError('failed-precondition', 'Esa publicación no es un reel.');
+    if (!cualquiera && p.tipo !== 'reel') throw new HttpsError('failed-precondition', 'Esa publicación no es un reel.');
     const errVideo = await ensamblarPendiente(db, p);
     const r = vista(p, await metricasDe(db, p), baseUrl);
     const serie = await require('./series').posicionDe(db, p.id, { baseUrl }).catch(() => ({ enSerie: false }));
@@ -151,8 +154,8 @@ async function importarVideoDesdeUrl(db, { id, url }, uid, { fetchFn = fetch } =
 }
 
 // Crea un reel en borrador y una dirección de subida de un solo uso (30 min) para mandar el MP4 con un PUT.
-async function prepararSubida(db, { baseUrl, firmar } = {}, uid) {
-    const { id } = await posts.guardarPost(db, { tipo: 'reel', origen: 'manual' }, uid);
+async function prepararSubida(db, { baseUrl, firmar, tipo = 'reel' } = {}, uid) {
+    const { id } = await posts.guardarPost(db, { tipo, origen: 'manual' }, uid);
     const ruta = `reels/${id}/partes/000`;
     const venceMs = Date.now() + 30 * 60 * 1000;
     const fn = firmar || (async (r, vence) => {
@@ -172,7 +175,7 @@ async function prepararSubida(db, { baseUrl, firmar } = {}, uid) {
     return {
         id, urlSubida, metodo: 'PUT', encabezados: { 'Content-Type': 'application/octet-stream' }, vence: new Date(venceMs).toISOString(),
         urlPublicaDelVideo: baseUrl ? reels.urlVideo(baseUrl, id, post.imgToken) : null,
-        siguiente: 'Sube el MP4 con PUT a urlSubida (ejemplo: curl -T video.mp4 -H "Content-Type: application/octet-stream" "<urlSubida>") y luego llama a programar_reel con este id.'
+        siguiente: 'Sube el MP4 con PUT a urlSubida (ejemplo: curl -T video.mp4 -H "Content-Type: application/octet-stream" "<urlSubida>") y luego programa con programar_reel (o programar_publicacion) usando este id.'
     };
 }
 
@@ -275,4 +278,4 @@ async function mantenimiento(db, { nowMs = Date.now(), almacen } = {}) {
     return { ensamblados, borrados, cola: cola && (cola.programados || cola.desprogramados || cola.problemas.length) ? cola : undefined };
 }
 
-module.exports = { mantenimiento, ensamblarPendiente, ESTADOS, parseFecha, textoBogota, vista, listar, estado, prepararSubida, importarVideoDesdeUrl, asegurarVideo, programar, editar, cancelar, DAY_MS };
+module.exports = { urlExternaSegura, NOMBRE_ESTADO, mantenimiento, ensamblarPendiente, ESTADOS, parseFecha, textoBogota, vista, listar, estado, prepararSubida, importarVideoDesdeUrl, asegurarVideo, programar, editar, cancelar, DAY_MS };

@@ -181,13 +181,13 @@ test('token de acceso vencido o inventado no sirve', async () => {
     assert.equal((await rpc('inventado', 'ping')).status, 401);
 });
 
-test('MCP: initialize, tools/list con las 6 herramientas y notificación sin respuesta', async () => {
+test('MCP: initialize, tools/list con todas las herramientas y notificación sin respuesta', async () => {
     const { t } = await tokenCompleto();
     const tk = t.body.access_token;
     const ini = await rpc(tk, 'initialize', { protocolVersion: '2025-06-18' });
     assert.equal(ini.body.result.protocolVersion, '2025-06-18');
     const lista = await rpc(tk, 'tools/list');
-    assert.deepEqual(lista.body.result.tools.map((x) => x.name).sort(), ['agregar_a_cola', 'cancelar_reel', 'configurar_serie', 'crear_serie', 'definir_semana', 'editar_reel', 'estado_reel', 'listar_reels', 'listar_series', 'programar_reel', 'quitar_de_cola', 'reordenar_cola', 'subir_video', 'ver_cola']);
+    assert.deepEqual(lista.body.result.tools.map((x) => x.name).sort(), ['agregar_a_cola', 'agregar_imagen', 'cancelar_publicacion', 'cancelar_reel', 'configurar_serie', 'crear_publicacion', 'crear_serie', 'definir_semana', 'editar_publicacion', 'editar_reel', 'estado_publicacion', 'estado_reel', 'listar_publicaciones', 'listar_reels', 'listar_series', 'programar_publicacion', 'programar_reel', 'quitar_de_cola', 'reordenar_cola', 'subir_video', 'ver_cola']);
     const nota = await pedir({ method: 'POST', path: '/mcp', headers: { authorization: `Bearer ${tk}` }, body: { jsonrpc: '2.0', method: 'notifications/initialized' } });
     assert.equal(nota.status, 202);
 });
@@ -279,4 +279,81 @@ test('FODI: la herramienta reels programa y lista con los mismos datos', async (
     assert.equal(r.reel.estado, 'programado');
     assert.equal((await fodiReels.reels(db, { accion: 'listar' })).total, 1);
     assert.ok((await fodiReels.reels(db, { accion: 'programar', texto: 'sin fecha' })).error);
+});
+
+// ── Publicaciones de cualquier tipo (post, carrusel, historia, reel) ─────────────────────────
+const sharpLib = require(require.resolve('sharp', { paths: [FUNCTIONS_DIR] }));
+const fotoPng = (w, h) => sharpLib({ create: { width: w, height: h, channels: 3, background: { r: 200, g: 80, b: 20 } } }).png().toBuffer();
+const fetchImagenes = (buf) => async () => ({ ok: true, status: 200, headers: { get: () => String(buf.length) }, arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length) });
+
+test('crear_publicacion: un post con foto queda programado y el servidor ajusta la imagen', async () => {
+    const d = deps({ opts: { fetchFn: fetchImagenes(await fotoPng(1200, 1200)) } });
+    const { t } = await tokenCompleto(d);
+    const call = herramienta(t.body.access_token, d);
+    const r = await call('crear_publicacion', { tipo: 'post', texto: 'Una foto', hashtags: ['burger'], imagenes: ['https://cdn.ejemplo.com/a.png'], cuando: '2026-12-05 18:30' });
+    assert.equal(r.error, false, JSON.stringify(r.datos));
+    assert.equal(r.datos.tipo, 'foto');
+    assert.equal(r.datos.estado, 'programado');
+    assert.equal(r.datos.imagenes, 1);
+    assert.match(r.datos.imagenesUrls[0], /^https:\/\/ejemplo\.test\/historiaImagen/);
+});
+
+test('crear_publicacion: carrusel de 3, historia de imagen y borrador sin fecha; listar_publicaciones filtra por tipo', async () => {
+    const d = deps({ opts: { fetchFn: fetchImagenes(await fotoPng(1000, 1400)) } });
+    const { t } = await tokenCompleto(d);
+    const call = herramienta(t.body.access_token, d);
+    const u = ['https://cdn.ejemplo.com/1.png', 'https://cdn.ejemplo.com/2.png', 'https://cdn.ejemplo.com/3.png'];
+    const car = await call('crear_publicacion', { tipo: 'carrusel', texto: 'Tres', imagenes: u, cuando: '2026-12-06 12:00' });
+    assert.equal(car.error, false, JSON.stringify(car.datos));
+    assert.equal(car.datos.imagenes, 3);
+    const his = await call('crear_publicacion', { tipo: 'historia', imagenes: [u[0]], cuando: '2026-12-06 13:00' });
+    assert.equal(his.error, false, JSON.stringify(his.datos));
+    assert.equal(his.datos.tipo, 'historia');
+    const bor = await call('crear_publicacion', { tipo: 'post', texto: 'Después' });
+    assert.equal(bor.datos.estado, 'borrador');
+    assert.equal((await call('listar_publicaciones', {})).datos.total, 3);
+    assert.equal((await call('listar_publicaciones', { tipo: 'historia' })).datos.total, 1);
+    assert.equal((await call('listar_publicaciones', { tipo: 'carrusel', estado: 'programado' })).datos.total, 1);
+    // el borrador se completa por partes: agregar_imagen + programar_publicacion
+    assert.equal((await call('agregar_imagen', { id: bor.datos.id, url: u[0] })).error, false);
+    const prog = await call('programar_publicacion', { id: bor.datos.id, cuando: '2026-12-07 09:00', texto: 'Después, ahora sí' });
+    assert.equal(prog.error, false, JSON.stringify(prog.datos));
+    assert.equal(prog.datos.estado, 'programado');
+    assert.equal(prog.datos.texto, 'Después, ahora sí');
+    const ed = await call('editar_publicacion', { id: car.datos.id, cuando: '2026-12-08 10:00' });
+    assert.equal(ed.datos.programadaAtMs, Date.parse('2026-12-08T10:00:00-05:00'));
+    const can = await call('cancelar_publicacion', { id: his.datos.id });
+    assert.equal(can.datos.estado, 'cancelado');
+    assert.equal((await call('estado_publicacion', { id: his.datos.id })).datos.tipo, 'historia');
+});
+
+test('crear_publicacion rechaza combinaciones inválidas y no deja borradores a medias', async () => {
+    const d = deps({ opts: { fetchFn: fetchImagenes(await fotoPng(1000, 1000)) } });
+    const { t } = await tokenCompleto(d);
+    const call = herramienta(t.body.access_token, d);
+    const u = 'https://cdn.ejemplo.com/a.png';
+    assert.equal((await call('crear_publicacion', { tipo: 'carrusel', texto: 'x', imagenes: [u] })).error, true);
+    assert.equal((await call('crear_publicacion', { tipo: 'post', texto: 'x', imagenes: [u, u] })).error, true);
+    assert.equal((await call('crear_publicacion', { tipo: 'reel', texto: 'x', imagenes: [u] })).error, true);
+    assert.equal((await call('crear_publicacion', { tipo: 'tiktok', texto: 'x' })).error, true);
+    assert.equal((await call('crear_publicacion', { tipo: 'post', texto: 'x', imagenes: ['https://169.254.169.254/a.png'], cuando: '2026-12-05 18:30' })).error, true);
+    assert.equal((await call('crear_publicacion', { tipo: 'post', texto: 'x', imagenes: [u], cuando: '2020-01-01 10:00' })).error, true);
+    assert.equal((await db.collection(posts.POSTS_COLLECTION).get()).size, 0);
+});
+
+test('historia en video: subir_video con tipo historia, programar_publicacion y estado', async () => {
+    const video = mp4({ duracionS: 20 });
+    const fetchFn = async () => ({ ok: true, status: 200, headers: { get: () => String(video.length) }, arrayBuffer: async () => video.buffer.slice(video.byteOffset, video.byteOffset + video.length) });
+    const d = deps({ opts: { fetchFn } });
+    const { t } = await tokenCompleto(d);
+    const call = herramienta(t.body.access_token, d);
+    const sub = await call('subir_video', { tipo: 'historia', url: 'https://cdn.ejemplo.com/h.mp4' });
+    assert.equal(sub.error, false, JSON.stringify(sub.datos));
+    const prog = await call('programar_publicacion', { id: sub.datos.id, cuando: '2026-12-05 19:00' });
+    assert.equal(prog.error, false, JSON.stringify(prog.datos));
+    assert.equal(prog.datos.tipo, 'historia');
+    assert.equal(prog.datos.estado, 'programado');
+    assert.equal(prog.datos.videoListo, true);
+    const directa = await call('crear_publicacion', { tipo: 'historia', videoUrl: 'https://cdn.ejemplo.com/h.mp4', cuando: '2026-12-05 20:00' });
+    assert.equal(directa.error, false, JSON.stringify(directa.datos));
 });
