@@ -195,11 +195,11 @@ const HERRAMIENTAS = [
     {
         name: 'subir_video',
         description: 'Prepara un video para un reel de Roal Burger (MP4 vertical 9:16, 3 a 90 s, máx. 150 MB) y devuelve el id del reel y la dirección pública del video. Dos formas: (1) pasa "url" (https público del MP4) y el servidor lo baja y lo valida; (2) sin "url" devuelve una dirección de subida de un solo uso (PUT, 30 min): sube el MP4 con curl -T y luego usa programar_reel con el id. No publica nada.',
-        inputSchema: { type: 'object', properties: { url: STR('Dirección https pública del MP4 (opcional).') } }
+        inputSchema: { type: 'object', properties: { url: STR('Dirección https pública del MP4 (opcional).'), serie: STR('Serie a la que pertenece el reel (nombre o parte del nombre; ver listar_series). Queda al final de su cola y sale solo cuando tenga video y texto.'), titulo: STR('Nombre corto del video (opcional), p. ej. "Video 3"; se ve en el calendario.') } }
     },
     {
         name: 'programar_reel',
-        description: 'Programa un reel en Instagram (y opcional Facebook) para una fecha y hora. Necesita el texto y la fecha, y el video: "id" devuelto por subir_video, o "videoUrl" (https público). Lo publica el mismo cron de FODEXA a su hora; aparece en el panel FODEXA → Redes.',
+        description: 'Programa un reel en Instagram (y opcional Facebook) para una fecha y hora. Necesita el texto y la fecha, y el video: "id" devuelto por subir_video, o "videoUrl" (https público). Lo publica el mismo cron de FODEXA a su hora; aparece en el panel FODEXA → Redes. No lo uses para reels de una serie: su fecha la fija la semana fija de la serie.',
         inputSchema: { type: 'object', properties: { id: STR('Id devuelto por subir_video.'), videoUrl: STR('Alternativa a id: MP4 público https.'), texto: STR('Texto (caption) del reel. Máx. 2.200 caracteres.'), hashtags: { type: 'array', items: { type: 'string' }, description: 'Máx. 30, con o sin #.' }, cuando: STR('Fecha y hora de Colombia, "YYYY-MM-DD HH:mm" (o ISO con zona).'), facebook: { type: 'boolean', description: 'También publicar en Facebook.' } }, required: ['texto', 'cuando'] }
     },
     {
@@ -224,57 +224,81 @@ const HERRAMIENTAS = [
     },
     {
         name: 'agregar_a_cola',
-        description: 'Pone un reel (con video y texto ya cargados) al final de la cola de la serie. La cola le asigna sola la siguiente fecha y hora libre y lo publica en Instagram y Facebook sin que nadie haga nada. Si ya estaba en la cola con error, pide otro intento. Devuelve la cola completa.',
-        inputSchema: { type: 'object', properties: { id: STR('Id del reel (de subir_video).') }, required: ['id'] }
+        description: 'Pone un reel (con video y texto ya cargados) al final de la cola de una SERIE. La serie le asigna sola la fecha y hora que le toca según la semana fija (definir_semana) y lo publica en Instagram y Facebook sin que nadie haga nada. Si el reel ya estaba en otra serie, lo mueve a esta. Si ya estaba en la cola con error, pide otro intento. Devuelve el estado de todas las series.',
+        inputSchema: { type: 'object', properties: { id: STR('Id del reel (de subir_video).'), serie: STR('Serie destino (nombre o parte del nombre). Opcional si el reel ya tiene serie o si solo existe una.'), titulo: STR('Nombre corto del video (opcional).') }, required: ['id'] }
     },
     {
         name: 'ver_cola',
-        description: 'Muestra la cola de la serie: orden, fecha y hora estimada de publicación (hora de Colombia), estado y motivo si hubo error, más la configuración (hora diaria, reels por día, saltar miércoles).',
+        description: 'Muestra la semana fija (qué serie sale cada día), lo que sale cada uno de los próximos 14 días (con avisos si una serie está pausada o sin videos), y la cola de cada serie: orden, fecha y hora estimada (hora de Colombia), estado y motivo si hubo error.',
         inputSchema: { type: 'object', properties: {} }
     },
     {
         name: 'quitar_de_cola',
-        description: 'Saca un reel de la cola. Vuelve a borrador (no se cancela ni se borra) y los demás se corren al horario libre.',
+        description: 'Saca un reel de su serie. Vuelve a borrador (no se cancela ni se borra) y los demás se corren al horario libre.',
         inputSchema: { type: 'object', properties: { id: STR('Id del reel.') }, required: ['id'] }
     },
     {
         name: 'reordenar_cola',
-        description: 'Cambia el orden de la cola. Dos formas: "orden" (lista de ids en el orden deseado; los no nombrados quedan después) o "id" + "posicion" (1 = el primero). Las horas se recalculan solas.',
-        inputSchema: { type: 'object', properties: { orden: { type: 'array', items: { type: 'string' }, description: 'Ids en el orden deseado.' }, id: STR('Id del reel a mover.'), posicion: { type: 'integer', description: 'Nueva posición (1 = primero).' } } }
+        description: 'Cambia el orden de la cola de una serie. Dos formas: "orden" (lista de ids en el orden deseado; los no nombrados quedan después) o "id" + "posicion" (1 = el primero). Las fechas se recalculan solas.',
+        inputSchema: { type: 'object', properties: { orden: { type: 'array', items: { type: 'string' }, description: 'Ids en el orden deseado.' }, serie: STR('Serie (solo si usas "orden" y quieres indicarla).'), id: STR('Id del reel a mover.'), posicion: { type: 'integer', description: 'Nueva posición (1 = primero).' } } }
     },
     {
-        name: 'configurar_cola',
-        description: 'Configura la cola: hora diaria de publicación (hora de Colombia, "HH:mm"), cuántos reels por día (1 a 5; por defecto 1), si salta los miércoles (Roal Burger cierra; por defecto sí), si publica también en Facebook y si está activa (false = pausa: no sale nada). Solo cambia lo que indiques.',
-        inputSchema: { type: 'object', properties: { hora: STR('Hora diaria "HH:mm" (24 h, Colombia).'), reelsPorDia: { type: 'integer', description: '1 a 5.' }, saltarMiercoles: { type: 'boolean' }, facebook: { type: 'boolean', description: 'Publicar también en Facebook (aplica a los reels que entren desde ahora).' }, activa: { type: 'boolean', description: 'false pausa la cola.' } } }
+        name: 'crear_serie',
+        description: 'Crea una serie de reels (una carpeta con su propia cola, hora diaria y color). Después asígnale días con definir_semana y reels con agregar_a_cola.',
+        inputSchema: { type: 'object', properties: { nombre: STR('Nombre de la serie.'), hora: STR('Hora diaria "HH:mm" (24 h, Colombia). Por defecto 18:00.'), color: STR('Color hexadecimal, p. ej. "#e11d48" (opcional).'), facebook: { type: 'boolean', description: 'Publicar también en Facebook (por defecto sí).' }, activa: { type: 'boolean', description: 'false la crea en pausa.' } }, required: ['nombre'] }
+    },
+    {
+        name: 'listar_series',
+        description: 'Lista las series con su hora, color, si están activas, los días de la semana que les tocan y cuántos reels tienen como borrador, programados y publicados.',
+        inputSchema: { type: 'object', properties: {} }
+    },
+    {
+        name: 'configurar_serie',
+        description: 'Cambia una serie: nombre, color, hora diaria (hora de Colombia, "HH:mm"), si publica también en Facebook y si está activa (false = pausa: sus reels salen del calendario y ese día no sale nada). Solo cambia lo que indiques.',
+        inputSchema: { type: 'object', properties: { serie: STR('Serie a cambiar (nombre o parte del nombre).'), nombre: STR('Nombre nuevo.'), color: STR('Color hexadecimal.'), hora: STR('Hora diaria "HH:mm".'), facebook: { type: 'boolean' }, activa: { type: 'boolean' } }, required: ['serie'] }
+    },
+    {
+        name: 'definir_semana',
+        description: 'Define la semana fija: qué serie sale cada día. "dias" es un objeto {lunes, martes, miercoles, jueves, viernes, sabado, domingo} con el nombre de la serie o null/"ninguna" para dejar el día libre; solo cambia los días que nombres. "saltarMiercoles" (por defecto false) hace que no salga nada los miércoles.',
+        inputSchema: { type: 'object', properties: { dias: { type: 'object', description: 'Ejemplo: {"lunes":"Roal","martes":"Emprendimiento","domingo":null}', additionalProperties: true }, saltarMiercoles: { type: 'boolean' } } }
     }
 ];
 
 async function llamarHerramienta(db, nombre, a, deps) {
     const opts = { baseUrl: deps.baseUrl, ...(deps.opts || {}) };
     const api = deps.api || reelsApi;
+    const series = deps.series || require('./series');
+    const so = { baseUrl: opts.baseUrl, ...(opts.nowMs ? { nowMs: opts.nowMs } : {}), ...(opts.almacen ? { almacen: opts.almacen } : {}) };
     if (nombre === 'subir_video') {
+        // La serie se comprueba ANTES de bajar o preparar nada, para no dejar un borrador huérfano si el nombre está mal.
+        if (a.serie) series.resolverSerie(await series.leerSeries(db), a.serie);
         if (a.url) {
             const posts = require('./instagramPosts');
             const { id } = await posts.guardarPost(db, { tipo: 'reel', origen: 'manual' }, 'mcp');
             try { await api.importarVideoDesdeUrl(db, { id, url: a.url }, 'mcp', opts); } catch (err) { await posts.borrarPost(db, { id }).catch(() => {}); throw err; }
-            return { ...(await api.estado(db, { id, baseUrl: opts.baseUrl })), siguiente: 'Video listo. Llama a programar_reel con este id.' };
+            if (a.serie) await series.asignar(db, { id, serie: a.serie, titulo: a.titulo }, 'mcp', so);
+            return { ...(await api.estado(db, { id, baseUrl: opts.baseUrl })), siguiente: a.serie ? 'Video listo y en su serie. Ponle texto con editar_reel y saldrá solo en su día.' : 'Video listo. Llama a programar_reel con este id (o agregar_a_cola para ponerlo en una serie).' };
         }
-        return api.prepararSubida(db, { baseUrl: opts.baseUrl, firmar: deps.firmar }, 'mcp');
+        const r = await api.prepararSubida(db, { baseUrl: opts.baseUrl, firmar: deps.firmar }, 'mcp');
+        if (a.serie && r?.id) await series.asignar(db, { id: r.id, serie: a.serie, titulo: a.titulo }, 'mcp', so);
+        return r;
     }
     if (nombre === 'programar_reel') return api.programar(db, a, 'mcp', opts);
     if (nombre === 'listar_reels') return api.listar(db, { estado: a.estado, limite: a.limite, baseUrl: opts.baseUrl });
     if (nombre === 'editar_reel') return api.editar(db, a, 'mcp', opts);
     if (nombre === 'cancelar_reel') return api.cancelar(db, a, 'mcp', opts);
     if (nombre === 'estado_reel') return api.estado(db, { id: a.id, baseUrl: opts.baseUrl });
-    if (['agregar_a_cola', 'ver_cola', 'quitar_de_cola', 'reordenar_cola', 'configurar_cola'].includes(nombre)) {
-        const cola = deps.cola || require('./colaReels');
-        const o = { baseUrl: opts.baseUrl, ...(opts.nowMs ? { nowMs: opts.nowMs } : {}), ...(opts.almacen ? { almacen: opts.almacen } : {}) };
-        if (nombre === 'agregar_a_cola') return cola.agregar(db, a, 'mcp', o);
-        if (nombre === 'ver_cola') return cola.ver(db, o);
-        if (nombre === 'quitar_de_cola') return cola.quitar(db, a, 'mcp', o);
-        if (nombre === 'reordenar_cola') return cola.reordenar(db, a, 'mcp', o);
-        return cola.configurar(db, a, 'mcp', o);
+    if (nombre === 'agregar_a_cola') return series.agregar(db, a, 'mcp', so);
+    if (nombre === 'ver_cola') return series.ver(db, so);
+    if (nombre === 'quitar_de_cola') return series.quitar(db, a, 'mcp', so);
+    if (nombre === 'reordenar_cola') return series.reordenar(db, a, 'mcp', so);
+    if (nombre === 'crear_serie') return series.crearSerie(db, a, 'mcp', so);
+    if (nombre === 'listar_series') {
+        const v = await series.ver(db, so);
+        return { semana: v.semana, avisos: v.avisos, series: v.series.map((s) => ({ id: s.id, nombre: s.nombre, hora: s.hora, horaPorDefinir: s.horaPorDefinir, color: s.color, activa: s.activa, facebook: s.facebook, dias: s.dias, ...s.conteo })) };
     }
+    if (nombre === 'configurar_serie') return series.configurarSerie(db, a, 'mcp', so);
+    if (nombre === 'definir_semana') return series.definirSemana(db, a, 'mcp', so);
     const e = new Error(`Herramienta desconocida: ${nombre}`);
     e.rpc = -32602;
     throw e;
@@ -288,7 +312,7 @@ async function procesarRpc(db, msg, deps) {
     if (id === undefined) return null; // notificación
     if (method === 'initialize') {
         const pedida = String(params?.protocolVersion || '');
-        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Reels de Roal Burger en Instagram. Las fechas son hora de Colombia. Para una serie: sube el reel, ponle texto y usa agregar_a_cola; la cola lo publica sola en orden (ver_cola, reordenar_cola, configurar_cola).' });
+        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Reels de Roal Burger en Instagram. Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_reel y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola.' });
     }
     if (method === 'ping') return rpcOk(id, {});
     if (method === 'tools/list') return rpcOk(id, { tools: HERRAMIENTAS });

@@ -54,6 +54,8 @@ function vista(post, met, baseUrl) {
         creado: textoBogota(post.creadoAtMs),
         subidoVideoEn: textoBogota(post.video?.subidoAtMs),
         videoListo: !!v && v.borrado !== true,
+        serieId: post.serieId || null,
+        titulo: post.titulo || '',
         facebookActivo: post.facebook?.publicar === true,
         facebook: post.facebook?.publicar === true ? (post.facebook.estado || 'pendiente') : 'no',
         video: v ? {
@@ -114,8 +116,8 @@ async function estado(db, { id, baseUrl }) {
     if (p.tipo !== 'reel') throw new HttpsError('failed-precondition', 'Esa publicación no es un reel.');
     const errVideo = await ensamblarPendiente(db, p);
     const r = vista(p, await metricasDe(db, p), baseUrl);
-    const cola = await require('./colaReels').posicionDe(db, p.id).catch(() => ({ enCola: false }));
-    return { ...r, intentos: p.intentos || 0, cola, ...(errVideo ? { errorVideo: errVideo } : {}) };
+    const serie = await require('./series').posicionDe(db, p.id, { baseUrl }).catch(() => ({ enSerie: false }));
+    return { ...r, intentos: p.intentos || 0, serie, ...(errVideo ? { errorVideo: errVideo } : {}) };
 }
 
 // ── Video ────────────────────────────────────────────────────────────────────
@@ -266,9 +268,11 @@ async function mantenimiento(db, { nowMs = Date.now(), almacen } = {}) {
             await posts.borrarPost(db, { id: p.id }).then(() => { borrados += 1; }).catch(() => {});
         }
     }
-    // La cola de la serie: asigna a cada reel su hora (el cron de publicación hace el resto).
-    const cola = await require('./colaReels').sincronizar(db, { nowMs }).catch((err) => { console.error('cola reels:', err.message); return null; });
-    return { ensamblados, borrados, cola: cola && (cola.programados || cola.retirados.length || cola.quitadosPorProblema.length) ? cola : undefined };
+    // Las series: crea las iniciales (una sola vez) y asigna a cada reel su hora según la semana fija (el cron de publicación hace el resto).
+    const series = require('./series');
+    await series.sembrarIniciales(db, { nowMs }).catch((err) => console.error('series semilla:', err.message));
+    const cola = await series.sincronizar(db, { nowMs }).catch((err) => { console.error('series reels:', err.message); return null; });
+    return { ensamblados, borrados, cola: cola && (cola.programados || cola.desprogramados || cola.problemas.length) ? cola : undefined };
 }
 
 module.exports = { mantenimiento, ensamblarPendiente, ESTADOS, parseFecha, textoBogota, vista, listar, estado, prepararSubida, importarVideoDesdeUrl, asegurarVideo, programar, editar, cancelar, DAY_MS };

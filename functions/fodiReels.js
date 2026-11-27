@@ -15,6 +15,11 @@ async function reels(db, args = {}) {
     try {
         if (accion === 'listar') return await reelsApi.listar(db, { estado: args.estado, limite: args.limite, baseUrl: opts.baseUrl });
         if (accion === 'estado') return await reelsApi.estado(db, { id: args.id, baseUrl: opts.baseUrl });
+        // Series (lectura): la semana fija, qué sale cada día y los avisos. Cambiarlas se hace en FODEXA → Redes → Series.
+        if (accion === 'series') {
+            const v = await require('./series').vista(db, { baseUrl: opts.baseUrl });
+            return { semana: v.semana, avisos: v.avisos, proximos: v.proximos.map((d) => ({ fecha: d.fecha, dia: d.dia, serie: d.serie || null, estado: d.estado, reel: d.reel || null })), series: v.series.map((s) => ({ nombre: s.nombre, hora: s.hora, activa: s.activa, dias: s.dias, ...s.conteo })) };
+        }
         if (accion === 'programar') return { ok: true, reel: await reelsApi.programar(db, args, 'fodi', opts) };
         if (accion === 'editar') return { ok: true, reel: await reelsApi.editar(db, args, 'fodi', opts) };
         if (accion === 'cancelar') return { ok: true, reel: await reelsApi.cancelar(db, args, 'fodi', opts) };

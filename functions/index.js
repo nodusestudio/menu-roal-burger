@@ -3673,15 +3673,18 @@ exports.adminInstagramPosts = onCall(
             const reelsApi = require('./reelsApi');
             return reelsApi.editar(db, { id: d.id, texto: d.texto, hashtags: d.hashtags, cuando: d.cuando, facebook: d.facebook }, uid, { baseUrl: historiaImagenBaseUrl() });
         }
-        // Cola de la serie de reels (colaReels.js): la pantalla es para ver; mover/quitar son opcionales.
-        if (accion.startsWith('cola')) {
-            const cola = require('./colaReels');
+        // Series de reels (series.js): carpetas con su cola, su hora y su color + la semana fija que dice cuál sale cada día.
+        if (accion.startsWith('serie')) {
+            const series = require('./series');
             const o = { baseUrl: historiaImagenBaseUrl() };
-            if (accion === 'colaVer') return cola.ver(db, o);
-            if (accion === 'colaAgregar') return cola.agregar(db, { id: d.id }, uid, o);
-            if (accion === 'colaQuitar') return cola.quitar(db, { id: d.id }, uid, o);
-            if (accion === 'colaReordenar') return cola.reordenar(db, { id: d.id, posicion: d.posicion, orden: d.orden }, uid, o);
-            if (accion === 'colaConfigurar') return cola.configurar(db, d.config || {}, uid, o);
+            if (accion === 'seriesVer') return series.ver(db, o);
+            if (accion === 'seriesLista') return series.lista(db); // solo nombres y colores, para el calendario
+            if (accion === 'serieCrear') return series.crearSerie(db, d.config || {}, uid, o);
+            if (accion === 'serieConfigurar') return series.configurarSerie(db, { ...(d.config || {}), serie: d.serie }, uid, o);
+            if (accion === 'serieSemana') return series.definirSemana(db, { dias: d.dias, saltarMiercoles: d.saltarMiercoles }, uid, o);
+            if (accion === 'serieAsignar') return series.asignar(db, { id: d.id, serie: d.serie, titulo: d.titulo }, uid, o);
+            if (accion === 'serieQuitar') return series.quitar(db, { id: d.id }, uid, o);
+            if (accion === 'serieReordenar') return series.reordenar(db, { id: d.id, posicion: d.posicion, orden: d.orden, serie: d.serie }, uid, o);
         }
         if (accion === 'reelNuevo') return instagramPosts.guardarPost(db, { tipo: 'reel', origen: 'manual' }, uid);
         if (accion === 'ordenar') return instagramPosts.ordenarImagenes(db, { id: d.id, orden: d.orden }, uid);

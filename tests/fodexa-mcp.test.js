@@ -187,7 +187,7 @@ test('MCP: initialize, tools/list con las 6 herramientas y notificación sin res
     const ini = await rpc(tk, 'initialize', { protocolVersion: '2025-06-18' });
     assert.equal(ini.body.result.protocolVersion, '2025-06-18');
     const lista = await rpc(tk, 'tools/list');
-    assert.deepEqual(lista.body.result.tools.map((x) => x.name).sort(), ['agregar_a_cola', 'cancelar_reel', 'configurar_cola', 'editar_reel', 'estado_reel', 'listar_reels', 'programar_reel', 'quitar_de_cola', 'reordenar_cola', 'subir_video', 'ver_cola']);
+    assert.deepEqual(lista.body.result.tools.map((x) => x.name).sort(), ['agregar_a_cola', 'cancelar_reel', 'configurar_serie', 'crear_serie', 'definir_semana', 'editar_reel', 'estado_reel', 'listar_reels', 'listar_series', 'programar_reel', 'quitar_de_cola', 'reordenar_cola', 'subir_video', 'ver_cola']);
     const nota = await pedir({ method: 'POST', path: '/mcp', headers: { authorization: `Bearer ${tk}` }, body: { jsonrpc: '2.0', method: 'notifications/initialized' } });
     assert.equal(nota.status, 202);
 });

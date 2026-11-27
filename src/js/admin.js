@@ -40584,6 +40584,7 @@ const rdState = {
     ig: null,
     fb: null,      // estado de la página de Facebook (sin token)
     tg: null,      // estado del canal de Telegram (sin token)
+    series: [],    // series de reels: { id, nombre, color, activa } (colores y pausas en el calendario)
     config: null,  // contenido de la IA (tono, hashtags, horarios)
     resaltar: '',  // día a destacar un momento en el calendario (la publicación recién programada)
     ed: null       // publicación en edición
@@ -40601,6 +40602,8 @@ async function _ensureRedesLoaded() {
             rdState.tab = b.dataset.rdTab;
             rdPintarTabs();
             rdRender();
+            // Si las series cambiaron fechas o pausas, el calendario se vuelve a leer para mostrar lo vigente.
+            if (!rdState.cargado && !rdState.cargando) rdCargar().then(() => rdRender()).catch(() => {});
         });
     }
     if (!rdState.mes) { rdState.mes = _rdHoy().slice(0, 7); rdState.semanaDe = rdLunesDe(_rdHoy()); }
@@ -40651,6 +40654,8 @@ async function rdCargar() {
         if (!rdState.config) rdState.config = await rdIALlamar('leerConfig').catch(() => null);
         rdState.fb = await rdFbLlamar('estado').catch(() => null);
         rdState.tg = await rdTgLlamar('estado').catch(() => null);
+        // Series de reels (nombre, color, si están activas): el calendario oculta lo de una serie en pausa y pinta el resto con su color.
+        rdState.series = (await rdLlamar('seriesLista').catch(() => null))?.series || [];
         await rdCargarHistorias();
         rdState.cargado = true;
     } finally {
@@ -40675,6 +40680,7 @@ function rdRender() {
     else if (rdState.tab === 'metricas') rdRenderMetricas(body);
     else if (rdState.tab === 'cuentas') rdRenderCuentas(body);
     else if (rdState.tab === 'reels') rdRenderReels(body);
+    else if (rdState.tab === 'series') rdRenderSeries(body);
 }
 
 function rdAvisosHtml() {
@@ -40689,11 +40695,30 @@ function rdAvisosHtml() {
 }
 
 // ── Calendario ──────────────────────────────────────────────────────────────
+// ¿Se muestra en el calendario? SOLO lo programado y activo (más lo que ya salió o falló, que es historial):
+// los borradores (aunque traigan una fecha propuesta), lo cancelado y lo de una serie en pausa NO aparecen.
+function rdVisibleEnCalendario(p, series) {
+    if (p.estado === 'borrador' || p.estado === 'cancelada') return false;
+    if (p.serieId && ['programada', 'error', 'publicando'].includes(p.estado)) {
+        const s = (series || []).find((x) => x.id === p.serieId);
+        if (!s || s.activa === false) return false; // serie pausada (o ya inexistente): sus reels pendientes desaparecen
+    }
+    return true;
+}
+function rdColorSerie(p) {
+    const s = p.serieId ? (rdState.series || []).find((x) => x.id === p.serieId) : null;
+    return s && /^#[0-9a-f]{6}$/i.test(s.color || '') ? s : null;
+}
+// Nombre del video para el calendario: su título, o el principio del texto.
+function rdNombreReel(p) {
+    return String(p.titulo || '').trim() || String(p.caption || '').replace(/\s+/g, ' ').trim().slice(0, 22) || 'Sin texto';
+}
+
 function rdItemsDelDia(fecha) {
     const items = [];
     for (const p of rdState.posts) {
         const ms = rdMomentoDe(p);
-        if (ms && rdFechaDeMs(ms) === fecha && p.estado !== 'cancelada') items.push({ tipo: 'post', ms, post: p });
+        if (ms && rdFechaDeMs(ms) === fecha && rdVisibleEnCalendario(p, rdState.series)) items.push({ tipo: 'post', ms, post: p });
     }
     const cod = rdState.codigos[fecha];
     if (cod) {
@@ -40719,8 +40744,11 @@ function rdChipHtml(it) {
     }
     const p = it.post;
     const est = RD_ESTADOS[p.estado] || RD_ESTADOS.borrador;
-    const texto = String(p.caption || '').replace(/\s+/g, ' ').trim().slice(0, 22) || 'Sin texto';
-    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}" title="${escapeHtml(est.etiqueta)}${p.origen === 'ia' ? ' · propuesta por la IA' : ''}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.origen === 'ia' ? '🤖' : rdIcono(p)} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}${p.facebook?.publicar === true ? ' <b class="rd-fb" title="También en Facebook">f</b>' : ''}</button>`;
+    const serie = rdColorSerie(p);
+    const texto = serie ? rdNombreReel(p) : (String(p.caption || '').replace(/\s+/g, ' ').trim().slice(0, 22) || 'Sin texto');
+    // Los reels de una serie llevan el color de su serie (borde y fondo suave) y su nombre en la ayuda.
+    const estilo = serie ? ` style="border-color:${serie.color};background:${serie.color}33;border-left-width:4px"` : '';
+    return `<button type="button" class="rd-chip rd-chip--${escapeHtml(p.estado)}" data-rd-abrir="${escapeHtml(p.id)}"${estilo} title="${serie ? `${escapeHtml(serie.nombre)} · ` : ''}${escapeHtml(est.etiqueta)}${p.origen === 'ia' ? ' · propuesta por la IA' : ''}${p.error ? `: ${escapeHtml(p.error)}` : ''}">${p.origen === 'ia' ? '🤖' : rdIcono(p)} ${escapeHtml(rdHora12(rdHoraDeMs(it.ms)))} ${escapeHtml(texto)}${p.facebook?.publicar === true ? ' <b class="rd-fb" title="También en Facebook">f</b>' : ''}</button>`;
 }
 
 function rdCeldaHtml(fecha, mesActual) {
@@ -40746,8 +40774,9 @@ function rdRenderCalendario(body) {
     const titulo = semana
         ? `${Number(semanas[0][0].slice(8))} ${RD_MESES[Number(semanas[0][0].slice(5, 7)) - 1].slice(0, 3)} – ${Number(semanas[0][6].slice(8))} ${RD_MESES[Number(semanas[0][6].slice(5, 7)) - 1].slice(0, 3)} ${semanas[0][6].slice(0, 4)}`
         : rdTituloMes(rdState.mes);
-    const sinFecha = rdState.posts.filter((p) => p.estado === 'borrador' && !p.programadaAtMs);
-    const proximas = rdState.posts.filter((p) => p.estado === 'programada').sort((a, b) => a.programadaAtMs - b.programadaAtMs).slice(0, 5);
+    // Borradores: no salen en el calendario hasta que se programan (aunque traigan una fecha propuesta).
+    const sinFecha = rdState.posts.filter((p) => p.estado === 'borrador').sort((a, b) => (Number(b.actualizadoAtMs) || 0) - (Number(a.actualizadoAtMs) || 0));
+    const proximas = rdState.posts.filter((p) => p.estado === 'programada' && rdVisibleEnCalendario(p, rdState.series)).sort((a, b) => a.programadaAtMs - b.programadaAtMs).slice(0, 5);
     body.innerHTML = `
         ${rdAvisosHtml()}
         <div class="rd-toolbar">
@@ -40764,8 +40793,9 @@ function rdRenderCalendario(body) {
             <button type="button" class="section-action-btn primary" data-rd-nueva="">✍️ Nueva publicación</button>
         </div>
         <div class="rd-leyenda">
-            ${['programada', 'publicada', 'borrador', 'error'].map((k) => `<span class="rd-chip rd-chip--${k}">${RD_ESTADOS[k].icono} ${RD_ESTADOS[k].etiqueta}</span>`).join('')}
+            ${['programada', 'publicada', 'error'].map((k) => `<span class="rd-chip rd-chip--${k}">${RD_ESTADOS[k].icono} ${RD_ESTADOS[k].etiqueta}</span>`).join('')}
             <span class="rd-chip rd-chip--historia">⭐ Historia del código (automática)</span>
+            ${(rdState.series || []).filter((s) => s.activa !== false && /^#[0-9a-f]{6}$/i.test(s.color || '')).map((s) => `<span class="rd-chip" style="border-color:${s.color};background:${s.color}33;border-left-width:4px" title="Serie de reels">🎬 ${escapeHtml(s.nombre)}</span>`).join('')}
         </div>
         <div class="rd-cal${semana ? ' rd-cal--semana' : ''}">
             ${RD_DIAS_CORTOS.map((d) => `<div class="rd-dow">${d}</div>`).join('')}
@@ -42576,7 +42606,7 @@ function rdCuentaTgHtmlBase(tg) {
 // ── Reels (lista y manejo de los reels que sube Claude desde el conector, o a mano) ───────────────
 // Lista = tarjetas pequeñas con solo la portada (primer cuadro, sin bajar el video). El video completo y los botones van en una ventana.
 const rdReels = { filtro: '', lista: null, cargando: false, subiendo: {} };
-const RD_REEL_ESTADOS = [['cola', '📋 Cola'], ['', 'Todos'], ['borrador', 'Borrador'], ['programado', 'Programado'], ['publicado', 'Publicado'], ['error', 'Error'], ['cancelado', 'Cancelado']];
+const RD_REEL_ESTADOS = [['', 'Todos'], ['borrador', 'Borrador'], ['programado', 'Programado'], ['publicado', 'Publicado'], ['error', 'Error'], ['cancelado', 'Cancelado']];
 
 // Campo datetime-local ↔ ms, siempre en hora de Colombia (UTC-5), sin importar la zona del navegador.
 const rdReelFechaInput = (ms) => (ms ? new Date(Number(ms) - 5 * 3600 * 1000).toISOString().slice(0, 16) : '');
@@ -42618,7 +42648,8 @@ function rdReelAbrirModal(body, r) {
         <label style="display:block;margin-top:10px">Texto<textarea data-f="texto" rows="4" maxlength="2200" style="${RD_REEL_CAMPO}">${escapeHtml(r.texto)}</textarea></label>
         <label style="display:block;margin-top:8px">Hashtags (separados por espacio)<input data-f="hashtags" type="text" value="${escapeHtml(rdReelHashtags(r))}" style="${RD_REEL_CAMPO}"></label>
         <label style="display:block;margin-top:8px">Fecha y hora de publicación (hora de Colombia)<input data-f="cuando" type="datetime-local" value="${rdReelFechaInput(r.programadaAtMs)}" style="${RD_REEL_CAMPO}"></label>
-        <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input data-f="facebook" type="checkbox" ${r.facebookActivo ? 'checked' : ''}> Publicar también en la página de Facebook (además de Instagram)</label>`
+        <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input data-f="facebook" type="checkbox" ${r.facebookActivo ? 'checked' : ''}> Publicar también en la página de Facebook (además de Instagram)</label>
+        ${(rdState.series || []).length ? `<label style="display:block;margin-top:8px">Serie (su fecha la fija la semana fija de la serie)<select data-f="serie" style="${RD_REEL_CAMPO}"><option value="">— elige una serie —</option>${rdState.series.map((s) => `<option value="${escapeHtml(s.id)}" ${r.serieId === s.id ? 'selected' : ''}>${escapeHtml(s.nombre)}${s.activa ? '' : ' (en pausa)'}</option>`).join('')}</select></label>` : ''}`
         : `<p style="white-space:pre-wrap;margin:10px 0 4px">${escapeHtml(r.texto || '(sin texto)')}</p><p class="cd-muted">${escapeHtml(rdReelHashtags(r))}</p>`;
     const btns = [
         '<button type="button" class="cd-btn" data-m="cerrar">Cerrar</button>',
@@ -42626,7 +42657,7 @@ function rdReelAbrirModal(body, r) {
         ['borrador', 'cancelado', 'error'].includes(r.estado) ? '<button type="button" class="cd-btn" data-m="borrar">Borrar</button>' : '',
         r.estado !== 'publicado' ? `<label class="cd-btn" style="cursor:pointer">${r.videoListo ? 'Reemplazar video' : 'Subir video'}<input type="file" accept="video/mp4,video/quicktime,.mp4,.mov" data-m-file hidden></label>` : '',
         editable ? '<button type="button" class="cd-btn" data-m="guardar">Guardar</button>' : '',
-        editable && r.videoListo ? '<button type="button" class="cd-btn" data-m="cola">📋 Poner en cola</button>' : '',
+        editable && (rdState.series || []).length ? '<button type="button" class="cd-btn" data-m="serie">🗂️ Poner en serie</button>' : '',
         editable ? `<button type="button" class="cd-btn" data-m="programar"${r.videoListo ? '' : 'disabled title="Falta el video"'}>Programar</button>` : '',
         editable ? `<button type="button" class="cd-btn" data-m="publicar" ${r.videoListo ? '' : 'disabled title="Falta el video"'}>Publicar ahora</button>` : ''
     ].join(' ');
@@ -42658,7 +42689,11 @@ function rdReelAbrirModal(body, r) {
         const a = b.dataset.m;
         if (a === 'cerrar') { cerrar(); return; }
         if (a === 'guardar') { hacer(b, async () => { const f = await guardarCampos(); if (f.cuando && r.estado === 'programado') await rdLlamar('reelEditar', { id: r.id, cuando: f.cuando }); }, 'Cambios guardados.'); return; }
-        if (a === 'cola') { hacer(b, async () => { await guardarCampos(); await rdLlamar('colaAgregar', { id: r.id }); }, 'Reel en la cola de la serie.'); return; }
+        if (a === 'serie') {
+            if (!campo('serie').value) { showNotice('Elige primero la serie.', 'error'); return; }
+            hacer(b, async () => { await guardarCampos(); await rdLlamar('serieAsignar', { id: r.id, serie: campo('serie').value }); }, 'Reel en la serie: saldrá solo el día que le toque (semana fija).');
+            return;
+        }
         if (a === 'programar') {
             if (!campo('cuando').value) { showNotice('Elige primero la fecha y hora.', 'error'); return; }
             hacer(b, async () => { const f = await guardarCampos(); await rdLlamar('programar', { id: r.id, programadaAtMs: new Date(`${f.cuando.replace(' ', 'T')}:00-05:00`).getTime() }); }, 'Reel programado.');
@@ -42678,12 +42713,6 @@ function rdReelAbrirModal(body, r) {
 async function rdReelsCargar(body) {
     if (rdReels.cargando) return;
     rdReels.cargando = true;
-    if (rdReels.filtro === 'cola') {
-        try { rdReels.cola = await rdLlamar('colaVer'); } catch (err) { showNotice(err.message || 'No se pudo leer la cola.', 'error'); rdReels.cola = rdReels.cola || { config: {}, total: 0, cola: [] }; }
-        rdReels.cargando = false;
-        rdRenderReels(body, true);
-        return;
-    }
     try { rdReels.lista = await rdLlamar('reelsLista', { estado: rdReels.filtro || undefined }); } catch (err) { showNotice(err.message || 'No se pudieron leer los reels.', 'error'); rdReels.lista = rdReels.lista || { total: 0, reels: [] }; }
     rdReels.cargando = false;
     rdRenderReels(body, true);
@@ -42715,78 +42744,198 @@ async function rdReelSubirVideo(body, id, archivo) {
     await rdReelsCargar(body);
 }
 
-// Cola de la serie: pantalla para VER (orden, hora estimada, estado, video). Mover/quitar/publicar son opcionales.
-function rdColaHtml() {
-    const c = rdReels.cola;
-    if (!c) return '<p class="cd-muted">Cargando la cola…</p>';
-    const g = c.config || {};
-    const barra = `<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:10px">
-        <label>Hora diaria<input data-cc="hora" type="time" value="${escapeHtml(g.hora || '18:00')}" style="${RD_REEL_CAMPO};width:auto"></label>
-        <label>Reels por día<input data-cc="porDia" type="number" min="1" max="5" value="${escapeHtml(String(g.porDia || 1))}" style="${RD_REEL_CAMPO};width:70px"></label>
-        <label style="display:flex;gap:6px;align-items:center"><input data-cc="saltarMiercoles" type="checkbox" ${g.saltarMiercoles !== false ? 'checked' : ''}> Saltar miércoles (cerrado)</label>
-        <label style="display:flex;gap:6px;align-items:center"><input data-cc="activa" type="checkbox" ${g.activa !== false ? 'checked' : ''}> Cola activa</label>
-        <button type="button" class="cd-btn" data-cola="guardar">Guardar</button>
-        <button type="button" class="cd-btn" data-cola="refrescar">🔄</button>
-    </div>
-    <p class="cd-muted" style="font-size:.8rem;margin:0 0 10px">Hora de Colombia. La cola publica sola en Instagram y Facebook, en orden. Claude agrega los reels desde el conector.</p>`;
-    if (!c.cola.length) return `${barra}<p class="cd-muted">La cola está vacía.</p>`;
-    const filas = c.cola.map((r, i) => `<article class="admin-card" data-cola-id="${escapeHtml(r.id)}" style="display:flex;gap:10px;align-items:flex-start;padding:10px;margin-bottom:8px">
-        <div style="font-size:1.3rem;font-weight:700;min-width:1.6em;text-align:center">${r.posicion}</div>
-        ${r.videoUrl ? `<video controls preload="none" playsinline src="${escapeHtml(r.videoUrl)}" style="width:96px;aspect-ratio:9/16;object-fit:cover;background:#000;border-radius:9px;flex:none"></video>` : '<div style="width:96px;aspect-ratio:9/16;background:#000;border-radius:9px;flex:none"></div>'}
-        <div style="flex:1;min-width:0">
-            <div><strong>📅 ${escapeHtml(r.publicaEstimada || 'Sin fecha')}</strong>${r.dia ? ` · ${escapeHtml(r.dia)}` : ''}</div>
-            <div class="cd-muted" style="font-size:.82rem">${escapeHtml(r.estado)}${r.facebook ? ' · IG + Facebook' : ' · solo Instagram'}${r.duracionSegundos ? ` · ${escapeHtml(String(r.duracionSegundos))} s` : ''}</div>
-            <div style="margin-top:4px;overflow-wrap:anywhere">${escapeHtml(r.texto || '(sin texto)')}</div>
-            ${r.error ? `<div style="color:#ff8a8a;font-size:.8rem">⚠️ ${escapeHtml(r.error)} (intentos: ${r.intentos})</div>` : ''}
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
-                <button type="button" class="cd-btn" data-cola="arriba" ${i === 0 ? 'disabled' : ''}>⬆️</button>
-                <button type="button" class="cd-btn" data-cola="abajo" ${i === c.cola.length - 1 ? 'disabled' : ''}>⬇️</button>
-                <button type="button" class="cd-btn" data-cola="quitar">Quitar</button>
-                <button type="button" class="cd-btn" data-cola="publicar">Publicar ahora</button>
-            </div>
-        </div>
-    </article>`).join('');
-    return `${barra}${filas}`;
+// ── Series de reels: carpetas con su cola, su hora y su color + la semana fija (qué serie sale cada día) ────────────
+// Todo se lee y escribe por la función adminInstagramPosts (acciones serie*, functions/series.js). El calendario de Redes
+// solo muestra los reels de series activas; al pausar una serie sus reels salen del calendario y al reactivarla vuelven.
+const rdSeries = { datos: null, cargando: false, grupo: {}, nueva: false, arrastrando: null };
+const RD_SERIE_DIAS = [['lunes', 'Lunes'], ['martes', 'Martes'], ['miercoles', 'Miércoles'], ['jueves', 'Jueves'], ['viernes', 'Viernes'], ['sabado', 'Sábado'], ['domingo', 'Domingo']];
+const RD_SERIE_GRUPOS = [['cola', 'En cola'], ['borradores', 'Borradores'], ['programados', 'Programados'], ['publicados', 'Publicados']];
+const RD_SERIE_ICONO = { sale: '✅', publicado: '✔️', pausada: '⏸️', sin_videos: '⚠️', sin_serie: '⚠️', cerrado: '🚫', libre: '·', pasado: '·' };
+const rdColorOk = (c) => (/^#[0-9a-f]{6}$/i.test(String(c || '')) ? c : '#888888');
+
+// Lo que el calendario necesita saber de cada serie (nombre, color, activa) se actualiza con cada cambio.
+function rdSeriesSincronizarCalendario(v) {
+    rdState.series = (v.series || []).map((s) => ({ id: s.id, nombre: s.nombre, color: s.color, hora: s.hora, activa: s.activa }));
+    rdState.cargado = false; // el calendario se vuelve a leer al entrar (los reels cambian de fecha)
 }
 
-function rdColaEnlazar(body) {
-    const hacer = async (fn, ok) => {
-        try { await fn(); if (ok) showNotice(ok, 'ok'); } catch (err) { showNotice(err.message || 'No se pudo completar.', 'error'); }
-        rdReels.cargando = false;
-        await rdReelsCargar(body);
+async function rdSeriesCargar(body) {
+    if (rdSeries.cargando) return;
+    rdSeries.cargando = true;
+    try { rdSeries.datos = await rdLlamar('seriesVer'); rdSeriesSincronizarCalendario(rdSeries.datos); } catch (err) { showNotice(err.message || 'No se pudieron leer las series.', 'error'); rdSeries.datos = rdSeries.datos || { semana: {}, series: [], proximos: [], avisos: [] }; }
+    rdSeries.cargando = false;
+    rdRenderSeries(body);
+}
+
+function rdSerieFilaHtml(r, i, total, serie, otras, arrastrable) {
+    const pub = r.grupo === 'publicados';
+    return `<div class="rs-fila" data-rs-id="${escapeHtml(r.id)}" ${arrastrable ? 'draggable="true"' : ''} style="display:flex;gap:10px;align-items:flex-start;padding:8px;margin-bottom:6px;border:1px solid rgba(255,255,255,.1);border-radius:9px;background:rgba(255,255,255,.03)">
+        ${arrastrable ? '<div title="Arrastra para reordenar" style="cursor:grab;font-size:1.2rem;opacity:.6;align-self:center">☰</div>' : ''}
+        ${r.videoUrl ? `<video controls preload="none" playsinline src="${escapeHtml(r.videoUrl)}" style="width:64px;aspect-ratio:9/16;object-fit:cover;background:#000;border-radius:9px;flex:none"></video>` : '<div style="width:64px;aspect-ratio:9/16;background:#000;border-radius:9px;flex:none"></div>'}
+        <div style="flex:1;min-width:0">
+            <div><strong>${escapeHtml(r.nombre)}</strong> · <span class="cd-muted">${escapeHtml(r.estado)}</span></div>
+            <div class="cd-muted" style="font-size:.82rem">📅 ${escapeHtml(r.publicaEstimada || 'Sin fecha')}${r.dia ? ` · ${escapeHtml(r.dia)}` : ''}${r.facebook ? ' · IG + Facebook' : ' · solo Instagram'}${r.duracionSegundos ? ` · ${escapeHtml(String(r.duracionSegundos))} s` : ''}</div>
+            <div style="margin-top:2px;overflow-wrap:anywhere;font-size:.85rem">${escapeHtml(r.texto || '(sin texto)')}</div>
+            ${r.error ? `<div style="color:#ff8a8a;font-size:.8rem">⚠️ ${escapeHtml(r.error)} (intentos: ${r.intentos})</div>` : ''}
+            ${pub ? '' : `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center">
+                <button type="button" class="cd-btn" data-rs="arriba" ${i === 0 ? 'disabled' : ''} aria-label="Subir">⬆️</button>
+                <button type="button" class="cd-btn" data-rs="abajo" ${i === total - 1 ? 'disabled' : ''} aria-label="Bajar">⬇️</button>
+                ${otras.length ? `<select data-rs-mover style="${RD_REEL_CAMPO};width:auto"><option value="">Mover a…</option>${otras.map((o) => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.nombre)}</option>`).join('')}</select>` : ''}
+                <button type="button" class="cd-btn" data-rs="quitar">Quitar de la serie</button>
+            </div>`}
+        </div>
+    </div>`;
+}
+
+function rdSerieTarjetaHtml(s, todas) {
+    const grupo = rdSeries.grupo[s.id] || 'cola';
+    const lista = grupo === 'publicados' ? s.publicados : (grupo === 'cola' ? s.cola : s.cola.filter((r) => r.grupo === grupo));
+    const otras = todas.filter((o) => o.id !== s.id);
+    const cuenta = { cola: s.cola.length, borradores: s.conteo.borradores, programados: s.conteo.programados, publicados: s.conteo.publicados };
+    const color = rdColorOk(s.color);
+    const filas = lista.length
+        ? lista.map((r, i) => rdSerieFilaHtml(r, i, lista.length, s, otras, grupo === 'cola')).join('')
+        : `<p class="cd-muted">${grupo === 'publicados' ? 'Todavía no se ha publicado ninguno.' : 'No hay videos aquí. Claude los agrega desde el conector (subir_video con la serie) o desde la pestaña Reels.'}</p>`;
+    return `<article class="admin-card" data-serie-id="${escapeHtml(s.id)}" style="border-left:4px solid ${color};margin-bottom:12px">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:8px">
+            <label>Color<input data-sc="color" type="color" value="${color}" style="${RD_REEL_CAMPO};width:56px;padding:2px"></label>
+            <label style="flex:1;min-width:180px">Nombre<input data-sc="nombre" type="text" maxlength="80" value="${escapeHtml(s.nombre)}" style="${RD_REEL_CAMPO}"></label>
+            <label>Hora diaria${s.horaPorDefinir ? ' <span class="cd-muted">(por definir)</span>' : ''}<input data-sc="hora" data-orig="${escapeHtml(s.hora)}" type="time" value="${escapeHtml(s.hora)}" style="${RD_REEL_CAMPO};width:auto"></label>
+            <label style="display:flex;gap:6px;align-items:center"><input data-sc="facebook" type="checkbox" ${s.facebook ? 'checked' : ''}> También en Facebook</label>
+            <button type="button" class="cd-btn" data-rs="guardar-serie">Guardar</button>
+            <button type="button" class="cd-btn" data-rs="${s.activa ? 'pausar' : 'reactivar'}">${s.activa ? '⏸️ Pausar serie' : '▶️ Reactivar serie'}</button>
+        </div>
+        <p class="cd-muted" style="margin:0 0 8px;font-size:.85rem">${s.activa ? '🟢 Activa' : '⏸️ En pausa: sus reels no aparecen en el calendario y ese día no sale nada'} · Días: ${s.dias.length ? escapeHtml(s.dias.join(', ')) : 'ninguno (asígnalos en la semana fija)'} · ${s.conteo.programados} programados · ${s.conteo.borradores} borradores · ${s.conteo.publicados} publicados</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">${RD_SERIE_GRUPOS.map(([g, t]) => `<button type="button" class="rd-tab ${grupo === g ? 'on' : ''}" data-rs-grupo="${g}">${t} (${cuenta[g]})</button>`).join('')}</div>
+        ${grupo === 'cola' && lista.length > 1 ? '<p class="cd-muted" style="margin:0 0 6px;font-size:.8rem">Arrastra ☰ (o usa ⬆️⬇️) para cambiar el orden: el primero sale en el próximo día de esta serie.</p>' : ''}
+        <div data-rs-lista>${filas}</div>
+    </article>`;
+}
+
+function rdSeriesHtml() {
+    const v = rdSeries.datos;
+    if (!v) return '<p class="cd-muted">Cargando las series…</p>';
+    const opciones = (sel) => `<option value="">Ninguna</option>${v.series.map((s) => `<option value="${escapeHtml(s.id)}" ${sel === s.id ? 'selected' : ''}>${escapeHtml(s.nombre)}${s.activa ? '' : ' (en pausa)'}</option>`).join('')}`;
+    const avisos = (v.avisos || []).length
+        ? `<article class="admin-card" style="border-left:4px solid #f59e0b"><strong>⚠️ Días en los que no saldrá nada</strong><ul style="margin:6px 0 0 18px">${v.avisos.map((a) => `<li>${escapeHtml(a)}</li>`).join('')}</ul></article>`
+        : '';
+    const semana = `<article class="admin-card" style="margin-bottom:12px">
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center"><h4 style="margin:0">📆 Semana fija</h4>
+            <button type="button" class="cd-btn" data-rs="refrescar">🔄</button></div>
+        <p class="cd-muted" style="margin:4px 0 10px;font-size:.85rem">Qué serie sale cada día, a la hora de esa serie. Editable cuando quieras: el calendario se actualiza solo.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">${RD_SERIE_DIAS.map(([k, t]) => `<label>${t}<select data-sem="${k}" style="${RD_REEL_CAMPO}">${opciones(v.semana[k]?.serieId || '')}</select></label>`).join('')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:10px">
+            <label style="display:flex;gap:6px;align-items:center"><input data-sem-saltar type="checkbox" ${v.semana.saltarMiercoles ? 'checked' : ''}> Saltar los miércoles (cerrado)</label>
+            <button type="button" class="section-action-btn primary" data-rs="guardar-semana">Guardar semana</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">${(v.proximos || []).map((d) => `<span class="rd-chip" title="${escapeHtml(d.detalle || '')}" style="${d.color ? `border-color:${rdColorOk(d.color)};background:${rdColorOk(d.color)}33;border-left-width:4px;` : ''}display:inline-block">${RD_SERIE_ICONO[d.estado] || '·'} ${escapeHtml(d.dia.slice(0, 3))} ${escapeHtml(d.fecha.slice(8))}${d.serie ? ` · ${escapeHtml(d.serie.slice(0, 18))}` : ''}${d.reel ? ` · ${escapeHtml(d.reel.slice(0, 16))}` : ''}</span>`).join('')}</div>
+    </article>`;
+    const nueva = rdSeries.nueva
+        ? `<article class="admin-card" style="margin-bottom:12px"><div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
+            <label style="flex:1;min-width:200px">Nombre de la serie<input data-sn="nombre" type="text" maxlength="80" style="${RD_REEL_CAMPO}"></label>
+            <label>Hora diaria<input data-sn="hora" type="time" value="18:00" style="${RD_REEL_CAMPO};width:auto"></label>
+            <label>Color<input data-sn="color" type="color" value="${['#e11d48', '#0ea5e9', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899'][v.series.length % 6]}" style="${RD_REEL_CAMPO};width:56px;padding:2px"></label>
+            <button type="button" class="section-action-btn primary" data-rs="crear-serie">Crear serie</button>
+            <button type="button" class="cd-btn" data-rs="cancelar-nueva">Cancelar</button></div></article>`
+        : '';
+    return `${avisos}${semana}
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0 10px"><h4 style="margin:0">🗂️ Series</h4><button type="button" class="section-action-btn primary" data-rs="nueva">➕ Nueva serie</button></div>
+        ${nueva}${v.series.length ? v.series.map((s) => rdSerieTarjetaHtml(s, v.series)).join('') : '<p class="cd-muted">Todavía no hay series.</p>'}`;
+}
+
+function rdRenderSeries(body) {
+    body.innerHTML = rdSeriesHtml();
+    if (!rdSeries.datos && !rdSeries.cargando) { rdSeriesCargar(body); return; }
+    rdSeriesEnlazar(body);
+}
+
+function rdSeriesEnlazar(body) {
+    const hacer = async (btn, fn, ok) => {
+        if (btn) btn.disabled = true;
+        try {
+            const v = await fn();
+            if (v && v.series) { rdSeries.datos = v; rdSeriesSincronizarCalendario(v); }
+            if (ok) showNotice(ok, 'ok');
+        } catch (err) { showNotice(err.message || 'No se pudo completar.', 'error'); if (btn) btn.disabled = false; return; }
+        rdRenderSeries(body);
     };
-    body.querySelectorAll('[data-cola]').forEach((b) => b.addEventListener('click', () => {
-        const a = b.dataset.cola;
-        const id = b.closest('[data-cola-id]')?.dataset.colaId;
-        const c = rdReels.cola;
-        if (a === 'refrescar') { hacer(async () => {}); return; }
-        if (a === 'guardar') {
-            const v = (k) => body.querySelector(`[data-cc="${k}"]`);
-            hacer(() => rdLlamar('colaConfigurar', { config: { hora: v('hora').value, reelsPorDia: Number(v('porDia').value), saltarMiercoles: v('saltarMiercoles').checked, activa: v('activa').checked } }), 'Cola configurada.');
+    const v = rdSeries.datos;
+    body.querySelectorAll('[data-rs-grupo]').forEach((b) => b.addEventListener('click', () => { rdSeries.grupo[b.closest('[data-serie-id]').dataset.serieId] = b.dataset.rsGrupo; rdRenderSeries(body); }));
+    body.querySelectorAll('[data-rs]').forEach((b) => b.addEventListener('click', () => {
+        const a = b.dataset.rs;
+        const tarjeta = b.closest('[data-serie-id]');
+        const serieId = tarjeta?.dataset.serieId;
+        const fila = b.closest('[data-rs-id]');
+        const id = fila?.dataset.rsId;
+        if (a === 'refrescar') { rdSeries.datos = null; rdSeries.cargando = false; rdRenderSeries(body); return; }
+        if (a === 'nueva') { rdSeries.nueva = true; rdRenderSeries(body); return; }
+        if (a === 'cancelar-nueva') { rdSeries.nueva = false; rdRenderSeries(body); return; }
+        if (a === 'crear-serie') {
+            const c = (k) => body.querySelector(`[data-sn="${k}"]`).value;
+            if (!c('nombre').trim()) { showNotice('Escribe el nombre de la serie.', 'error'); return; }
+            hacer(b, async () => { const r = await rdLlamar('serieCrear', { config: { nombre: c('nombre').trim(), hora: c('hora') || '18:00', color: c('color') } }); rdSeries.nueva = false; return r; }, 'Serie creada.');
+            return;
+        }
+        if (a === 'guardar-semana') {
+            const dias = {};
+            body.querySelectorAll('[data-sem]').forEach((s) => { dias[s.dataset.sem] = s.value || null; });
+            hacer(b, () => rdLlamar('serieSemana', { dias, saltarMiercoles: body.querySelector('[data-sem-saltar]').checked }), 'Semana guardada. El calendario ya está al día.');
+            return;
+        }
+        if (a === 'guardar-serie') {
+            const c = (k) => tarjeta.querySelector(`[data-sc="${k}"]`);
+            const config = { nombre: c('nombre').value.trim(), color: c('color').value, facebook: c('facebook').checked };
+            if (c('hora').value && c('hora').value !== c('hora').dataset.orig) config.hora = c('hora').value;
+            hacer(b, () => rdLlamar('serieConfigurar', { serie: serieId, config }), 'Serie guardada.');
+            return;
+        }
+        if (a === 'pausar' || a === 'reactivar') {
+            const activa = a === 'reactivar';
+            const nombre = v.series.find((s) => s.id === serieId)?.nombre || 'la serie';
+            const ir = () => hacer(b, () => rdLlamar('serieConfigurar', { serie: serieId, config: { activa } }), activa ? 'Serie reactivada: sus reels vuelven al calendario.' : 'Serie en pausa: sus reels salieron del calendario.');
+            if (activa) { ir(); return; }
+            showConfirmModal({ icon: '⏸️', title: 'Pausar serie', message: `«${nombre}» deja de publicar y sus reels salen del calendario. Los videos no se tocan; al reactivarla vuelven a programarse.`, confirmText: 'Pausar', danger: false }).then((si) => { if (si) ir(); });
             return;
         }
         if (a === 'arriba' || a === 'abajo') {
-            const i = c.cola.findIndex((x) => x.id === id);
-            hacer(() => rdLlamar('colaReordenar', { id, posicion: a === 'arriba' ? i : i + 2 }));
+            const cola = v.series.find((s) => s.id === serieId).cola;
+            const i = cola.findIndex((x) => x.id === id);
+            hacer(b, () => rdLlamar('serieReordenar', { id, posicion: a === 'arriba' ? i : i + 2 }));
             return;
         }
-        if (a === 'quitar') { showConfirmModal({ icon: '📋', title: 'Quitar de la cola', message: 'El reel vuelve a borrador y los demás se corren.', confirmText: 'Quitar' }).then((si) => { if (si) hacer(() => rdLlamar('colaQuitar', { id }), 'Reel fuera de la cola.'); }); return; }
-        if (a === 'publicar') { showConfirmModal({ icon: '🚀', title: 'Publicar ahora', message: 'Se publicará ya mismo y saldrá de la cola.', confirmText: 'Publicar', danger: false }).then((si) => { if (si) hacer(() => rdLlamar('publicarAhora', { id }), 'Publicando… revisa el estado en unos segundos.'); }); }
+        if (a === 'quitar') {
+            showConfirmModal({ icon: '🗂️', title: 'Quitar de la serie', message: 'El reel vuelve a borrador (no se borra) y los demás se corren.', confirmText: 'Quitar' }).then((si) => { if (si) hacer(b, () => rdLlamar('serieQuitar', { id }), 'Reel fuera de la serie.'); });
+        }
     }));
+    body.querySelectorAll('[data-rs-mover]').forEach((sel) => sel.addEventListener('change', () => {
+        if (!sel.value) return;
+        const id = sel.closest('[data-rs-id]').dataset.rsId;
+        const destino = v.series.find((s) => s.id === sel.value);
+        hacer(sel, () => rdLlamar('serieAsignar', { id, serie: sel.value }), `Reel movido a «${destino?.nombre || 'la serie'}» (queda al final de su cola).`);
+    }));
+    // Arrastrar y soltar para reordenar la cola (en pantallas táctiles quedan los botones ⬆️⬇️).
+    body.querySelectorAll('[data-rs-lista]').forEach((lista) => {
+        const serieId = lista.closest('[data-serie-id]').dataset.serieId;
+        lista.querySelectorAll('.rs-fila[draggable="true"]').forEach((f) => {
+            f.addEventListener('dragstart', (e) => { rdSeries.arrastrando = f.dataset.rsId; f.style.opacity = '.4'; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', f.dataset.rsId); } catch { /* algunos navegadores */ } });
+            f.addEventListener('dragend', () => { f.style.opacity = ''; lista.querySelectorAll('.rs-fila').forEach((x) => { x.style.outline = ''; }); });
+            f.addEventListener('dragover', (e) => { if (rdSeries.arrastrando && rdSeries.arrastrando !== f.dataset.rsId) { e.preventDefault(); f.style.outline = '2px dashed rgba(255,255,255,.5)'; } });
+            f.addEventListener('dragleave', () => { f.style.outline = ''; });
+            f.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const origen = rdSeries.arrastrando;
+                rdSeries.arrastrando = null;
+                if (!origen || origen === f.dataset.rsId) return;
+                const ids = v.series.find((s) => s.id === serieId).cola.map((r) => r.id).filter((x) => x !== origen);
+                ids.splice(ids.indexOf(f.dataset.rsId), 0, origen);
+                hacer(null, () => rdLlamar('serieReordenar', { serie: serieId, orden: ids }));
+            });
+        });
+    });
 }
 
 function rdRenderReels(body, soloPintar) {
     const lista = rdReels.lista;
-    if (rdReels.filtro === 'cola') {
-        body.innerHTML = `
-        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
-            ${RD_REEL_ESTADOS.map(([v, t]) => `<button type="button" class="rd-tab ${rdReels.filtro === v ? 'on' : ''}" data-rr-filtro="${v}">${t}</button>`).join('')}
-        </div>${rdColaHtml()}`;
-        if (!rdReels.cola && !soloPintar) rdReelsCargar(body);
-        body.querySelectorAll('[data-rr-filtro]').forEach((b) => b.addEventListener('click', () => { rdReels.filtro = b.dataset.rrFiltro; rdReels.lista = null; rdReels.cola = null; rdRenderReels(body); }));
-        rdColaEnlazar(body);
-        return;
-    }
     body.innerHTML = `
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
             ${RD_REEL_ESTADOS.map(([v, t]) => `<button type="button" class="rd-tab ${rdReels.filtro === v ? 'on' : ''}" data-rr-filtro="${v}">${t}</button>`).join('')}
