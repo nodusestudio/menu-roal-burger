@@ -40674,6 +40674,7 @@ function rdRender() {
     else if (rdState.tab === 'contenido') rdRenderContenido(body);
     else if (rdState.tab === 'metricas') rdRenderMetricas(body);
     else if (rdState.tab === 'cuentas') rdRenderCuentas(body);
+    else if (rdState.tab === 'reels') rdRenderReels(body);
 }
 
 function rdAvisosHtml() {
@@ -42570,6 +42571,145 @@ function rdCuentaTgHtmlBase(tg) {
             <button type="button" class="cd-btn" id="rdTgProbar" title="Envía un mensaje de prueba al canal">🧪 Enviar mensaje de prueba</button>
             <button type="button" class="cd-btn" id="rdTgDesconectar">Desconectar</button>
         </div>`;
+}
+
+// ── Reels (lista y manejo de los reels que sube Claude desde el conector, o a mano) ───────────────
+const rdReels = { filtro: '', lista: null, cargando: false, subiendo: {}, editando: null };
+const RD_REEL_ESTADOS = [['', 'Todos'], ['borrador', 'Borrador'], ['programado', 'Programado'], ['publicado', 'Publicado'], ['error', 'Error'], ['cancelado', 'Cancelado']];
+
+// Campo datetime-local ↔ ms, siempre en hora de Colombia (UTC-5), sin importar la zona del navegador.
+const rdReelFechaInput = (ms) => (ms ? new Date(Number(ms) - 5 * 3600 * 1000).toISOString().slice(0, 16) : '');
+const rdReelFechaServidor = (v) => (v ? String(v).replace('T', ' ') : '');
+
+function rdReelTarjetaHtml(r) {
+    const editable = ['borrador', 'programado', 'error'].includes(r.estado);
+    const tags = (r.hashtags || []).map((h) => '#' + String(h).replace(/^#/, '')).join(' ');
+    const sub = rdReels.subiendo[r.id];
+    const marca = r.videoListo
+        ? `<span class="cd-chip" style="background:rgba(60,180,100,.18)">✅ Video listo · ${escapeHtml(String(r.video.megas))} MB · ${escapeHtml(String(r.video.duracionSegundos))} s</span>`
+        : (r.video && r.video.borrado ? '<span class="cd-chip">🗑️ Video ya borrado (se publicó)</span>' : '<span class="cd-chip" style="background:rgba(220,70,70,.2)">❌ Sin video</span>');
+    const player = r.videoListo && r.video.url ? `<video controls preload="metadata" playsinline style="width:100%;max-height:340px;background:#000;border-radius:9px" src="${escapeHtml(r.video.url)}"></video>` : '';
+    const form = rdReels.editando === r.id ? `
+        <div class="rd-reel-form" style="display:grid;gap:8px;margin-top:8px">
+            <label>Texto<textarea data-f="texto" rows="4" maxlength="2200" style="width:100%">${escapeHtml(r.texto)}</textarea></label>
+            <label>Hashtags (separados por espacio)<input data-f="hashtags" type="text" value="${escapeHtml(tags)}" style="width:100%"></label>
+            <label>Fecha y hora (Colombia)<input data-f="cuando" type="datetime-local" value="${rdReelFechaInput(r.programadaAtMs)}"></label>
+            <label><input data-f="facebook" type="checkbox" ${r.facebookActivo ? 'checked' : ''}> También en Facebook</label>
+            <div><button type="button" class="cd-btn" data-rr="guardar">💾 Guardar</button> <button type="button" class="cd-btn" data-rr="cancelarEdicion">Cerrar</button></div>
+        </div>` : '';
+    return `<article class="admin-card" data-rr-id="${escapeHtml(r.id)}" style="margin-bottom:12px">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px">
+            <strong>${escapeHtml(r.estado.toUpperCase())}</strong> ${marca}
+            <span class="cd-muted" style="font-size:.78rem">id ${escapeHtml(r.id)}</span>
+        </div>
+        <div class="cd-muted" style="font-size:.85rem;line-height:1.5">
+            📅 Programado: ${escapeHtml(r.programadoPara || '—')}${r.publicadoEn ? ` · Publicado: ${escapeHtml(r.publicadoEn)}` : ''}<br>
+            ⬆️ Subido: ${escapeHtml(r.subidoVideoEn || r.creado || '—')} · Facebook: ${escapeHtml(r.facebook)}
+        </div>
+        <p style="white-space:pre-wrap;margin:8px 0">${escapeHtml(r.texto || '(sin texto)')}${tags ? `\n${escapeHtml(tags)}` : ''}</p>
+        ${r.error ? `<p style="color:#ff8a8a">⚠️ ${escapeHtml(r.error)}</p>` : ''}
+        ${r.errorVideo ? `<p style="color:#ff8a8a">⚠️ Video: ${escapeHtml(r.errorVideo)}</p>` : ''}
+        ${player}
+        ${sub ? `<p class="cd-muted">⏳ ${escapeHtml(sub)}</p>` : ''}
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+            ${editable ? '<button type="button" class="cd-btn" data-rr="editar">✏️ Editar</button>' : ''}
+            ${editable ? `<button type="button" class="cd-btn" data-rr="programar" ${r.videoListo ? '' : 'disabled title="Falta el video"'}>🗓️ Programar</button>` : ''}
+            ${editable ? `<button type="button" class="cd-btn" data-rr="publicar" ${r.videoListo ? '' : 'disabled title="Falta el video"'}>🚀 Publicar ahora</button>` : ''}
+            ${r.estado === 'programado' ? '<button type="button" class="cd-btn" data-rr="cancelar">⛔ Cancelar</button>' : ''}
+            ${r.estado !== 'publicado' ? `<label class="cd-btn" style="cursor:pointer">🎞️ ${r.videoListo ? 'Reemplazar video' : 'Subir video'}<input type="file" accept="video/mp4,video/quicktime,.mp4,.mov" data-rr-file hidden></label>` : ''}
+            ${['borrador', 'cancelado', 'error'].includes(r.estado) ? '<button type="button" class="cd-btn" data-rr="borrar">🗑️ Borrar</button>' : ''}
+        </div>
+        ${form}
+    </article>`;
+}
+
+async function rdReelsCargar(body) {
+    if (rdReels.cargando) return;
+    rdReels.cargando = true;
+    try { rdReels.lista = await rdLlamar('reelsLista', { estado: rdReels.filtro || undefined }); } catch (err) { showNotice(err.message || 'No se pudieron leer los reels.', 'error'); rdReels.lista = rdReels.lista || { total: 0, reels: [] }; }
+    rdReels.cargando = false;
+    rdRenderReels(body, true);
+}
+
+async function rdReelSubirVideo(body, id, archivo) {
+    if (!/^video\/(mp4|quicktime)$/.test(archivo.type) && !/\.(mp4|mov)$/i.test(archivo.name)) { showNotice('El video debe ser MP4 o MOV.', 'error'); return; }
+    if (archivo.size > RD_VIDEO_MAX) { showNotice(`El video pesa ${rdMB(archivo.size)}: el máximo es 150 MB.`, 'error'); return; }
+    const total = Math.ceil(archivo.size / RD_VIDEO_TROZO);
+    try {
+        for (let i = 0; i < total; i++) {
+            rdReels.subiendo[id] = `Subiendo… ${Math.round((i / total) * 100)} %`;
+            rdRenderReels(body, true);
+            const base64 = await _cdBlobABase64(archivo.slice(i * RD_VIDEO_TROZO, (i + 1) * RD_VIDEO_TROZO));
+            let ultimo = null;
+            for (let intento = 0; intento < 3; intento++) {
+                try { await rdLlamar('subirParteVideo', { id, parte: i, total, base64 }); ultimo = null; break; } catch (err) { ultimo = err; await new Promise((r) => setTimeout(r, 800 * (intento + 1))); }
+            }
+            if (ultimo) throw ultimo;
+        }
+        rdReels.subiendo[id] = 'Revisando el video…';
+        rdRenderReels(body, true);
+        await rdLlamar('finalizarVideo', { id, total, nombre: archivo.name });
+        showNotice('Video subido y listo.', 'ok');
+    } catch (err) {
+        showNotice(err.message || 'No se pudo subir el video.', 'error');
+    }
+    delete rdReels.subiendo[id];
+    await rdReelsCargar(body);
+}
+
+function rdRenderReels(body, soloPintar) {
+    const lista = rdReels.lista;
+    body.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
+            ${RD_REEL_ESTADOS.map(([v, t]) => `<button type="button" class="rd-tab ${rdReels.filtro === v ? 'on' : ''}" data-rr-filtro="${v}">${t}</button>`).join('')}
+            <button type="button" class="cd-btn" data-rr="nuevo">➕ Nuevo reel</button>
+            <button type="button" class="cd-btn" data-rr="refrescar">🔄</button>
+        </div>
+        ${!lista ? '<p class="cd-muted">Cargando reels…</p>' : (lista.reels.length ? lista.reels.map(rdReelTarjetaHtml).join('') : '<p class="cd-muted">No hay reels con este filtro.</p>')}`;
+    if (!lista && !soloPintar) rdReelsCargar(body);
+    body.querySelectorAll('[data-rr-filtro]').forEach((b) => b.addEventListener('click', () => { rdReels.filtro = b.dataset.rrFiltro; rdReels.lista = null; rdRenderReels(body); }));
+    body.querySelectorAll('[data-rr-file]').forEach((inp) => inp.addEventListener('change', () => {
+        const id = inp.closest('[data-rr-id]').dataset.rrId;
+        if (inp.files[0]) rdReelSubirVideo(body, id, inp.files[0]);
+    }));
+    body.querySelectorAll('[data-rr]').forEach((b) => b.addEventListener('click', async () => {
+        const tarjeta = b.closest('[data-rr-id]');
+        const id = tarjeta?.dataset.rrId;
+        const r = lista?.reels.find((x) => x.id === id);
+        const a = b.dataset.rr;
+        const hacer = async (fn, ok) => {
+            b.disabled = true;
+            try { await fn(); if (ok) showNotice(ok, 'ok'); } catch (err) { showNotice(err.message || 'No se pudo completar.', 'error'); }
+            await rdReelsCargar(body);
+        };
+        if (a === 'refrescar') { await rdReelsCargar(body); return; }
+        if (a === 'nuevo') { await hacer(() => rdLlamar('reelNuevo'), 'Borrador creado: sube el video y escribe el texto.'); return; }
+        if (a === 'editar') { rdReels.editando = id; rdRenderReels(body, true); return; }
+        if (a === 'cancelarEdicion') { rdReels.editando = null; rdRenderReels(body, true); return; }
+        const campo = (f) => tarjeta.querySelector(`[data-f="${f}"]`);
+        if (a === 'guardar' || a === 'programar') {
+            if (a === 'programar' && rdReels.editando !== id) { rdReels.editando = id; rdRenderReels(body, true); showNotice('Elige la fecha y pulsa Programar de nuevo.', 'ok'); return; }
+            const f = rdReels.editando === id ? { texto: campo('texto').value, hashtags: campo('hashtags').value.split(/[\s,]+/).filter(Boolean), cuando: rdReelFechaServidor(campo('cuando').value), facebook: campo('facebook').checked } : null;
+            await hacer(async () => {
+                if (f) {
+                    await rdLlamar('guardar', { post: { id, caption: f.texto, hashtags: f.hashtags, facebook: f.facebook } });
+                    if (f.cuando) {
+                        if (r.estado === 'programado') await rdLlamar('reelEditar', { id, cuando: f.cuando });
+                        else await rdLlamar('programar', { id, programadaAtMs: new Date(`${f.cuando.replace(' ', 'T')}:00-05:00`).getTime() });
+                    }
+                }
+                rdReels.editando = null;
+            }, a === 'programar' ? 'Reel programado.' : 'Cambios guardados.');
+            return;
+        }
+        if (a === 'publicar') {
+            if (!confirm('¿Publicar este reel ahora mismo en Instagram' + (r?.facebookActivo ? ' y Facebook' : '') + '?')) return;
+            await hacer(() => rdLlamar('publicarAhora', { id }), 'Publicando… revisa el estado en unos segundos.');
+            return;
+        }
+        if (a === 'cancelar') { if (!confirm('¿Cancelar este reel? Se borra su video.')) return; await hacer(() => rdLlamar('cancelar', { id }), 'Reel cancelado.'); return; }
+        if (a === 'borrar') { if (!confirm('¿Borrar este reel definitivamente?')) return; await hacer(() => rdLlamar('borrar', { id }), 'Reel borrado.'); }
+    }));
 }
 
 function rdRenderCuentas(body) {

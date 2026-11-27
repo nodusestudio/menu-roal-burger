@@ -3664,6 +3664,16 @@ exports.adminInstagramPosts = onCall(
         if (accion === 'subirParteVideo') return reels.subirParte(db, { id: String(d.id || ''), parte: d.parte, total: d.total, bytes: Buffer.from(String(d.base64 || ''), 'base64') }, uid);
         if (accion === 'finalizarVideo') return reels.finalizarVideo(db, { id: String(d.id || ''), total: d.total, nombre: d.nombre }, uid);
         if (accion === 'quitarVideo') return reels.quitarVideo(db, { id: String(d.id || '') }, uid);
+        // Sección Reels del panel: lista (ensambla videos subidos por el conector), edición y borrador nuevo.
+        if (accion === 'reelsLista') {
+            const reelsApi = require('./reelsApi');
+            return reelsApi.listar(db, { estado: d.estado || undefined, limite: 50, baseUrl: historiaImagenBaseUrl() });
+        }
+        if (accion === 'reelEditar') {
+            const reelsApi = require('./reelsApi');
+            return reelsApi.editar(db, { id: d.id, texto: d.texto, hashtags: d.hashtags, cuando: d.cuando, facebook: d.facebook }, uid, { baseUrl: historiaImagenBaseUrl() });
+        }
+        if (accion === 'reelNuevo') return instagramPosts.guardarPost(db, { tipo: 'reel', origen: 'manual' }, uid);
         if (accion === 'ordenar') return instagramPosts.ordenarImagenes(db, { id: d.id, orden: d.orden }, uid);
         if (accion === 'programar') return instagramPosts.programarPost(db, { id: d.id, programadaAtMs: d.programadaAtMs }, uid);
         if (accion === 'desprogramar') return instagramPosts.desprogramarPost(db, { id: d.id }, uid);
@@ -3765,6 +3775,24 @@ exports.historiaPorEventoCaja = onDocumentWritten(
 );
 
 // Cada 5 min: publica las publicaciones programadas cuya hora ya llegó.
+// Ensambla el video en cuanto termina el PUT del MP4 a reels/{id}/partes/000 (subida directa del conector).
+exports.reelVideoSubido = require('firebase-functions/v2/storage').onObjectFinalized(
+    { region: 'us-central1', bucket: process.env.REELS_BUCKET || 'roal-burger-menu.firebasestorage.app', memory: '1GiB', timeoutSeconds: 300 },
+    async (event) => {
+        const m = /^reels\/([A-Za-z0-9]{10,40})\/partes\/000$/.exec(String(event.data?.name || ''));
+        if (!m) return;
+        const db = getFirestore();
+        try {
+            const snap = await db.collection('instagram_posts').doc(m[1]).get();
+            if (!snap.exists) return;
+            const err = await require('./reelsApi').ensamblarPendiente(db, { id: m[1], ...snap.data() });
+            if (err) console.error('reelVideoSubido:', err);
+        } catch (e) {
+            console.error('reelVideoSubido:', e.message);
+        }
+    }
+);
+
 exports.publicarPostsProgramados = onSchedule(
     { schedule: '*/10 * * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
     async () => {
@@ -3774,6 +3802,8 @@ exports.publicarPostsProgramados = onSchedule(
             if (h?.motivo === 'preparada') console.log(`historiaCierre: ${JSON.stringify(h)}`);
             const r = await instagramPosts.publicarProgramados(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
             if (r.revisadas) console.log(`publicarPostsProgramados: ${JSON.stringify(r)}`);
+            const m = await require('./reelsApi').mantenimiento(getFirestore()).catch((err) => { console.error('reels mantenimiento:', err.message); return null; });
+            if (m && (m.ensamblados || m.borrados)) console.log(`reels mantenimiento: ${JSON.stringify(m)}`);
             const f = await facebookPagina.publicarProgramados(getFirestore(), { baseUrl: historiaImagenBaseUrl() });
             if (f.revisadas) console.log(`publicarPostsProgramados (Facebook): ${JSON.stringify(f)}`);
         } catch (err) {

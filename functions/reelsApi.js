@@ -50,9 +50,14 @@ function vista(post, met, baseUrl) {
         programadaAtMs: post.programadaAtMs || null,
         publicadoEn: textoBogota(post.publicadaAtMs),
         error: post.error || '',
+        creadoAtMs: post.creadoAtMs || null,
+        creado: textoBogota(post.creadoAtMs),
+        subidoVideoEn: textoBogota(post.video?.subidoAtMs),
+        videoListo: !!v && v.borrado !== true,
+        facebookActivo: post.facebook?.publicar === true,
         facebook: post.facebook?.publicar === true ? (post.facebook.estado || 'pendiente') : 'no',
         video: v ? {
-            duracionSegundos: v.duracionS, tamano: `${v.ancho}x${v.alto}`, megas: Math.round((v.size || 0) / 104857.6) / 10, borrado: v.borrado === true,
+            duracionSegundos: v.duracionS, tamano: `${v.ancho}x${v.alto}`, megas: Math.round((v.size || 0) / 104857.6) / 10, bytes: v.size || 0, borrado: v.borrado === true,
             ...(baseUrl && !v.borrado && post.imgToken ? { url: reels.urlVideo(baseUrl, post.id, post.imgToken) } : {})
         } : null,
         instagramMediaId: post.mediaId || '',
@@ -71,6 +76,21 @@ async function metricasDe(db, post) {
     return s.exists ? s.data() : null;
 }
 
+// Si el MP4 ya se subió (PUT a partes/000) pero nunca se ensambló, lo ensambla y valida. Nunca lanza: devuelve el motivo.
+async function ensamblarPendiente(db, post, uid = 'auto', { almacen } = {}) {
+    if (!post || post.tipo !== 'reel' || ['publicada', 'cancelada', 'publicando'].includes(post.estado)) return '';
+    if (post.video?.estado === 'listo' && !post.video.borrado) return '';
+    try {
+        const alm = almacen || reels.almacen();
+        if (!(await alm.existe(`reels/${post.id}/partes/000`))) return '';
+        await reels.finalizarVideo(db, { id: post.id, total: 1, nombre: 'subida-directa.mp4' }, uid, { almacen: alm });
+        Object.assign(post, await posts.leerPost(db, post.id));
+        return '';
+    } catch (err) {
+        return String(err.message || err).slice(0, 200);
+    }
+}
+
 async function listar(db, { estado, limite = 20, baseUrl } = {}) {
     const interno = estado ? ESTADOS[String(estado).toLowerCase()] : null;
     if (estado && !interno) throw new HttpsError('invalid-argument', 'Estado inválido. Usa: programado, publicado, error, borrador o cancelado.');
@@ -80,15 +100,21 @@ async function listar(db, { estado, limite = 20, baseUrl } = {}) {
     lista.sort((a, b) => (b.programadaAtMs || b.creadoAtMs || 0) - (a.programadaAtMs || a.creadoAtMs || 0));
     const top = lista.slice(0, Math.min(Math.max(parseInt(limite, 10) || 20, 1), 50));
     const out = [];
-    for (const p of top) out.push(vista(p, await metricasDe(db, p), baseUrl));
+    for (const p of top) {
+        const errVideo = await ensamblarPendiente(db, p);
+        const v = vista(p, await metricasDe(db, p), baseUrl);
+        if (errVideo) v.errorVideo = errVideo;
+        out.push(v);
+    }
     return { total: lista.length, reels: out };
 }
 
 async function estado(db, { id, baseUrl }) {
     const p = await posts.leerPost(db, String(id || ''));
     if (p.tipo !== 'reel') throw new HttpsError('failed-precondition', 'Esa publicación no es un reel.');
+    const errVideo = await ensamblarPendiente(db, p);
     const r = vista(p, await metricasDe(db, p), baseUrl);
-    return { ...r, intentos: p.intentos || 0 };
+    return { ...r, intentos: p.intentos || 0, ...(errVideo ? { errorVideo: errVideo } : {}) };
 }
 
 // ── Video ────────────────────────────────────────────────────────────────────
@@ -221,4 +247,25 @@ async function cancelar(db, { id }, uid, opts = {}) {
     return estado(db, { id: p.id, baseUrl: opts.baseUrl });
 }
 
-module.exports = { ESTADOS, parseFecha, textoBogota, vista, listar, estado, prepararSubida, importarVideoDesdeUrl, asegurarVideo, programar, editar, cancelar, DAY_MS };
+// Tarea automática (cada 10 min): ensambla subidas que quedaron sin juntar y borra borradores vacíos de más de 24 h.
+async function mantenimiento(db, { nowMs = Date.now(), almacen } = {}) {
+    const snap = await db.collection(ig.POSTS_COLLECTION).where('tipo', '==', 'reel').get();
+    let ensamblados = 0;
+    let borrados = 0;
+    for (const d of snap.docs) {
+        const p = { id: d.id, ...d.data() };
+        if (p.estado !== 'borrador') continue;
+        if (!(p.video?.estado === 'listo')) {
+            const antes = p.video?.estado;
+            await ensamblarPendiente(db, p, 'auto', { almacen });
+            if (p.video?.estado === 'listo' && antes !== 'listo') { ensamblados += 1; continue; }
+        }
+        const vacio = !String(p.caption || '').trim() && !(p.video && p.video.estado === 'listo');
+        if (vacio && nowMs - (p.creadoAtMs || nowMs) > DAY_MS) {
+            await posts.borrarPost(db, { id: p.id }).then(() => { borrados += 1; }).catch(() => {});
+        }
+    }
+    return { ensamblados, borrados };
+}
+
+module.exports = { mantenimiento, ensamblarPendiente, ESTADOS, parseFecha, textoBogota, vista, listar, estado, prepararSubida, importarVideoDesdeUrl, asegurarVideo, programar, editar, cancelar, DAY_MS };
