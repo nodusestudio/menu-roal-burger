@@ -21488,6 +21488,8 @@ function closeClientEditModal() {
     clientEditForm.reset();
 
     activeClientEditId = null;
+    _ptsEditandoFichaDesdePos = false;
+    clientEditModal.classList.remove('sobre-pos');
     hideModalFeedback(clientEditFeedback);
     _clientEditSyncOrderId = null;
     _clientEditSyncField = null;
@@ -28535,9 +28537,29 @@ function _ptsUnlockAddrInput() {
 }
 
 // Botón ✏️ Editar — desbloquea el input para corregir la dirección
+// Con cliente real abre la ficha COMPLETA (nombre, teléfono, WhatsApp, cumpleaños, direcciones); sin ficha solo corrige la dirección.
+let _ptsEditandoFichaDesdePos = false;
 document.getElementById('ptsEditAddrBtn')?.addEventListener('click', () => {
-    _ptsUnlockAddrInput();
+    const full = _ptsSelectedClient?.id ? clientsState.find((c) => c.id === _ptsSelectedClient.id) : null;
+    if (!full || typeof openEditClientModal !== 'function') { _ptsUnlockAddrInput(); return; }
+    _ptsEditandoFichaDesdePos = true;
+    openEditClientModal(full);
+    document.getElementById('clientEditModal')?.classList.add('sobre-pos');
 });
+// Tras guardar la ficha desde el POS: el cliente seleccionado se actualiza (el teléfono puede cambiar el id).
+function _ptsTrasEditarFicha(clientId) {
+    _ptsEditandoFichaDesdePos = false;
+    document.getElementById('clientEditModal')?.classList.remove('sobre-pos');
+    const c = clientsState.find((x) => x.id === clientId);
+    if (!c || !_ptsSelectedClient) return;
+    _ptsSelectedClient = {
+        id: c.id,
+        name: c.customerName || '',
+        phone: c.customerPhone || '',
+        savedAddresses: (c.savedAddressesRaw?.length ? c.savedAddressesRaw : c.savedAddresses) || []
+    };
+    _ptsShowSelectedClientChip(_ptsSelectedClient);
+}
 
 // Botón + Nueva dirección — borra el input y desbloquea para escribir una dirección adicional
 document.getElementById('ptsAddNewAddrBtn')?.addEventListener('click', () => {
@@ -29531,6 +29553,7 @@ if (clientEditForm) {
         // Si esta edición vino del ☰ de un ticket, al terminar hay que volver al tablero de
         // pedidos con ESE ticket abierto (en vez de quedarse en el panel de Clientes).
         const _returnToOrderTicketId = _clientEditSyncOrderId || null;
+        const _desdePos = _ptsEditandoFichaDesdePos;
 
         try {
             // El ID del documento es phone_<digitos> -- si el telefono cambio, el ID nuevo es
@@ -29604,6 +29627,7 @@ if (clientEditForm) {
             await fetchClients({ force: true });
             await reloadDataAndRender();
             closeClientEditModal();
+            if (_desdePos) _ptsTrasEditarFicha(clientId);
 
             if (_returnToOrderTicketId) {
                 document.querySelector('[data-accordion-target="pedidos"]')?.click();

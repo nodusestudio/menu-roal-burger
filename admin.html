@@ -11431,6 +11431,8 @@
             padding: 16px;
         }
         #posTicketSetupModal[hidden] { display: none; }
+        /* Ficha del cliente abierta desde «Editar» del Personalizar ticket: debe quedar encima. */
+        #clientEditModal.sobre-pos { z-index: 10400; }
 
         .pts-modal {
             width: 100%;
