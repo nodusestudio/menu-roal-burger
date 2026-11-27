@@ -3580,6 +3580,17 @@ exports.refrescarTokenInstagram = onSchedule(
         try {
             const r = await instagramHistorias.refrescarToken(getFirestore());
             console.log(`refrescarTokenInstagram: ${r.refrescado ? 'renovado' : r.motivo}`);
+            // Si no se pudo renovar y al token le quedan 10 días o menos (o ya venció), avisa al celular.
+            if (!r.refrescado) {
+                const e = await instagramHistorias.estadoConexion(getFirestore());
+                if (e.conectado && (e.vencido || (e.expiraEnDias !== null && e.expiraEnDias <= 10))) {
+                    await require('./pushAdmin').enviarPush(getFirestore(), {
+                        title: e.vencido ? '⚠️ El token de Instagram venció' : '⚠️ El token de Instagram está por vencer',
+                        body: `${e.vencido ? 'Los reels y las historias no saldrán.' : `Quedan ${e.expiraEnDias} días.`} Entra a FODEXA → Redes y reconecta la cuenta.`,
+                        tag: 'ig-token-vence', tipo: 'instagram_error', url: '/fodexa'
+                    }).catch(() => {});
+                }
+            }
         } catch (err) {
             console.error('refrescarTokenInstagram:', err.message);
         }
@@ -3717,6 +3728,21 @@ exports.reelVideo = onRequest(
             console.error('reelVideo:', err);
             res.status(500).send('error');
         }
+    }
+);
+
+// Conector de Claude (MCP + inicio de sesión OAuth) para programar y revisar los reels de Roal Burger.
+// Toda la lógica está en fodexaMcp.js; aquí solo se traduce la petición HTTP. Pública a propósito: se protege con OAuth.
+const fodexaMcp = require('./fodexaMcp');
+exports.fodexaMcp = onRequest(
+    { region: 'us-central1', memory: '1GiB', timeoutSeconds: 300, cpu: 1, maxInstances: 3 },
+    async (req, res) => {
+        const r = await fodexaMcp.manejar(getFirestore(), {
+            method: req.method, path: req.path, query: req.query, headers: req.headers, body: req.body
+        }, { verificarClave: fodexaMcp.verificarClaveFirebase, baseUrl: require('./fodiReels').baseUrl() });
+        for (const [k, v] of Object.entries(r.headers || {})) res.set(k, v);
+        res.status(r.status);
+        if (typeof r.body === 'string') res.send(r.body); else res.json(r.body);
     }
 );
 

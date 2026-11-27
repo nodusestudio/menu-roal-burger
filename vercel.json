@@ -8,6 +8,10 @@
     { "source": "/admin", "missing": [{ "type": "host", "value": "admin-roal.vercel.app" }], "destination": "/fodexa", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/.well-known/oauth-authorization-server", "destination": "https://us-central1-roal-burger-menu.cloudfunctions.net/fodexaMcp/.well-known/oauth-authorization-server" },
+    { "source": "/.well-known/oauth-protected-resource", "destination": "https://us-central1-roal-burger-menu.cloudfunctions.net/fodexaMcp/.well-known/oauth-protected-resource" },
+    { "source": "/.well-known/oauth-protected-resource/mcp", "destination": "https://us-central1-roal-burger-menu.cloudfunctions.net/fodexaMcp/.well-known/oauth-protected-resource" },
+    { "source": "/mcp", "destination": "https://us-central1-roal-burger-menu.cloudfunctions.net/fodexaMcp/mcp" },
     { "source": "/fodexa", "destination": "/admin" },
     { "source": "/mesero.webmanifest", "destination": "/api/mesero-manifest" },
     { "source": "/og-compartir.jpg", "destination": "/api/og" },

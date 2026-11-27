@@ -1,0 +1,325 @@
+'use strict';
+
+// Conector MCP de FODEXA para Claude (solo reels de Roal Burger) con inicio de sesión OAuth 2.1 (PKCE).
+//
+// Una sola función HTTP (`fodexaMcp` en index.js) con estas rutas:
+//   GET  /.well-known/oauth-protected-resource[...]   dónde está el servidor de login
+//   GET  /.well-known/oauth-authorization-server      datos del login (descubrimiento)
+//   POST /register                                    registro dinámico del cliente (Claude)
+//   GET/POST /authorize                               pantalla de login: correo + contraseña de FODEXA
+//   POST /token                                       canje del código por token (y renovación)
+//   POST /mcp                                         el conector (JSON-RPC: initialize, tools/list, tools/call)
+//
+// Seguridad: solo entra la cuenta ALLOWED_EMAIL y solo si además es administradora (`admins/{uid}`). Los códigos
+// y tokens se guardan SOLO como hash (sha256) en Firestore (colecciones `mcp_*`, que las reglas no exponen).
+// Todo recibe `deps` (db, verificar contraseña, reloj) para probarlo sin red.
+
+const crypto = require('crypto');
+const reelsApi = require('./reelsApi');
+
+const ALLOWED_EMAIL = (process.env.MCP_ALLOWED_EMAIL || 'roalburgerdomicilios@gmail.com').toLowerCase();
+const PUBLIC_BASE = process.env.MCP_PUBLIC_BASE || 'https://roalburger.com';
+const FUNCTION_BASE = process.env.MCP_FUNCTION_BASE || `https://us-central1-${process.env.GCLOUD_PROJECT || 'roal-burger-menu'}.cloudfunctions.net/fodexaMcp`;
+const FIREBASE_API_KEY = process.env.FIREBASE_WEB_API_KEY || 'AIzaSyCinNZVhxL4ijOoZGsvoIvCgR7bHzsl668'; // clave pública del cliente web (firebase-config.js)
+
+const COL_CLIENTES = 'mcp_oauth_clientes';
+const COL_CODIGOS = 'mcp_oauth_codigos';
+const COL_TOKENS = 'mcp_oauth_tokens';
+const COL_INTENTOS = 'mcp_oauth_intentos';
+const CODIGO_VIDA_MS = 5 * 60 * 1000;
+const ACCESO_VIDA_MS = 60 * 60 * 1000;
+const REFRESCO_VIDA_MS = 30 * 24 * 60 * 60 * 1000;
+const MAX_CLIENTES = 200;
+const MAX_FALLOS = 8;
+const VENTANA_FALLOS_MS = 15 * 60 * 1000;
+const VERSIONES = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const aleatorio = (n = 32) => crypto.randomBytes(n).toString('base64url');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Solo Claude (web/escritorio/móvil) y programas locales (Claude Code): nada más puede registrarse.
+function redirectPermitido(u) {
+    let x;
+    try { x = new URL(String(u)); } catch { return false; }
+    if (x.username || x.password || x.hash) return false;
+    if (x.protocol === 'https:') return x.hostname === 'claude.ai' || x.hostname === 'claude.com' || x.hostname.endsWith('.claude.ai') || x.hostname.endsWith('.claude.com');
+    return x.protocol === 'http:' && (x.hostname === 'localhost' || x.hostname === '127.0.0.1' || x.hostname === '[::1]');
+}
+
+const json = (status, body, headers = {}) => ({ status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers }, body });
+const html = (status, cuerpo) => ({ status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' }, body: cuerpo });
+const errOauth = (status, error, descripcion) => json(status, { error, error_description: descripcion });
+const redirigir = (url) => ({ status: 302, headers: { Location: url, 'Cache-Control': 'no-store' }, body: '' });
+const conParams = (base, params) => `${base}${base.includes('?') ? '&' : '?'}${new URLSearchParams(params)}`;
+const paginaError = (texto) => html(400, `<!doctype html><meta charset="utf-8"><p style="font-family:sans-serif">${esc(texto)}</p>`);
+
+// ── Descubrimiento ───────────────────────────────────────────────────────────
+
+const metadatosRecurso = () => ({ resource: `${PUBLIC_BASE}/mcp`, authorization_servers: [PUBLIC_BASE], bearer_methods_supported: ['header'], scopes_supported: ['reels'] });
+const metadatosServidor = () => ({
+    issuer: PUBLIC_BASE,
+    authorization_endpoint: `${FUNCTION_BASE}/authorize`,
+    token_endpoint: `${FUNCTION_BASE}/token`,
+    registration_endpoint: `${FUNCTION_BASE}/register`,
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['none'],
+    scopes_supported: ['reels']
+});
+
+// ── Registro de clientes ─────────────────────────────────────────────────────
+
+async function registrar(db, body, nowMs) {
+    const uris = Array.isArray(body?.redirect_uris) ? body.redirect_uris.map(String) : [];
+    if (!uris.length || uris.length > 10 || !uris.every(redirectPermitido)) return errOauth(400, 'invalid_redirect_uri', 'redirect_uri no permitido.');
+    const total = (await db.collection(COL_CLIENTES).count().get()).data().count;
+    if (total >= MAX_CLIENTES) return errOauth(429, 'temporarily_unavailable', 'Demasiados clientes registrados.');
+    const clientId = `c_${aleatorio(18)}`;
+    await db.collection(COL_CLIENTES).doc(clientId).set({ redirectUris: uris, nombre: String(body?.client_name || '').slice(0, 80), creadoAtMs: nowMs });
+    return json(201, {
+        client_id: clientId, client_id_issued_at: Math.floor(nowMs / 1000), redirect_uris: uris, client_name: String(body?.client_name || ''),
+        token_endpoint_auth_method: 'none', grant_types: ['authorization_code', 'refresh_token'], response_types: ['code']
+    });
+}
+
+async function validarPeticionAuth(db, q) {
+    const clientId = String(q.client_id || '');
+    const c = clientId ? (await db.collection(COL_CLIENTES).doc(clientId).get()).data() : null;
+    if (!c) return { error: 'Cliente desconocido: vuelve a agregar el conector en Claude.' };
+    const redirect = String(q.redirect_uri || '');
+    if (!c.redirectUris.includes(redirect) || !redirectPermitido(redirect)) return { error: 'Dirección de regreso no permitida.' };
+    // Desde aquí, los errores se pueden devolver al cliente.
+    const state = q.state ? String(q.state) : '';
+    if (q.response_type !== 'code') return { redirect, state, oauthError: 'unsupported_response_type' };
+    if (!q.code_challenge || q.code_challenge_method !== 'S256') return { redirect, state, oauthError: 'invalid_request' };
+    return { ok: true, clientId, redirect, state, challenge: String(q.code_challenge), scope: String(q.scope || 'reels') };
+}
+
+function pantallaLogin(p, mensaje = '', status = 200) {
+    const oculto = (k, v) => `<input type="hidden" name="${k}" value="${esc(v)}">`;
+    return html(status, `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FODEXA · Conectar con Claude</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#15110d;color:#f3e9d8;font-family:system-ui,sans-serif}
+main{width:min(92vw,380px);padding:28px;border:1px solid #3a3027;border-radius:9px;background:#1e1813}
+h1{font-size:20px;margin:0 0 6px}p{margin:0 0 16px;font-size:14px;opacity:.85}label{display:block;font-size:13px;margin:12px 0 4px}
+input[type=email],input[type=password]{width:100%;box-sizing:border-box;padding:10px;border-radius:9px;border:1px solid #4a3d31;background:#15110d;color:#f3e9d8;font-size:15px}
+button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:9px;background:#e8501b;color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.err{background:#4a1d17;border-radius:9px;padding:10px;font-size:13px;margin-bottom:12px}</style></head><body><main>
+<h1>Conectar Claude con FODEXA</h1><p>Claude podrá programar y revisar los reels de Roal Burger. Entra con la cuenta de administrador.</p>
+${mensaje ? `<div class="err">${esc(mensaje)}</div>` : ''}
+<form method="post" action="${FUNCTION_BASE}/authorize">
+${oculto('client_id', p.clientId)}${oculto('redirect_uri', p.redirect)}${oculto('state', p.state)}${oculto('code_challenge', p.challenge)}${oculto('code_challenge_method', 'S256')}${oculto('response_type', 'code')}${oculto('scope', p.scope)}
+<label for="e">Correo</label><input id="e" name="email" type="email" autocomplete="username" required>
+<label for="p">Contraseña</label><input id="p" name="password" type="password" autocomplete="current-password" required>
+<button type="submit">Permitir acceso</button></form></main></body></html>`);
+}
+
+// ── Login (correo + contraseña de Firebase) ──────────────────────────────────
+
+async function fallosRecientes(db, nowMs) {
+    const d = (await db.collection(COL_INTENTOS).doc('login').get()).data() || {};
+    return (d.fallos || []).filter((t) => nowMs - t < VENTANA_FALLOS_MS);
+}
+
+async function autorizar(db, q, deps, nowMs) {
+    const p = await validarPeticionAuth(db, q);
+    if (p.error) return paginaError(p.error);
+    if (p.oauthError) return redirigir(conParams(p.redirect, { error: p.oauthError, ...(p.state ? { state: p.state } : {}) }));
+    const fallos = await fallosRecientes(db, nowMs);
+    if (fallos.length >= MAX_FALLOS) return pantallaLogin(p, 'Demasiados intentos fallidos. Espera 15 minutos.', 429);
+    const email = String(q.email || '').trim().toLowerCase();
+    let uid = null;
+    // Mismo mensaje para todos los fallos: no revela si el correo existe.
+    if (email === ALLOWED_EMAIL && q.password && deps.verificarClave) {
+        const r = await deps.verificarClave(email, String(q.password)).catch(() => null);
+        if (r?.uid && String(r.email || '').toLowerCase() === ALLOWED_EMAIL && (await db.collection('admins').doc(r.uid).get()).exists) uid = r.uid;
+    }
+    if (!uid) {
+        await db.collection(COL_INTENTOS).doc('login').set({ fallos: [...fallos, nowMs].slice(-20) });
+        return pantallaLogin(p, 'Correo o contraseña incorrectos, o esa cuenta no tiene acceso.');
+    }
+    const codigo = aleatorio(32);
+    await db.collection(COL_CODIGOS).doc(sha(codigo)).set({ clientId: p.clientId, redirectUri: p.redirect, challenge: p.challenge, uid, scope: p.scope, venceAtMs: nowMs + CODIGO_VIDA_MS });
+    return redirigir(conParams(p.redirect, { code: codigo, ...(p.state ? { state: p.state } : {}) }));
+}
+
+// ── Tokens ───────────────────────────────────────────────────────────────────
+
+async function emitirTokens(db, { uid, clientId, scope }, nowMs) {
+    const acceso = aleatorio(32);
+    const refresco = aleatorio(32);
+    await db.collection(COL_TOKENS).doc(sha(acceso)).set({ tipo: 'acceso', uid, clientId, scope, venceAtMs: nowMs + ACCESO_VIDA_MS });
+    await db.collection(COL_TOKENS).doc(sha(refresco)).set({ tipo: 'refresco', uid, clientId, scope, venceAtMs: nowMs + REFRESCO_VIDA_MS });
+    return json(200, { access_token: acceso, token_type: 'Bearer', expires_in: ACCESO_VIDA_MS / 1000, refresh_token: refresco, scope });
+}
+
+// Lee y borra un documento en una sola transacción: cada código / token de renovación sirve una sola vez.
+const consumir = (db, ref) => db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (!s.exists) return null;
+    tx.delete(ref);
+    return s.data();
+});
+
+async function canjear(db, b, nowMs) {
+    const clientId = String(b.client_id || '');
+    if (b.grant_type === 'authorization_code') {
+        const c = await consumir(db, db.collection(COL_CODIGOS).doc(sha(b.code || '')));
+        if (!c || c.venceAtMs < nowMs || c.clientId !== clientId || c.redirectUri !== String(b.redirect_uri || '')) return errOauth(400, 'invalid_grant', 'Código inválido o vencido.');
+        const calculado = crypto.createHash('sha256').update(String(b.code_verifier || '')).digest('base64url');
+        if (!b.code_verifier || calculado !== c.challenge) return errOauth(400, 'invalid_grant', 'Verificación PKCE fallida.');
+        return emitirTokens(db, c, nowMs);
+    }
+    if (b.grant_type === 'refresh_token') {
+        const t = await consumir(db, db.collection(COL_TOKENS).doc(sha(b.refresh_token || '')));
+        if (!t || t.tipo !== 'refresco' || t.venceAtMs < nowMs || t.clientId !== clientId) return errOauth(400, 'invalid_grant', 'Token de renovación inválido o vencido.');
+        return emitirTokens(db, t, nowMs);
+    }
+    return errOauth(400, 'unsupported_grant_type', 'grant_type no soportado.');
+}
+
+async function autenticar(db, headers, nowMs) {
+    const m = /^Bearer\s+(\S+)$/i.exec(String(headers.authorization || ''));
+    if (!m) return null;
+    const t = (await db.collection(COL_TOKENS).doc(sha(m[1])).get()).data();
+    if (!t || t.tipo !== 'acceso' || t.venceAtMs < nowMs) return null;
+    if (!(await db.collection('admins').doc(t.uid).get()).exists) return null;
+    return t;
+}
+
+// ── Herramientas ─────────────────────────────────────────────────────────────
+
+const STR = (d) => ({ type: 'string', description: d });
+const HERRAMIENTAS = [
+    {
+        name: 'subir_video',
+        description: 'Prepara un video para un reel de Roal Burger (MP4 vertical 9:16, 3 a 90 s, máx. 150 MB) y devuelve el id del reel y la dirección pública del video. Dos formas: (1) pasa "url" (https público del MP4) y el servidor lo baja y lo valida; (2) sin "url" devuelve una dirección de subida de un solo uso (PUT, 30 min): sube el MP4 con curl -T y luego usa programar_reel con el id. No publica nada.',
+        inputSchema: { type: 'object', properties: { url: STR('Dirección https pública del MP4 (opcional).') } }
+    },
+    {
+        name: 'programar_reel',
+        description: 'Programa un reel en Instagram (y opcional Facebook) para una fecha y hora. Necesita el texto y la fecha, y el video: "id" devuelto por subir_video, o "videoUrl" (https público). Lo publica el mismo cron de FODEXA a su hora; aparece en el panel FODEXA → Redes.',
+        inputSchema: { type: 'object', properties: { id: STR('Id devuelto por subir_video.'), videoUrl: STR('Alternativa a id: MP4 público https.'), texto: STR('Texto (caption) del reel. Máx. 2.200 caracteres.'), hashtags: { type: 'array', items: { type: 'string' }, description: 'Máx. 30, con o sin #.' }, cuando: STR('Fecha y hora de Colombia, "YYYY-MM-DD HH:mm" (o ISO con zona).'), facebook: { type: 'boolean', description: 'También publicar en Facebook.' } }, required: ['texto', 'cuando'] }
+    },
+    {
+        name: 'listar_reels',
+        description: 'Lista los reels de Roal Burger: programados, publicados, con error, borradores o cancelados, con métricas básicas de los publicados.',
+        inputSchema: { type: 'object', properties: { estado: { type: 'string', enum: ['programado', 'publicado', 'error', 'borrador', 'cancelado'] }, limite: { type: 'integer' } } }
+    },
+    {
+        name: 'editar_reel',
+        description: 'Cambia el texto, los hashtags o la fecha de un reel que todavía no se ha publicado.',
+        inputSchema: { type: 'object', properties: { id: STR('Id del reel.'), texto: STR('Texto nuevo.'), hashtags: { type: 'array', items: { type: 'string' } }, cuando: STR('Fecha y hora nuevas de Colombia, "YYYY-MM-DD HH:mm".'), facebook: { type: 'boolean' } }, required: ['id'] }
+    },
+    {
+        name: 'cancelar_reel',
+        description: 'Cancela un reel programado (o borrador) que todavía no se ha publicado. No se puede deshacer.',
+        inputSchema: { type: 'object', properties: { id: STR('Id del reel.') }, required: ['id'] }
+    },
+    {
+        name: 'estado_reel',
+        description: 'Estado de un reel y, si ya se publicó, sus métricas básicas (alcance, reproducciones, me gusta, comentarios, compartidos, guardados). Si falló, dice el motivo.',
+        inputSchema: { type: 'object', properties: { id: STR('Id del reel.') }, required: ['id'] }
+    }
+];
+
+async function llamarHerramienta(db, nombre, a, deps) {
+    const opts = { baseUrl: deps.baseUrl, ...(deps.opts || {}) };
+    const api = deps.api || reelsApi;
+    if (nombre === 'subir_video') {
+        if (a.url) {
+            const posts = require('./instagramPosts');
+            const { id } = await posts.guardarPost(db, { tipo: 'reel', origen: 'manual' }, 'mcp');
+            try { await api.importarVideoDesdeUrl(db, { id, url: a.url }, 'mcp', opts); } catch (err) { await posts.borrarPost(db, { id }).catch(() => {}); throw err; }
+            return { ...(await api.estado(db, { id, baseUrl: opts.baseUrl })), siguiente: 'Video listo. Llama a programar_reel con este id.' };
+        }
+        return api.prepararSubida(db, { baseUrl: opts.baseUrl, firmar: deps.firmar }, 'mcp');
+    }
+    if (nombre === 'programar_reel') return api.programar(db, a, 'mcp', opts);
+    if (nombre === 'listar_reels') return api.listar(db, { estado: a.estado, limite: a.limite, baseUrl: opts.baseUrl });
+    if (nombre === 'editar_reel') return api.editar(db, a, 'mcp', opts);
+    if (nombre === 'cancelar_reel') return api.cancelar(db, a, 'mcp', opts);
+    if (nombre === 'estado_reel') return api.estado(db, { id: a.id, baseUrl: opts.baseUrl });
+    const e = new Error(`Herramienta desconocida: ${nombre}`);
+    e.rpc = -32602;
+    throw e;
+}
+
+const rpcOk = (id, result) => ({ jsonrpc: '2.0', id, result });
+const rpcErr = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, message } });
+
+async function procesarRpc(db, msg, deps) {
+    const { id, method, params } = msg || {};
+    if (id === undefined) return null; // notificación
+    if (method === 'initialize') {
+        const pedida = String(params?.protocolVersion || '');
+        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Reels de Roal Burger en Instagram. Las fechas son hora de Colombia.' });
+    }
+    if (method === 'ping') return rpcOk(id, {});
+    if (method === 'tools/list') return rpcOk(id, { tools: HERRAMIENTAS });
+    if (method === 'tools/call') {
+        try {
+            const r = await llamarHerramienta(db, String(params?.name || ''), params?.arguments || {}, deps);
+            return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] });
+        } catch (err) {
+            if (err.rpc) return rpcErr(id, err.rpc, err.message);
+            return rpcOk(id, { isError: true, content: [{ type: 'text', text: String(err?.message || err).slice(0, 500) }] });
+        }
+    }
+    return rpcErr(id, -32601, `Método no soportado: ${method}`);
+}
+
+// ── Entrada única ────────────────────────────────────────────────────────────
+
+// req: { method, path, query, headers (minúsculas), body (objeto) } → { status, headers, body }
+async function manejar(db, req, deps = {}) {
+    const nowMs = deps.nowMs ?? Date.now();
+    const ruta = String(req.path || '/').replace(/\/+$/, '') || '/';
+    const metodo = String(req.method || 'GET').toUpperCase();
+    try {
+        if (metodo === 'OPTIONS') return { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type, mcp-protocol-version, mcp-session-id', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS' }, body: '' };
+        if (ruta.startsWith('/.well-known/oauth-protected-resource')) return json(200, metadatosRecurso());
+        if (ruta.startsWith('/.well-known/oauth-authorization-server') || ruta.startsWith('/.well-known/openid-configuration')) return json(200, metadatosServidor());
+        if (ruta === '/register' && metodo === 'POST') return await registrar(db, req.body || {}, nowMs);
+        if (ruta === '/authorize' && metodo === 'GET') {
+            const p = await validarPeticionAuth(db, req.query || {});
+            if (p.error) return paginaError(p.error);
+            if (p.oauthError) return redirigir(conParams(p.redirect, { error: p.oauthError, ...(p.state ? { state: p.state } : {}) }));
+            return pantallaLogin(p);
+        }
+        if (ruta === '/authorize' && metodo === 'POST') return await autorizar(db, req.body || {}, deps, nowMs);
+        if (ruta === '/token' && metodo === 'POST') return await canjear(db, req.body || {}, nowMs);
+        if (ruta === '/mcp') {
+            const t = await autenticar(db, req.headers || {}, nowMs);
+            if (!t) return json(401, { error: 'unauthorized' }, { 'WWW-Authenticate': `Bearer resource_metadata="${FUNCTION_BASE}/.well-known/oauth-protected-resource"` });
+            if (metodo !== 'POST') return json(405, { error: 'method_not_allowed' }, { Allow: 'POST' });
+            const cuerpo = req.body;
+            const lote = Array.isArray(cuerpo);
+            const salidas = [];
+            for (const m of (lote ? cuerpo : [cuerpo])) {
+                const r = await procesarRpc(db, m, deps);
+                if (r) salidas.push(r);
+            }
+            if (!salidas.length) return { status: 202, headers: {}, body: '' };
+            return json(200, lote ? salidas : salidas[0]);
+        }
+        return json(404, { error: 'not_found' });
+    } catch (err) {
+        console.error('fodexaMcp:', err);
+        return json(500, { error: 'server_error' });
+    }
+}
+
+// Verifica correo+contraseña con Firebase Auth (REST). Devuelve { uid, email } o lanza.
+async function verificarClaveFirebase(email, password, fetchFn = fetch) {
+    const r = await fetchFn(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Referer: `${PUBLIC_BASE}/` },
+        body: JSON.stringify({ email, password, returnSecureToken: false })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.localId) throw new Error(d?.error?.message || 'login_fallido');
+    return { uid: d.localId, email: d.email };
+}
+
+module.exports = { manejar, verificarClaveFirebase, redirectPermitido, HERRAMIENTAS, ALLOWED_EMAIL, PUBLIC_BASE, FUNCTION_BASE, sha };

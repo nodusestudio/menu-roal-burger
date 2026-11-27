@@ -875,6 +875,21 @@ const TOOLS = [
         input_schema: { type: 'object', properties: {} }
     },
     {
+        name: 'reels',
+        description: 'Reels de Instagram (y Facebook) de FODEXA. accion "listar": reels programados, publicados, con error, borrador o cancelados (filtro "estado"), con sus métricas (alcance, reproducciones, me gusta) cuando ya salieron. "estado": un reel por id. "programar": programa un reel nuevo con "texto", "cuando" (hora de Colombia, ej. "2026-12-05 18:30") y el video (un "videoUrl" https público de un MP4 vertical 9:16 de 3 a 90 s, o el "id" de un reel borrador que ya tenga video subido desde el panel); "facebook":true lo publica también en Facebook. "editar": cambia texto, hashtags o fecha de un reel programado/borrador/con error. "cancelar": cancela uno que no ha salido. Programar NO publica al instante: el cron lo publica a su hora. Si el usuario no da fecha, hora o video, pídelos antes de programar.',
+        input_schema: { type: 'object', properties: {
+            accion: { type: 'string', enum: ['listar', 'estado', 'programar', 'editar', 'cancelar'] },
+            id: { type: 'string', description: 'Id del reel (estado, editar, cancelar, o programar uno ya creado con video).' },
+            estado: { type: 'string', enum: ['programado', 'publicado', 'error', 'borrador', 'cancelado'], description: 'Solo con "listar".' },
+            texto: { type: 'string', description: 'Texto (caption) del reel.' },
+            hashtags: { type: 'array', items: { type: 'string' } },
+            cuando: { type: 'string', description: 'Fecha y hora de Colombia, formato "YYYY-MM-DD HH:mm".' },
+            videoUrl: { type: 'string', description: 'Dirección https pública del MP4.' },
+            facebook: { type: 'boolean', description: 'También publicar en Facebook.' },
+            limite: { type: 'integer' }
+        }, required: ['accion'] }
+    },
+    {
         name: 'velocidad_pedidos',
         description: 'Velocidad al tomar pedidos nuevos en el POS de caja: cuántos segundos (activos) y cuántos toques toma un pedido, toques por producto, comparación por cajero, por hora del día y los 5 pedidos más lentos. Sin fechas = últimos 7 días. Solo cuenta pedidos tomados desde que existe la medición. Úsala para "¿qué tan rápido toma pedidos el cajero?", "¿a qué hora nos atascamos?".',
         input_schema: { type: 'object', properties: { ...FECHAS } }
@@ -1239,6 +1254,7 @@ async function ejecutarHerramienta(db, nombre, args = {}) {
         if (nombre === 'visitantes_en_vivo') return await require('./fodiVisitantes').visitantesEnVivo(db);
         if (nombre === 'gastos_pendientes') return await require('./fodiGastosPendientes').gastosPendientes(db);
         if (nombre === 'clientes_duplicados') return await require('./clientesUnir').clientesDuplicados(db);
+        if (nombre === 'reels') return await require('./fodiReels').reels(db, args);
         if (nombre === 'velocidad_pedidos') return await require('./fodiVelocidad').velocidadPedidos(db, args);
         if (nombre === 'estado_avisos_banco') return await require('./fodiVigilancia').estadoAvisosBanco(db, args);
         if (nombre === 'gasto_fodi') return await require('./fodiUso').gastoFodi(db, args);

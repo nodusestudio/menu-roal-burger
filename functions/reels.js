@@ -310,6 +310,8 @@ module.exports = {
     DURACION_MIN_S,
     DURACION_MAX_S,
     usarAlmacen,
+    almacen,
+    rutaParte,
     almacenReal,
     leerMetaMp4,
     interpretarMoov,

@@ -423,6 +423,18 @@ async function publicacionesUltimas24h(db, nowMs) {
 }
 
 // Publica la publicación `id`. `manual` = botón "Publicar ahora": salta el interruptor y el retraso máximo.
+// Aviso al celular cuando una publicación (reel, foto…) no sale. Nunca lanza: no puede romper la publicación.
+async function avisarFalla(db, post, id, mensaje, { token = false } = {}) {
+    try {
+        const esReel = post?.tipo === 'reel';
+        await require('./pushAdmin').enviarPush(db, {
+            title: token ? '⚠️ Instagram pide reconectar la cuenta' : (esReel ? '⚠️ Un reel no salió' : '⚠️ Una publicación no salió'),
+            body: token ? `${mensaje} Entra a FODEXA → Redes y reconecta la cuenta.` : mensaje,
+            tag: `ig-post-error-${id}`, tipo: 'instagram_error', url: '/fodexa', bodyMax: 180
+        });
+    } catch (err) { console.error('avisarFalla:', err.message); }
+}
+
 async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseUrl, sleep = ig.esperar, manual = false }) {
     const conexion = await ig.leerConexion(db);
     if (!conexion?.accessToken) return { ok: false, motivo: 'sin_conexion' };
@@ -436,6 +448,7 @@ async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseU
     const fallar = async (mensaje, motivo, estado = 'error') => {
         await refPost(db, id).set({ estado, error: mensaje, actualizadoAtMs: nowMs }, { merge: true });
         await ig.registrarPublicacion(db, { ...detalle, ok: false, error: mensaje, nowMs });
+        await avisarFalla(db, post, id, mensaje);
         return { ok: false, motivo, error: mensaje };
     };
 
@@ -482,6 +495,9 @@ async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseU
         await ig.registrarPublicacion(db, { ...detalle, ok: false, error: mensaje, nowMs });
         if (err instanceof ig.GraphError && err.esDeToken) {
             await ig.conexionRef(db).set({ ultimoError: `Instagram rechazó el token (reconecta la cuenta): ${mensaje}`.slice(0, 300) }, { merge: true });
+            await avisarFalla(db, post, id, mensaje, { token: true });
+        } else if (!reintenta) {
+            await avisarFalla(db, post, id, mensaje);
         }
         return { ok: false, motivo: 'error', error: mensaje, reintentara: reintenta };
     }
