@@ -293,6 +293,26 @@ const HERRAMIENTAS = [
         inputSchema: { type: 'object', properties: { serie: STR('Serie a cambiar (nombre o parte del nombre).'), nombre: STR('Nombre nuevo.'), color: STR('Color hexadecimal.'), hora: STR('Hora diaria "HH:mm".'), facebook: { type: 'boolean' }, activa: { type: 'boolean' } }, required: ['serie'] }
     },
     {
+        name: 'rendimiento',
+        description: 'ANALÍTICA: qué publicaciones pegaron en un periodo (Instagram y Facebook juntos). Devuelve las mejores (y las 3 peores si hay suficientes) con tipo, serie, texto, día y hora de publicación, alcance, vistas, interacciones, guardados, compartidos y tasa de interacción, más los totales del periodo. Úsala para "verifícame los reels de la semana pasada, ¿cuál pegó?". Las publicaciones con menos de 3 días siguen subiendo: el resultado lo avisa. Periodos: ultimos_7 (por defecto), semana_pasada (lunes a domingo anterior), ultimos_30, este_mes, o desde/hasta (YYYY-MM-DD, hora de Colombia, máx. 120 días).',
+        inputSchema: { type: 'object', properties: { periodo: { type: 'string', enum: ['ultimos_7', 'semana_pasada', 'ultimos_30', 'este_mes'] }, desde: STR('Fecha inicial YYYY-MM-DD (opcional; manda sobre periodo).'), hasta: STR('Fecha final YYYY-MM-DD (opcional).'), ordenarPor: { type: 'string', enum: ['alcance', 'vistas', 'interacciones', 'guardados', 'compartidos', 'tasa'], description: 'Criterio para el ranking (por defecto alcance).' }, n: { type: 'integer', description: 'Cuántas mostrar (1 a 30, por defecto 10).' } } }
+    },
+    {
+        name: 'resumen_series',
+        description: 'ANALÍTICA: qué funciona mejor, agrupando las publicaciones del periodo por serie, por tipo (reel, carrusel, foto), por día de la semana y por franja horaria: promedio de alcance, vistas, interacciones, guardados, compartidos, tasa y tiempo de visualización, con cuántas publicaciones hay en cada grupo y si el promedio es confiable (3 o más). Incluye una sugerencia de la serie, tipo y franja con más alcance. Úsala para decidir qué seguir haciendo. Mismos periodos que rendimiento.',
+        inputSchema: { type: 'object', properties: { periodo: { type: 'string', enum: ['ultimos_7', 'semana_pasada', 'ultimos_30', 'este_mes'] }, desde: STR('Fecha inicial YYYY-MM-DD (opcional).'), hasta: STR('Fecha final YYYY-MM-DD (opcional).') } }
+    },
+    {
+        name: 'crecimiento',
+        description: 'ANALÍTICA: seguidores de Instagram y de Facebook día por día en el periodo (inicio, fin y cambio) y el resumen de las historias de Instagram (cantidad, alcance, respuestas, visitas al perfil, clics, navegación: adelante, atrás, salidas). Las historias solo se miden mientras duran (24 h).',
+        inputSchema: { type: 'object', properties: { periodo: { type: 'string', enum: ['ultimos_7', 'semana_pasada', 'ultimos_30', 'este_mes'] }, desde: STR('Fecha inicial YYYY-MM-DD (opcional).'), hasta: STR('Fecha final YYYY-MM-DD (opcional).') } }
+    },
+    {
+        name: 'historico_semanal',
+        description: 'ANALÍTICA: resúmenes semanales guardados (totales, mejor publicación y promedio por serie de cada semana), para comparar semanas y ver tendencias de meses, aunque Instagram ya no dé métricas de publicaciones viejas (se miden solo 14 días). "definitivo" = la semana ya cerró su medición.',
+        inputSchema: { type: 'object', properties: { semanas: { type: 'integer', description: 'Cuántas semanas atrás (1 a 52, por defecto 8).' } } }
+    },
+    {
         name: 'definir_semana',
         description: 'Define la semana fija: qué serie sale cada día. "dias" es un objeto {lunes, martes, miercoles, jueves, viernes, sabado, domingo} con el nombre de la serie o null/"ninguna" para dejar el día libre; solo cambia los días que nombres. "saltarMiercoles" (por defecto false) hace que no salga nada los miércoles.',
         inputSchema: { type: 'object', properties: { dias: { type: 'object', description: 'Ejemplo: {"lunes":"Roal","martes":"Emprendimiento","domingo":null}', additionalProperties: true }, saltarMiercoles: { type: 'boolean' } } }
@@ -344,6 +364,14 @@ async function llamarHerramienta(db, nombre, a, deps) {
     }
     if (nombre === 'configurar_serie') return series.configurarSerie(db, a, 'mcp', so);
     if (nombre === 'definir_semana') return series.definirSemana(db, a, 'mcp', so);
+    if (['rendimiento', 'resumen_series', 'crecimiento', 'historico_semanal'].includes(nombre)) {
+        const an = deps.analitica || require('./redesAnalitica');
+        const o = opts.nowMs ? { nowMs: opts.nowMs } : {};
+        if (nombre === 'rendimiento') return an.rendimiento(db, a, o);
+        if (nombre === 'resumen_series') return an.resumenSeries(db, a, o);
+        if (nombre === 'crecimiento') return an.crecimiento(db, a, o);
+        return an.historico(db, a);
+    }
     const e = new Error(`Herramienta desconocida: ${nombre}`);
     e.rpc = -32602;
     throw e;
@@ -357,7 +385,7 @@ async function procesarRpc(db, msg, deps) {
     if (id === undefined) return null; // notificación
     if (method === 'initialize') {
         const pedida = String(params?.protocolVersion || '');
-        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Publicaciones de Roal Burger en Instagram y Facebook: posts, carruseles, historias y reels, sin restricción por tipo (crear_publicacion, agregar_imagen, programar_publicacion, listar_publicaciones, estado_publicacion, editar_publicacion, cancelar_publicacion; subir_video con tipo historia para video por PUT). Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_reel y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola.' });
+        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Publicaciones de Roal Burger en Instagram y Facebook: posts, carruseles, historias y reels, sin restricción por tipo (crear_publicacion, agregar_imagen, programar_publicacion, listar_publicaciones, estado_publicacion, editar_publicacion, cancelar_publicacion; subir_video con tipo historia para video por PUT). Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_reel y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola. ANALÍTICA (solo lectura): rendimiento (qué publicaciones pegaron en un periodo, Instagram + Facebook), resumen_series (qué serie, tipo, día y hora rinde más), crecimiento (seguidores e historias) e historico_semanal (semanas anteriores guardadas). Para "cuál pegó la semana pasada" usa rendimiento con periodo semana_pasada y luego resumen_series; no concluyas con menos de 3 publicaciones por grupo.' });
     }
     if (method === 'ping') return rpcOk(id, {});
     if (method === 'tools/list') return rpcOk(id, { tools: HERRAMIENTAS });

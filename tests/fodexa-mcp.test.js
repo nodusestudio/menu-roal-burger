@@ -187,7 +187,7 @@ test('MCP: initialize, tools/list con todas las herramientas y notificación sin
     const ini = await rpc(tk, 'initialize', { protocolVersion: '2025-06-18' });
     assert.equal(ini.body.result.protocolVersion, '2025-06-18');
     const lista = await rpc(tk, 'tools/list');
-    assert.deepEqual(lista.body.result.tools.map((x) => x.name).sort(), ['agregar_a_cola', 'agregar_imagen', 'cancelar_publicacion', 'cancelar_reel', 'configurar_serie', 'crear_publicacion', 'crear_serie', 'definir_semana', 'editar_publicacion', 'editar_reel', 'estado_publicacion', 'estado_reel', 'listar_publicaciones', 'listar_reels', 'listar_series', 'programar_publicacion', 'programar_reel', 'quitar_de_cola', 'reordenar_cola', 'subir_video', 'ver_cola']);
+    assert.deepEqual(lista.body.result.tools.map((x) => x.name).sort(), ['agregar_a_cola', 'agregar_imagen', 'cancelar_publicacion', 'cancelar_reel', 'configurar_serie', 'crear_publicacion', 'crear_serie', 'crecimiento', 'definir_semana', 'editar_publicacion', 'editar_reel', 'estado_publicacion', 'estado_reel', 'historico_semanal', 'listar_publicaciones', 'listar_reels', 'listar_series', 'programar_publicacion', 'programar_reel', 'quitar_de_cola', 'rendimiento', 'reordenar_cola', 'resumen_series', 'subir_video', 'ver_cola']);
     const nota = await pedir({ method: 'POST', path: '/mcp', headers: { authorization: `Bearer ${tk}` }, body: { jsonrpc: '2.0', method: 'notifications/initialized' } });
     assert.equal(nota.status, 202);
 });
@@ -356,4 +356,27 @@ test('historia en video: subir_video con tipo historia, programar_publicacion y 
     assert.equal(prog.datos.videoListo, true);
     const directa = await call('crear_publicacion', { tipo: 'historia', videoUrl: 'https://cdn.ejemplo.com/h.mp4', cuando: '2026-12-05 20:00' });
     assert.equal(directa.error, false, JSON.stringify(directa.datos));
+});
+
+test('analítica: rendimiento y resumen_series leen métricas reales de la base (IG + FB) y respetan el rango', async () => {
+    const d = deps();
+    const { t } = await tokenCompleto(d);
+    const call = herramienta(t.body.access_token, d);
+    const ms = Date.parse('2026-11-24T18:00:00-05:00');
+    await db.collection(posts.POSTS_COLLECTION).doc('pa').set({ tipo: 'reel', caption: 'Reel de prueba', estado: 'publicada' });
+    await db.collection(ig.METRICAS_COLLECTION).doc('media_pa').set({ postId: 'pa', tipo: 'reel', publicadaAtMs: ms, estado: 'ok', ultimo: { reach: 800, views: 1200, total_interactions: 80 } });
+    await db.collection(ig.METRICAS_COLLECTION).doc('media_vieja').set({ postId: 'pv', tipo: 'reel', publicadaAtMs: Date.parse('2026-10-01T12:00:00-05:00'), estado: 'ok', ultimo: { reach: 5 } });
+    await db.collection('facebook_metricas').doc('fb_pa').set({ postId: 'pa', fbPostId: 'fb_pa', tipo: 'reel', publicadaAtMs: ms, estado: 'ok', ultimo: { reach: 200, views: 300, total_interactions: 20 } });
+    try {
+        const r = (await call('rendimiento', { desde: '2026-11-23', hasta: '2026-11-29' })).datos;
+        assert.equal(r.publicaciones, 1);
+        assert.equal(r.mejores[0].id, 'pa');
+        assert.equal(r.mejores[0].total.alcance, 1000);
+        assert.equal(r.mejores[0].facebook.alcance, 200);
+        const s = (await call('resumen_series', { desde: '2026-11-23', hasta: '2026-11-29' })).datos;
+        assert.equal(s.porSerie[0].nombre, 'Sin serie');
+        assert.equal((await call('crecimiento', { desde: '2026-11-23', hasta: '2026-11-29' })).datos.historiasInstagram.cantidad, 0);
+    } finally {
+        await db.collection('facebook_metricas').doc('fb_pa').delete();
+    }
 });

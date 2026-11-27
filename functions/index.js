@@ -3825,6 +3825,19 @@ exports.publicarPostsProgramados = onSchedule(
     }
 );
 
+// Lunes 06:30: guarda el resumen de las 3 últimas semanas de redes (histórico que no se pierde a los 14 días).
+exports.guardarResumenSemanalRedes = onSchedule(
+    { cpu: 0.5, schedule: '30 6 * * 1', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 120 },
+    async () => {
+        try {
+            const r = await require('./redesAnalitica').guardarResumenesRecientes(getFirestore());
+            console.log(`guardarResumenSemanalRedes: ${JSON.stringify(r)}`);
+        } catch (err) {
+            console.error('guardarResumenSemanalRedes:', err.message);
+        }
+    }
+);
+
 // ─────────────────────────────────────────────────────────────
 // IA PARA PUBLICACIONES DE INSTAGRAM: propone copys/hashtags como BORRADORES; nada sale sin aprobación.
 // Lógica en instagramIA.js (cliente de Claude inyectable). Usa el secreto ANTHROPIC_API_KEY del agente.
