@@ -3673,6 +3673,16 @@ exports.adminInstagramPosts = onCall(
             const reelsApi = require('./reelsApi');
             return reelsApi.editar(db, { id: d.id, texto: d.texto, hashtags: d.hashtags, cuando: d.cuando, facebook: d.facebook }, uid, { baseUrl: historiaImagenBaseUrl() });
         }
+        // Cola de la serie de reels (colaReels.js): la pantalla es para ver; mover/quitar son opcionales.
+        if (accion.startsWith('cola')) {
+            const cola = require('./colaReels');
+            const o = { baseUrl: historiaImagenBaseUrl() };
+            if (accion === 'colaVer') return cola.ver(db, o);
+            if (accion === 'colaAgregar') return cola.agregar(db, { id: d.id }, uid, o);
+            if (accion === 'colaQuitar') return cola.quitar(db, { id: d.id }, uid, o);
+            if (accion === 'colaReordenar') return cola.reordenar(db, { id: d.id, posicion: d.posicion, orden: d.orden }, uid, o);
+            if (accion === 'colaConfigurar') return cola.configurar(db, d.config || {}, uid, o);
+        }
         if (accion === 'reelNuevo') return instagramPosts.guardarPost(db, { tipo: 'reel', origen: 'manual' }, uid);
         if (accion === 'ordenar') return instagramPosts.ordenarImagenes(db, { id: d.id, orden: d.orden }, uid);
         if (accion === 'programar') return instagramPosts.programarPost(db, { id: d.id, programadaAtMs: d.programadaAtMs }, uid);

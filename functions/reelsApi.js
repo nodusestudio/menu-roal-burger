@@ -114,7 +114,8 @@ async function estado(db, { id, baseUrl }) {
     if (p.tipo !== 'reel') throw new HttpsError('failed-precondition', 'Esa publicación no es un reel.');
     const errVideo = await ensamblarPendiente(db, p);
     const r = vista(p, await metricasDe(db, p), baseUrl);
-    return { ...r, intentos: p.intentos || 0, ...(errVideo ? { errorVideo: errVideo } : {}) };
+    const cola = await require('./colaReels').posicionDe(db, p.id).catch(() => ({ enCola: false }));
+    return { ...r, intentos: p.intentos || 0, cola, ...(errVideo ? { errorVideo: errVideo } : {}) };
 }
 
 // ── Video ────────────────────────────────────────────────────────────────────
@@ -265,7 +266,9 @@ async function mantenimiento(db, { nowMs = Date.now(), almacen } = {}) {
             await posts.borrarPost(db, { id: p.id }).then(() => { borrados += 1; }).catch(() => {});
         }
     }
-    return { ensamblados, borrados };
+    // La cola de la serie: asigna a cada reel su hora (el cron de publicación hace el resto).
+    const cola = await require('./colaReels').sincronizar(db, { nowMs }).catch((err) => { console.error('cola reels:', err.message); return null; });
+    return { ensamblados, borrados, cola: cola && (cola.programados || cola.retirados.length || cola.quitadosPorProblema.length) ? cola : undefined };
 }
 
 module.exports = { mantenimiento, ensamblarPendiente, ESTADOS, parseFecha, textoBogota, vista, listar, estado, prepararSubida, importarVideoDesdeUrl, asegurarVideo, programar, editar, cancelar, DAY_MS };

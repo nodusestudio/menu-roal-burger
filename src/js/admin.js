@@ -42576,7 +42576,7 @@ function rdCuentaTgHtmlBase(tg) {
 // ── Reels (lista y manejo de los reels que sube Claude desde el conector, o a mano) ───────────────
 // Lista = tarjetas pequeñas con solo la portada (primer cuadro, sin bajar el video). El video completo y los botones van en una ventana.
 const rdReels = { filtro: '', lista: null, cargando: false, subiendo: {} };
-const RD_REEL_ESTADOS = [['', 'Todos'], ['borrador', 'Borrador'], ['programado', 'Programado'], ['publicado', 'Publicado'], ['error', 'Error'], ['cancelado', 'Cancelado']];
+const RD_REEL_ESTADOS = [['cola', '📋 Cola'], ['', 'Todos'], ['borrador', 'Borrador'], ['programado', 'Programado'], ['publicado', 'Publicado'], ['error', 'Error'], ['cancelado', 'Cancelado']];
 
 // Campo datetime-local ↔ ms, siempre en hora de Colombia (UTC-5), sin importar la zona del navegador.
 const rdReelFechaInput = (ms) => (ms ? new Date(Number(ms) - 5 * 3600 * 1000).toISOString().slice(0, 16) : '');
@@ -42626,7 +42626,8 @@ function rdReelAbrirModal(body, r) {
         ['borrador', 'cancelado', 'error'].includes(r.estado) ? '<button type="button" class="cd-btn" data-m="borrar">Borrar</button>' : '',
         r.estado !== 'publicado' ? `<label class="cd-btn" style="cursor:pointer">${r.videoListo ? 'Reemplazar video' : 'Subir video'}<input type="file" accept="video/mp4,video/quicktime,.mp4,.mov" data-m-file hidden></label>` : '',
         editable ? '<button type="button" class="cd-btn" data-m="guardar">Guardar</button>' : '',
-        editable ? `<button type="button" class="cd-btn" data-m="programar" ${r.videoListo ? '' : 'disabled title="Falta el video"'}>Programar</button>` : '',
+        editable && r.videoListo ? '<button type="button" class="cd-btn" data-m="cola">📋 Poner en cola</button>' : '',
+        editable ? `<button type="button" class="cd-btn" data-m="programar"${r.videoListo ? '' : 'disabled title="Falta el video"'}>Programar</button>` : '',
         editable ? `<button type="button" class="cd-btn" data-m="publicar" ${r.videoListo ? '' : 'disabled title="Falta el video"'}>Publicar ahora</button>` : ''
     ].join(' ');
     ov.innerHTML = `<div role="dialog" aria-modal="true" style="background:#1f2430;color:#f3f4f6;border:1px solid rgba(255,255,255,.07);border-radius:9px;width:min(100%,var(--modal-w-estandar,560px));max-height:var(--modal-h-max,90vh);overflow:auto;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.5)">
@@ -42657,6 +42658,7 @@ function rdReelAbrirModal(body, r) {
         const a = b.dataset.m;
         if (a === 'cerrar') { cerrar(); return; }
         if (a === 'guardar') { hacer(b, async () => { const f = await guardarCampos(); if (f.cuando && r.estado === 'programado') await rdLlamar('reelEditar', { id: r.id, cuando: f.cuando }); }, 'Cambios guardados.'); return; }
+        if (a === 'cola') { hacer(b, async () => { await guardarCampos(); await rdLlamar('colaAgregar', { id: r.id }); }, 'Reel en la cola de la serie.'); return; }
         if (a === 'programar') {
             if (!campo('cuando').value) { showNotice('Elige primero la fecha y hora.', 'error'); return; }
             hacer(b, async () => { const f = await guardarCampos(); await rdLlamar('programar', { id: r.id, programadaAtMs: new Date(`${f.cuando.replace(' ', 'T')}:00-05:00`).getTime() }); }, 'Reel programado.');
@@ -42676,6 +42678,12 @@ function rdReelAbrirModal(body, r) {
 async function rdReelsCargar(body) {
     if (rdReels.cargando) return;
     rdReels.cargando = true;
+    if (rdReels.filtro === 'cola') {
+        try { rdReels.cola = await rdLlamar('colaVer'); } catch (err) { showNotice(err.message || 'No se pudo leer la cola.', 'error'); rdReels.cola = rdReels.cola || { config: {}, total: 0, cola: [] }; }
+        rdReels.cargando = false;
+        rdRenderReels(body, true);
+        return;
+    }
     try { rdReels.lista = await rdLlamar('reelsLista', { estado: rdReels.filtro || undefined }); } catch (err) { showNotice(err.message || 'No se pudieron leer los reels.', 'error'); rdReels.lista = rdReels.lista || { total: 0, reels: [] }; }
     rdReels.cargando = false;
     rdRenderReels(body, true);
@@ -42707,8 +42715,78 @@ async function rdReelSubirVideo(body, id, archivo) {
     await rdReelsCargar(body);
 }
 
+// Cola de la serie: pantalla para VER (orden, hora estimada, estado, video). Mover/quitar/publicar son opcionales.
+function rdColaHtml() {
+    const c = rdReels.cola;
+    if (!c) return '<p class="cd-muted">Cargando la cola…</p>';
+    const g = c.config || {};
+    const barra = `<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:10px">
+        <label>Hora diaria<input data-cc="hora" type="time" value="${escapeHtml(g.hora || '18:00')}" style="${RD_REEL_CAMPO};width:auto"></label>
+        <label>Reels por día<input data-cc="porDia" type="number" min="1" max="5" value="${escapeHtml(String(g.porDia || 1))}" style="${RD_REEL_CAMPO};width:70px"></label>
+        <label style="display:flex;gap:6px;align-items:center"><input data-cc="saltarMiercoles" type="checkbox" ${g.saltarMiercoles !== false ? 'checked' : ''}> Saltar miércoles (cerrado)</label>
+        <label style="display:flex;gap:6px;align-items:center"><input data-cc="activa" type="checkbox" ${g.activa !== false ? 'checked' : ''}> Cola activa</label>
+        <button type="button" class="cd-btn" data-cola="guardar">Guardar</button>
+        <button type="button" class="cd-btn" data-cola="refrescar">🔄</button>
+    </div>
+    <p class="cd-muted" style="font-size:.8rem;margin:0 0 10px">Hora de Colombia. La cola publica sola en Instagram y Facebook, en orden. Claude agrega los reels desde el conector.</p>`;
+    if (!c.cola.length) return `${barra}<p class="cd-muted">La cola está vacía.</p>`;
+    const filas = c.cola.map((r, i) => `<article class="admin-card" data-cola-id="${escapeHtml(r.id)}" style="display:flex;gap:10px;align-items:flex-start;padding:10px;margin-bottom:8px">
+        <div style="font-size:1.3rem;font-weight:700;min-width:1.6em;text-align:center">${r.posicion}</div>
+        ${r.videoUrl ? `<video controls preload="none" playsinline src="${escapeHtml(r.videoUrl)}" style="width:96px;aspect-ratio:9/16;object-fit:cover;background:#000;border-radius:9px;flex:none"></video>` : '<div style="width:96px;aspect-ratio:9/16;background:#000;border-radius:9px;flex:none"></div>'}
+        <div style="flex:1;min-width:0">
+            <div><strong>📅 ${escapeHtml(r.publicaEstimada || 'Sin fecha')}</strong>${r.dia ? ` · ${escapeHtml(r.dia)}` : ''}</div>
+            <div class="cd-muted" style="font-size:.82rem">${escapeHtml(r.estado)}${r.facebook ? ' · IG + Facebook' : ' · solo Instagram'}${r.duracionSegundos ? ` · ${escapeHtml(String(r.duracionSegundos))} s` : ''}</div>
+            <div style="margin-top:4px;overflow-wrap:anywhere">${escapeHtml(r.texto || '(sin texto)')}</div>
+            ${r.error ? `<div style="color:#ff8a8a;font-size:.8rem">⚠️ ${escapeHtml(r.error)} (intentos: ${r.intentos})</div>` : ''}
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                <button type="button" class="cd-btn" data-cola="arriba" ${i === 0 ? 'disabled' : ''}>⬆️</button>
+                <button type="button" class="cd-btn" data-cola="abajo" ${i === c.cola.length - 1 ? 'disabled' : ''}>⬇️</button>
+                <button type="button" class="cd-btn" data-cola="quitar">Quitar</button>
+                <button type="button" class="cd-btn" data-cola="publicar">Publicar ahora</button>
+            </div>
+        </div>
+    </article>`).join('');
+    return `${barra}${filas}`;
+}
+
+function rdColaEnlazar(body) {
+    const hacer = async (fn, ok) => {
+        try { await fn(); if (ok) showNotice(ok, 'ok'); } catch (err) { showNotice(err.message || 'No se pudo completar.', 'error'); }
+        rdReels.cargando = false;
+        await rdReelsCargar(body);
+    };
+    body.querySelectorAll('[data-cola]').forEach((b) => b.addEventListener('click', () => {
+        const a = b.dataset.cola;
+        const id = b.closest('[data-cola-id]')?.dataset.colaId;
+        const c = rdReels.cola;
+        if (a === 'refrescar') { hacer(async () => {}); return; }
+        if (a === 'guardar') {
+            const v = (k) => body.querySelector(`[data-cc="${k}"]`);
+            hacer(() => rdLlamar('colaConfigurar', { config: { hora: v('hora').value, reelsPorDia: Number(v('porDia').value), saltarMiercoles: v('saltarMiercoles').checked, activa: v('activa').checked } }), 'Cola configurada.');
+            return;
+        }
+        if (a === 'arriba' || a === 'abajo') {
+            const i = c.cola.findIndex((x) => x.id === id);
+            hacer(() => rdLlamar('colaReordenar', { id, posicion: a === 'arriba' ? i : i + 2 }));
+            return;
+        }
+        if (a === 'quitar') { showConfirmModal({ icon: '📋', title: 'Quitar de la cola', message: 'El reel vuelve a borrador y los demás se corren.', confirmText: 'Quitar' }).then((si) => { if (si) hacer(() => rdLlamar('colaQuitar', { id }), 'Reel fuera de la cola.'); }); return; }
+        if (a === 'publicar') { showConfirmModal({ icon: '🚀', title: 'Publicar ahora', message: 'Se publicará ya mismo y saldrá de la cola.', confirmText: 'Publicar', danger: false }).then((si) => { if (si) hacer(() => rdLlamar('publicarAhora', { id }), 'Publicando… revisa el estado en unos segundos.'); }); }
+    }));
+}
+
 function rdRenderReels(body, soloPintar) {
     const lista = rdReels.lista;
+    if (rdReels.filtro === 'cola') {
+        body.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
+            ${RD_REEL_ESTADOS.map(([v, t]) => `<button type="button" class="rd-tab ${rdReels.filtro === v ? 'on' : ''}" data-rr-filtro="${v}">${t}</button>`).join('')}
+        </div>${rdColaHtml()}`;
+        if (!rdReels.cola && !soloPintar) rdReelsCargar(body);
+        body.querySelectorAll('[data-rr-filtro]').forEach((b) => b.addEventListener('click', () => { rdReels.filtro = b.dataset.rrFiltro; rdReels.lista = null; rdReels.cola = null; rdRenderReels(body); }));
+        rdColaEnlazar(body);
+        return;
+    }
     body.innerHTML = `
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
             ${RD_REEL_ESTADOS.map(([v, t]) => `<button type="button" class="rd-tab ${rdReels.filtro === v ? 'on' : ''}" data-rr-filtro="${v}">${t}</button>`).join('')}
@@ -42717,7 +42795,7 @@ function rdRenderReels(body, soloPintar) {
         </div>
         ${!lista ? '<p class="cd-muted">Cargando reels…</p>' : (lista.reels.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px">${lista.reels.map(rdReelTarjetaHtml).join('')}</div>` : '<p class="cd-muted">No hay reels con este filtro.</p>')}`;
     if (!lista && !soloPintar) rdReelsCargar(body);
-    body.querySelectorAll('[data-rr-filtro]').forEach((b) => b.addEventListener('click', () => { rdReels.filtro = b.dataset.rrFiltro; rdReels.lista = null; rdRenderReels(body); }));
+    body.querySelectorAll('[data-rr-filtro]').forEach((b) => b.addEventListener('click', () => { rdReels.filtro = b.dataset.rrFiltro; rdReels.lista = null; rdReels.cola = null; rdRenderReels(body); }));
     body.querySelectorAll('[data-rr]').forEach((b) => b.addEventListener('click', async () => {
         const a = b.dataset.rr;
         if (a === 'refrescar') { await rdReelsCargar(body); return; }

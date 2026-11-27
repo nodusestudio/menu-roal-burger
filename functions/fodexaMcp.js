@@ -221,6 +221,31 @@ const HERRAMIENTAS = [
         name: 'estado_reel',
         description: 'Estado de un reel y, si ya se publicó, sus métricas básicas (alcance, reproducciones, me gusta, comentarios, compartidos, guardados). Si falló, dice el motivo.',
         inputSchema: { type: 'object', properties: { id: STR('Id del reel.') }, required: ['id'] }
+    },
+    {
+        name: 'agregar_a_cola',
+        description: 'Pone un reel (con video y texto ya cargados) al final de la cola de la serie. La cola le asigna sola la siguiente fecha y hora libre y lo publica en Instagram y Facebook sin que nadie haga nada. Si ya estaba en la cola con error, pide otro intento. Devuelve la cola completa.',
+        inputSchema: { type: 'object', properties: { id: STR('Id del reel (de subir_video).') }, required: ['id'] }
+    },
+    {
+        name: 'ver_cola',
+        description: 'Muestra la cola de la serie: orden, fecha y hora estimada de publicación (hora de Colombia), estado y motivo si hubo error, más la configuración (hora diaria, reels por día, saltar miércoles).',
+        inputSchema: { type: 'object', properties: {} }
+    },
+    {
+        name: 'quitar_de_cola',
+        description: 'Saca un reel de la cola. Vuelve a borrador (no se cancela ni se borra) y los demás se corren al horario libre.',
+        inputSchema: { type: 'object', properties: { id: STR('Id del reel.') }, required: ['id'] }
+    },
+    {
+        name: 'reordenar_cola',
+        description: 'Cambia el orden de la cola. Dos formas: "orden" (lista de ids en el orden deseado; los no nombrados quedan después) o "id" + "posicion" (1 = el primero). Las horas se recalculan solas.',
+        inputSchema: { type: 'object', properties: { orden: { type: 'array', items: { type: 'string' }, description: 'Ids en el orden deseado.' }, id: STR('Id del reel a mover.'), posicion: { type: 'integer', description: 'Nueva posición (1 = primero).' } } }
+    },
+    {
+        name: 'configurar_cola',
+        description: 'Configura la cola: hora diaria de publicación (hora de Colombia, "HH:mm"), cuántos reels por día (1 a 5; por defecto 1), si salta los miércoles (Roal Burger cierra; por defecto sí), si publica también en Facebook y si está activa (false = pausa: no sale nada). Solo cambia lo que indiques.',
+        inputSchema: { type: 'object', properties: { hora: STR('Hora diaria "HH:mm" (24 h, Colombia).'), reelsPorDia: { type: 'integer', description: '1 a 5.' }, saltarMiercoles: { type: 'boolean' }, facebook: { type: 'boolean', description: 'Publicar también en Facebook (aplica a los reels que entren desde ahora).' }, activa: { type: 'boolean', description: 'false pausa la cola.' } } }
     }
 ];
 
@@ -241,6 +266,15 @@ async function llamarHerramienta(db, nombre, a, deps) {
     if (nombre === 'editar_reel') return api.editar(db, a, 'mcp', opts);
     if (nombre === 'cancelar_reel') return api.cancelar(db, a, 'mcp', opts);
     if (nombre === 'estado_reel') return api.estado(db, { id: a.id, baseUrl: opts.baseUrl });
+    if (['agregar_a_cola', 'ver_cola', 'quitar_de_cola', 'reordenar_cola', 'configurar_cola'].includes(nombre)) {
+        const cola = deps.cola || require('./colaReels');
+        const o = { baseUrl: opts.baseUrl, ...(opts.nowMs ? { nowMs: opts.nowMs } : {}), ...(opts.almacen ? { almacen: opts.almacen } : {}) };
+        if (nombre === 'agregar_a_cola') return cola.agregar(db, a, 'mcp', o);
+        if (nombre === 'ver_cola') return cola.ver(db, o);
+        if (nombre === 'quitar_de_cola') return cola.quitar(db, a, 'mcp', o);
+        if (nombre === 'reordenar_cola') return cola.reordenar(db, a, 'mcp', o);
+        return cola.configurar(db, a, 'mcp', o);
+    }
     const e = new Error(`Herramienta desconocida: ${nombre}`);
     e.rpc = -32602;
     throw e;
@@ -254,7 +288,7 @@ async function procesarRpc(db, msg, deps) {
     if (id === undefined) return null; // notificación
     if (method === 'initialize') {
         const pedida = String(params?.protocolVersion || '');
-        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Reels de Roal Burger en Instagram. Las fechas son hora de Colombia.' });
+        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Reels de Roal Burger en Instagram. Las fechas son hora de Colombia. Para una serie: sube el reel, ponle texto y usa agregar_a_cola; la cola lo publica sola en orden (ver_cola, reordenar_cola, configurar_cola).' });
     }
     if (method === 'ping') return rpcOk(id, {});
     if (method === 'tools/list') return rpcOk(id, { tools: HERRAMIENTAS });
