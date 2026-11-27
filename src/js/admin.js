@@ -42722,8 +42722,13 @@ function rdRenderReels(body, soloPintar) {
         if (a === 'refrescar') { await rdReelsCargar(body); return; }
         if (a === 'nuevo') {
             b.disabled = true;
-            try { await rdLlamar('reelNuevo'); showNotice('Borrador creado: ábrelo para subir el video y escribir el texto.', 'ok'); } catch (err) { showNotice(err.message || 'No se pudo crear.', 'error'); }
+            let nuevoId = '';
+            try { ({ id: nuevoId } = await rdLlamar('reelNuevo')); rdReels.filtro = ''; } catch (err) { showNotice(err.message || 'No se pudo crear.', 'error'); }
+            rdReels.cargando = false;
             await rdReelsCargar(body);
+            const creado = rdReels.lista?.reels.find((x) => x.id === nuevoId);
+            if (creado) rdReelAbrirModal(body, creado);
+            else if (nuevoId) showNotice('Borrador creado, pero no se pudo abrir: actualiza la lista (🔄).', 'error');
             return;
         }
         const r = lista?.reels.find((x) => x.id === b.closest('[data-rr-id]')?.dataset.rrId);
