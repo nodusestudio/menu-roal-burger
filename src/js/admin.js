@@ -42580,6 +42580,7 @@ const RD_REEL_ESTADOS = [['', 'Todos'], ['borrador', 'Borrador'], ['programado',
 
 // Campo datetime-local ↔ ms, siempre en hora de Colombia (UTC-5), sin importar la zona del navegador.
 const rdReelFechaInput = (ms) => (ms ? new Date(Number(ms) - 5 * 3600 * 1000).toISOString().slice(0, 16) : '');
+const RD_REEL_CAMPO = 'width:100%;box-sizing:border-box;background:#161a23;color:#f3f4f6;border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:7px 9px;color-scheme:dark;font:inherit';
 const rdReelHashtags = (r) => (r.hashtags || []).map((h) => '#' + String(h).replace(/^#/, '')).join(' ');
 
 function rdReelTarjetaHtml(r) {
@@ -42614,9 +42615,9 @@ function rdReelAbrirModal(body, r) {
         ? `<video controls autoplay playsinline preload="auto" src="${escapeHtml(r.video.url)}" style="display:block;margin:0 auto;max-width:100%;max-height:48vh;background:#000;border-radius:9px"></video>`
         : '<p style="text-align:center;color:#ff8a8a;margin:8px 0">❌ Este reel todavía no tiene video.</p>';
     const campos = editable ? `
-        <label style="display:block;margin-top:10px">Texto<textarea data-f="texto" rows="4" maxlength="2200" style="width:100%">${escapeHtml(r.texto)}</textarea></label>
-        <label style="display:block;margin-top:8px">Hashtags (separados por espacio)<input data-f="hashtags" type="text" value="${escapeHtml(rdReelHashtags(r))}" style="width:100%"></label>
-        <label style="display:block;margin-top:8px">Fecha y hora de publicación (hora de Colombia)<input data-f="cuando" type="datetime-local" value="${rdReelFechaInput(r.programadaAtMs)}"></label>
+        <label style="display:block;margin-top:10px">Texto<textarea data-f="texto" rows="4" maxlength="2200" style="${RD_REEL_CAMPO}">${escapeHtml(r.texto)}</textarea></label>
+        <label style="display:block;margin-top:8px">Hashtags (separados por espacio)<input data-f="hashtags" type="text" value="${escapeHtml(rdReelHashtags(r))}" style="${RD_REEL_CAMPO}"></label>
+        <label style="display:block;margin-top:8px">Fecha y hora de publicación (hora de Colombia)<input data-f="cuando" type="datetime-local" value="${rdReelFechaInput(r.programadaAtMs)}" style="${RD_REEL_CAMPO}"></label>
         <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input data-f="facebook" type="checkbox" ${r.facebookActivo ? 'checked' : ''}> Publicar también en la página de Facebook (además de Instagram)</label>`
         : `<p style="white-space:pre-wrap;margin:10px 0 4px">${escapeHtml(r.texto || '(sin texto)')}</p><p class="cd-muted">${escapeHtml(rdReelHashtags(r))}</p>`;
     const btns = [
