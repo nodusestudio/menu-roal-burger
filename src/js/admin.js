@@ -4730,6 +4730,11 @@ function renderCierresProgramados() {
         const fr = document.getElementById('cpFormFranja');
         if (fr) fr.hidden = e.target.checked;
     });
+    // Si "Desde" pasa a ser posterior a "Hasta", "Hasta" lo sigue (evita el error silencioso al guardar).
+    panel.querySelector('#cpFormInicio')?.addEventListener('change', (e) => {
+        const fin = document.getElementById('cpFormFin');
+        if (fin && (!fin.value || fin.value < e.target.value)) fin.value = e.target.value;
+    });
     panel.querySelector('#cpFormSaveBtn')?.addEventListener('click', _cpFormSave);
     panel.querySelector('#cpFormCancelBtn')?.addEventListener('click', () => {
         document.getElementById('cpFormWrap')?.setAttribute('hidden', '');
@@ -4765,7 +4770,12 @@ async function _cpFormSave() {
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaInicio)) { showNotice('Elige la fecha de inicio del cierre.', 'error'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaFin)) fechaFin = fechaInicio;
-    if (fechaFin < fechaInicio) { showNotice('La fecha de fin no puede ser anterior a la de inicio.', 'error'); return; }
+    if (fechaFin < fechaInicio) {
+        // En vez de bloquear, se corrige solo: el cierre dura al menos el día de inicio.
+        fechaFin = fechaInicio;
+        const finEl = document.getElementById('cpFormFin');
+        if (finEl) finEl.value = fechaInicio;
+    }
     if (fechaFin < hoy) { showNotice('Ese cierre ya está en el pasado.', 'error'); return; }
     if (!todoElDia && hasta <= desde) { showNotice('La hora de fin debe ser posterior a la de inicio.', 'error'); return; }
 
