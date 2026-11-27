@@ -267,6 +267,17 @@ function instagramFalso({ estados = ['IN_PROGRESS', 'FINISHED'], falla = null } 
 }
 const opIg = (f, extra = {}) => ({ nowMs: AHORA + 3 * HOUR, fetchFn: f.fetchFn, baseUrl: BASE_URL, sleep: sinEspera, manual: true, ...extra });
 
+test('Instagram: un reel programado sale a su hora aunque el interruptor general esté apagado; una foto no', async () => {
+    await conectarIg();
+    await db.collection(ig.CONFIG_COLLECTION).doc(ig.CONFIG_DOC).set({ activo: false }, { merge: true });
+    const id = await reelListo(await nuevoReel());
+    await posts.programarPost(db, { id, programadaAtMs: AHORA + HOUR }, 'a', { nowMs: AHORA });
+    const f = instagramFalso();
+    const r = await posts.publicarPost(db, { id, ...opIg(f), nowMs: AHORA + HOUR + 60000 });
+    assert.equal(r.ok, true);
+    assert.equal((await leer(id)).estado, 'publicada');
+});
+
 test('Instagram: publica el reel (contenedor REELS con la URL del video y el texto), espera el procesado y borra el video', async () => {
     await conectarIg();
     const id = await reelListo(await nuevoReel());

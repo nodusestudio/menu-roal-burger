@@ -438,8 +438,10 @@ async function avisarFalla(db, post, id, mensaje, { token = false } = {}) {
 async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseUrl, sleep = ig.esperar, manual = false }) {
     const conexion = await ig.leerConexion(db);
     if (!conexion?.accessToken) return { ok: false, motivo: 'sin_conexion' };
-    if (!manual && conexion.activo !== true) return { ok: false, motivo: 'desactivado' };
     let post = await leerPost(db, id);
+    // El interruptor general de Instagram gobierna lo automático (historias del Código del día, etc.). Un reel
+    // programado a mano es una orden explícita con fecha: sale a su hora aunque ese interruptor esté apagado.
+    if (!manual && conexion.activo !== true && post.tipo !== 'reel') return { ok: false, motivo: 'desactivado' };
     if (post.estado === 'publicada') return { ok: true, ya: true, mediaId: post.mediaId };
     if (!['programada', 'borrador', 'error'].includes(post.estado) && post.estado !== 'publicando') return { ok: false, motivo: 'estado_no_publicable' };
     if (!manual && post.estado !== 'programada') return { ok: false, motivo: 'no_programada' };
