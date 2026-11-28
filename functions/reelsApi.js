@@ -271,9 +271,8 @@ async function mantenimiento(db, { nowMs = Date.now(), almacen } = {}) {
             await posts.borrarPost(db, { id: p.id }).then(() => { borrados += 1; }).catch(() => {});
         }
     }
-    // Las series: crea las iniciales (una sola vez) y asigna a cada reel su hora según la semana fija (el cron de publicación hace el resto).
+    // Las series: asigna a cada reel su hora según la semana fija (el cron de publicación hace el resto).
     const series = require('./series');
-    await series.sembrarIniciales(db, { nowMs }).catch((err) => console.error('series semilla:', err.message));
     const cola = await series.sincronizar(db, { nowMs }).catch((err) => { console.error('series reels:', err.message); return null; });
     return { ensamblados, borrados, cola: cola && (cola.programados || cola.desprogramados || cola.problemas.length) ? cola : undefined };
 }

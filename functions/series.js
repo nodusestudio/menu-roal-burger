@@ -19,8 +19,6 @@ const posts = require('./instagramPosts');
 const SERIES_COLLECTION = 'series';
 const CONFIG_COLLECTION = 'configuracion';
 const SEMANA_DOC = 'semana_reels';
-const SEMILLA_DOC = 'series_semilla';
-const COLA_VIEJA_DOC = 'cola_reels';
 const BOGOTA_MS = 5 * 3600 * 1000;
 const MIN_MS = 60 * 1000;
 const DAY_MS = 24 * 3600 * 1000;
@@ -458,49 +456,7 @@ async function reordenar(db, a, uid, opts = {}) {
     return vista(db, opts);
 }
 
-// ── Semilla inicial (una sola vez) ───────────────────────────────────────────
-
-const SEMILLA = {
-    series: [
-        { clave: 'roal', nombre: 'Esto no deberías saber de Roal', color: '#e11d48', hora: '18:00', activa: true, horaPorDefinir: false },
-        { clave: 'emprendimiento', nombre: 'Emprendimiento', color: '#0ea5e9', hora: '18:00', activa: false, horaPorDefinir: true }
-    ],
-    semana: { lunes: 'roal', martes: 'emprendimiento', miercoles: 'roal', jueves: 'emprendimiento', viernes: 'roal', sabado: 'emprendimiento', domingo: 'roal' },
-    reelsRoal: [['0Z8hhcJB2FDEBBUTo54K', 'Video 1'], ['rg74W3n6FNwnFxOwNpiy', 'Video 2']]
-};
-
-// Crea las dos series iniciales, la semana fija y asigna los dos primeros reels a la primera serie. Se ejecuta UNA vez
-// (deja una marca en configuracion/series_semilla). No toca videos ni textos. Los reels que estaban en la cola vieja
-// pasan, en su orden, a la serie de Roal.
-async function sembrarIniciales(db, { nowMs = Date.now() } = {}) {
-    const marca = db.collection(CONFIG_COLLECTION).doc(SEMILLA_DOC);
-    if ((await marca.get()).exists) return { sembrada: false };
-    if ((await leerSeries(db)).length) { await marca.set({ hecha: true, omitida: 'ya había series', atMs: nowMs }); return { sembrada: false }; }
-    const ids = {};
-    for (const [i, s] of SEMILLA.series.entries()) {
-        const ref = db.collection(SERIES_COLLECTION).doc();
-        await ref.set({ nombre: s.nombre, color: s.color, hora: s.hora, facebook: true, activa: s.activa, horaPorDefinir: s.horaPorDefinir, creadaAtMs: nowMs + i, creadaPor: 'semilla' });
-        ids[s.clave] = ref.id;
-    }
-    await refSemana(db).set({ dias: Object.fromEntries(DIAS_ORDEN.map((d) => [d, ids[SEMILLA.semana[d]]])), saltarMiercoles: false });
-    const vieja = await db.collection(CONFIG_COLLECTION).doc(COLA_VIEJA_DOC).get();
-    const idsViejos = vieja.exists && Array.isArray(vieja.data().ids) ? vieja.data().ids.filter((x) => typeof x === 'string') : [];
-    const nombres = new Map(SEMILLA.reelsRoal);
-    const orden = [...SEMILLA.reelsRoal.map(([id]) => id), ...idsViejos.filter((x) => !nombres.has(x))];
-    const asignados = [];
-    let n = 0;
-    for (const id of orden) {
-        const s = await refPost(db, id).get();
-        if (!s.exists || s.data().tipo !== 'reel' || ['publicada', 'cancelada'].includes(s.data().estado)) continue;
-        n += 1;
-        await refPost(db, id).set({ serieId: ids.roal, serieOrden: n, ...(nombres.has(id) && !String(s.data().titulo || '').trim() ? { titulo: nombres.get(id) } : {}) }, { merge: true });
-        asignados.push(id);
-    }
-    await marca.set({ hecha: true, atMs: nowMs, series: ids, reelsAsignados: asignados });
-    return { sembrada: true, series: ids, reelsAsignados: asignados };
-}
-
 module.exports = {
     SERIES_COLLECTION, SEMANA_DOC, DIAS_ORDEN, horaAMinutos, textoBogota, slotsDeSerie, clasificar, planificar, resolverSerie,
-    leerSeries, leerSemana, sincronizar, vista, lista, ver, posicionDe, crearSerie, configurarSerie, definirSemana, asignar, agregar, quitar, reordenar, sembrarIniciales
+    leerSeries, leerSemana, sincronizar, vista, lista, ver, posicionDe, crearSerie, configurarSerie, definirSemana, asignar, agregar, quitar, reordenar
 };

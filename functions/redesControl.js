@@ -1,7 +1,7 @@
 'use strict';
 
 // CONTROL TOTAL DE REDES para el conector de Claude (Fase 2): lo que el panel FODEXA → Redes ya hacía y el conector no.
-//   imagenes()          quitar / ordenar / reemplazar las imágenes de un post, carrusel o historia (por posición 1, 2, 3…)
+//   imagenes()          agregar / quitar / ordenar / reemplazar las imágenes de un post, carrusel o historia (por posición 1, 2, 3…)
 //   gestionar()         desprogramar · reintentar · duplicar · borrar · cambiar_video · publicar_ahora
 //   agenda()            todo lo que va a salir, el cupo de Instagram de las últimas 24 h y las historias automáticas
 //   facebookEstado()    conexión de la página y publicaciones de Facebook con error o pendientes
@@ -22,10 +22,15 @@ const falla = (msg, code = 'failed-precondition') => new HttpsError(code, msg);
 async function imagenes(db, a, uid, opts = {}) {
     const id = String(a.id || '');
     const accion = String(a.accion || '');
-    if (!['quitar', 'ordenar', 'reemplazar'].includes(accion)) throw falla('"accion" debe ser quitar, ordenar o reemplazar.', 'invalid-argument');
+    if (!['agregar', 'quitar', 'ordenar', 'reemplazar'].includes(accion)) throw falla('"accion" debe ser agregar, quitar, ordenar o reemplazar.', 'invalid-argument');
     const p = await posts.leerPost(db, id);
     if (p.tipo === 'reel') throw falla('Un reel lleva un video, no imágenes: usa gestionar_publicacion con cambiar_video.');
     const lista = p.imagenes || [];
+    if (accion === 'agregar') {
+        if (!a.url) throw falla('Falta "url" de la imagen.', 'invalid-argument');
+        await pub.agregarImagenDesdeUrl(db, { id, url: a.url }, uid, opts);
+        return pub.estado(db, { id, baseUrl: opts.baseUrl });
+    }
     if (!lista.length) throw falla('Esa publicación todavía no tiene imágenes.');
     const slotDe = (pos) => {
         const i = Number(pos);

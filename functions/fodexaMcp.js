@@ -191,46 +191,18 @@ async function autenticar(db, headers, nowMs) {
 // ── Herramientas ─────────────────────────────────────────────────────────────
 
 const STR = (d) => ({ type: 'string', description: d });
+// Alias OCULTOS (siguen funcionando para chats viejos, pero ya no se listan: Claude usa las *_publicacion): programar_reel,
+// listar_reels, editar_reel, cancelar_reel, estado_reel (= las de publicación con tipo reel) y agregar_imagen (= gestionar_imagenes agregar).
 const HERRAMIENTAS = [
     {
         name: 'subir_video',
-        description: 'Prepara un video para un reel de Roal Burger (MP4 vertical 9:16, 3 a 90 s, máx. 150 MB) y devuelve el id del reel y la dirección pública del video. Dos formas: (1) pasa "url" (https público del MP4) y el servidor lo baja y lo valida; (2) sin "url" devuelve una dirección de subida de un solo uso (PUT, 30 min): sube el MP4 con curl -T y luego usa programar_reel con el id. No publica nada.',
+        description: 'Prepara un video para un reel de Roal Burger (MP4 vertical 9:16, 3 a 90 s, máx. 150 MB) y devuelve el id del reel y la dirección pública del video. Dos formas: (1) pasa "url" (https público del MP4) y el servidor lo baja y lo valida; (2) sin "url" devuelve una dirección de subida de un solo uso (PUT, 30 min): sube el MP4 con curl -T y luego usa programar_publicacion con el id. No publica nada.',
         inputSchema: { type: 'object', properties: { tipo: { type: 'string', enum: ['reel', 'historia'], description: 'Qué se va a publicar con este video: reel (por defecto) o historia (video vertical 9:16, hasta 60 s).' }, url: STR('Dirección https pública del MP4 (opcional).'), serie: STR('Serie a la que pertenece el reel (nombre o parte del nombre; ver listar_series). Queda al final de su cola y sale solo cuando tenga video y texto.'), titulo: STR('Nombre corto del video (opcional), p. ej. "Video 3"; se ve en el calendario.') } }
-    },
-    {
-        name: 'programar_reel',
-        description: 'Programa un reel en Instagram (y opcional Facebook) para una fecha y hora. Necesita el texto y la fecha, y el video: "id" devuelto por subir_video, o "videoUrl" (https público). Lo publica el mismo cron de FODEXA a su hora; aparece en el panel FODEXA → Redes. No lo uses para reels de una serie: su fecha la fija la semana fija de la serie.',
-        inputSchema: { type: 'object', properties: { id: STR('Id devuelto por subir_video.'), videoUrl: STR('Alternativa a id: MP4 público https.'), texto: STR('Texto (caption) del reel. Máx. 2.200 caracteres.'), hashtags: { type: 'array', items: { type: 'string' }, description: 'Máx. 30, con o sin #.' }, cuando: STR('Fecha y hora de Colombia, "YYYY-MM-DD HH:mm" (o ISO con zona).'), facebook: { type: 'boolean', description: 'También publicar en Facebook.' } }, required: ['texto', 'cuando'] }
-    },
-    {
-        name: 'listar_reels',
-        description: 'Lista los reels de Roal Burger: programados, publicados, con error, borradores o cancelados, con métricas básicas de los publicados.',
-        inputSchema: { type: 'object', properties: { estado: { type: 'string', enum: ['programado', 'publicado', 'error', 'borrador', 'cancelado'] }, limite: { type: 'integer' } } }
-    },
-    {
-        name: 'editar_reel',
-        description: 'Cambia el texto, los hashtags o la fecha de un reel que todavía no se ha publicado.',
-        inputSchema: { type: 'object', properties: { id: STR('Id del reel.'), texto: STR('Texto nuevo.'), hashtags: { type: 'array', items: { type: 'string' } }, cuando: STR('Fecha y hora nuevas de Colombia, "YYYY-MM-DD HH:mm".'), facebook: { type: 'boolean' } }, required: ['id'] }
-    },
-    {
-        name: 'cancelar_reel',
-        description: 'Cancela un reel programado (o borrador) que todavía no se ha publicado. No se puede deshacer.',
-        inputSchema: { type: 'object', properties: { id: STR('Id del reel.') }, required: ['id'] }
-    },
-    {
-        name: 'estado_reel',
-        description: 'Estado de un reel y, si ya se publicó, sus métricas básicas (alcance, reproducciones, me gusta, comentarios, compartidos, guardados). Si falló, dice el motivo.',
-        inputSchema: { type: 'object', properties: { id: STR('Id del reel.') }, required: ['id'] }
     },
     {
         name: 'crear_publicacion',
         description: 'Crea una publicación de CUALQUIER tipo en Instagram (y opcional Facebook): "post" (1 foto), "carrusel" (2 a 10 fotos), "historia" (1 imagen o 1 video vertical) o "reel" (video). Todo en un solo paso: pasa el contenido por dirección https pública (imagenes: lista de URLs de JPG/PNG/WebP; videoUrl: MP4). El servidor baja, convierte y ajusta las imágenes solo (historia 9:16, posts 4:5 a 1,91:1, ≤ 900 KB). Con "cuando" ("YYYY-MM-DD HH:mm", hora de Colombia) queda programada; sin "cuando" queda borrador (luego programar_publicacion). Las historias no llevan texto ni hashtags (Instagram no los admite por API). Si algo falla no deja nada a medias. Sin límite por tipo: es el mismo sistema del panel FODEXA → Redes.',
         inputSchema: { type: 'object', properties: { tipo: { type: 'string', enum: ['post', 'carrusel', 'historia', 'reel'], description: 'Tipo de publicación.' }, texto: STR('Texto (caption). Obligatorio en post, carrusel y reel; las historias no lo llevan. Máx. 2.200 caracteres.'), hashtags: { type: 'array', items: { type: 'string' }, description: 'Máx. 30, con o sin #.' }, imagenes: { type: 'array', items: { type: 'string' }, description: 'URLs https públicas de las imágenes (1 para post/historia, 2 a 10 para carrusel).' }, videoUrl: STR('MP4 público https (reel o historia en video).'), cuando: STR('Fecha y hora de Colombia, "YYYY-MM-DD HH:mm". Si la omites queda borrador.'), facebook: { type: 'boolean', description: 'También publicar en Facebook.' }, textoAlternativo: STR('Texto alternativo de la imagen (post), opcional.') }, required: ['tipo'] }
-    },
-    {
-        name: 'agregar_imagen',
-        description: 'Agrega una imagen (por URL https pública; JPG/PNG/WebP) a un post, carrusel o historia que ya existe como borrador. Se convierte y ajusta sola. Útil para armar un carrusel imagen por imagen.',
-        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.'), url: STR('Dirección https pública de la imagen.') }, required: ['id', 'url'] }
     },
     {
         name: 'programar_publicacion',
@@ -294,8 +266,8 @@ const HERRAMIENTAS = [
     },
     {
         name: 'gestionar_imagenes',
-        description: 'Cambia las imágenes de un post, carrusel o historia que todavía no salió, por POSICIÓN (1 = la primera, como se ven en estado_publicacion): "quitar" (posicion), "ordenar" (orden: lista de posiciones en el orden nuevo, ej. [2,1,3]) o "reemplazar" (posicion + url https de la imagen nueva; se convierte y ajusta sola). Si estaba programada vuelve a borrador y lo avisa: reprograma con programar_publicacion. Para agregar usa agregar_imagen.',
-        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.'), accion: { type: 'string', enum: ['quitar', 'ordenar', 'reemplazar'] }, posicion: { type: 'integer', description: 'Posición de la imagen (1 = primera). Para quitar y reemplazar.' }, orden: { type: 'array', items: { type: 'integer' }, description: 'Para ordenar: todas las posiciones en el orden nuevo.' }, url: STR('Para reemplazar: https de la imagen nueva.') }, required: ['id', 'accion'] }
+        description: 'Maneja las imágenes de un post, carrusel o historia que todavía no salió, por POSICIÓN (1 = la primera, como se ven en estado_publicacion): "agregar" (url https; se convierte y ajusta sola; ideal para armar un carrusel imagen por imagen), "quitar" (posicion), "ordenar" (orden: lista de posiciones en el orden nuevo, ej. [2,1,3]) o "reemplazar" (posicion + url https de la imagen nueva; se convierte y ajusta sola). Si estaba programada vuelve a borrador y lo avisa: reprograma con programar_publicacion.',
+        inputSchema: { type: 'object', properties: { id: STR('Id de la publicación.'), accion: { type: 'string', enum: ['agregar', 'quitar', 'ordenar', 'reemplazar'] }, posicion: { type: 'integer', description: 'Posición de la imagen (1 = primera). Para quitar y reemplazar.' }, orden: { type: 'array', items: { type: 'integer' }, description: 'Para ordenar: todas las posiciones en el orden nuevo.' }, url: STR('Para agregar o reemplazar: https de la imagen.') }, required: ['id', 'accion'] }
     },
     {
         name: 'gestionar_publicacion',
@@ -354,7 +326,7 @@ async function llamarHerramienta(db, nombre, a, deps) {
             const { id } = await posts.guardarPost(db, { tipo: tipoVideo, origen: 'manual' }, 'mcp');
             try { await api.importarVideoDesdeUrl(db, { id, url: a.url }, 'mcp', opts); } catch (err) { await posts.borrarPost(db, { id }).catch(() => {}); throw err; }
             if (a.serie) await series.asignar(db, { id, serie: a.serie, titulo: a.titulo }, 'mcp', so);
-            return { ...(await api.estado(db, { id, baseUrl: opts.baseUrl, cualquiera: tipoVideo === 'historia' })), siguiente: tipoVideo === 'historia' ? 'Video de la historia listo. Llama a programar_publicacion con este id y la fecha.' : a.serie ? 'Video listo y en su serie. Ponle texto con editar_reel y saldrá solo en su día.' : 'Video listo. Llama a programar_reel con este id (o agregar_a_cola para ponerlo en una serie).' };
+            return { ...(await api.estado(db, { id, baseUrl: opts.baseUrl, cualquiera: tipoVideo === 'historia' })), siguiente: tipoVideo === 'historia' ? 'Video de la historia listo. Llama a programar_publicacion con este id y la fecha.' : a.serie ? 'Video listo y en su serie. Ponle texto con editar_publicacion y saldrá solo en su día.' : 'Video listo. Llama a programar_publicacion con este id y el texto (o agregar_a_cola para ponerlo en una serie).' };
         }
         const r = await api.prepararSubida(db, { baseUrl: opts.baseUrl, firmar: deps.firmar, tipo: tipoVideo }, 'mcp');
         if (a.serie && r?.id) await series.asignar(db, { id: r.id, serie: a.serie, titulo: a.titulo }, 'mcp', so);
@@ -413,7 +385,7 @@ async function procesarRpc(db, msg, deps) {
     if (id === undefined) return null; // notificación
     if (method === 'initialize') {
         const pedida = String(params?.protocolVersion || '');
-        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Publicaciones de Roal Burger en Instagram y Facebook: posts, carruseles, historias y reels, sin restricción por tipo (crear_publicacion, agregar_imagen, programar_publicacion, listar_publicaciones, estado_publicacion, editar_publicacion, cancelar_publicacion; subir_video con tipo historia para video por PUT). Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_reel y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola. CONTROL: gestionar_imagenes (quitar/ordenar/reemplazar imágenes por posición), gestionar_publicacion (desprogramar, reintentar, duplicar, cambiar_video, borrar y publicar_ahora; los dos últimos exigen confirmar:true y solo si el usuario lo pidió), ver_agenda (qué sale, cupo de Instagram e historias automáticas: úsala antes de programar) y facebook_estado. ANALÍTICA (solo lectura): rendimiento (qué publicaciones pegaron en un periodo, Instagram + Facebook), resumen_series (qué serie, tipo, día y hora rinde más), crecimiento (seguidores e historias) e historico_semanal (semanas anteriores guardadas). Para "cuál pegó la semana pasada" usa rendimiento con periodo semana_pasada y luego resumen_series; no concluyas con menos de 3 publicaciones por grupo.' });
+        return rpcOk(id, { protocolVersion: VERSIONES.includes(pedida) ? pedida : VERSIONES[1], capabilities: { tools: {} }, serverInfo: { name: 'fodexa-reels', version: '1.0.0' }, instructions: 'Publicaciones de Roal Burger en Instagram y Facebook: posts, carruseles, historias y reels, sin restricción por tipo (crear_publicacion, agregar_imagen, programar_publicacion, listar_publicaciones, estado_publicacion, editar_publicacion, cancelar_publicacion; subir_video con tipo historia para video por PUT). Las fechas son hora de Colombia. Los reels viven en SERIES (carpetas con su cola, hora y color) y una semana fija dice qué serie sale cada día: sube el reel con subir_video (parámetro serie), ponle texto con editar_publicacion y la serie lo publica sola en orden. Herramientas: listar_series, crear_serie, configurar_serie, definir_semana, ver_cola, reordenar_cola, agregar_a_cola. CONTROL: gestionar_imagenes (agregar/quitar/ordenar/reemplazar imágenes por posición), gestionar_publicacion (desprogramar, reintentar, duplicar, cambiar_video, borrar y publicar_ahora; los dos últimos exigen confirmar:true y solo si el usuario lo pidió), ver_agenda (qué sale, cupo de Instagram e historias automáticas: úsala antes de programar) y facebook_estado. ANALÍTICA (solo lectura): rendimiento (qué publicaciones pegaron en un periodo, Instagram + Facebook), resumen_series (qué serie, tipo, día y hora rinde más), crecimiento (seguidores e historias) e historico_semanal (semanas anteriores guardadas). Para "cuál pegó la semana pasada" usa rendimiento con periodo semana_pasada y luego resumen_series; no concluyas con menos de 3 publicaciones por grupo.' });
     }
     if (method === 'ping') return rpcOk(id, {});
     if (method === 'tools/list') return rpcOk(id, { tools: HERRAMIENTAS });

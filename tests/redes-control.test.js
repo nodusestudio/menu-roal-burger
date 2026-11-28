@@ -42,6 +42,15 @@ test('imágenes: quitar y ordenar por posición (1 = primera)', async () => {
     await assert.rejects(ctl.imagenes(db, { id, accion: 'ordenar', orden: [1, 1] }, 'mcp', opts), /una sola vez/);
 });
 
+test('imágenes: agregar suma una imagen al carrusel y pide la url', async () => {
+    const id = await carrusel(2);
+    const nueva = await sharp({ create: { width: 1000, height: 1000, channels: 3, background: { r: 0, g: 0, b: 200 } } }).png().toBuffer();
+    const fetchFn = async () => ({ ok: true, status: 200, headers: { get: () => String(nueva.length) }, arrayBuffer: async () => nueva.buffer.slice(nueva.byteOffset, nueva.byteOffset + nueva.length) });
+    const r = await ctl.imagenes(db, { id, accion: 'agregar', url: 'https://cdn.ejemplo.test/b.png' }, 'mcp', { ...opts, fetchFn });
+    assert.equal(r.imagenes, 3);
+    await assert.rejects(ctl.imagenes(db, { id, accion: 'agregar' }, 'mcp', opts), /Falta "url"/);
+});
+
 test('imágenes: reemplazar cambia la imagen en su lugar y una programada vuelve a borrador con aviso', async () => {
     const id = await carrusel(2);
     const antes = (await db.collection(posts.POSTS_IMG_COLLECTION).doc(`${id}_1`).get()).data().bytes;

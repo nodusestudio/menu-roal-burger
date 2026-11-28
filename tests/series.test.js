@@ -174,27 +174,3 @@ test('validaciones: nombres repetidos, hora mala, serie inexistente y reels sin 
     await assert.rejects(series.agregar(db, { id: 'sintexto001', serie: 'Inventada' }, 't', { nowMs: NOW }), /No existe la serie/);
     await assert.rejects(series.definirSemana(db, { dias: { luns: 'Roal' } }, 't'), /no es un día/);
 });
-
-test('semilla inicial: dos series, semana fija y los dos primeros reels en Roal (una sola vez)', async () => {
-    const db = fakeDb();
-    reelListo(db, '0Z8hhcJB2FDEBBUTo54K', { caption: 'Texto original 1' });
-    reelListo(db, 'rg74W3n6FNwnFxOwNpiy', { caption: 'Texto original 2' });
-    reelListo(db, 'viejoencola01');
-    db.datos.set('configuracion/cola_reels', { ids: ['viejoencola01', '0Z8hhcJB2FDEBBUTo54K'] });
-    const r = await series.sembrarIniciales(db, { nowMs: NOW });
-    assert.equal(r.sembrada, true);
-    assert.deepEqual(r.reelsAsignados, ['0Z8hhcJB2FDEBBUTo54K', 'rg74W3n6FNwnFxOwNpiy', 'viejoencola01']);
-    assert.equal((await series.sembrarIniciales(db, { nowMs: NOW })).sembrada, false, 'no se repite');
-    const [roal, emp] = await series.leerSeries(db);
-    assert.deepEqual([roal.nombre, roal.hora, roal.activa], ['Esto no deberías saber de Roal', '18:00', true]);
-    assert.deepEqual([emp.nombre, emp.activa, emp.horaPorDefinir], ['Emprendimiento', false, true]);
-    const semana = await series.leerSemana(db);
-    assert.deepEqual(['lunes', 'miercoles', 'viernes', 'domingo'].map((d) => semana.dias[d]), Array(4).fill(roal.id));
-    assert.deepEqual(['martes', 'jueves', 'sabado'].map((d) => semana.dias[d]), Array(3).fill(emp.id));
-    assert.equal(semana.saltarMiercoles, false);
-    assert.equal(db.datos.get(P('0Z8hhcJB2FDEBBUTo54K')).caption, 'Texto original 1', 'no toca los textos');
-    assert.equal(db.datos.get(P('0Z8hhcJB2FDEBBUTo54K')).titulo, 'Video 1');
-    await series.sincronizar(db, { nowMs: NOW });
-    assert.equal(db.datos.get(P('0Z8hhcJB2FDEBBUTo54K')).estado, 'programada');
-    assert.equal(dia(db.datos.get(P('0Z8hhcJB2FDEBBUTo54K')).programadaAtMs), '2026-12-02 18:00');
-});
