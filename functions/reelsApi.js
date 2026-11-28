@@ -99,7 +99,9 @@ async function listar(db, { estado, limite = 20, baseUrl, tipo = 'reel' } = {}) 
     const interno = estado ? ESTADOS[String(estado).toLowerCase()] : null;
     if (estado && !interno) throw new HttpsError('invalid-argument', 'Estado inválido. Usa: programado, publicado, error, borrador o cancelado.');
     const col = db.collection(ig.POSTS_COLLECTION);
-    const snap = await (tipo === 'todos' ? col.get() : col.where('tipo', '==', tipo).get());
+    let q = tipo === 'todos' ? col : col.where('tipo', '==', tipo);
+    if (interno) q = q.where('estado', '==', interno);
+    const snap = await q.get();
     let lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     if (interno) lista = lista.filter((p) => p.estado === interno);
     lista.sort((a, b) => (b.programadaAtMs || b.creadoAtMs || 0) - (a.programadaAtMs || a.creadoAtMs || 0));
@@ -255,7 +257,8 @@ async function cancelar(db, { id }, uid, opts = {}) {
 
 // Tarea automática (cada 10 min): ensambla subidas que quedaron sin juntar y borra borradores vacíos de más de 24 h.
 async function mantenimiento(db, { nowMs = Date.now(), almacen } = {}) {
-    const snap = await db.collection(ig.POSTS_COLLECTION).where('tipo', '==', 'reel').get();
+    // Solo los borradores: los publicados y cancelados se acumulan con el tiempo y aquí no hacen falta.
+    const snap = await db.collection(ig.POSTS_COLLECTION).where('tipo', '==', 'reel').where('estado', '==', 'borrador').get();
     let ensamblados = 0;
     let borrados = 0;
     for (const d of snap.docs) {
@@ -274,7 +277,7 @@ async function mantenimiento(db, { nowMs = Date.now(), almacen } = {}) {
     // Las series: asigna a cada reel su hora según la semana fija (el cron de publicación hace el resto).
     const series = require('./series');
     const cola = await series.sincronizar(db, { nowMs }).catch((err) => { console.error('series reels:', err.message); return null; });
-    return { ensamblados, borrados, cola: cola && (cola.programados || cola.desprogramados || cola.problemas.length) ? cola : undefined };
+    return { ensamblados, borrados, cola: cola && (cola.programados || cola.desprogramados || cola.reprogramados || cola.problemas.length) ? cola : undefined };
 }
 
 module.exports = { urlExternaSegura, NOMBRE_ESTADO, mantenimiento, ensamblarPendiente, ESTADOS, parseFecha, textoBogota, vista, listar, estado, prepararSubida, importarVideoDesdeUrl, asegurarVideo, programar, editar, cancelar, DAY_MS };

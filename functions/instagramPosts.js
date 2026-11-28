@@ -303,7 +303,7 @@ async function programarPost(db, { id, programadaAtMs }, uid, { nowMs = Date.now
     if (!Number.isFinite(cuando) || cuando < nowMs + 60 * 1000) throw new HttpsError('invalid-argument', 'Elige una fecha y hora futuras (al menos 1 minuto adelante).');
     if (cuando > nowMs + 180 * DAY_MS) throw new HttpsError('invalid-argument', 'Programa con máximo 6 meses de anticipación.');
     await refPost(db, id).set({
-        estado: 'programada', programadaAtMs: cuando, intentos: 0, error: '', actualizadoAtMs: nowMs,
+        estado: 'programada', programadaAtMs: cuando, intentos: 0, error: '', errorCodigo: '', actualizadoAtMs: nowMs,
         ...(post.facebook?.publicar === true && post.facebook?.estado !== 'publicada' ? { facebook: { estado: 'pendiente', error: '', intentos: 0 } } : {})
     }, { merge: true });
     return { ok: true, programadaAtMs: cuando };
@@ -448,7 +448,7 @@ async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseU
 
     const detalle = { fecha: cd.bogotaParts(nowMs).dateKey, tipo: post.tipo, postId: id, resumen: post.tipo === 'historia' ? 'Historia programada' : String(post.caption || '').trim().slice(0, 80), origen: manual ? 'manual' : 'automatica' };
     const fallar = async (mensaje, motivo, estado = 'error') => {
-        await refPost(db, id).set({ estado, error: mensaje, actualizadoAtMs: nowMs }, { merge: true });
+        await refPost(db, id).set({ estado, error: mensaje, errorCodigo: motivo || '', actualizadoAtMs: nowMs }, { merge: true });
         await ig.registrarPublicacion(db, { ...detalle, ok: false, error: mensaje, nowMs });
         await avisarFalla(db, post, id, mensaje);
         return { ok: false, motivo, error: mensaje };
@@ -461,7 +461,9 @@ async function publicarPost(db, { id, nowMs = Date.now(), fetchFn = fetch, baseU
         return fallar(err.message, 'incompleta');
     }
     if (!manual && post.programadaAtMs && nowMs - post.programadaAtMs > MAX_RETRASO_MS) {
-        return fallar('Pasó más de 1 hora de la hora programada y no salió (¿falló la conexión?). Reprográmala o usa "Publicar ahora".', 'muy_tarde');
+        return fallar(post.serieId
+            ? 'Pasó más de 1 hora de su hora y no salió (¿falló la conexión?). Su serie la reprograma sola en el siguiente horario libre.'
+            : 'Pasó más de 1 hora de la hora programada y no salió (¿falló la conexión?). Reprográmala o usa "Publicar ahora".', 'muy_tarde');
     }
     if ((await publicacionesUltimas24h(db, nowMs)) >= LIMITE_24H) {
         return fallar('Se alcanzó el límite de publicaciones de Instagram en 24 horas. Intenta mañana.', 'limite_24h');

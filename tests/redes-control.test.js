@@ -158,3 +158,28 @@ test('facebook_estado: sin conexión y con publicaciones en error o pendientes',
     const uno = await ctl.facebookEstado(db, { id });
     assert.equal(uno.publicacion.facebook.estado, 'error');
 });
+
+test('resumen semanal: guarda el histórico y arma el mensaje del celular con la semana cerrada', async () => {
+    const an = require(path.join(FUNCTIONS_DIR, 'redesAnalitica.js'));
+    const lunesPasado = '2026-11-23';
+    await db.collection(posts.POSTS_COLLECTION).doc('p1').set({ tipo: 'reel', caption: 'Reel bueno', serieId: 's1', estado: 'publicada' });
+    await db.collection('series').doc('s1').set({ nombre: 'Roal', creadaAtMs: 1 });
+    await db.collection(ig.METRICAS_COLLECTION).doc('m1').set({ postId: 'p1', tipo: 'reel', publicadaAtMs: Date.parse('2026-11-25T18:00:00-05:00'), estado: 'ok', ultimo: { reach: 1500, views: 2000, total_interactions: 120 } });
+    const nowMs = Date.parse('2026-11-30T06:30:00-05:00'); // lunes
+    try {
+        const r = await an.guardarResumenesRecientes(db, { nowMs });
+        assert.equal(r.length, 3);
+        const msg = await an.mensajeSemanal(db, { nowMs });
+        assert.equal(msg.lunes, lunesPasado);
+        assert.match(msg.body, /1 publicaciones/);
+        assert.match(msg.body, /reel de Roal/);
+        assert.match(msg.body, /1\.500/);
+        const h = await an.historico(db, { semanas: 3 });
+        assert.equal(h.semanas.length, 3);
+        assert.equal(h.semanas[0].lunes, '2026-11-23');
+        assert.equal(h.semanas[0].definitivo, false); // aún no cumple 14 días de medición
+        assert.equal((await an.mensajeSemanal(db, { nowMs: Date.parse('2026-06-01T10:00:00-05:00') })), null);
+    } finally {
+        await borrar(an.RESUMEN_COLLECTION); await borrar(ig.METRICAS_COLLECTION);
+    }
+});

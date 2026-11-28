@@ -174,3 +174,39 @@ test('validaciones: nombres repetidos, hora mala, serie inexistente y reels sin 
     await assert.rejects(series.agregar(db, { id: 'sintexto001', serie: 'Inventada' }, 't', { nowMs: NOW }), /No existe la serie/);
     await assert.rejects(series.definirSemana(db, { dias: { luns: 'Roal' } }, 't'), /no es un día/);
 });
+
+test('un reel de serie que falló por "muy tarde" vuelve solo a la cola (máx. 2 veces) y toma el siguiente horario', async () => {
+    const db = fakeDb();
+    await montar(db);
+    reelListo(db, 'aaaaaaaaaa1');
+    reelListo(db, 'bbbbbbbbbb2');
+    await series.agregar(db, { id: 'aaaaaaaaaa1', serie: 'Roal' }, 't', { nowMs: NOW });
+    await series.agregar(db, { id: 'bbbbbbbbbb2', serie: 'Roal' }, 't', { nowMs: NOW });
+    // El primero no salió a su hora (hubo una caída) y quedó en error con su código.
+    db.datos.set(P('aaaaaaaaaa1'), { ...db.datos.get(P('aaaaaaaaaa1')), estado: 'error', errorCodigo: 'muy_tarde', error: 'Pasó más de 1 hora' });
+    const r = await series.sincronizar(db, { nowMs: NOW + 3 * 3600 * 1000 }); // 23:00 del martes
+    assert.equal(r.reprogramados, 1);
+    const a = db.datos.get(P('aaaaaaaaaa1'));
+    assert.equal(a.estado, 'programada');
+    assert.equal(a.autoReprogramaciones, 1);
+    assert.equal(a.errorCodigo, '');
+    assert.equal(dia(a.programadaAtMs), '2026-12-02 18:00', 'conserva su turno al frente de la cola');
+    // Un error que NO es "muy tarde" no se toca (alguien debe mirarlo), ni tampoco tras agotar los 2 intentos.
+    db.datos.set(P('bbbbbbbbbb2'), { ...db.datos.get(P('bbbbbbbbbb2')), estado: 'error', errorCodigo: '', error: 'Instagram rechazó el video' });
+    db.datos.set(P('aaaaaaaaaa1'), { ...a, estado: 'error', errorCodigo: 'muy_tarde', autoReprogramaciones: 2 });
+    const r2 = await series.sincronizar(db, { nowMs: NOW + 3 * 3600 * 1000 });
+    assert.equal(r2.reprogramados, 0);
+    assert.equal(db.datos.get(P('aaaaaaaaaa1')).estado, 'error');
+    assert.equal(db.datos.get(P('bbbbbbbbbb2')).estado, 'error');
+});
+
+test('diasSinVideos avisa los próximos 3 días en que una serie activa se queda sin videos listos', async () => {
+    const db = fakeDb();
+    await montar(db);
+    reelListo(db, 'aaaaaaaaaa1');
+    await series.agregar(db, { id: 'aaaaaaaaaa1', serie: 'Roal' }, 't', { nowMs: NOW });
+    const faltan = await series.diasSinVideos(db, { nowMs: NOW });
+    // Hoy martes (Emprendimiento) ya pasó su hora; mié = el reel de Roal; jue = Emprendimiento sin videos.
+    assert.deepEqual(faltan.map((f) => f.serie), ['Emprendimiento']);
+    assert.match(faltan[0].dia, /jueves/);
+});

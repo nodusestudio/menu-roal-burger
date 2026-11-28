@@ -333,6 +333,17 @@ async function guardarResumenesRecientes(db, { nowMs = Date.now() } = {}) {
     return out;
 }
 
+// Texto corto para el celular con la semana que acaba de cerrar (lee el resumen ya guardado). null si no hubo publicaciones.
+async function mensajeSemanal(db, { nowMs = Date.now() } = {}) {
+    const lunes = lunesDe(nowMs, 1);
+    const d = (await db.collection(RESUMEN_COLLECTION).doc(lunes).get()).data();
+    if (!d || !d.publicaciones) return null;
+    const m = (d.mejores || [])[0];
+    const n = (x) => new Intl.NumberFormat('es-CO').format(Number(x) || 0);
+    const mejor = m && m.total?.alcance ? ` Mejor: ${m.tipo}${m.serie && m.serie !== 'Sin serie' ? ` de ${m.serie}` : ''} (${n(m.total.alcance)} de alcance).` : '';
+    return { lunes, title: '📊 Redes: resumen de la semana', body: `${d.publicaciones} publicaciones, ${n(d.totales?.alcance)} de alcance, ${n(d.totales?.interacciones)} interacciones.${mejor} Pídele a Claude el análisis completo.` };
+}
+
 async function historico(db, { semanas = 8 } = {}) {
     const tope = Math.max(1, Math.min(52, parseInt(semanas, 10) || 8));
     const snap = await db.collection(RESUMEN_COLLECTION).orderBy('lunes', 'desc').limit(tope).get();
@@ -341,5 +352,5 @@ async function historico(db, { semanas = 8 } = {}) {
 
 module.exports = {
     RESUMEN_COLLECTION, resolverRango, armarFilas, calcularRendimiento, calcularResumen, calcularHistorias, serieSeguidores,
-    rendimiento, resumenSeries, crecimiento, guardarResumenSemanal, guardarResumenesRecientes, historico, lunesDe, claveFecha
+    rendimiento, resumenSeries, crecimiento, mensajeSemanal, guardarResumenSemanal, guardarResumenesRecientes, historico, lunesDe, claveFecha
 };

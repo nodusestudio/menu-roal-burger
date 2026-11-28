@@ -3807,7 +3807,7 @@ exports.reelVideoSubido = require('firebase-functions/v2/storage').onObjectFinal
 );
 
 exports.publicarPostsProgramados = onSchedule(
-    { schedule: '*/10 * * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
+    { schedule: '*/5 * * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 300 },
     async () => {
         try {
             // Primero deja lista la historia de los días cerrados (si hoy toca); luego se publica todo lo vencido.
@@ -3832,8 +3832,29 @@ exports.guardarResumenSemanalRedes = onSchedule(
         try {
             const r = await require('./redesAnalitica').guardarResumenesRecientes(getFirestore());
             console.log(`guardarResumenSemanalRedes: ${JSON.stringify(r)}`);
+            // Aviso al celular con lo esencial de la semana que cerró (el análisis completo se lo pides a Claude).
+            const msg = await require('./redesAnalitica').mensajeSemanal(getFirestore());
+            if (msg) await require('./pushAdmin').enviarPush(getFirestore(), { title: msg.title, body: msg.body, tag: `redes-semana-${msg.lunes}`, tipo: 'redes_resumen', url: '/fodexa', bodyMax: 200 }).catch(() => {});
         } catch (err) {
             console.error('guardarResumenSemanalRedes:', err.message);
+        }
+    }
+);
+
+// Todos los días 9:00: si una serie activa se queda sin videos listos en los próximos 3 días, avisa al celular.
+exports.avisarSeriesSinVideos = onSchedule(
+    { cpu: 0.5, schedule: '0 9 * * *', timeZone: 'America/Bogota', region: 'us-central1', memory: '512MiB', timeoutSeconds: 60 },
+    async () => {
+        try {
+            const faltan = await require('./series').diasSinVideos(getFirestore());
+            if (!faltan.length) return;
+            const series = [...new Set(faltan.map((f) => f.serie))].join(', ');
+            await require('./pushAdmin').enviarPush(getFirestore(), {
+                title: '🎬 Falta contenido en tus series', tag: 'series-sin-videos', tipo: 'redes_series', url: '/fodexa', bodyMax: 200,
+                body: `Sin videos listos: ${faltan.map((f) => `${f.dia} (${f.serie})`).join(', ')}. Sube reels a: ${series}.`
+            });
+        } catch (err) {
+            console.error('avisarSeriesSinVideos:', err.message);
         }
     }
 );

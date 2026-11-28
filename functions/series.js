@@ -22,6 +22,7 @@ const SEMANA_DOC = 'semana_reels';
 const BOGOTA_MS = 5 * 3600 * 1000;
 const MIN_MS = 60 * 1000;
 const DAY_MS = 24 * 3600 * 1000;
+const MAX_AUTO_REPROGRAMACIONES = 2;
 const MARGEN_MS = 2 * MIN_MS; // un horario solo cuenta si falta al menos esto (programarPost exige > 1 min)
 const HORIZONTE_DIAS = 120; // programarPost admite hasta 180 días
 const DIAS_CLAVE = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']; // índice = getUTCDay
@@ -156,8 +157,23 @@ function resolverSerie(series, ref) {
 // Series en pausa (o sin día en la semana): sus reels vuelven a borrador, y así salen del calendario.
 async function sincronizar(db, { nowMs = Date.now() } = {}) {
     const [series, semana, porSerie] = await Promise.all([leerSeries(db), leerSemana(db), leerReelsDeSeries(db)]);
-    const resumen = { programados: 0, desprogramados: 0, problemas: [] };
+    const resumen = { programados: 0, desprogramados: 0, reprogramados: 0, problemas: [] };
     const existentes = new Set(series.map((s) => s.id));
+    // Un reel de serie que no salió por "muy tarde" (caída de conexión, etc.) vuelve solo a la cola y toma el siguiente
+    // horario libre. Máximo MAX_AUTO_REPROGRAMACIONES veces: si sigue fallando, queda en error para que alguien lo mire.
+    for (const lista of porSerie.values()) {
+        for (const p of lista) {
+            if (p.estado !== 'error' || p.errorCodigo !== 'muy_tarde' || (Number(p.autoReprogramaciones) || 0) >= MAX_AUTO_REPROGRAMACIONES) continue;
+            try {
+                await posts.desprogramarPost(db, { id: p.id }, 'series', { nowMs });
+                await db.collection(posts.POSTS_COLLECTION).doc(p.id).set({ autoReprogramaciones: (Number(p.autoReprogramaciones) || 0) + 1, errorCodigo: '' }, { merge: true });
+                p.estado = 'borrador'; // ya cuenta como candidato en esta misma pasada
+                resumen.reprogramados += 1;
+            } catch (err) {
+                resumen.problemas.push({ id: p.id, serie: p.serieId, motivo: String(err.message || err).slice(0, 160) });
+            }
+        }
+    }
     for (const serie of series) {
         const slots = clasificar(porSerie.get(serie.id) || [], nowMs).filter((c) => c.tipo === 'candidato');
         // Los horarios se reparten en orden; un reel que ya no se puede programar (video borrado, texto vacío…) no
@@ -282,6 +298,12 @@ async function vista(db, { baseUrl, nowMs = Date.now() } = {}) {
         proximos,
         avisos: proximos.filter((x) => x.aviso).map((x) => `${x.dia} ${x.fecha}: ${x.detalle}`)
     };
+}
+
+// Días próximos (por defecto 3) en que una serie activa se queda sin videos listos: sirve para avisar al celular a tiempo.
+async function diasSinVideos(db, { nowMs = Date.now(), dias = 3 } = {}) {
+    const v = await vista(db, { nowMs });
+    return v.proximos.slice(0, dias).filter((d) => d.estado === 'sin_videos').map((d) => ({ fecha: d.fecha, dia: d.dia, serie: d.serie }));
 }
 
 // Solo nombres y colores (para pintar el calendario); no sincroniza ni calcula nada más.
@@ -458,5 +480,5 @@ async function reordenar(db, a, uid, opts = {}) {
 
 module.exports = {
     SERIES_COLLECTION, SEMANA_DOC, DIAS_ORDEN, horaAMinutos, textoBogota, slotsDeSerie, clasificar, planificar, resolverSerie,
-    leerSeries, leerSemana, sincronizar, vista, lista, ver, posicionDe, crearSerie, configurarSerie, definirSemana, asignar, agregar, quitar, reordenar
+    leerSeries, leerSemana, sincronizar, vista, diasSinVideos, lista, ver, posicionDe, crearSerie, configurarSerie, definirSemana, asignar, agregar, quitar, reordenar
 };
